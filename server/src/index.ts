@@ -1,4 +1,5 @@
 import express, { Request, Response } from "express";
+import path from "path";
 import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
@@ -88,6 +89,15 @@ app.get("/api/leaderboard", async (_req: Request, res: Response) => {
     { $limit: 20 },
   ]);
   res.json(rows);
+});
+
+// 정적 파일 서빙 (Render 단일 서비스 배포 대비)
+const staticDir = path.join(__dirname, "../static");
+app.use(express.static(staticDir));
+
+// SPA 폴백: API와 소켓 경로 제외
+app.get(/^(?!\/api|\/socket\.io).*/, (_req: Request, res: Response) => {
+  res.sendFile(path.join(staticDir, "index.html"));
 });
 
 const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/fishing_game";
