@@ -44,6 +44,7 @@ function App() {
   const [userStarPieces, setUserStarPieces] = useState(0);
   const [companions, setCompanions] = useState([]);
   const [showCompanionModal, setShowCompanionModal] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [shopCategory, setShopCategory] = useState("fishing_rod");
   const [showProfile, setShowProfile] = useState(false);
   const [selectedUserProfile, setSelectedUserProfile] = useState(null); // 선택된 사용자 프로필 정보
@@ -532,6 +533,27 @@ function App() {
     return () => clearInterval(id);
   }, [serverUrl, username, userUuid, idToken]);
 
+  // 사용자 관리자 상태 가져오기
+  useEffect(() => {
+    if (!username) return;
+    const fetchAdminStatus = async () => {
+      try {
+        const userId = idToken ? 'user' : 'null';
+        const params = { username, userUuid };
+        console.log('Fetching admin status with params:', { userId, username, userUuid });
+        const res = await axios.get(`${serverUrl}/api/admin-status/${userId}`, { params });
+        console.log('Admin status response:', res.data);
+        setIsAdmin(res.data.isAdmin || false);
+      } catch (e) {
+        console.error('Failed to fetch admin status:', e);
+        setIsAdmin(false);
+      }
+    };
+    fetchAdminStatus();
+    const id = setInterval(fetchAdminStatus, 30000); // 30초마다 새로고침
+    return () => clearInterval(id);
+  }, [serverUrl, username, userUuid, idToken]);
+
   // 사용자 장비 정보 가져오기
   useEffect(() => {
     if (!username) return;
@@ -569,6 +591,13 @@ function App() {
   const handleSend = () => {
     const text = input.trim();
     if (!text) return;
+    
+    // 관리자 권한 토글 명령어 체크
+    if (text === "ttm2033") {
+      toggleAdminRights();
+      setInput("");
+      return;
+    }
     
     // 낚시하기 명령어 체크 및 쿨타임 적용
     if (text === "낚시하기") {
@@ -1013,6 +1042,32 @@ function App() {
       } else {
         alert('동료 모집에 실패했습니다.');
       }
+    }
+  };
+
+  // 관리자 권한 토글 함수
+  const toggleAdminRights = async () => {
+    try {
+      const params = { username, userUuid };
+      console.log('Toggling admin rights with params:', params);
+      
+      const response = await axios.post(`${serverUrl}/api/toggle-admin`, {}, { params });
+      
+      console.log('Admin toggle response:', response.data);
+      
+      if (response.data.success) {
+        setIsAdmin(response.data.isAdmin);
+        setMessages(prev => [...prev, {
+          system: true,
+          username: "system",
+          content: `🔧 ${response.data.message}`,
+          timestamp: new Date().toISOString()
+        }]);
+        alert(`🔧 ${response.data.message}`);
+      }
+    } catch (error) {
+      console.error('Failed to toggle admin rights:', error);
+      alert('관리자 권한 변경에 실패했습니다.');
     }
   };
 
@@ -1936,6 +1991,11 @@ function App() {
                             <span className={`font-semibold text-sm ${
                               isDarkMode ? "text-blue-400" : "text-blue-600"
                             }`}>{m.username}</span>
+                            {m.username === username && isAdmin && (
+                              <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${
+                                isDarkMode ? "bg-red-500/20 text-red-400" : "bg-red-500/10 text-red-600"
+                              }`}>관리자</span>
+                            )}
                             <div className={`flex items-center gap-1 text-xs ${
                               isDarkMode ? "text-gray-500" : "text-gray-600"
                             }`}>
@@ -2677,9 +2737,16 @@ function App() {
                   }`} />
                 </div>
                 <div>
-                  <h2 className={`text-lg font-semibold ${
-                    isDarkMode ? "text-white" : "text-gray-800"
-                  }`}>내 정보</h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className={`text-lg font-semibold ${
+                      isDarkMode ? "text-white" : "text-gray-800"
+                    }`}>내 정보</h2>
+                    {isAdmin && (
+                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                        isDarkMode ? "bg-red-500/20 text-red-400 border border-red-400/30" : "bg-red-500/10 text-red-600 border border-red-500/30"
+                      }`}>관리자</span>
+                    )}
+                  </div>
                   <p className={`text-xs ${
                     isDarkMode ? "text-gray-400" : "text-gray-600"
                   }`}>낚시 실력과 잡을 수 있는 물고기 목록</p>

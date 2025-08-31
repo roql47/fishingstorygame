@@ -160,6 +160,19 @@ const companionSchema = new mongoose.Schema(
 
 const CompanionModel = mongoose.model("Companion", companionSchema);
 
+// Admin Schema (관리자 시스템)
+const adminSchema = new mongoose.Schema(
+  {
+    userId: { type: String, required: true },
+    username: { type: String, required: true },
+    userUuid: { type: String, index: true },
+    isAdmin: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+
+const AdminModel = mongoose.model("Admin", adminSchema);
+
 // 동료 목록 정의
 const COMPANION_LIST = [
   "실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라"
@@ -1259,6 +1272,94 @@ app.get("/api/companions/:userId", async (req, res) => {
   } catch (error) {
     console.error("Failed to fetch companions:", error);
     res.status(500).json({ error: "동료 정보를 가져올 수 없습니다." });
+  }
+});
+
+// Admin APIs (관리자 시스템)
+// 관리자 권한 토글 API
+app.post("/api/toggle-admin", async (req, res) => {
+  try {
+    const { username, userUuid } = req.query;
+    
+    console.log("Admin toggle request:", { username, userUuid });
+    
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+      console.log("Using UUID query for admin toggle:", query);
+    } else {
+      query = queryResult;
+      console.log("Using fallback query for admin toggle:", query);
+    }
+    
+    // 기존 관리자 상태 확인
+    let adminRecord = await AdminModel.findOne(query);
+    if (!adminRecord) {
+      const createData = {
+        userId: query.userId || 'user',
+        username: query.username || username,
+        userUuid: query.userUuid || userUuid,
+        isAdmin: true
+      };
+      console.log("Creating new admin record:", createData);
+      adminRecord = new AdminModel(createData);
+      await adminRecord.save();
+      
+      console.log(`Admin rights granted to: ${username}`);
+      res.json({
+        success: true,
+        isAdmin: true,
+        message: "관리자 권한이 부여되었습니다."
+      });
+    } else {
+      // 기존 기록이 있으면 토글
+      adminRecord.isAdmin = !adminRecord.isAdmin;
+      await adminRecord.save();
+      
+      console.log(`Admin rights ${adminRecord.isAdmin ? 'granted' : 'revoked'} for: ${username}`);
+      res.json({
+        success: true,
+        isAdmin: adminRecord.isAdmin,
+        message: adminRecord.isAdmin ? "관리자 권한이 부여되었습니다." : "관리자 권한이 해제되었습니다."
+      });
+    }
+  } catch (error) {
+    console.error("Failed to toggle admin:", error);
+    res.status(500).json({ error: "관리자 권한 변경에 실패했습니다." });
+  }
+});
+
+// 관리자 상태 조회 API
+app.get("/api/admin-status/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { username, userUuid } = req.query;
+    
+    console.log("Admin status request:", { userId, username, userUuid });
+    
+    const queryResult = await getUserQuery(userId, username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+      console.log("Using UUID query for admin status:", query);
+    } else {
+      query = queryResult;
+      console.log("Using fallback query for admin status:", query);
+    }
+    
+    const adminRecord = await AdminModel.findOne(query);
+    const isAdmin = adminRecord ? adminRecord.isAdmin : false;
+    
+    console.log(`Admin status for ${username}: ${isAdmin}`);
+    
+    res.json({ 
+      isAdmin,
+      username: query.username || username
+    });
+  } catch (error) {
+    console.error("Failed to fetch admin status:", error);
+    res.status(500).json({ error: "관리자 상태를 가져올 수 없습니다." });
   }
 });
 
