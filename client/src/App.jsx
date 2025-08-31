@@ -962,7 +962,7 @@ function App() {
 
   // 동료 모집 함수
   const recruitCompanion = async () => {
-    const starPieceCost = 10; // 별조각 10개 비용
+    const starPieceCost = 1; // 별조각 1개 비용
     
     if (userStarPieces < starPieceCost) {
       alert(`별조각이 부족합니다! (필요: ${starPieceCost}개, 보유: ${userStarPieces}개)`);
@@ -2550,7 +2550,7 @@ function App() {
                     }`}>동료모집</h2>
                     <p className={`text-xs ${
                       isDarkMode ? "text-gray-400" : "text-gray-600"
-                    }`}>별조각 10개로 15% 확률 가챠</p>
+                    }`}>별조각 1개로 15% 확률 가챠</p>
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -2576,9 +2576,9 @@ function App() {
               <div className="text-center mb-6">
                 <button
                   onClick={recruitCompanion}
-                  disabled={userStarPieces < 10 || companions.length >= 6}
+                  disabled={userStarPieces < 1 || companions.length >= 6}
                   className={`px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 ${
-                    userStarPieces >= 10 && companions.length < 6
+                    userStarPieces >= 1 && companions.length < 6
                       ? isDarkMode
                         ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 hover:scale-105 glow-effect border border-purple-400/30"
                         : "bg-purple-500/10 text-purple-600 hover:bg-purple-500/20 hover:scale-105 border border-purple-500/30"
@@ -2589,9 +2589,9 @@ function App() {
                 >
                   {companions.length >= 6
                     ? "모든 동료 보유 완료"
-                    : userStarPieces < 10
-                      ? `별조각 부족 (${userStarPieces}/10)`
-                      : "동료 모집 (별조각 10개)"
+                    : userStarPieces < 1
+                      ? `별조각 부족 (${userStarPieces}/1)`
+                      : "동료 모집 (별조각 1개)"
                   }
                 </button>
                 <div className={`text-xs mt-2 ${
@@ -2723,6 +2723,36 @@ function App() {
                     }`}>{myCatches}마리</span>
                   </div>
                 </div>
+              </div>
+
+              {/* 보유 동료 */}
+              <div className={`p-4 rounded-xl ${
+                isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+              }`}>
+                <h3 className={`text-md font-semibold mb-3 ${
+                  isDarkMode ? "text-white" : "text-gray-800"
+                }`}>보유 동료 ({companions.length}/6)</h3>
+                {companions.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {companions.map((companion, index) => (
+                      <div key={index} className={`p-3 rounded-lg text-center ${
+                        isDarkMode ? "bg-purple-500/10 border border-purple-400/20" : "bg-purple-500/5 border border-purple-300/30"
+                      }`}>
+                        <div className={`font-medium text-sm ${
+                          isDarkMode ? "text-purple-400" : "text-purple-600"
+                        }`}>{companion}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className={`text-center py-4 text-sm ${
+                    isDarkMode ? "text-gray-500" : "text-gray-600"
+                  }`}>
+                    아직 동료가 없습니다.
+                    <br />
+                    동료모집 탭에서 동료를 영입해보세요!
+                  </div>
+                )}
               </div>
 
               {/* 전투 능력치 */}

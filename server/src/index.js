@@ -1140,7 +1140,7 @@ app.post("/api/add-star-pieces", async (req, res) => {
 // 동료 뽑기 API
 app.post("/api/recruit-companion", async (req, res) => {
   try {
-    const { starPieceCost = 10 } = req.body; // 별조각 10개 기본 비용
+    const { starPieceCost = 1 } = req.body; // 별조각 1개 기본 비용
     const { username, userUuid } = req.query;
     
     console.log("Recruit companion request:", { starPieceCost, username, userUuid });
