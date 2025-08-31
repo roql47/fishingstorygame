@@ -73,7 +73,7 @@ function App() {
   const [explorationCooldown, setExplorationCooldown] = useState(0);
 
   const serverUrl = useMemo(
-    () => import.meta.env.VITE_SERVER_URL || "http://localhost:4000",
+    () => import.meta.env.VITE_SERVER_URL || (typeof window !== "undefined" ? window.location.origin : "http://localhost:4000"),
     []
   );
 
