@@ -1983,39 +1983,9 @@ function App() {
                         isDarkMode ? "text-blue-400" : "text-blue-600"
                       }`} />
                     </div>
-                    <div>
-                      <h2 className={`text-lg font-semibold ${
-                        isDarkMode ? "text-white" : "text-gray-800"
-                      }`}>실시간 채팅</h2>
-                      <p className={`text-xs ${
-                        isDarkMode ? "text-gray-400" : "text-gray-600"
-                      }`}>접속자 {connectedUsers.length}명</p>
-                    </div>
-                  </div>
-                  
-                  {/* 접속자 목록 */}
-                  <div className="flex flex-wrap gap-1 max-w-md">
-                    {connectedUsers.slice(0, 6).map((user, index) => (
-                      <div key={index} className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
-                        isDarkMode ? "bg-blue-500/10 border border-blue-400/20" : "bg-blue-500/5 border border-blue-300/30"
-                      }`}>
-                        <span className={`${
-                          isDarkMode ? "text-blue-400" : "text-blue-600"
-                        }`}>{user.displayName || user.username}</span>
-                        {((user.username === username && isAdmin) || userAdminStatus[user.username]) && (
-                          <span className={`text-xs font-bold ${
-                            isDarkMode ? "text-red-400" : "text-red-600"
-                          }`}>👑</span>
-                        )}
-                      </div>
-                    ))}
-                    {connectedUsers.length > 6 && (
-                      <div className={`px-2 py-1 rounded-full text-xs ${
-                        isDarkMode ? "bg-gray-500/10 text-gray-400" : "bg-gray-300/20 text-gray-600"
-                      }`}>
-                        +{connectedUsers.length - 6}명
-                      </div>
-                    )}
+                    <h2 className={`text-lg font-semibold ${
+                      isDarkMode ? "text-white" : "text-gray-800"
+                    }`}>실시간 채팅</h2>
                   </div>
                   
                   {/* 액션 버튼들 */}
@@ -3204,30 +3174,30 @@ function App() {
                     }`}>접속자</h3>
                     <p className={`text-xs ${
                       isDarkMode ? "text-gray-400" : "text-gray-600"
-                    }`}>{onlineUsers.length}명 온라인</p>
+                    }`}>{connectedUsers.length}명 온라인</p>
                   </div>
                 </div>
               </div>
 
               {/* 접속자 목록 */}
               <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                {onlineUsers.map((user, index) => (
+                {connectedUsers.map((user, index) => (
                   <div 
                     key={index} 
                     className={`flex items-center gap-3 p-2 rounded-lg transition-all duration-300 hover:scale-105 cursor-pointer ${
                       isDarkMode ? "hover:bg-white/5" : "hover:bg-gray-100/50"
                     }`}
                     onClick={async () => {
-                      if (user.displayName === username) {
+                      if (user.username === username) {
                         setSelectedUserProfile(null); // 내 프로필
                         setOtherUserData(null); // 다른 사용자 데이터 초기화
                       } else {
-                        setSelectedUserProfile({ username: user.displayName }); // 다른 사용자 프로필
-                        await fetchOtherUserProfile(user.displayName); // 해당 사용자 데이터 가져오기
+                        setSelectedUserProfile({ username: user.username }); // 다른 사용자 프로필
+                        await fetchOtherUserProfile(user.username); // 해당 사용자 데이터 가져오기
                       }
                       setShowProfile(true);
                     }}
-                    title={`${user.displayName}님의 프로필 보기`}
+                    title={`${user.username}님의 프로필 보기`}
                   >
                     <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border ${
                       isDarkMode ? "border-white/10" : "border-blue-300/30"
@@ -3237,10 +3207,15 @@ function App() {
                       }`} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className={`font-medium text-sm truncate ${
+                      <div className={`font-medium text-sm truncate flex items-center gap-1 ${
                         isDarkMode ? "text-white" : "text-gray-800"
                       }`}>
-                        {user.displayName}
+                        {user.username}
+                        {((user.username === username && isAdmin) || userAdminStatus[user.username]) && (
+                          <span className={`text-xs font-bold ${
+                            isDarkMode ? "text-red-400" : "text-red-600"
+                          }`}>👑</span>
+                        )}
                       </div>
                       <div className={`text-xs ${
                         isDarkMode ? "text-gray-400" : "text-gray-600"
@@ -3252,7 +3227,7 @@ function App() {
                   </div>
                 ))}
                 
-                {onlineUsers.length === 0 && (
+                {connectedUsers.length === 0 && (
                   <div className={`text-center py-8 ${
                     isDarkMode ? "text-gray-500" : "text-gray-600"
                   }`}>
