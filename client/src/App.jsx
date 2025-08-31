@@ -1356,6 +1356,15 @@ function App() {
                 <button
                   className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-4 rounded-xl transition-all duration-300 transform hover:scale-105 hover:shadow-2xl flex items-center justify-center gap-3 glow-effect"
                   onClick={() => {
+                    // 모바일 임베디드 브라우저 감지 (네이버 앱 포함)
+                    const isEmbeddedBrowser = /FBAN|FBAV|Instagram|Line|KakaoTalk|NAVER|wv|WebView/.test(navigator.userAgent);
+                    const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                    
+                    if (isEmbeddedBrowser || (isMobile && window.navigator.standalone === false)) {
+                      alert('앱 내 브라우저에서는 Google 로그인이 제한됩니다.\n\n✅ 해결 방법:\n1. 링크를 길게 눌러 "브라우저에서 열기" 선택\n2. 또는 Safari/Chrome 앱을 열어서 주소를 직접 입력\n\n주소: https://fising-master.onrender.com');
+                      return;
+                    }
+                    
                     const clientId = '1023938003062-256niij987fc2q7o74qmssi2bca7vdnf.apps.googleusercontent.com';
                     const redirectUri = window.location.origin;
                     const scope = 'openid email profile';
@@ -1375,6 +1384,15 @@ function App() {
                   <Fish className="w-5 h-5" />
                   <span className="text-lg">Google 계정으로 시작하기</span>
                 </button>
+                
+                {/* 모바일 사용자를 위한 안내 메시지 */}
+                {/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) && (
+                  <div className="mt-4 p-3 bg-yellow-100 border border-yellow-300 rounded-lg text-sm text-yellow-800">
+                    📱 <strong>모바일 사용자 안내:</strong><br/>
+                    카카오톡, 네이버, 인스타그램 등 앱 내 브라우저에서는 Google 로그인이 제한됩니다.<br/>
+                    <strong>Safari나 Chrome에서 직접 접속해주세요!</strong>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1752,6 +1770,30 @@ function App() {
                   </div>
                 </div>
                 <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      try {
+                        const userId = idToken ? 'user' : 'null';
+                        const params = { username, userUuid };
+                        console.log("Manual inventory refresh:", { userId, username, userUuid });
+                        const res = await axios.get(`${serverUrl}/api/inventory/${userId}`, { params });
+                        console.log("Manual inventory result:", res.data);
+                        setInventory(res.data);
+                        const totalCount = res.data.reduce((sum, item) => sum + item.count, 0);
+                        setMyCatches(totalCount);
+                      } catch (e) {
+                        console.error('Failed to refresh inventory:', e);
+                      }
+                    }}
+                    className={`p-2 rounded-full transition-all hover:scale-110 ${
+                      isDarkMode 
+                        ? "bg-blue-500/20 hover:bg-blue-500/30 text-blue-400" 
+                        : "bg-blue-500/20 hover:bg-blue-500/30 text-blue-600"
+                    }`}
+                    title="인벤토리 새로고침"
+                  >
+                    🔄
+                  </button>
                   <div className={`flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border ${
                     isDarkMode ? "border-yellow-400/20" : "border-yellow-500/30"
                   }`}>
