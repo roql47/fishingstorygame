@@ -176,6 +176,9 @@ function App() {
         console.log("Google login - preserving existing nickname:", existingNickname);
         setUsername(existingNickname);
         // 로컬스토리지는 변경하지 않음 (기존 닉네임 유지)
+        
+        // 서버에도 기존 닉네임을 전달하여 데이터베이스에서 보존하도록 함
+        console.log("Google login - will send existing nickname to server:", existingNickname);
       } else {
         // 새 사용자인 경우에만 구글 이름 사용
         console.log("Google login - new user, using google name:", safeName);

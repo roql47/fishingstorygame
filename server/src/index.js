@@ -455,18 +455,33 @@ io.on("connection", (socket) => {
       // UUID 기반 사용자 등록/조회
       const googleId = info?.sub || null; // 구글 ID (sub claim)
       
-      // 🚨 EMERGENCY FIX: Google 로그인 시 기존 닉네임 보존 (닉네임 변경은 허용)
-      if (googleId && userUuid && userUuid !== 'null' && userUuid !== 'undefined') {
-        console.log("🚨 EMERGENCY: Google login detected with existing userUuid");
-        const existingUser = await UserUuidModel.findOne({ userUuid });
+      // 구글 로그인 시 기존 사용자의 닉네임 보존
+      if (googleId) {
+        console.log("Google login detected, checking for existing user with Google ID:", googleId);
+        const existingGoogleUser = await UserUuidModel.findOne({ originalGoogleId: googleId });
         
-        // 클라이언트에서 명시적으로 닉네임을 변경한 경우가 아니라면 기존 닉네임 보존
-        if (existingUser && existingUser.displayName && username === info?.displayName) {
-          // Google displayName과 클라이언트 username이 같다면 기존 닉네임 보존
-          effectiveName = existingUser.displayName;
-          console.log("🚨 EMERGENCY: Preserving existing displayName (Google login):", effectiveName);
-        } else {
-          console.log("🚨 EMERGENCY: Allowing nickname change:", effectiveName);
+        if (existingGoogleUser) {
+          // 기존 구글 사용자가 있으면 데이터베이스의 닉네임을 우선 사용
+          console.log("Found existing Google user:", {
+            userUuid: existingGoogleUser.userUuid,
+            storedDisplayName: existingGoogleUser.displayName,
+            clientUsername: username,
+            googleDisplayName: info?.displayName
+          });
+          
+          // 클라이언트에서 보낸 username이 데이터베이스의 displayName과 다르고,
+          // Google displayName과도 다르면 닉네임 변경으로 간주
+          const isNicknameChange = username && 
+                                  username !== existingGoogleUser.displayName && 
+                                  username !== info?.displayName;
+          
+          if (isNicknameChange) {
+            console.log("Nickname change detected:", existingGoogleUser.displayName, "->", username);
+            effectiveName = username; // 변경된 닉네임 사용
+          } else {
+            console.log("Using stored displayName (preserving user's custom nickname):", existingGoogleUser.displayName);
+            effectiveName = existingGoogleUser.displayName; // 기존 닉네임 보존
+          }
         }
       }
       console.log("Google ID:", googleId);
