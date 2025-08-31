@@ -3220,7 +3220,7 @@ function App() {
                       <div className={`text-xs ${
                         isDarkMode ? "text-gray-400" : "text-gray-600"
                       }`}>
-                        {user.userId ? "구글" : "게스트"}
+                        {(user.userId === 'user' || user.hasIdToken) ? "Google" : "Guest"}
                       </div>
                     </div>
                     <div className={`w-2 h-2 rounded-full bg-gradient-to-r from-emerald-400 to-green-400 animate-pulse`}></div>

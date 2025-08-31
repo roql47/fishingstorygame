@@ -720,9 +720,11 @@ io.on("connection", (socket) => {
         username: user.username,
         displayName: user.username,
         userId: socket.data.userId,
+        hasIdToken: !!idToken, // ID 토큰 보유 여부
         loginType: idToken ? 'Google' : 'Guest',
         joinTime: new Date(),
-        socketId: socket.id
+        socketId: socket.id,
+        originalGoogleId: user.originalGoogleId // 구글 ID 정보도 추가
       });
     
       console.log("User joined:", { 
@@ -1372,7 +1374,9 @@ app.get("/api/connected-users", async (req, res) => {
     const users = Array.from(connectedUsers.values()).map(user => ({
       userUuid: user.userUuid,
       username: user.username,
-      displayName: user.displayName || user.username
+      displayName: user.displayName || user.username,
+      userId: user.userId, // 구글 로그인 여부 판단용
+      hasIdToken: user.hasIdToken || false // ID 토큰 보유 여부
     }));
     
     console.log("Sending connected users:", users);
