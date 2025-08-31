@@ -41,6 +41,7 @@ function App() {
   const [userAmber, setUserAmber] = useState(0);
   const [shopCategory, setShopCategory] = useState("fishing_rod");
   const [showProfile, setShowProfile] = useState(false);
+  const [selectedUserProfile, setSelectedUserProfile] = useState(null); // 선택된 사용자 프로필 정보
   const [userEquipment, setUserEquipment] = useState({
     fishingRod: null,
     accessory: null
@@ -295,11 +296,9 @@ function App() {
       console.log("Previous username state:", username);
       console.log("Previous localStorage nickname:", localStorage.getItem("nickname"));
       
-      // 닉네임 보존 로직: 현재 로컬스토리지 닉네임을 우선 사용
+      // 닉네임 보존 로직: 사용자가 변경한 닉네임을 항상 보존
       const currentStoredNickname = localStorage.getItem("nickname");
-      const shouldUpdateNickname = !currentStoredNickname || currentStoredNickname === data.username;
       
-      console.log("Should update nickname?", shouldUpdateNickname);
       console.log("Current stored nickname:", currentStoredNickname);
       console.log("Server nickname:", data.username);
       
@@ -307,19 +306,20 @@ function App() {
       setUserUuid(data.userUuid);
       localStorage.setItem("userUuid", data.userUuid);
       
-      // 닉네임은 조건부 업데이트 (사용자가 변경한 닉네임 보존)
-      if (shouldUpdateNickname) {
-        console.log("Updating nickname to server value:", data.username);
-        setUsername(data.username);
-        localStorage.setItem("nickname", data.username);
-      } else {
+      // 로컬스토리지에 닉네임이 있으면 항상 그것을 사용 (사용자 변경사항 보존)
+      if (currentStoredNickname) {
         console.log("Preserving existing nickname:", currentStoredNickname);
         setUsername(currentStoredNickname);
-        // localStorage는 그대로 유지
+        // localStorage는 그대로 유지 (변경하지 않음)
+      } else {
+        // 로컬스토리지에 닉네임이 없는 경우에만 서버 닉네임 사용
+        console.log("No stored nickname, using server value:", data.username);
+        setUsername(data.username);
+        localStorage.setItem("nickname", data.username);
       }
       
       console.log("Updated userUuid state to:", data.userUuid);
-      console.log("Final username state:", shouldUpdateNickname ? data.username : currentStoredNickname);
+      console.log("Final username state:", currentStoredNickname || data.username);
       console.log("Final localStorage nickname:", localStorage.getItem("nickname"));
       
       // UUID 업데이트 후 인벤토리 새로고침
@@ -327,7 +327,7 @@ function App() {
         const fetchInventory = async () => {
           try {
             const userId = idToken ? 'user' : 'null';
-            const finalNickname = shouldUpdateNickname ? data.username : currentStoredNickname;
+            const finalNickname = currentStoredNickname || data.username;
             const params = { username: finalNickname, userUuid: data.userUuid };
             console.log("Refreshing inventory after UUID update:", { userId, username: finalNickname, userUuid: data.userUuid });
             const res = await axios.get(`${serverUrl}/api/inventory/${userId}`, { params });
@@ -561,6 +561,7 @@ function App() {
         // 모달 닫기
         setShowResetConfirm(false);
         setShowProfile(false);
+        setSelectedUserProfile(null);
 
         alert('계정이 성공적으로 초기화되었습니다!');
       }
@@ -1540,7 +1541,10 @@ function App() {
               className={`flex items-center gap-3 px-4 py-2 rounded-full cursor-pointer hover:scale-105 transition-all duration-300 ${
                 isDarkMode ? "glass-input hover:bg-white/10" : "bg-white/60 backdrop-blur-sm border border-gray-300/40 hover:bg-white/80"
               }`}
-              onClick={() => setShowProfile(true)}
+              onClick={() => {
+                setSelectedUserProfile(null); // 내 프로필
+                setShowProfile(true);
+              }}
             >
               <div className={`flex items-center gap-2 ${
                 isDarkMode ? "text-gray-300" : "text-gray-700"
@@ -1728,7 +1732,10 @@ function App() {
                           className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border cursor-pointer hover:scale-110 transition-all duration-300 ${
                             isDarkMode ? "border-white/10 hover:border-blue-400/50" : "border-gray-300/20 hover:border-blue-500/50"
                           }`}
-                          onClick={() => setShowProfile(true)}
+                          onClick={() => {
+                            setSelectedUserProfile({ username: m.username }); // 다른 사용자 프로필
+                            setShowProfile(true);
+                          }}
                           title={`${m.username}님의 프로필 보기`}
                         >
                           <User className={`w-4 h-4 ${isDarkMode ? "text-blue-400" : "text-blue-600"}`} />
@@ -2649,7 +2656,14 @@ function App() {
                     className={`flex items-center gap-3 p-2 rounded-lg transition-all duration-300 hover:scale-105 cursor-pointer ${
                       isDarkMode ? "hover:bg-white/5" : "hover:bg-gray-100/50"
                     }`}
-                    onClick={() => setShowProfile(true)}
+                    onClick={() => {
+                      if (user.displayName === username) {
+                        setSelectedUserProfile(null); // 내 프로필
+                      } else {
+                        setSelectedUserProfile({ username: user.displayName }); // 다른 사용자 프로필
+                      }
+                      setShowProfile(true);
+                    }}
                     title={`${user.displayName}님의 프로필 보기`}
                   >
                     <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border ${
@@ -2711,7 +2725,7 @@ function App() {
                   }`} />
                 </div>
                 <div>
-                  {isEditingNickname ? (
+                  {isEditingNickname && !selectedUserProfile ? ( // 내 프로필일 때만 편집 가능
                     <div className="flex items-center gap-2">
                       <input
                         type="text"
@@ -2760,20 +2774,22 @@ function App() {
                     <div className="flex items-center gap-2">
                       <h2 className={`text-lg font-semibold ${
                         isDarkMode ? "text-white" : "text-gray-800"
-                      }`}>{username}님의 프로필</h2>
-                      <button
-                        onClick={() => {
-                          setIsEditingNickname(true);
-                          setNewNickname(username);
-                        }}
-                        className={`px-2 py-1 rounded text-xs transition-all duration-300 hover:scale-105 ${
-                          isDarkMode 
-                            ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30" 
-                            : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20"
-                        }`}
-                      >
-                        수정
-                      </button>
+                      }`}>{selectedUserProfile ? `${selectedUserProfile.username}님의 프로필` : `${username}님의 프로필`}</h2>
+                      {!selectedUserProfile && ( // 내 프로필일 때만 수정 버튼 표시
+                        <button
+                          onClick={() => {
+                            setIsEditingNickname(true);
+                            setNewNickname(username);
+                          }}
+                          className={`px-2 py-1 rounded text-xs transition-all duration-300 hover:scale-105 ${
+                            isDarkMode 
+                              ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30" 
+                              : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20"
+                          }`}
+                        >
+                          수정
+                        </button>
+                      )}
                     </div>
                   )}
                   <div className="flex flex-col gap-1">
@@ -2802,7 +2818,10 @@ function App() {
                 </div>
               </div>
               <button
-                onClick={() => setShowProfile(false)}
+                onClick={() => {
+                  setShowProfile(false);
+                  setSelectedUserProfile(null); // 선택된 사용자 정보 초기화
+                }}
                 className={`p-2 rounded-lg hover:scale-110 transition-all duration-300 ${
                   isDarkMode 
                     ? "glass-input text-gray-400 hover:text-white" 
