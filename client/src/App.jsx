@@ -251,24 +251,41 @@ function App() {
       console.log("Previous username state:", username);
       console.log("Previous localStorage nickname:", localStorage.getItem("nickname"));
       
-      // 서버에서 받은 최신 정보로 강제 업데이트
+      // 닉네임 보존 로직: 현재 로컬스토리지 닉네임을 우선 사용
+      const currentStoredNickname = localStorage.getItem("nickname");
+      const shouldUpdateNickname = !currentStoredNickname || currentStoredNickname === data.username;
+      
+      console.log("Should update nickname?", shouldUpdateNickname);
+      console.log("Current stored nickname:", currentStoredNickname);
+      console.log("Server nickname:", data.username);
+      
+      // UUID는 항상 업데이트
       setUserUuid(data.userUuid);
-      setUsername(data.username);
       localStorage.setItem("userUuid", data.userUuid);
-      localStorage.setItem("nickname", data.username);
+      
+      // 닉네임은 조건부 업데이트 (사용자가 변경한 닉네임 보존)
+      if (shouldUpdateNickname) {
+        console.log("Updating nickname to server value:", data.username);
+        setUsername(data.username);
+        localStorage.setItem("nickname", data.username);
+      } else {
+        console.log("Preserving existing nickname:", currentStoredNickname);
+        setUsername(currentStoredNickname);
+        // localStorage는 그대로 유지
+      }
       
       console.log("Updated userUuid state to:", data.userUuid);
-      console.log("Updated username state to:", data.username);
-      console.log("Updated localStorage nickname to:", data.username);
-      console.log("Verification - localStorage nickname after update:", localStorage.getItem("nickname"));
+      console.log("Final username state:", shouldUpdateNickname ? data.username : currentStoredNickname);
+      console.log("Final localStorage nickname:", localStorage.getItem("nickname"));
       
       // UUID 업데이트 후 인벤토리 새로고침
       setTimeout(() => {
         const fetchInventory = async () => {
           try {
             const userId = idToken ? 'user' : 'null';
-            const params = { username: data.username, userUuid: data.userUuid };
-            console.log("Refreshing inventory after UUID update:", { userId, username: data.username, userUuid: data.userUuid });
+            const finalNickname = shouldUpdateNickname ? data.username : currentStoredNickname;
+            const params = { username: finalNickname, userUuid: data.userUuid };
+            console.log("Refreshing inventory after UUID update:", { userId, username: finalNickname, userUuid: data.userUuid });
             const res = await axios.get(`${serverUrl}/api/inventory/${userId}`, { params });
             console.log("Inventory after UUID update:", res.data);
             setInventory(res.data);
