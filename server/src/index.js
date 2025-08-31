@@ -420,6 +420,50 @@ const processingJoins = new Set(); // 중복 join 요청 방지
 const recentJoins = new Map(); // 최근 입장 메시지 추적 (userUuid -> timestamp)
 const processingMaterialConsumption = new Set(); // 중복 재료 소모 요청 방지
 
+// 연결된 사용자 정리 함수 (중복 제거 및 유령 연결 정리)
+function cleanupConnectedUsers() {
+  const uniqueUsers = new Map(); // userUuid -> userData
+  const validConnections = new Map(); // socketId -> userData
+  
+  // 실제 연결된 소켓만 필터링
+  for (const [socketId, userData] of connectedUsers.entries()) {
+    const socket = io.sockets.sockets.get(socketId);
+    
+    if (socket && socket.connected) {
+      // 유효한 연결인 경우
+      validConnections.set(socketId, userData);
+      
+      // 중복 제거: 같은 userUuid의 최신 연결만 유지
+      const existing = uniqueUsers.get(userData.userUuid);
+      if (!existing || userData.joinTime > existing.joinTime) {
+        uniqueUsers.set(userData.userUuid, userData);
+      }
+    } else {
+      // 유령 연결 발견 - 제거
+      console.log(`🧹 Cleaning up ghost connection: ${socketId} (${userData.username})`);
+    }
+  }
+  
+  // connectedUsers 맵 업데이트
+  connectedUsers.clear();
+  for (const [socketId, userData] of validConnections) {
+    connectedUsers.set(socketId, userData);
+  }
+  
+  console.log(`🔄 Connection cleanup: ${validConnections.size} active, ${uniqueUsers.size} unique users`);
+  
+  return Array.from(uniqueUsers.values());
+}
+
+// 주기적 연결 상태 정리 (30초마다)
+setInterval(() => {
+  console.log("🕐 Performing periodic connection cleanup...");
+  const uniqueUsers = cleanupConnectedUsers();
+  
+  // 모든 클라이언트에게 정리된 사용자 목록 전송
+  io.emit("users:update", uniqueUsers);
+}, 30000); // 30초
+
 io.on("connection", (socket) => {
   socket.on("chat:join", async ({ username, idToken, userUuid }) => {
     // 중복 요청 방지
@@ -646,8 +690,8 @@ io.on("connection", (socket) => {
         isAlreadyConnected
       });
       
-      // 모든 클라이언트에게 온라인 사용자 목록 전송
-      const usersList = Array.from(connectedUsers.values());
+      // 모든 클라이언트에게 온라인 사용자 목록 전송 (정리된 목록)
+      const usersList = cleanupConnectedUsers();
       console.log("=== SENDING USERS UPDATE ===");
       console.log("Connected users count:", usersList.length);
       console.log("Users list:", usersList.map(u => ({ userUuid: u.userUuid, username: u.username, displayName: u.displayName })));
@@ -814,19 +858,31 @@ io.on("connection", (socket) => {
   });
 
   // 접속 해제 시 사용자 목록에서 제거
-  socket.on("disconnect", () => {
+  socket.on("disconnect", (reason) => {
     const user = connectedUsers.get(socket.id);
     if (user) {
       connectedUsers.delete(socket.id);
-      console.log("User disconnected:", user.displayName);
+      console.log("User disconnected:", user.displayName, "Reason:", reason);
       
-      // 접속자 목록 업데이트 전송
-      io.emit("users:update", Array.from(connectedUsers.values()));
-      io.emit("chat:message", { 
-        system: true, 
-        username: "system", 
-        content: `${user.displayName} 님이 퇴장했습니다.` 
-      });
+      // 같은 userUuid의 다른 연결이 있는지 확인
+      const remainingConnections = Array.from(connectedUsers.values())
+        .filter(userData => userData.userUuid === user.userUuid);
+      
+      console.log(`Remaining connections for ${user.userUuid}:`, remainingConnections.length);
+      
+      // 접속자 목록 업데이트 전송 (중복 제거)
+      const uniqueUsers = cleanupConnectedUsers();
+      io.emit("users:update", uniqueUsers);
+      
+      // 완전히 연결이 끊어진 경우에만 퇴장 메시지 전송
+      if (remainingConnections.length === 0) {
+        io.emit("chat:message", { 
+          system: true, 
+          username: "system", 
+          content: `${user.displayName} 님이 퇴장했습니다.`,
+          timestamp: new Date()
+        });
+      }
     }
   });
 });
