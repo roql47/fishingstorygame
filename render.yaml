@@ -1,19 +1,24 @@
 services:
   - type: web
-    name: fishing-chat-game
+    name: fishing-story-game
     env: node
     plan: free
     buildCommand: |
-      cd server && npm ci && npm run build
+      npm install
+      cd client && npm install && npm run build
+      cd ../server && npm install
+      npm run copy-static
     startCommand: |
-      node server/dist/index.js
+      cd server && npm start
     envVars:
       - key: PORT
         value: 10000
       - key: MONGO_URI
         sync: false
       - key: CLIENT_URL
-        value: https://fishing-chat-game.onrender.com
-    healthCheckPath: /api/leaderboard
+        value: https://fishing-story-game.onrender.com
+      - key: NODE_ENV
+        value: production
+    healthCheckPath: /api/health
 
 

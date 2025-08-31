@@ -4,7 +4,8 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "nodemon --watch src --exec node ./src/index.js",
-    "build": "cd ..\\client && npm run build && cd ..\\server && node scripts/copy-static.cjs",
+    "build": "cd ../client && npm run build && cd ../server && node scripts/copy-static.cjs",
+    "copy-static": "node scripts/copy-static.cjs",
     "start": "node src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
