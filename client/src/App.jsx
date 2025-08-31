@@ -19,7 +19,8 @@ import {
   Gem,
   Diamond,
   Waves,
-  Star
+  Star,
+  Users
 } from "lucide-react";
 import "./App.css";
 
@@ -41,6 +42,8 @@ function App() {
   const [userMoney, setUserMoney] = useState(0);
   const [userAmber, setUserAmber] = useState(0);
   const [userStarPieces, setUserStarPieces] = useState(0);
+  const [companions, setCompanions] = useState([]);
+  const [showCompanionModal, setShowCompanionModal] = useState(false);
   const [shopCategory, setShopCategory] = useState("fishing_rod");
   const [showProfile, setShowProfile] = useState(false);
   const [selectedUserProfile, setSelectedUserProfile] = useState(null); // 선택된 사용자 프로필 정보
@@ -462,7 +465,7 @@ function App() {
     fetchUserMoney();
     const id = setInterval(fetchUserMoney, 10000);
     return () => clearInterval(id);
-  }, [serverUrl, username, idToken]);
+  }, [serverUrl, username, userUuid, idToken]);
 
   // 사용자 호박석 가져오기
   useEffect(() => {
@@ -505,6 +508,27 @@ function App() {
     };
     fetchUserStarPieces();
     const id = setInterval(fetchUserStarPieces, 10000);
+    return () => clearInterval(id);
+  }, [serverUrl, username, userUuid, idToken]);
+
+  // 사용자 동료 정보 가져오기
+  useEffect(() => {
+    if (!username) return;
+    const fetchCompanions = async () => {
+      try {
+        const userId = idToken ? 'user' : 'null';
+        const params = { username, userUuid };
+        console.log('Fetching companions with params:', { userId, username, userUuid });
+        const res = await axios.get(`${serverUrl}/api/companions/${userId}`, { params });
+        console.log('Companions response:', res.data);
+        setCompanions(res.data.companions || []);
+      } catch (e) {
+        console.error('Failed to fetch companions:', e);
+        setCompanions([]);
+      }
+    };
+    fetchCompanions();
+    const id = setInterval(fetchCompanions, 30000); // 30초마다 새로고침
     return () => clearInterval(id);
   }, [serverUrl, username, userUuid, idToken]);
 
@@ -933,6 +957,62 @@ function App() {
       console.error("Failed to add amber:", error);
       console.error("Error response:", error.response?.data);
       return false;
+    }
+  };
+
+  // 동료 모집 함수
+  const recruitCompanion = async () => {
+    const starPieceCost = 10; // 별조각 10개 비용
+    
+    if (userStarPieces < starPieceCost) {
+      alert(`별조각이 부족합니다! (필요: ${starPieceCost}개, 보유: ${userStarPieces}개)`);
+      return;
+    }
+    
+    if (companions.length >= 6) {
+      alert('모든 동료를 이미 보유하고 있습니다!');
+      return;
+    }
+    
+    try {
+      const params = { username, userUuid };
+      console.log('Recruiting companion with params:', params);
+      
+      const response = await axios.post(`${serverUrl}/api/recruit-companion`, {
+        starPieceCost
+      }, { params });
+      
+      console.log('Recruit response:', response.data);
+      
+      if (response.data.success) {
+        setUserStarPieces(response.data.remainingStarPieces);
+        
+        if (response.data.recruited) {
+          setCompanions(prev => [...prev, response.data.companion]);
+          setMessages(prev => [...prev, {
+            system: true,
+            username: "system",
+            content: `🎉 ${response.data.companion}을(를) 동료로 영입했습니다! (총 ${response.data.totalCompanions}/6명)`,
+            timestamp: new Date().toISOString()
+          }]);
+          alert(`🎉 ${response.data.companion}을(를) 동료로 영입했습니다!`);
+        } else {
+          setMessages(prev => [...prev, {
+            system: true,
+            username: "system",
+            content: `😢 동료 모집에 실패했습니다. (별조각 ${starPieceCost}개 소모)`,
+            timestamp: new Date().toISOString()
+          }]);
+          alert('😢 동료 모집에 실패했습니다. 다시 시도해보세요!');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to recruit companion:', error);
+      if (error.response?.status === 400) {
+        alert(error.response.data.error || '동료 모집에 실패했습니다.');
+      } else {
+        alert('동료 모집에 실패했습니다.');
+      }
     }
   };
 
@@ -1722,6 +1802,21 @@ function App() {
             <span className="hidden sm:inline">탐사</span>
           </button>
           <button
+            onClick={() => setActiveTab("companions")}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300 font-medium ${
+              activeTab === "companions"
+                ? isDarkMode
+                  ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
+                  : "bg-purple-500/10 text-purple-600 border border-purple-500/30"
+                : isDarkMode
+                  ? "text-gray-400 hover:text-gray-300"
+                  : "text-gray-600 hover:text-gray-800"
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span className="hidden sm:inline">동료모집</span>
+          </button>
+          <button
             onClick={() => setActiveTab("myinfo")}
             className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300 font-medium ${
               activeTab === "myinfo"
@@ -2427,6 +2522,139 @@ function App() {
                   </div>
                 );
               })()}
+            </div>
+          </div>
+          )}
+
+          {/* 동료모집 탭 */}
+          {activeTab === "companions" && (
+          <div className={`rounded-2xl board-shadow min-h-full flex flex-col ${
+            isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
+          }`}>
+            {/* 동료모집 헤더 */}
+            <div className={`border-b p-4 ${
+              isDarkMode ? "border-white/10" : "border-gray-300/20"
+            }`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 border ${
+                    isDarkMode ? "border-white/10" : "border-purple-300/30"
+                  }`}>
+                    <Users className={`w-4 h-4 ${
+                      isDarkMode ? "text-purple-400" : "text-purple-600"
+                    }`} />
+                  </div>
+                  <div>
+                    <h2 className={`text-lg font-semibold ${
+                      isDarkMode ? "text-white" : "text-gray-800"
+                    }`}>동료모집</h2>
+                    <p className={`text-xs ${
+                      isDarkMode ? "text-gray-400" : "text-gray-600"
+                    }`}>별조각 10개로 15% 확률 가챠</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <div className={`flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-blue-500/20 to-purple-500/20 border ${
+                    isDarkMode ? "border-blue-400/20" : "border-blue-500/30"
+                  }`}>
+                    <Star className={`w-4 h-4 ${
+                      isDarkMode ? "text-blue-400" : "text-blue-600"
+                    }`} />
+                    <span className={`text-sm font-bold ${
+                      isDarkMode ? "text-blue-400" : "text-blue-600"
+                    }`}>{userStarPieces.toLocaleString()}</span>
+                    <span className={`text-xs ${
+                      isDarkMode ? "text-gray-400" : "text-gray-600"
+                    }`}>별조각</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* 동료 모집 버튼 */}
+            <div className="p-6">
+              <div className="text-center mb-6">
+                <button
+                  onClick={recruitCompanion}
+                  disabled={userStarPieces < 10 || companions.length >= 6}
+                  className={`px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 ${
+                    userStarPieces >= 10 && companions.length < 6
+                      ? isDarkMode
+                        ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 hover:scale-105 glow-effect border border-purple-400/30"
+                        : "bg-purple-500/10 text-purple-600 hover:bg-purple-500/20 hover:scale-105 border border-purple-500/30"
+                      : isDarkMode
+                        ? "bg-gray-500/20 text-gray-500 cursor-not-allowed border border-gray-500/20"
+                        : "bg-gray-300/30 text-gray-400 cursor-not-allowed border border-gray-300/30"
+                  }`}
+                >
+                  {companions.length >= 6
+                    ? "모든 동료 보유 완료"
+                    : userStarPieces < 10
+                      ? `별조각 부족 (${userStarPieces}/10)`
+                      : "동료 모집 (별조각 10개)"
+                  }
+                </button>
+                <div className={`text-xs mt-2 ${
+                  isDarkMode ? "text-gray-400" : "text-gray-600"
+                }`}>
+                  성공 확률: 15% | 남은 동료: {6 - companions.length}명
+                </div>
+              </div>
+              
+              {/* 보유 동료 목록 */}
+              <div className={`p-4 rounded-xl ${
+                isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+              }`}>
+                <h3 className={`font-medium mb-3 ${
+                  isDarkMode ? "text-white" : "text-gray-800"
+                }`}>보유 동료 ({companions.length}/6)</h3>
+                
+                {companions.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {companions.map((companion, index) => (
+                      <div key={index} className={`p-3 rounded-lg text-center ${
+                        isDarkMode ? "bg-purple-500/10 border border-purple-400/20" : "bg-purple-500/5 border border-purple-300/30"
+                      }`}>
+                        <div className={`font-medium ${
+                          isDarkMode ? "text-purple-400" : "text-purple-600"
+                        }`}>{companion}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className={`text-center py-8 ${
+                    isDarkMode ? "text-gray-500" : "text-gray-600"
+                  }`}>
+                    아직 동료가 없습니다.
+                    <br />
+                    별조각 10개로 동료를 모집해보세요!
+                  </div>
+                )}
+              </div>
+              
+              {/* 동료 소개 */}
+              <div className={`mt-4 p-4 rounded-xl ${
+                isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+              }`}>
+                <h3 className={`font-medium mb-3 ${
+                  isDarkMode ? "text-white" : "text-gray-800"
+                }`}>동료 소개</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
+                  {["실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라"].map((name, index) => (
+                    <div key={index} className={`p-2 rounded text-center ${
+                      companions.includes(name)
+                        ? isDarkMode
+                          ? "bg-green-500/20 text-green-400 border border-green-400/30"
+                          : "bg-green-500/10 text-green-600 border border-green-500/30"
+                        : isDarkMode
+                          ? "bg-gray-500/10 text-gray-500 border border-gray-500/20"
+                          : "bg-gray-300/20 text-gray-600 border border-gray-300/30"
+                    }`}>
+                      {name} {companions.includes(name) ? "✓" : ""}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
           )}
