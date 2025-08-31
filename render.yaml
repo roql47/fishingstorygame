@@ -3,11 +3,7 @@ services:
     name: fishing-story-game
     env: node
     plan: free
-    buildCommand: |
-      npm install
-      cd client && npm install && npm run build
-      cd ../server && npm install --production
-      node scripts/copy-static.cjs
+    buildCommand: npm run build
     startCommand: |
       node server/src/index.js
     envVars:
