@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: fishing-story-game
+    name: fising-master
     env: node
     plan: free
     buildCommand: npm run build
@@ -12,7 +12,7 @@ services:
       - key: MONGO_URI
         sync: false
       - key: CLIENT_URL
-        value: https://fishing-story-game.onrender.com
+        value: https://fising-master.onrender.com
       - key: NODE_ENV
         value: production
     healthCheckPath: /api/health
