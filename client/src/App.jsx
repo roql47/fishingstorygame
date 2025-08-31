@@ -42,6 +42,7 @@ function App() {
   const [shopCategory, setShopCategory] = useState("fishing_rod");
   const [showProfile, setShowProfile] = useState(false);
   const [selectedUserProfile, setSelectedUserProfile] = useState(null); // 선택된 사용자 프로필 정보
+  const [otherUserData, setOtherUserData] = useState(null); // 다른 사용자의 실제 데이터
   const [userEquipment, setUserEquipment] = useState({
     fishingRod: null,
     accessory: null
@@ -579,6 +580,7 @@ function App() {
         setShowResetConfirm(false);
         setShowProfile(false);
         setSelectedUserProfile(null);
+        setOtherUserData(null);
 
         alert('계정이 성공적으로 초기화되었습니다!');
       }
@@ -670,6 +672,20 @@ function App() {
   const getFishMaterial = (fishName) => {
     const fishData = allFishTypes.find(fish => fish.name === fishName);
     return fishData ? fishData.material : null;
+  };
+
+  // 다른 사용자 프로필 데이터 가져오기
+  const fetchOtherUserProfile = async (username) => {
+    try {
+      console.log("Fetching profile for:", username);
+      const response = await axios.get(`${serverUrl}/api/user-profile/${encodeURIComponent(username)}`);
+      console.log("Other user profile data:", response.data);
+      setOtherUserData(response.data);
+    } catch (error) {
+      console.error("Failed to fetch other user profile:", error);
+      alert("사용자 프로필을 불러올 수 없습니다.");
+      setOtherUserData(null);
+    }
   };
 
   // 닉네임 업데이트 함수
@@ -1578,6 +1594,7 @@ function App() {
               }`}
               onClick={() => {
                 setSelectedUserProfile(null); // 내 프로필
+                setOtherUserData(null); // 다른 사용자 데이터 초기화
                 setShowProfile(true);
               }}
             >
@@ -1767,8 +1784,9 @@ function App() {
                           className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border cursor-pointer hover:scale-110 transition-all duration-300 ${
                             isDarkMode ? "border-white/10 hover:border-blue-400/50" : "border-gray-300/20 hover:border-blue-500/50"
                           }`}
-                          onClick={() => {
+                          onClick={async () => {
                             setSelectedUserProfile({ username: m.username }); // 다른 사용자 프로필
+                            await fetchOtherUserProfile(m.username); // 해당 사용자 데이터 가져오기
                             setShowProfile(true);
                           }}
                           title={`${m.username}님의 프로필 보기`}
@@ -2705,11 +2723,13 @@ function App() {
                     className={`flex items-center gap-3 p-2 rounded-lg transition-all duration-300 hover:scale-105 cursor-pointer ${
                       isDarkMode ? "hover:bg-white/5" : "hover:bg-gray-100/50"
                     }`}
-                    onClick={() => {
+                    onClick={async () => {
                       if (user.displayName === username) {
                         setSelectedUserProfile(null); // 내 프로필
+                        setOtherUserData(null); // 다른 사용자 데이터 초기화
                       } else {
                         setSelectedUserProfile({ username: user.displayName }); // 다른 사용자 프로필
+                        await fetchOtherUserProfile(user.displayName); // 해당 사용자 데이터 가져오기
                       }
                       setShowProfile(true);
                     }}
@@ -2842,22 +2862,24 @@ function App() {
                     </div>
                   )}
                   <div className="flex flex-col gap-1">
-                    {userUuid && (
+                    {(selectedUserProfile ? otherUserData?.userUuid : userUuid) && (
                       <div className="flex items-center gap-2">
                         <p className={`text-xs font-mono ${
                           isDarkMode ? "text-green-400" : "text-green-600"
-                        }`}>ID: {userUuid}</p>
-                        <button
-                          onClick={() => setShowResetConfirm(true)}
-                          className={`text-xs px-2 py-1 rounded transition-all duration-300 hover:scale-105 ${
-                            isDarkMode 
-                              ? "bg-red-500/20 text-red-400 hover:bg-red-500/30" 
-                              : "bg-red-500/10 text-red-600 hover:bg-red-500/20"
-                          }`}
-                          title="모든 데이터를 초기화합니다"
-                        >
-                          계정 초기화
-                        </button>
+                        }`}>ID: {selectedUserProfile ? otherUserData?.userUuid : userUuid}</p>
+                        {!selectedUserProfile && ( // 내 프로필일 때만 계정 초기화 버튼 표시
+                          <button
+                            onClick={() => setShowResetConfirm(true)}
+                            className={`text-xs px-2 py-1 rounded transition-all duration-300 hover:scale-105 ${
+                              isDarkMode 
+                                ? "bg-red-500/20 text-red-400 hover:bg-red-500/30" 
+                                : "bg-red-500/10 text-red-600 hover:bg-red-500/20"
+                            }`}
+                            title="모든 데이터를 초기화합니다"
+                          >
+                            계정 초기화
+                          </button>
+                        )}
                       </div>
                     )}
                     <p className={`text-xs ${
@@ -2870,6 +2892,7 @@ function App() {
                 onClick={() => {
                   setShowProfile(false);
                   setSelectedUserProfile(null); // 선택된 사용자 정보 초기화
+                  setOtherUserData(null); // 다른 사용자 데이터 초기화
                 }}
                 className={`p-2 rounded-lg hover:scale-110 transition-all duration-300 ${
                   isDarkMode 
@@ -2895,11 +2918,13 @@ function App() {
                     isDarkMode ? "text-white" : "text-gray-800"
                   }`}>낚시대</h3>
                 </div>
-                {userEquipment.fishingRod ? (
+                {(selectedUserProfile ? otherUserData?.equipment?.fishingRod : userEquipment.fishingRod) ? (
                   <div className={`text-sm ${
                     isDarkMode ? "text-gray-300" : "text-gray-700"
                   }`}>
-                    <div className="font-medium text-blue-500">{userEquipment.fishingRod}</div>
+                    <div className="font-medium text-blue-500">
+                      {selectedUserProfile ? otherUserData?.equipment?.fishingRod : userEquipment.fishingRod}
+                    </div>
                     <div className={`text-xs mt-1 ${
                       isDarkMode ? "text-gray-500" : "text-gray-600"
                     }`}>장착됨</div>
@@ -2925,11 +2950,13 @@ function App() {
                     isDarkMode ? "text-white" : "text-gray-800"
                   }`}>악세서리</h3>
                 </div>
-                {userEquipment.accessory ? (
+                {(selectedUserProfile ? otherUserData?.equipment?.accessory : userEquipment.accessory) ? (
                   <div className={`text-sm ${
                     isDarkMode ? "text-gray-300" : "text-gray-700"
                   }`}>
-                    <div className="font-medium text-purple-500">{userEquipment.accessory}</div>
+                    <div className="font-medium text-purple-500">
+                      {selectedUserProfile ? otherUserData?.equipment?.accessory : userEquipment.accessory}
+                    </div>
                     <div className={`text-xs mt-1 ${
                       isDarkMode ? "text-gray-500" : "text-gray-600"
                     }`}>장착됨</div>
@@ -2939,7 +2966,7 @@ function App() {
                     isDarkMode ? "text-gray-500" : "text-gray-600"
                   }`}>
                     장착된 악세서리가 없습니다
-                  </div>
+  </div>
                 )}
               </div>
 
@@ -2953,13 +2980,15 @@ function App() {
                   }`} />
                   <h3 className={`font-medium ${
                     isDarkMode ? "text-white" : "text-gray-800"
-                  }`}>내 정보</h3>
+                  }`}>{selectedUserProfile ? "사용자 정보" : "내 정보"}</h3>
                 </div>
                 <div className="grid grid-cols-3 gap-4 text-sm">
                   <div className="text-center">
                     <div className={`font-bold text-lg ${
                       isDarkMode ? "text-emerald-400" : "text-emerald-600"
-                    }`}>{myCatches}</div>
+                    }`}>
+                      {selectedUserProfile ? (otherUserData?.totalCatches || 0) : myCatches}
+                    </div>
                     <div className={`text-xs ${
                       isDarkMode ? "text-gray-500" : "text-gray-600"
                     }`}>총 낚은 물고기</div>
@@ -2967,7 +2996,9 @@ function App() {
                   <div className="text-center">
                     <div className={`font-bold text-lg ${
                       isDarkMode ? "text-yellow-400" : "text-yellow-600"
-                    }`}>{userMoney.toLocaleString()}</div>
+                    }`}>
+                      {selectedUserProfile ? (otherUserData?.money || 0).toLocaleString() : userMoney.toLocaleString()}
+                    </div>
                     <div className={`text-xs ${
                       isDarkMode ? "text-gray-500" : "text-gray-600"
                     }`}>보유 골드</div>
@@ -2975,7 +3006,9 @@ function App() {
                   <div className="text-center">
                     <div className={`font-bold text-lg ${
                       isDarkMode ? "text-orange-400" : "text-orange-600"
-                    }`}>{userAmber.toLocaleString()}</div>
+                    }`}>
+                      {selectedUserProfile ? (otherUserData?.amber || 0).toLocaleString() : userAmber.toLocaleString()}
+                    </div>
                     <div className={`text-xs ${
                       isDarkMode ? "text-gray-500" : "text-gray-600"
                     }`}>보유 호박석</div>
@@ -2983,7 +3016,9 @@ function App() {
                   <div className="text-center">
                     <div className={`font-bold text-lg ${
                       isDarkMode ? "text-blue-400" : "text-blue-600"
-                    }`}>{fishingSkill}</div>
+                    }`}>
+                      {selectedUserProfile ? (otherUserData?.fishingSkill || 0) : fishingSkill}
+                    </div>
                     <div className={`text-xs ${
                       isDarkMode ? "text-gray-500" : "text-gray-600"
                     }`}>낚시실력</div>

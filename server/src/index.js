@@ -1460,6 +1460,52 @@ app.get(/^(?!\/api|\/socket\.io).*/, (req, res) => {
   res.sendFile(path.join(staticDir, "index.html"));
 });
 
+// 다른 사용자 프로필 조회 API
+app.get("/api/user-profile/:username", async (req, res) => {
+  try {
+    const { username } = req.params;
+    
+    console.log("Fetching profile for username:", username);
+    
+    // 사용자 기본 정보 조회
+    const user = await UserUuidModel.findOne({ username });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    
+    // 사용자의 모든 정보 병렬로 조회
+    const [userMoney, userAmber, userEquipment, fishingSkill, totalCatches] = await Promise.all([
+      UserMoneyModel.findOne({ userUuid: user.userUuid }),
+      UserAmberModel.findOne({ userUuid: user.userUuid }),
+      UserEquipmentModel.findOne({ userUuid: user.userUuid }),
+      FishingSkillModel.findOne({ userUuid: user.userUuid }),
+      CatchModel.countDocuments({ userUuid: user.userUuid })
+    ]);
+    
+    const profileData = {
+      userUuid: user.userUuid,
+      username: user.username,
+      displayName: user.displayName,
+      isGuest: user.isGuest,
+      money: userMoney?.money || 0,
+      amber: userAmber?.amber || 0,
+      equipment: {
+        fishingRod: userEquipment?.fishingRod || null,
+        accessory: userEquipment?.accessory || null
+      },
+      fishingSkill: fishingSkill?.skill || 0,
+      totalCatches: totalCatches || 0,
+      createdAt: user.createdAt
+    };
+    
+    console.log("Profile data fetched:", profileData);
+    res.json(profileData);
+  } catch (error) {
+    console.error("Failed to fetch user profile:", error);
+    res.status(500).json({ error: "Failed to fetch user profile" });
+  }
+});
+
 // MongoDB 연결 상태 확인 엔드포인트
 app.get("/api/health", async (req, res) => {
   try {
