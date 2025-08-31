@@ -1,12 +1,17 @@
 {
-  "name": "fishing_version1",
+  "name": "fishing-story-game",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "실시간 낚시 채팅 게임",
+  "main": "server/src/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server/src/index.js",
+    "build": "cd client && npm install && npm run build && cd ../server && npm install && npm run copy-static",
+    "dev": "cd server && npm run dev"
   },
-  "keywords": [],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["fishing", "game", "chat", "realtime"],
   "author": "",
-  "license": "ISC",
-  "description": ""
+  "license": "ISC"
 }
