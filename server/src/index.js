@@ -549,6 +549,30 @@ io.on("connection", (socket) => {
       socket.data.idToken = idToken;
       socket.data.originalGoogleId = user.originalGoogleId;
     
+      // 같은 구글 아이디로 중복 접속 방지 (PC/모바일 동시 접속 차단)
+      if (googleId) {
+        const existingGoogleConnection = Array.from(connectedUsers.entries())
+          .find(([socketId, userData]) => userData.originalGoogleId === googleId && socketId !== socket.id);
+        
+        if (existingGoogleConnection) {
+          const [existingSocketId, existingUserData] = existingGoogleConnection;
+          console.log(`🚨 Duplicate Google login detected! Disconnecting previous session: ${existingUserData.username} (${existingSocketId})`);
+          
+          // 기존 연결에 중복 로그인 알림 전송
+          const existingSocket = io.sockets.sockets.get(existingSocketId);
+          if (existingSocket) {
+            existingSocket.emit("duplicate_login", {
+              message: "다른 기기에서 로그인되어 연결이 해제됩니다."
+            });
+            existingSocket.disconnect(true);
+          }
+          
+          // 기존 연결 제거
+          connectedUsers.delete(existingSocketId);
+          console.log(`Previous session disconnected: ${existingSocketId}`);
+        }
+      }
+      
       // 기존 접속자에서 같은 UUID 찾기 (닉네임 변경 감지)
       const existingConnection = Array.from(connectedUsers.entries())
         .find(([socketId, userData]) => userData.userUuid === user.userUuid && socketId !== socket.id);

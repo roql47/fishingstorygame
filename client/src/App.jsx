@@ -63,6 +63,10 @@ function App() {
   const [inputQuantity, setInputQuantity] = useState(1);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   
+  // 처리 중 상태 (중복 실행 방지)
+  const [isProcessingSellAll, setIsProcessingSellAll] = useState(false);
+  const [isProcessingDecomposeAll, setIsProcessingDecomposeAll] = useState(false);
+  
   // 탐사 관련 상태
   const [showExplorationModal, setShowExplorationModal] = useState(false);
   const [selectedMaterial, setSelectedMaterial] = useState(null);
@@ -347,6 +351,18 @@ function App() {
     socket.on("users:update", onUsersUpdate);
     socket.on("user:uuid", onUserUuid);
     
+    // 중복 로그인 알림 처리
+    const onDuplicateLogin = (data) => {
+      alert(data.message);
+      // 로그아웃 처리
+      localStorage.removeItem("idToken");
+      localStorage.removeItem("nickname");
+      localStorage.removeItem("userUuid");
+      window.location.reload();
+    };
+    
+    socket.on("duplicate_login", onDuplicateLogin);
+    
     console.log("=== CLIENT CHAT:JOIN DEBUG ===");
     
     // 로컬스토리지에서 최신 닉네임 확인 (구글 로그인 후 덮어쓰기 방지)
@@ -376,6 +392,7 @@ function App() {
       socket.off("chat:message", onMessage);
       socket.off("users:update", onUsersUpdate);
       socket.off("user:uuid", onUserUuid);
+      socket.off("duplicate_login", onDuplicateLogin);
     };
   }, [username, idToken]);
 
@@ -1211,6 +1228,11 @@ function App() {
 
   // 전체 판매 함수
   const sellAllFish = async () => {
+    if (isProcessingSellAll || isProcessingDecomposeAll) {
+      alert('이미 처리 중입니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+    
     if (inventory.length === 0) {
       alert('판매할 물고기가 없습니다.');
       return;
@@ -1219,6 +1241,8 @@ function App() {
     if (!confirm('모든 물고기를 판매하시겠습니까?')) {
       return;
     }
+    
+    setIsProcessingSellAll(true);
     
     try {
       let totalEarned = 0;
@@ -1239,6 +1263,8 @@ function App() {
     } catch (error) {
       console.error('Failed to sell all fish:', error);
       alert('전체 판매에 실패했습니다.');
+    } finally {
+      setIsProcessingSellAll(false);
     }
   };
 
@@ -1287,6 +1313,11 @@ function App() {
 
   // 전체 분해 함수
   const decomposeAllFish = async () => {
+    if (isProcessingSellAll || isProcessingDecomposeAll) {
+      alert('이미 처리 중입니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+    
     if (inventory.length === 0) {
       alert('분해할 물고기가 없습니다.');
       return;
@@ -1295,6 +1326,8 @@ function App() {
     if (!confirm('모든 물고기를 분해하시겠습니까?')) {
       return;
     }
+    
+    setIsProcessingDecomposeAll(true);
     
     try {
       let totalMaterials = 0;
@@ -1315,6 +1348,8 @@ function App() {
     } catch (error) {
       console.error('Failed to decompose all fish:', error);
       alert('전체 분해에 실패했습니다.');
+    } finally {
+      setIsProcessingDecomposeAll(false);
     }
   };
 
@@ -1912,25 +1947,39 @@ function App() {
                 <div className="flex gap-2">
                   <button
                     onClick={sellAllFish}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                    disabled={isProcessingSellAll || isProcessingDecomposeAll}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
+                      (isProcessingSellAll || isProcessingDecomposeAll)
+                        ? "opacity-50 cursor-not-allowed"
+                        : "hover:scale-105"
+                    } ${
                       isDarkMode 
                         ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30" 
                         : "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20"
                     }`}
                   >
                     <Coins className="w-4 h-4" />
-                    <span className="text-sm">전체 판매</span>
+                    <span className="text-sm">
+                      {isProcessingSellAll ? "판매 중..." : "전체 판매"}
+                    </span>
                   </button>
                   <button
                     onClick={decomposeAllFish}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                    disabled={isProcessingSellAll || isProcessingDecomposeAll}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
+                      (isProcessingSellAll || isProcessingDecomposeAll)
+                        ? "opacity-50 cursor-not-allowed"
+                        : "hover:scale-105"
+                    } ${
                       isDarkMode 
                         ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30" 
                         : "bg-purple-500/10 text-purple-600 hover:bg-purple-500/20"
                     }`}
                   >
                     <Trash2 className="w-4 h-4" />
-                    <span className="text-sm">전체 분해</span>
+                    <span className="text-sm">
+                      {isProcessingDecomposeAll ? "분해 중..." : "전체 분해"}
+                    </span>
                   </button>
                 </div>
               )}
