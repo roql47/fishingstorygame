@@ -9,7 +9,7 @@ services:
       cd ../server && npm install
       npm run copy-static
     startCommand: |
-      cd server && npm start
+      node server/src/index.js
     envVars:
       - key: PORT
         value: 10000
