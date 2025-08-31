@@ -4,10 +4,16 @@ const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
 const mongoose = require("mongoose");
-const dotenv = require("dotenv");
 const { OAuth2Client } = require("google-auth-library");
 
-dotenv.config();
+// dotenv는 개발환경에서만 로드
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    require("dotenv").config();
+  } catch (err) {
+    console.log("dotenv not available, using environment variables");
+  }
+}
 
 const app = express();
 
