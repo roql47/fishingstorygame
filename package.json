@@ -5,7 +5,7 @@
   "main": "server/src/index.js",
   "scripts": {
     "start": "node server/src/index.js",
-    "build": "cd client && npm install && npm run build && cd ../server && npm install && npm run copy-static",
+    "build": "cd client && npm install && npm run build && cd ../server && npm install --production && npm run copy-static",
     "dev": "cd server && npm run dev"
   },
   "engines": {
