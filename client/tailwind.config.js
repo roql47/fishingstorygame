@@ -7,7 +7,21 @@ export default {
   theme: {
     extend: {},
   },
-  plugins: [],
+  plugins: [require('daisyui')],
+  daisyui: {
+    themes: [
+      {
+        fishinggame: {
+          "primary": "#10b981",
+          "secondary": "#38bdf8",
+          "accent": "#f59e0b",
+          "neutral": "#1f2937",
+          "base-100": "#0c4a6e",
+        }
+      },
+      "dark"
+    ]
+  }
 }
 
 
