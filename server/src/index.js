@@ -1363,6 +1363,27 @@ app.get("/api/admin-status/:userId", async (req, res) => {
   }
 });
 
+// 접속자 목록 API
+app.get("/api/connected-users", async (req, res) => {
+  try {
+    console.log("Connected users request");
+    
+    // 현재 연결된 사용자 목록을 메모리에서 가져오기
+    const users = Array.from(connectedUsers.values()).map(user => ({
+      userUuid: user.userUuid,
+      username: user.username,
+      displayName: user.displayName || user.username
+    }));
+    
+    console.log("Sending connected users:", users);
+    
+    res.json({ users });
+  } catch (error) {
+    console.error("Failed to fetch connected users:", error);
+    res.status(500).json({ error: "접속자 목록을 가져올 수 없습니다." });
+  }
+});
+
 // Add Amber API (for exploration rewards)
 app.post("/api/add-amber", async (req, res) => {
   try {

@@ -45,6 +45,8 @@ function App() {
   const [companions, setCompanions] = useState([]);
   const [showCompanionModal, setShowCompanionModal] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [userAdminStatus, setUserAdminStatus] = useState({}); // 다른 사용자들의 관리자 상태
+  const [connectedUsers, setConnectedUsers] = useState([]); // 접속자 목록
   const [shopCategory, setShopCategory] = useState("fishing_rod");
   const [showProfile, setShowProfile] = useState(false);
   const [selectedUserProfile, setSelectedUserProfile] = useState(null); // 선택된 사용자 프로필 정보
@@ -554,6 +556,49 @@ function App() {
     return () => clearInterval(id);
   }, [serverUrl, username, userUuid, idToken]);
 
+  // 채팅 메시지의 사용자들 관리자 상태 확인
+  useEffect(() => {
+    const uniqueUsernames = [...new Set(
+      messages
+        .filter(m => !m.system && m.username && m.username !== username)
+        .map(m => m.username)
+    )];
+    
+    uniqueUsernames.forEach(async (user) => {
+      if (!userAdminStatus.hasOwnProperty(user)) {
+        await checkUserAdminStatus(user);
+      }
+    });
+  }, [messages, username, serverUrl]);
+
+  // 접속자 목록 가져오기
+  useEffect(() => {
+    const fetchConnectedUsers = async () => {
+      try {
+        console.log('Fetching connected users');
+        const res = await axios.get(`${serverUrl}/api/connected-users`);
+        console.log('Connected users response:', res.data);
+        setConnectedUsers(res.data.users || []);
+        
+        // 접속자들의 관리자 상태도 확인
+        res.data.users?.forEach(async (user) => {
+          if (user.username !== username && !userAdminStatus.hasOwnProperty(user.username)) {
+            await checkUserAdminStatus(user.username);
+          }
+        });
+      } catch (e) {
+        console.error('Failed to fetch connected users:', e);
+        setConnectedUsers([]);
+      }
+    };
+    
+    if (username) {
+      fetchConnectedUsers();
+      const id = setInterval(fetchConnectedUsers, 10000); // 10초마다 새로고침
+      return () => clearInterval(id);
+    }
+  }, [serverUrl, username]);
+
   // 사용자 장비 정보 가져오기
   useEffect(() => {
     if (!username) return;
@@ -1042,6 +1087,31 @@ function App() {
       } else {
         alert('동료 모집에 실패했습니다.');
       }
+    }
+  };
+
+  // 다른 사용자의 관리자 상태 확인 함수
+  const checkUserAdminStatus = async (username) => {
+    try {
+      const userId = 'user'; // 다른 사용자 조회용
+      const params = { username };
+      console.log('Checking admin status for user:', username);
+      const res = await axios.get(`${serverUrl}/api/admin-status/${userId}`, { params });
+      console.log('Admin status response for', username, ':', res.data);
+      
+      setUserAdminStatus(prev => ({
+        ...prev,
+        [username]: res.data.isAdmin || false
+      }));
+      
+      return res.data.isAdmin || false;
+    } catch (e) {
+      console.error('Failed to fetch admin status for', username, ':', e);
+      setUserAdminStatus(prev => ({
+        ...prev,
+        [username]: false
+      }));
+      return false;
     }
   };
 
@@ -1913,9 +1983,39 @@ function App() {
                         isDarkMode ? "text-blue-400" : "text-blue-600"
                       }`} />
                     </div>
-                    <h2 className={`text-lg font-semibold ${
-                      isDarkMode ? "text-white" : "text-gray-800"
-                    }`}>실시간 채팅</h2>
+                    <div>
+                      <h2 className={`text-lg font-semibold ${
+                        isDarkMode ? "text-white" : "text-gray-800"
+                      }`}>실시간 채팅</h2>
+                      <p className={`text-xs ${
+                        isDarkMode ? "text-gray-400" : "text-gray-600"
+                      }`}>접속자 {connectedUsers.length}명</p>
+                    </div>
+                  </div>
+                  
+                  {/* 접속자 목록 */}
+                  <div className="flex flex-wrap gap-1 max-w-md">
+                    {connectedUsers.slice(0, 6).map((user, index) => (
+                      <div key={index} className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+                        isDarkMode ? "bg-blue-500/10 border border-blue-400/20" : "bg-blue-500/5 border border-blue-300/30"
+                      }`}>
+                        <span className={`${
+                          isDarkMode ? "text-blue-400" : "text-blue-600"
+                        }`}>{user.displayName || user.username}</span>
+                        {((user.username === username && isAdmin) || userAdminStatus[user.username]) && (
+                          <span className={`text-xs font-bold ${
+                            isDarkMode ? "text-red-400" : "text-red-600"
+                          }`}>👑</span>
+                        )}
+                      </div>
+                    ))}
+                    {connectedUsers.length > 6 && (
+                      <div className={`px-2 py-1 rounded-full text-xs ${
+                        isDarkMode ? "bg-gray-500/10 text-gray-400" : "bg-gray-300/20 text-gray-600"
+                      }`}>
+                        +{connectedUsers.length - 6}명
+                      </div>
+                    )}
                   </div>
                   
                   {/* 액션 버튼들 */}
@@ -1991,7 +2091,7 @@ function App() {
                             <span className={`font-semibold text-sm ${
                               isDarkMode ? "text-blue-400" : "text-blue-600"
                             }`}>{m.username}</span>
-                            {m.username === username && isAdmin && (
+                            {((m.username === username && isAdmin) || userAdminStatus[m.username]) && (
                               <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${
                                 isDarkMode ? "bg-red-500/20 text-red-400" : "bg-red-500/10 text-red-600"
                               }`}>관리자</span>
