@@ -68,9 +68,27 @@ function App() {
   const [battleState, setBattleState] = useState(null); // { enemy, playerHp, enemyHp, turn, log }
   const [showBattleModal, setShowBattleModal] = useState(false);
   
-  // 쿨타임 관련 상태
-  const [fishingCooldown, setFishingCooldown] = useState(0);
-  const [explorationCooldown, setExplorationCooldown] = useState(0);
+  // 쿨타임 관련 상태 (localStorage에서 복원)
+  const [fishingCooldown, setFishingCooldown] = useState(() => {
+    const saved = localStorage.getItem('fishingCooldown');
+    const savedTime = localStorage.getItem('fishingCooldownTime');
+    if (saved && savedTime) {
+      const elapsed = Date.now() - parseInt(savedTime);
+      const remaining = parseInt(saved) - elapsed;
+      return Math.max(0, remaining);
+    }
+    return 0;
+  });
+  const [explorationCooldown, setExplorationCooldown] = useState(() => {
+    const saved = localStorage.getItem('explorationCooldown');
+    const savedTime = localStorage.getItem('explorationCooldownTime');
+    if (saved && savedTime) {
+      const elapsed = Date.now() - parseInt(savedTime);
+      const remaining = parseInt(saved) - elapsed;
+      return Math.max(0, remaining);
+    }
+    return 0;
+  });
 
   const serverUrl = useMemo(
     () => import.meta.env.VITE_SERVER_URL || (typeof window !== "undefined" ? window.location.origin : "http://localhost:4000"),
@@ -83,14 +101,40 @@ function App() {
     
     if (fishingCooldown > 0) {
       fishingTimer = setInterval(() => {
-        setFishingCooldown(prev => Math.max(0, prev - 1000));
+        setFishingCooldown(prev => {
+          const newValue = Math.max(0, prev - 1000);
+          if (newValue > 0) {
+            localStorage.setItem('fishingCooldown', newValue.toString());
+            localStorage.setItem('fishingCooldownTime', Date.now().toString());
+          } else {
+            localStorage.removeItem('fishingCooldown');
+            localStorage.removeItem('fishingCooldownTime');
+          }
+          return newValue;
+        });
       }, 1000);
+    } else {
+      localStorage.removeItem('fishingCooldown');
+      localStorage.removeItem('fishingCooldownTime');
     }
     
     if (explorationCooldown > 0) {
       explorationTimer = setInterval(() => {
-        setExplorationCooldown(prev => Math.max(0, prev - 1000));
+        setExplorationCooldown(prev => {
+          const newValue = Math.max(0, prev - 1000);
+          if (newValue > 0) {
+            localStorage.setItem('explorationCooldown', newValue.toString());
+            localStorage.setItem('explorationCooldownTime', Date.now().toString());
+          } else {
+            localStorage.removeItem('explorationCooldown');
+            localStorage.removeItem('explorationCooldownTime');
+          }
+          return newValue;
+        });
       }, 1000);
+    } else {
+      localStorage.removeItem('explorationCooldown');
+      localStorage.removeItem('explorationCooldownTime');
     }
     
     return () => {
@@ -464,7 +508,10 @@ function App() {
         return;
       }
       // 낚시하기 쿨타임 설정
-      setFishingCooldown(getFishingCooldownTime());
+      const cooldownTime = getFishingCooldownTime();
+      setFishingCooldown(cooldownTime);
+      localStorage.setItem('fishingCooldown', cooldownTime.toString());
+      localStorage.setItem('fishingCooldownTime', Date.now().toString());
     }
     
     const socket = getSocket();
@@ -869,7 +916,10 @@ function App() {
     }
 
     // 탐사 쿨타임 설정 (10분)
-    setExplorationCooldown(10 * 60 * 1000); // 10분
+    const explorationCooldownTime = 10 * 60 * 1000; // 10분
+    setExplorationCooldown(explorationCooldownTime);
+    localStorage.setItem('explorationCooldown', explorationCooldownTime.toString());
+    localStorage.setItem('explorationCooldownTime', Date.now().toString());
 
     console.log(`Starting exploration with ${material.material}, current count: ${material.count}`);
 
@@ -1302,7 +1352,17 @@ function App() {
           // 낚시대 구매 시 낚시실력 +1
           setFishingSkill(prev => prev + 1);
           // 낚시대 구매 시 현재 낚시하기 쿨타임 15초 감소
-          setFishingCooldown(prev => Math.max(0, prev - 15000)); // 15초 감소, 최소 0
+          setFishingCooldown(prev => {
+            const newValue = Math.max(0, prev - 15000); // 15초 감소, 최소 0
+            if (newValue > 0) {
+              localStorage.setItem('fishingCooldown', newValue.toString());
+              localStorage.setItem('fishingCooldownTime', Date.now().toString());
+            } else {
+              localStorage.removeItem('fishingCooldown');
+              localStorage.removeItem('fishingCooldownTime');
+            }
+            return newValue;
+          });
         } else if (category === 'accessories') {
           setUserEquipment(prev => ({ ...prev, accessory: itemName }));
         }
