@@ -437,23 +437,11 @@ io.on("connection", (socket) => {
       
       const info = await verifyGoogleIdToken(idToken);
       
-      // 닉네임 우선순위 결정
-      let effectiveName;
-      
-      // userUuid가 있는 경우 (기존 사용자) - 클라이언트에서 보낸 username 우선 사용
-      if (userUuid && userUuid !== 'null' && userUuid !== 'undefined') {
-        effectiveName = username || info?.displayName || "사용자";
-        console.log("Existing user - using client username:", effectiveName);
-      } else {
-        // 새 사용자인 경우 - 구글 displayName 우선 사용
-        effectiveName = info?.displayName || username || "사용자";
-        console.log("New user - using Google displayName:", effectiveName);
-      }
-      
-      console.log("Final effective name:", effectiveName);
-
-      // UUID 기반 사용자 등록/조회
+            // UUID 기반 사용자 등록/조회
       const googleId = info?.sub || null; // 구글 ID (sub claim)
+      
+      // 닉네임 우선순위 결정 (구글 로그인 여부에 따라)
+      let effectiveName;
       
       // 구글 로그인 시 기존 사용자의 닉네임 보존
       if (googleId) {
@@ -482,8 +470,23 @@ io.on("connection", (socket) => {
             console.log("Using stored displayName (preserving user's custom nickname):", existingGoogleUser.displayName);
             effectiveName = existingGoogleUser.displayName; // 기존 닉네임 보존
           }
+        } else {
+          // 새 구글 사용자인 경우
+          effectiveName = info?.displayName || username || "구글사용자";
+          console.log("New Google user - using displayName:", effectiveName);
+        }
+      } else {
+        // 게스트 사용자인 경우
+        if (userUuid && userUuid !== 'null' && userUuid !== 'undefined') {
+          effectiveName = username || "사용자";
+          console.log("Existing guest user - using client username:", effectiveName);
+        } else {
+          effectiveName = username || "게스트";
+          console.log("New guest user - using username:", effectiveName);
         }
       }
+      
+      console.log("Final effective name:", effectiveName);
       console.log("Google ID:", googleId);
       
       // 기존 사용자인지 확인하고 닉네임 업데이트
