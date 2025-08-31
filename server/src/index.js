@@ -134,6 +134,19 @@ const fishingSkillSchema = new mongoose.Schema(
 
 const FishingSkillModel = mongoose.model("FishingSkill", fishingSkillSchema);
 
+// Star Piece Schema (스타피쉬 분해로 얻는 별조각)
+const starPieceSchema = new mongoose.Schema(
+  {
+    userId: { type: String, required: true },
+    username: { type: String, required: true },
+    userUuid: { type: String, index: true }, // UUID 기반 조회를 위한 인덱스
+    starPieces: { type: Number, default: 0 }, // 보유 별조각 수
+  },
+  { timestamps: true }
+);
+
+const StarPieceModel = mongoose.model("StarPiece", starPieceSchema);
+
 // User UUID Schema (사용자 고유 ID 관리)
 const userUuidSchema = new mongoose.Schema(
   {
@@ -1025,6 +1038,86 @@ app.get("/api/user-amber/:userId", async (req, res) => {
   }
 });
 
+// Star Pieces API (별조각 조회)
+app.get("/api/star-pieces/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { username, userUuid } = req.query;
+    console.log("Star pieces request:", { userId, username, userUuid });
+    
+    // UUID 기반 사용자 조회
+    const queryResult = await getUserQuery(userId, username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+      console.log("Using UUID query for star pieces:", query);
+    } else {
+      query = queryResult;
+      console.log("Using fallback query for star pieces:", query);
+    }
+    
+    console.log("Database query for star pieces:", query);
+    
+    const userStarPieces = await StarPieceModel.findOne(query);
+    const starPieces = userStarPieces ? userStarPieces.starPieces : 0;
+    
+    console.log(`User star pieces: ${starPieces}`);
+    res.json({ starPieces });
+  } catch (error) {
+    console.error("Failed to fetch star pieces:", error);
+    console.error("Error stack:", error.stack);
+    res.status(500).json({ error: "Failed to fetch star pieces", details: error.message });
+  }
+});
+
+// Add Star Pieces API (별조각 추가)
+app.post("/api/add-star-pieces", async (req, res) => {
+  try {
+    const { amount } = req.body;
+    const { username, userUuid } = req.query;
+    
+    console.log("Add star pieces request:", { amount, username, userUuid });
+    
+    // UUID 기반 사용자 조회
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+      console.log("Using UUID query for add star pieces:", query);
+    } else {
+      query = queryResult;
+      console.log("Using fallback query for add star pieces:", query);
+    }
+    
+    console.log("Database query for add star pieces:", query);
+    
+    let userStarPieces = await StarPieceModel.findOne(query);
+    
+    if (!userStarPieces) {
+      // 새 사용자인 경우 생성
+      const createData = {
+        userId: query.userId || 'user',
+        username: query.username || username,
+        userUuid: query.userUuid || userUuid,
+        starPieces: amount
+      };
+      console.log("Creating new star pieces record with data:", createData);
+      userStarPieces = new StarPieceModel(createData);
+    } else {
+      userStarPieces.starPieces = (userStarPieces.starPieces || 0) + amount;
+    }
+    
+    await userStarPieces.save();
+    console.log(`Added ${amount} star pieces. New total: ${userStarPieces.starPieces}`);
+    
+    res.json({ success: true, newStarPieces: userStarPieces.starPieces });
+  } catch (error) {
+    console.error("Failed to add star pieces:", error);
+    console.error("Error stack:", error.stack);
+    res.status(500).json({ error: "Failed to add star pieces", details: error.message });
+  }
+});
+
 // Add Amber API (for exploration rewards)
 app.post("/api/add-amber", async (req, res) => {
   try {
@@ -1402,7 +1495,39 @@ app.post("/api/decompose-fish", async (req, res) => {
     }
     console.log(`Deleted ${quantity} ${fishName}`);
     
-    // 재료 추가
+    // 스타피쉬 분해 시 별조각 지급
+    if (fishName === "스타피쉬") {
+      const starPiecesPerFish = 1; // 스타피쉬 1마리당 별조각 1개
+      const totalStarPieces = quantity * starPiecesPerFish;
+      
+      let userStarPieces = await StarPieceModel.findOne(query);
+      
+      if (!userStarPieces) {
+        // 새 사용자인 경우 생성
+        const createData = {
+          userId: query.userId || 'user',
+          username: query.username || username,
+          userUuid: query.userUuid || userUuid,
+          starPieces: totalStarPieces
+        };
+        console.log("Creating new star pieces record for decompose:", createData);
+        userStarPieces = new StarPieceModel(createData);
+      } else {
+        userStarPieces.starPieces = (userStarPieces.starPieces || 0) + totalStarPieces;
+      }
+      
+      await userStarPieces.save();
+      console.log(`Added ${totalStarPieces} star pieces from ${quantity} starfish decomposition. New total: ${userStarPieces.starPieces}`);
+      
+      res.json({ 
+        success: true, 
+        starPiecesGained: totalStarPieces,
+        totalStarPieces: userStarPieces.starPieces 
+      });
+      return;
+    }
+    
+    // 일반 물고기 분해 시 재료 추가
     for (let i = 0; i < quantity; i++) {
       const materialData = {
         ...query,

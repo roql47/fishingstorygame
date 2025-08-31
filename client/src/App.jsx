@@ -18,7 +18,8 @@ import {
   Trash2,
   Gem,
   Diamond,
-  Waves
+  Waves,
+  Star
 } from "lucide-react";
 import "./App.css";
 
@@ -39,6 +40,7 @@ function App() {
   const [activeTab, setActiveTab] = useState("chat");
   const [userMoney, setUserMoney] = useState(0);
   const [userAmber, setUserAmber] = useState(0);
+  const [userStarPieces, setUserStarPieces] = useState(0);
   const [shopCategory, setShopCategory] = useState("fishing_rod");
   const [showProfile, setShowProfile] = useState(false);
   const [selectedUserProfile, setSelectedUserProfile] = useState(null); // 선택된 사용자 프로필 정보
@@ -481,6 +483,28 @@ function App() {
     };
     fetchUserAmber();
     const id = setInterval(fetchUserAmber, 10000);
+    return () => clearInterval(id);
+  }, [serverUrl, username, userUuid, idToken]);
+
+  // 사용자 별조각 가져오기
+  useEffect(() => {
+    if (!username) return;
+    const fetchUserStarPieces = async () => {
+      try {
+        const userId = idToken ? 'user' : 'null';
+        const params = { username, userUuid }; // username과 userUuid 모두 전달
+        console.log('Fetching user star pieces with params:', { userId, username, userUuid });
+        const res = await axios.get(`${serverUrl}/api/star-pieces/${userId}`, { params });
+        console.log('User star pieces response:', res.data);
+        setUserStarPieces(res.data.starPieces || 0);
+      } catch (e) {
+        console.error('Failed to fetch user star pieces:', e);
+        console.error('Error response:', e.response?.data);
+        setUserStarPieces(0);
+      }
+    };
+    fetchUserStarPieces();
+    const id = setInterval(fetchUserStarPieces, 10000);
     return () => clearInterval(id);
   }, [serverUrl, username, userUuid, idToken]);
 
@@ -1306,6 +1330,30 @@ function App() {
       }, { params });
 
       if (response.data.success) {
+        // 스타피쉬 분해 시 별조각 획득 처리
+        if (fishName === "스타피쉬" && response.data.starPiecesGained) {
+          setUserStarPieces(response.data.totalStarPieces);
+          
+          // 별조각 획득 메시지
+          setMessages(prev => [...prev, {
+            system: true,
+            username: "system",
+            content: `✨ 스타피쉬 ${quantity}마리를 분해하여 별조각 ${response.data.starPiecesGained}개를 획득했습니다! (총 ${response.data.totalStarPieces}개)`,
+            timestamp: new Date().toISOString()
+          }]);
+          
+          // 별조각 획득 알림
+          alert(`✨ 별조각 ${response.data.starPiecesGained}개를 획득했습니다!\n총 보유 별조각: ${response.data.totalStarPieces}개`);
+        } else {
+          // 일반 물고기 분해 메시지
+          setMessages(prev => [...prev, {
+            system: true,
+            username: "system",
+            content: `${fishName} ${quantity}마리를 분해하여 ${material} ${quantity}개를 획득했습니다!`,
+            timestamp: new Date().toISOString()
+          }]);
+        }
+        
         // 인벤토리와 재료 새로고침
         const userId = idToken ? 'user' : 'null';
         const inventoryRes = await axios.get(`${serverUrl}/api/inventory/${userId}`, { params });
@@ -1315,14 +1363,6 @@ function App() {
 
         const materialsRes = await axios.get(`${serverUrl}/api/materials/${userId}`, { params });
         setMaterials(materialsRes.data || []);
-
-        // 채팅에 분해 메시지 추가
-        setMessages(prev => [...prev, {
-          system: true,
-          username: "system",
-          content: `${fishName} ${quantity}마리를 분해하여 ${material} ${quantity}개를 획득했습니다!`,
-          timestamp: new Date().toISOString()
-        }]);
       }
     } catch (error) {
       console.error('Failed to decompose fish:', error);
@@ -1960,6 +2000,19 @@ function App() {
                       isDarkMode ? "text-gray-400" : "text-gray-600"
                     }`}>호박석</span>
                   </div>
+                  <div className={`flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-blue-500/20 to-purple-500/20 border ${
+                    isDarkMode ? "border-blue-400/20" : "border-blue-500/30"
+                  }`}>
+                    <Star className={`w-4 h-4 ${
+                      isDarkMode ? "text-blue-400" : "text-blue-600"
+                    }`} />
+                    <span className={`text-sm font-bold ${
+                      isDarkMode ? "text-blue-400" : "text-blue-600"
+                    }`}>{userStarPieces.toLocaleString()}</span>
+                    <span className={`text-xs ${
+                      isDarkMode ? "text-gray-400" : "text-gray-600"
+                    }`}>별조각</span>
+                  </div>
                 </div>
               </div>
               
@@ -2184,6 +2237,19 @@ function App() {
                     <span className={`text-xs ${
                       isDarkMode ? "text-gray-400" : "text-gray-600"
                     }`}>호박석</span>
+                  </div>
+                  <div className={`flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-blue-500/20 to-purple-500/20 border ${
+                    isDarkMode ? "border-blue-400/20" : "border-blue-500/30"
+                  }`}>
+                    <Star className={`w-4 h-4 ${
+                      isDarkMode ? "text-blue-400" : "text-blue-600"
+                    }`} />
+                    <span className={`text-sm font-bold ${
+                      isDarkMode ? "text-blue-400" : "text-blue-600"
+                    }`}>{userStarPieces.toLocaleString()}</span>
+                    <span className={`text-xs ${
+                      isDarkMode ? "text-gray-400" : "text-gray-600"
+                    }`}>별조각</span>
                   </div>
                 </div>
               </div>

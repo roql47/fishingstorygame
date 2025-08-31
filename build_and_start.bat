@@ -21,15 +21,15 @@ if errorlevel 1 (
 echo Client build completed!
 
 echo.
-echo [Step 3] Building server...
+echo [Step 3] Installing server dependencies...
 cd /d "%~dp0server"
-call npm run build
+call npm install
 if errorlevel 1 (
-    echo Server build failed!
+    echo Server install failed!
     pause
     exit /b 1
 )
-echo Server build completed!
+echo Server dependencies installed!
 
 echo.
 echo [Step 4] Starting server...
