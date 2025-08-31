@@ -4,9 +4,10 @@ services:
     env: node
     plan: free
     buildCommand: |
+      npm install
       cd client && npm install && npm run build
       cd ../server && npm install --production
-      npm run copy-static
+      node scripts/copy-static.cjs
     startCommand: |
       node server/src/index.js
     envVars:
