@@ -640,9 +640,28 @@ io.on("connection", (socket) => {
         user = await UserUuidModel.findOne({ originalGoogleId: googleId });
         if (user) {
           console.log(`[PRIORITY 2] Found existing Google user: ${user.username}`);
-          // 기존 구글 사용자는 닉네임을 유지 (사용자가 직접 변경한 닉네임 보존)
-          // effectiveName과 다르더라도 기존 닉네임을 유지
-          console.log(`[PRIORITY 2] Keeping existing nickname: ${user.username} (not changing to ${effectiveName})`);
+          
+          // 닉네임 변경 감지 및 처리
+          if (user.username !== effectiveName && effectiveName !== user.displayName) {
+            const oldUsername = user.username;
+            console.log(`[PRIORITY 2] Updating nickname from ${oldUsername} to ${effectiveName} for Google user: ${googleId}`);
+            user.username = effectiveName;
+            user.displayName = effectiveName;
+            await user.save();
+            console.log("Google user nickname updated successfully in UserUuid schema");
+            
+            // 모든 관련 스키마의 username도 업데이트
+            await Promise.all([
+              CatchModel.updateMany({ userUuid: user.userUuid }, { username: effectiveName }),
+              UserMoneyModel.updateMany({ userUuid: user.userUuid }, { username: effectiveName }),
+              UserEquipmentModel.updateMany({ userUuid: user.userUuid }, { username: effectiveName }),
+              MaterialModel.updateMany({ userUuid: user.userUuid }, { username: effectiveName }),
+              FishingSkillModel.updateMany({ userUuid: user.userUuid }, { username: effectiveName })
+            ]);
+            console.log(`Updated username in all schemas for Google user ${user.userUuid}: ${oldUsername} -> ${effectiveName}`);
+          } else {
+            console.log(`[PRIORITY 2] Keeping existing nickname: ${user.username} (matches effectiveName: ${effectiveName})`);
+          }
         } else {
           console.log(`[PRIORITY 2] Creating new Google user`);
           user = await getOrCreateUser(effectiveName, googleId);
@@ -732,7 +751,7 @@ io.on("connection", (socket) => {
       connectedUsers.set(socket.id, {
         userUuid: user.userUuid,
         username: user.username,
-        displayName: user.username,
+        displayName: user.displayName || user.username, // 데이터베이스에 저장된 displayName 사용
         userId: socket.data.userId,
         hasIdToken: !!idToken, // ID 토큰 보유 여부
         loginType: idToken ? 'Google' : 'Guest',
