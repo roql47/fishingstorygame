@@ -3826,7 +3826,7 @@ function App() {
                 }`}>랭킹</h2>
                 <p className={`text-xs ${
                   isDarkMode ? "text-gray-400" : "text-gray-600"
-                }`}>총 낚은 물고기 & 낚시 스킬 순위</p>
+                }`}>왼쪽 사이드바에서 확인하세요</p>
               </div>
             </div>
             <div className={`px-3 py-1 rounded-full text-xs ${
