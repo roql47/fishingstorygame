@@ -777,8 +777,13 @@ io.on("connection", (socket) => {
       io.emit("users:update", usersList);
       
       // 클라이언트에게 UUID 정보 전송 (업데이트된 닉네임 포함)
-      console.log(`[USER:UUID EVENT] Sending to client: { userUuid: ${user.userUuid}, username: ${user.username} }`);
-      socket.emit("user:uuid", { userUuid: user.userUuid, username: user.username });
+      const displayNameToSend = user.displayName || user.username;
+      console.log(`[USER:UUID EVENT] Sending to client: { userUuid: ${user.userUuid}, username: ${user.username}, displayName: ${displayNameToSend} }`);
+      socket.emit("user:uuid", { 
+        userUuid: user.userUuid, 
+        username: user.username,
+        displayName: displayNameToSend
+      });
       
       // 입장/닉네임 변경 메시지 전송 (중복 방지)
       if (isNicknameChange) {
@@ -1552,7 +1557,7 @@ app.get("/api/connected-users", async (req, res) => {
     // 현재 연결된 사용자 목록을 메모리에서 가져오기
     const users = Array.from(connectedUsers.values()).map(user => ({
       userUuid: user.userUuid,
-      username: user.username,
+      username: user.displayName || user.username, // displayName을 username으로 표시
       displayName: user.displayName || user.username,
       userId: user.userId, // 구글 로그인 여부 판단용
       hasIdToken: user.hasIdToken || false // ID 토큰 보유 여부
@@ -1564,6 +1569,59 @@ app.get("/api/connected-users", async (req, res) => {
   } catch (error) {
     console.error("Failed to fetch connected users:", error);
     res.status(500).json({ error: "접속자 목록을 가져올 수 없습니다." });
+  }
+});
+
+// 닉네임 업데이트 API
+app.post("/api/update-nickname", async (req, res) => {
+  try {
+    const { username, userUuid } = req.query;
+    const { newNickname } = req.body;
+    
+    console.log("=== UPDATE NICKNAME API ===");
+    console.log("Request params:", { username, userUuid, newNickname });
+    
+    if (!newNickname || !newNickname.trim()) {
+      return res.status(400).json({ error: "새 닉네임이 필요합니다." });
+    }
+    
+    if (!userUuid) {
+      return res.status(400).json({ error: "사용자 UUID가 필요합니다." });
+    }
+    
+    // 데이터베이스에서 사용자 찾기
+    const user = await User.findOne({ where: { userUuid } });
+    if (!user) {
+      return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+    }
+    
+    // displayName 업데이트
+    await user.update({ displayName: newNickname.trim() });
+    
+    // 현재 연결된 사용자 정보도 업데이트
+    for (const [socketId, userData] of connectedUsers.entries()) {
+      if (userData.userUuid === userUuid) {
+        userData.displayName = newNickname.trim();
+        userData.username = newNickname.trim(); // username도 함께 업데이트
+        console.log(`Updated connected user displayName: ${socketId} -> ${newNickname.trim()}`);
+      }
+    }
+    
+    console.log(`Nickname updated for ${userUuid}: ${username} -> ${newNickname.trim()}`);
+    
+    // 모든 클라이언트에게 업데이트된 사용자 목록 전송
+    const usersList = cleanupConnectedUsers();
+    io.emit("users:update", usersList);
+    
+    res.json({ 
+      success: true, 
+      message: "닉네임이 성공적으로 변경되었습니다.",
+      newDisplayName: newNickname.trim()
+    });
+    
+  } catch (error) {
+    console.error("Failed to update nickname:", error);
+    res.status(500).json({ error: "닉네임 변경에 실패했습니다: " + error.message });
   }
 });
 

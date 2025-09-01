@@ -300,6 +300,7 @@ function App() {
       console.log("=== USERS UPDATE DEBUG ===");
       console.log("Received users list:", users);
       console.log("Users count:", users?.length || 0);
+      setConnectedUsers(users); // connectedUsers 상태 업데이트
       setOnlineUsers(users);
     };
 
@@ -310,30 +311,39 @@ function App() {
       console.log("Previous username state:", username);
       console.log("Previous localStorage nickname:", localStorage.getItem("nickname"));
       
-      // 닉네임 보존 로직: 사용자가 변경한 닉네임을 항상 보존
+      // 서버에서 저장된 displayName 우선 사용
+      const serverDisplayName = data.displayName;
       const currentStoredNickname = localStorage.getItem("nickname");
       
       console.log("Current stored nickname:", currentStoredNickname);
       console.log("Server nickname:", data.username);
+      console.log("Server displayName:", serverDisplayName);
       
       // UUID는 항상 업데이트
       setUserUuid(data.userUuid);
       localStorage.setItem("userUuid", data.userUuid);
       
-      // 로컬스토리지에 닉네임이 있으면 항상 그것을 사용 (사용자 변경사항 보존)
-      if (currentStoredNickname) {
-        console.log("Preserving existing nickname:", currentStoredNickname);
-        setUsername(currentStoredNickname);
-        // localStorage는 그대로 유지 (변경하지 않음)
+      // 우선순위: 서버의 displayName > 로컬스토리지 닉네임 > 서버 username
+      let finalNickname;
+      if (serverDisplayName && serverDisplayName !== data.username) {
+        // 서버에 저장된 displayName이 있고 기본 username과 다른 경우 (사용자가 변경한 경우)
+        finalNickname = serverDisplayName;
+        console.log("Using server displayName:", serverDisplayName);
+      } else if (currentStoredNickname) {
+        // 로컬스토리지에 저장된 닉네임이 있는 경우
+        finalNickname = currentStoredNickname;
+        console.log("Using stored nickname:", currentStoredNickname);
       } else {
-        // 로컬스토리지에 닉네임이 없는 경우에만 서버 닉네임 사용
-        console.log("No stored nickname, using server value:", data.username);
-        setUsername(data.username);
-        localStorage.setItem("nickname", data.username);
+        // 기본값으로 서버 username 사용
+        finalNickname = data.username;
+        console.log("Using server username:", data.username);
       }
       
+      setUsername(finalNickname);
+      localStorage.setItem("nickname", finalNickname);
+      
       console.log("Updated userUuid state to:", data.userUuid);
-      console.log("Final username state:", currentStoredNickname || data.username);
+      console.log("Final username state:", finalNickname);
       console.log("Final localStorage nickname:", localStorage.getItem("nickname"));
       
       // UUID 업데이트 후 인벤토리 새로고침
@@ -589,7 +599,7 @@ function App() {
     
     if (username) {
       fetchConnectedUsers();
-      const id = setInterval(fetchConnectedUsers, 10000); // 10초마다 새로고침
+      const id = setInterval(fetchConnectedUsers, 3000); // 3초마다 새로고침 (더 빈번하게)
       return () => clearInterval(id);
     }
   }, [serverUrl, username]);
@@ -904,39 +914,61 @@ function App() {
       const oldNickname = username;
       const newNick = newNickname.trim();
       
-      // 로컬에서 닉네임 업데이트
-      setUsername(newNick);
-      localStorage.setItem("nickname", newNick);
+      // 서버에 닉네임 변경 요청 (displayName으로 저장)
+      const response = await axios.post(`${serverUrl}/api/update-nickname`, {
+        newNickname: newNick
+      }, {
+        params: { username: oldNickname, userUuid }
+      });
       
-      // UI 상태 초기화
-      setIsEditingNickname(false);
-      setNewNickname("");
-      
-      // 소켓 재연결로 서버에 업데이트된 닉네임 전송 (userUuid 포함)
-      const socket = getSocket();
-      console.log("=== NICKNAME CHANGE DEBUG ===");
-      console.log("Old nickname:", oldNickname);
-      console.log("New nickname:", newNick);
-      console.log("Current userUuid state:", userUuid);
-      console.log("localStorage userUuid:", localStorage.getItem("userUuid"));
-      console.log("localStorage nickname before emit:", localStorage.getItem("nickname"));
-      console.log("Emitting chat:join with new nickname:", { username: newNick, idToken: !!idToken, userUuid });
-      
-      socket.emit("chat:join", { username: newNick, idToken, userUuid });
-      
-      // 성공 메시지
-      setMessages(prev => [...prev, {
-        system: true,
-        username: "system",
-        content: `닉네임이 '${newNick}'으로 변경되었습니다.`,
-        timestamp: new Date().toISOString()
-      }]);
-      
-      console.log(`Nickname changed from ${oldNickname} to ${newNick}`);
+      if (response.data.success) {
+        // 로컬에서 닉네임 업데이트
+        setUsername(newNick);
+        localStorage.setItem("nickname", newNick);
+        
+        // UI 상태 초기화
+        setIsEditingNickname(false);
+        setNewNickname("");
+        
+        // 소켓 재연결로 서버에 업데이트된 닉네임 전송 (userUuid 포함)
+        const socket = getSocket();
+        console.log("=== NICKNAME CHANGE DEBUG ===");
+        console.log("Old nickname:", oldNickname);
+        console.log("New nickname:", newNick);
+        console.log("Current userUuid state:", userUuid);
+        console.log("localStorage userUuid:", localStorage.getItem("userUuid"));
+        console.log("localStorage nickname before emit:", localStorage.getItem("nickname"));
+        console.log("Emitting chat:join with new nickname:", { username: newNick, idToken: !!idToken, userUuid });
+        
+        socket.emit("chat:join", { username: newNick, idToken, userUuid });
+        
+        // 성공 메시지
+        setMessages(prev => [...prev, {
+          system: true,
+          username: "system",
+          content: `닉네임이 '${newNick}'으로 변경되었습니다.`,
+          timestamp: new Date().toISOString()
+        }]);
+        
+        console.log(`Nickname changed from ${oldNickname} to ${newNick}`);
+        
+        // 접속자 목록 즉시 새로고침
+        setTimeout(async () => {
+          try {
+            const res = await axios.get(`${serverUrl}/api/connected-users`);
+            setConnectedUsers(res.data.users || []);
+          } catch (e) {
+            console.error('Failed to refresh connected users after nickname change:', e);
+          }
+        }, 500);
+        
+      } else {
+        alert("닉네임 변경에 실패했습니다: " + (response.data.error || "알 수 없는 오류"));
+      }
       
     } catch (error) {
       console.error("Failed to update nickname:", error);
-      alert("닉네임 변경에 실패했습니다.");
+      alert("닉네임 변경에 실패했습니다: " + (error.response?.data?.error || error.message));
     }
   };
 
@@ -1289,10 +1321,12 @@ function App() {
       enemyHp: enemyMaxHp,
       enemyMaxHp: enemyMaxHp,
       turn: 'player',
-      log: [`${material.material}을(를) 사용하여 ${enemyFish}(HP: ${enemyMaxHp})와의 전투가 시작되었습니다!`],
+      log: [`${material.material}을(를) 사용하여 ${enemyFish}(HP: ${enemyMaxHp})와의 전투가 시작되었습니다!`, `전투를 시작하거나 도망갈 수 있습니다.`],
       material: material.material,
       round: 1,
-      materialConsumed: false // 재료 소모 여부 추적
+      materialConsumed: false, // 재료 소모 여부 추적
+      autoMode: false, // 자동 전투 모드
+      canFlee: true // 도망 가능 여부 (첫 턴에만 가능)
     };
 
     setBattleState(newBattleState);
@@ -1321,6 +1355,60 @@ function App() {
     }
   };
 
+  // 도망가기 함수
+  const fleeFromBattle = async () => {
+    if (!battleState || !battleState.canFlee) return;
+    
+    try {
+      // 재료 소모 (이미 소모되었다면 스킵)
+      if (!battleState.materialConsumed) {
+        const consumed = await consumeMaterial(battleState.material, 1);
+        if (!consumed) {
+          alert("재료 소모에 실패했습니다.");
+          return;
+        }
+      }
+      
+      // 탐사 쿨타임을 절반으로 설정 (5분)
+      const halfCooldownTime = 5 * 60 * 1000; // 5분
+      setExplorationCooldown(halfCooldownTime);
+      localStorage.setItem('explorationCooldown', halfCooldownTime.toString());
+      localStorage.setItem('explorationCooldownTime', Date.now().toString());
+      
+      // 서버에도 탐사 쿨타임 설정
+      try {
+        const params = { username, userUuid };
+        await axios.post(`${serverUrl}/api/set-exploration-cooldown`, {
+          cooldownDuration: halfCooldownTime
+        }, { params });
+        console.log(`Server exploration cooldown set: ${halfCooldownTime}ms`);
+      } catch (error) {
+        console.error('Failed to set server exploration cooldown:', error);
+      }
+      
+      // 도망 메시지 추가
+      const fleeLog = [...battleState.log, `${battleState.enemy}에게서 도망쳤습니다!`, `탐사 쿨타임이 절반으로 감소했습니다. (5분)`];
+      
+      setBattleState(prev => prev ? {
+        ...prev,
+        log: fleeLog,
+        turn: 'fled',
+        materialConsumed: true
+      } : null);
+      
+      // 2초 후 모달 닫기
+      setTimeout(() => {
+        setShowBattleModal(false);
+        setBattleState(null);
+        alert("도망쳤습니다! 재료는 소모되었지만 탐사 쿨타임이 절반으로 줄었습니다.");
+      }, 2000);
+      
+    } catch (error) {
+      console.error("Failed to flee from battle:", error);
+      alert("도망가기에 실패했습니다.");
+    }
+  };
+
   // 플레이어 공격
   const playerAttack = () => {
     setBattleState(prevState => {
@@ -1330,6 +1418,9 @@ function App() {
       const newEnemyHp = Math.max(0, prevState.enemyHp - damage);
       
       const newLog = [...prevState.log, `플레이어가 ${damage} 데미지를 입혔습니다! (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`];
+
+      // 첫 공격 후 자동 모드 활성화
+      const newAutoMode = !prevState.autoMode || prevState.autoMode;
 
       if (newEnemyHp <= 0) {
         // 승리 - 호박석 보상 계산 (접두어 배율 적용)
@@ -1357,7 +1448,9 @@ function App() {
           enemyHp: 0,
           log: newLog,
           turn: 'victory',
-          amberReward: amberReward
+          amberReward: amberReward,
+          autoMode: true,
+          canFlee: false
         };
       } else {
         // 적 턴으로 변경
@@ -1365,7 +1458,9 @@ function App() {
           ...prevState,
           enemyHp: newEnemyHp,
           log: newLog,
-          turn: 'enemy'
+          turn: 'enemy',
+          autoMode: true, // 자동 모드 활성화
+          canFlee: false // 공격 후에는 도망 불가능
         };
 
         // 적 공격 (1초 후)
@@ -1410,13 +1505,22 @@ function App() {
         };
       } else {
         // 플레이어 턴으로 변경
-        return {
+        const newState = {
           ...prevState,
           enemyHp: currentEnemyHp, // 적 체력 유지
           playerHp: newPlayerHp,
           log: newLog,
           turn: 'player'
         };
+
+        // 자동 모드일 때 플레이어 공격 자동 실행 (1.5초 후)
+        if (prevState.autoMode) {
+          setTimeout(() => {
+            playerAttack();
+          }, 1500);
+        }
+
+        return newState;
       }
     });
   };
@@ -2054,10 +2158,116 @@ function App() {
 
       {/* 메인 콘텐츠 */}
       <div className="relative z-10 max-w-7xl mx-auto p-6">
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 min-h-[75vh]">
+        <div className={`grid gap-6 min-h-[75vh] ${
+          activeTab === "ranking" 
+            ? "grid-cols-1 xl:grid-cols-5" // 랭킹 탭일 때는 5열 그리드
+            : "grid-cols-1 xl:grid-cols-4"  // 다른 탭일 때는 4열 그리드
+        }`}>
+          
+          {/* 랭킹 사이드바 (랭킹 탭일 때만 표시) */}
+          {activeTab === "ranking" && (
+            <div className="xl:col-span-1 h-full order-first">
+              <div className={`rounded-2xl board-shadow h-full flex flex-col ${
+                isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
+              }`}>
+                {/* 랭킹 헤더 */}
+                <div className={`border-b p-4 ${
+                  isDarkMode ? "border-white/10" : "border-gray-300/20"
+                }`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-yellow-500/20 to-orange-500/20 border ${
+                      isDarkMode ? "border-white/10" : "border-yellow-300/30"
+                    }`}>
+                      <Trophy className={`w-4 h-4 ${
+                        isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                      }`} />
+                    </div>
+                    <div>
+                      <h2 className={`text-lg font-semibold ${
+                        isDarkMode ? "text-white" : "text-gray-800"
+                      }`}>랭킹</h2>
+                      <p className={`text-xs ${
+                        isDarkMode ? "text-gray-400" : "text-gray-600"
+                      }`}>총 {rankings.length}명</p>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* 랭킹 콘텐츠 */}
+                <div className="flex-1 p-3 space-y-2 overflow-y-auto">
+                  {rankings && rankings.length > 0 ? (
+                    rankings.map((user, index) => (
+                      <div key={user.userUuid || user.username} className={`p-3 rounded-lg transition-all duration-300 hover:scale-105 cursor-pointer ${
+                        isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+                      } ${user.username === username ? 
+                        (isDarkMode ? "ring-2 ring-yellow-400/50 bg-yellow-500/10" : "ring-2 ring-yellow-500/50 bg-yellow-500/5")
+                        : ""
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {/* 순위 */}
+                            <div className={`flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm ${
+                              user.rank === 1 
+                                ? "bg-gradient-to-br from-yellow-400 to-yellow-600 text-white"
+                                : user.rank === 2 
+                                ? "bg-gradient-to-br from-gray-300 to-gray-500 text-white" 
+                                : user.rank === 3
+                                ? "bg-gradient-to-br from-amber-600 to-amber-800 text-white"
+                                : isDarkMode 
+                                ? "bg-gray-700 text-gray-300"
+                                : "bg-gray-200 text-gray-600"
+                            }`}>
+                              {user.rank <= 3 && user.rank === 1 && "🥇"}
+                              {user.rank <= 3 && user.rank === 2 && "🥈"}
+                              {user.rank <= 3 && user.rank === 3 && "🥉"}
+                              {user.rank > 3 && user.rank}
+                            </div>
+                            
+                            {/* 사용자 정보 */}
+                            <div className="min-w-0 flex-1">
+                              <div className={`font-medium text-sm truncate ${
+                                isDarkMode ? "text-white" : "text-gray-800"
+                              }`}>
+                                {user.displayName || user.username}
+                              </div>
+                              <div className={`text-xs ${
+                                isDarkMode ? "text-gray-400" : "text-gray-600"
+                              }`}>
+                                🐟 {user.totalFish}마리
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* 스킬 레벨 */}
+                          <div className={`text-xs px-2 py-1 rounded-full ${
+                            isDarkMode ? "bg-blue-500/20 text-blue-400" : "bg-blue-500/10 text-blue-600"
+                          }`}>
+                            Lv.{user.fishingSkill}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className={`text-center py-8 ${
+                      isDarkMode ? "text-gray-500" : "text-gray-600"
+                    }`}>
+                      <Trophy className={`w-12 h-12 mx-auto mb-3 opacity-30 ${
+                        isDarkMode ? "text-gray-600" : "text-gray-400"
+                      }`} />
+                      <p className="text-sm">랭킹 데이터 없음</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           
           {/* 메인 콘텐츠 영역 */}
-          <div className="xl:col-span-3 h-full">
+          <div className={`h-full ${
+            activeTab === "ranking" 
+              ? "xl:col-span-3" // 랭킹 탭일 때는 3열
+              : "xl:col-span-3"  // 다른 탭일 때는 3열
+          }`}>
           
           {/* 채팅 탭 */}
           {activeTab === "chat" && (
@@ -3627,8 +3837,23 @@ function App() {
           </div>
         </div>
         
-        {/* 랭킹 콘텐츠 */}
-        <div className="flex-1 p-4 space-y-3 max-h-[70vh] overflow-y-auto">
+        {/* 랭킹 콘텐츠 - 사이드바로 이동됨 */}
+        <div className="flex-1 p-8 flex items-center justify-center">
+          <div className={`text-center ${
+            isDarkMode ? "text-gray-400" : "text-gray-600"
+          }`}>
+            <Trophy className={`w-16 h-16 mx-auto mb-4 opacity-30 ${
+              isDarkMode ? "text-gray-600" : "text-gray-400"
+            }`} />
+            <h3 className={`text-lg font-semibold mb-2 ${
+              isDarkMode ? "text-white" : "text-gray-800"
+            }`}>랭킹 보기</h3>
+            <p>왼쪽 사이드바에서 랭킹을 확인하세요!</p>
+            <p className="text-sm mt-2">총 낚은 물고기 수와 낚시 스킬로 순위가 결정됩니다.</p>
+          </div>
+        </div>
+        {/* 기존 랭킹 리스트는 제거됨 */}
+        <div style={{display: 'none'}}>
           {rankings.length > 0 ? (
             rankings.map((user, index) => (
               <div key={user.userUuid || user.username} className={`p-4 rounded-xl transition-all duration-300 hover:scale-105 cursor-pointer ${
@@ -3709,7 +3934,7 @@ function App() {
               <p className="text-sm mt-2">낚시를 시작해보세요!</p>
             </div>
           )}
-        </div>
+        </div> {/* 숨겨진 div 닫기 */}
       </div>
       )}
 
@@ -4192,30 +4417,94 @@ function App() {
                 </div>
               </div>
 
+              {/* 자동 모드 상태 표시 */}
+              {battleState.autoMode && (battleState.turn === 'player' || battleState.turn === 'enemy') && (
+                <div className={`text-center mb-4 ${
+                  isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                }`}>
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></div>
+                    <span className="text-sm font-medium">자동 전투 진행 중...</span>
+                  </div>
+                </div>
+              )}
+
               {/* 액션 버튼 */}
               <div className="flex gap-4">
-                {battleState.turn === 'player' && (
-                  <button
-                    onClick={playerAttack}
-                    className={`flex-1 py-3 px-6 rounded-lg font-bold text-lg transition-all duration-300 hover:scale-105 ${
-                      isDarkMode
-                        ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 glow-effect"
-                        : "bg-red-500/10 text-red-600 hover:bg-red-500/20"
-                    }`}
-                  >
-                    공격하기
-                  </button>
+                {battleState.turn === 'player' && !battleState.autoMode && (
+                  <div className="flex gap-3 w-full">
+                    <button
+                      onClick={playerAttack}
+                      className={`flex-1 py-3 px-6 rounded-lg font-bold text-lg transition-all duration-300 hover:scale-105 ${
+                        isDarkMode
+                          ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 glow-effect"
+                          : "bg-red-500/10 text-red-600 hover:bg-red-500/20"
+                      }`}
+                    >
+                      공격하기
+                    </button>
+                    {battleState.canFlee && (
+                      <button
+                        onClick={fleeFromBattle}
+                        className={`flex-1 py-3 px-6 rounded-lg font-bold text-lg transition-all duration-300 hover:scale-105 ${
+                          isDarkMode
+                            ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30"
+                            : "bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20"
+                        }`}
+                      >
+                        도망가기
+                      </button>
+                    )}
+                  </div>
                 )}
-                
-                {battleState.turn === 'enemy' && (
-                  <div className={`flex-1 py-3 px-6 rounded-lg text-center font-medium ${
-                    isDarkMode ? "bg-gray-500/20 text-gray-400" : "bg-gray-300/30 text-gray-600"
-                  }`}>
-                    적의 턴...
+
+                {battleState.turn === 'player' && battleState.autoMode && (
+                  <div className="flex gap-2 w-full">
+                    <div className={`flex-1 py-3 px-6 rounded-lg text-center font-medium ${
+                      isDarkMode ? "bg-yellow-500/20 text-yellow-400" : "bg-yellow-500/10 text-yellow-600"
+                    }`}>
+                      자동 공격 중...
+                    </div>
+                    <button
+                      onClick={() => {
+                        setBattleState(prev => prev ? { ...prev, autoMode: false } : null);
+                      }}
+                      className={`px-4 py-3 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                        isDarkMode
+                          ? "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30"
+                          : "bg-gray-300/30 text-gray-600 hover:bg-gray-300/50"
+                      }`}
+                    >
+                      수동
+                    </button>
                   </div>
                 )}
                 
-                {(battleState.turn === 'victory' || battleState.turn === 'defeat') && (
+                {battleState.turn === 'enemy' && (
+                  <div className="flex gap-2 w-full">
+                    <div className={`flex-1 py-3 px-6 rounded-lg text-center font-medium ${
+                      isDarkMode ? "bg-gray-500/20 text-gray-400" : "bg-gray-300/30 text-gray-600"
+                    }`}>
+                      적의 턴...
+                    </div>
+                    {battleState.autoMode && (
+                      <button
+                        onClick={() => {
+                          setBattleState(prev => prev ? { ...prev, autoMode: false } : null);
+                        }}
+                        className={`px-4 py-3 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                          isDarkMode
+                            ? "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30"
+                            : "bg-gray-300/30 text-gray-600 hover:bg-gray-300/50"
+                        }`}
+                      >
+                        수동
+                      </button>
+                    )}
+                  </div>
+                )}
+                
+                {(battleState.turn === 'victory' || battleState.turn === 'defeat' || battleState.turn === 'fled') && (
                   <button
                     onClick={() => {
                       setShowBattleModal(false);
@@ -4226,12 +4515,16 @@ function App() {
                         ? isDarkMode
                           ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
                           : "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20"
-                        : isDarkMode
-                          ? "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30"
-                          : "bg-gray-300/30 text-gray-600 hover:bg-gray-300/50"
+                        : battleState.turn === 'fled'
+                          ? isDarkMode
+                            ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30"
+                            : "bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20"
+                          : isDarkMode
+                            ? "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30"
+                            : "bg-gray-300/30 text-gray-600 hover:bg-gray-300/50"
                     }`}
                   >
-                    {battleState.turn === 'victory' ? '승리!' : '패배...'}
+                    {battleState.turn === 'victory' ? '승리!' : battleState.turn === 'fled' ? '도망 성공!' : '패배...'}
                   </button>
                 )}
               </div>
