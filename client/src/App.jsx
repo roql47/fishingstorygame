@@ -2160,7 +2160,7 @@ function App() {
       <div className="relative z-10 max-w-7xl mx-auto p-6">
         <div className={`grid gap-6 min-h-[75vh] ${
           activeTab === "ranking" 
-            ? "grid-cols-1 xl:grid-cols-5" // 랭킹 탭일 때는 5열 그리드
+            ? "grid-cols-1 xl:grid-cols-4" // 랭킹 탭일 때는 4열 그리드 (채팅창과 동일)
             : "grid-cols-1 xl:grid-cols-4"  // 다른 탭일 때는 4열 그리드
         }`}>
           
@@ -2265,8 +2265,8 @@ function App() {
           {/* 메인 콘텐츠 영역 */}
           <div className={`h-full ${
             activeTab === "ranking" 
-              ? "xl:col-span-3" // 랭킹 탭일 때는 3열
-              : "xl:col-span-3"  // 다른 탭일 때는 3열
+              ? "xl:col-span-2" // 랭킹 탭일 때는 2열 (랭킹1열 + 메인2열 + 접속자1열 = 4열)
+              : "xl:col-span-3"  // 다른 탭일 때는 3열 (메인3열 + 접속자1열 = 4열)
           }`}>
           
           {/* 채팅 탭 */}
