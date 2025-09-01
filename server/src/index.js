@@ -173,6 +173,20 @@ const adminSchema = new mongoose.Schema(
 
 const AdminModel = mongoose.model("Admin", adminSchema);
 
+// Cooldown Schema (쿨타임 관리)
+const cooldownSchema = new mongoose.Schema(
+  {
+    userId: { type: String, required: true },
+    username: { type: String, required: true },
+    userUuid: { type: String, index: true },
+    fishingCooldownEnd: { type: Date, default: null }, // 낚시 쿨타임 종료 시간
+    explorationCooldownEnd: { type: Date, default: null }, // 탐사 쿨타임 종료 시간
+  },
+  { timestamps: true }
+);
+
+const CooldownModel = mongoose.model("Cooldown", cooldownSchema);
+
 // 동료 목록 정의
 const COMPANION_LIST = [
   "실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라"
@@ -1365,6 +1379,152 @@ app.get("/api/admin-status/:userId", async (req, res) => {
   }
 });
 
+// Cooldown APIs (쿨타임 관리)
+// 쿨타임 상태 조회 API
+app.get("/api/cooldown/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { username, userUuid } = req.query;
+    
+    console.log("Cooldown status request:", { userId, username, userUuid });
+    
+    const queryResult = await getUserQuery(userId, username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+      console.log("Using UUID query for cooldown:", query);
+    } else {
+      query = queryResult;
+      console.log("Using fallback query for cooldown:", query);
+    }
+    
+    const cooldownRecord = await CooldownModel.findOne(query);
+    const now = new Date();
+    
+    let fishingCooldown = 0;
+    let explorationCooldown = 0;
+    
+    if (cooldownRecord) {
+      // 낚시 쿨타임 계산
+      if (cooldownRecord.fishingCooldownEnd && cooldownRecord.fishingCooldownEnd > now) {
+        fishingCooldown = cooldownRecord.fishingCooldownEnd.getTime() - now.getTime();
+      }
+      
+      // 탐사 쿨타임 계산
+      if (cooldownRecord.explorationCooldownEnd && cooldownRecord.explorationCooldownEnd > now) {
+        explorationCooldown = cooldownRecord.explorationCooldownEnd.getTime() - now.getTime();
+      }
+    }
+    
+    console.log(`Cooldown status for ${username}:`, { 
+      fishingCooldown: Math.max(0, fishingCooldown), 
+      explorationCooldown: Math.max(0, explorationCooldown)
+    });
+    
+    res.json({ 
+      fishingCooldown: Math.max(0, fishingCooldown),
+      explorationCooldown: Math.max(0, explorationCooldown)
+    });
+  } catch (error) {
+    console.error("Failed to fetch cooldown status:", error);
+    res.status(500).json({ error: "쿨타임 상태를 가져올 수 없습니다." });
+  }
+});
+
+// 낚시 쿨타임 설정 API
+app.post("/api/set-fishing-cooldown", async (req, res) => {
+  try {
+    const { cooldownDuration } = req.body; // 쿨타임 지속시간 (밀리초)
+    const { username, userUuid } = req.query;
+    
+    console.log("Set fishing cooldown request:", { cooldownDuration, username, userUuid });
+    
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+      console.log("Using UUID query for fishing cooldown:", query);
+    } else {
+      query = queryResult;
+      console.log("Using fallback query for fishing cooldown:", query);
+    }
+    
+    const now = new Date();
+    const cooldownEnd = new Date(now.getTime() + cooldownDuration);
+    
+    const updateData = {
+      userId: query.userId || 'user',
+      username: query.username || username,
+      userUuid: query.userUuid || userUuid,
+      fishingCooldownEnd: cooldownEnd
+    };
+    
+    await CooldownModel.findOneAndUpdate(
+      query,
+      updateData,
+      { upsert: true, new: true }
+    );
+    
+    console.log(`Fishing cooldown set for ${username} until:`, cooldownEnd);
+    
+    res.json({ 
+      success: true,
+      cooldownEnd: cooldownEnd.toISOString(),
+      remainingTime: cooldownDuration
+    });
+  } catch (error) {
+    console.error("Failed to set fishing cooldown:", error);
+    res.status(500).json({ error: "낚시 쿨타임 설정에 실패했습니다." });
+  }
+});
+
+// 탐사 쿨타임 설정 API
+app.post("/api/set-exploration-cooldown", async (req, res) => {
+  try {
+    const { cooldownDuration } = req.body; // 쿨타임 지속시간 (밀리초)
+    const { username, userUuid } = req.query;
+    
+    console.log("Set exploration cooldown request:", { cooldownDuration, username, userUuid });
+    
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+      console.log("Using UUID query for exploration cooldown:", query);
+    } else {
+      query = queryResult;
+      console.log("Using fallback query for exploration cooldown:", query);
+    }
+    
+    const now = new Date();
+    const cooldownEnd = new Date(now.getTime() + cooldownDuration);
+    
+    const updateData = {
+      userId: query.userId || 'user',
+      username: query.username || username,
+      userUuid: query.userUuid || userUuid,
+      explorationCooldownEnd: cooldownEnd
+    };
+    
+    await CooldownModel.findOneAndUpdate(
+      query,
+      updateData,
+      { upsert: true, new: true }
+    );
+    
+    console.log(`Exploration cooldown set for ${username} until:`, cooldownEnd);
+    
+    res.json({ 
+      success: true,
+      cooldownEnd: cooldownEnd.toISOString(),
+      remainingTime: cooldownDuration
+    });
+  } catch (error) {
+    console.error("Failed to set exploration cooldown:", error);
+    res.status(500).json({ error: "탐사 쿨타임 설정에 실패했습니다." });
+  }
+});
+
 // 접속자 목록 API
 app.get("/api/connected-users", async (req, res) => {
   try {
@@ -1385,6 +1545,119 @@ app.get("/api/connected-users", async (req, res) => {
   } catch (error) {
     console.error("Failed to fetch connected users:", error);
     res.status(500).json({ error: "접속자 목록을 가져올 수 없습니다." });
+  }
+});
+
+// 누적 낚은 물고기 수 조회 API
+app.get("/api/total-catches/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { username, userUuid } = req.query;
+    
+    console.log("Total catches request:", { userId, username, userUuid });
+    
+    const queryResult = await getUserQuery(userId, username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+      console.log("Using UUID query for total catches:", query);
+    } else {
+      query = queryResult;
+      console.log("Using fallback query for total catches:", query);
+    }
+    
+    // CatchModel에서 해당 사용자의 모든 낚시 기록 수 조회
+    const totalCatches = await CatchModel.countDocuments(query);
+    
+    console.log(`Total catches for ${username}: ${totalCatches}`);
+    
+    res.json({ 
+      totalCatches,
+      username: query.username || username,
+      userUuid: query.userUuid || userUuid
+    });
+  } catch (error) {
+    console.error("Failed to fetch total catches:", error);
+    res.status(500).json({ error: "총 낚은 물고기 수를 가져올 수 없습니다." });
+  }
+});
+
+// Ranking API (랭킹 시스템)
+app.get("/api/ranking", async (req, res) => {
+  try {
+    console.log("Ranking request");
+    
+    // 모든 사용자의 낚시 데이터 수집
+    const [fishingSkills, catches] = await Promise.all([
+      FishingSkillModel.find({}).lean(),
+      CatchModel.aggregate([
+        {
+          $group: {
+            _id: { userUuid: "$userUuid", username: "$username" },
+            totalCatches: { $sum: 1 }
+          }
+        }
+      ])
+    ]);
+    
+    // 사용자별 데이터 병합
+    const userRankingData = new Map();
+    
+    // 낚시 스킬 데이터 추가
+    fishingSkills.forEach(skill => {
+      const key = skill.userUuid || skill.username;
+      userRankingData.set(key, {
+        userUuid: skill.userUuid,
+        username: skill.username,
+        fishingSkill: skill.fishingSkill || 0,
+        totalCatches: 0
+      });
+    });
+    
+    // 총 낚은 물고기 데이터 추가
+    catches.forEach(catchData => {
+      const key = catchData._id.userUuid || catchData._id.username;
+      if (userRankingData.has(key)) {
+        userRankingData.get(key).totalCatches = catchData.totalCatches;
+      } else {
+        userRankingData.set(key, {
+          userUuid: catchData._id.userUuid,
+          username: catchData._id.username,
+          fishingSkill: 0,
+          totalCatches: catchData.totalCatches
+        });
+      }
+    });
+    
+    // 랭킹 배열로 변환 및 정렬
+    const rankings = Array.from(userRankingData.values())
+      .filter(user => user.username && user.username.trim() !== '') // 유효한 사용자만
+      .sort((a, b) => {
+        // 1차 정렬: 총 낚은 물고기 수 (내림차순)
+        if (b.totalCatches !== a.totalCatches) {
+          return b.totalCatches - a.totalCatches;
+        }
+        // 2차 정렬: 낚시 스킬 (내림차순)
+        return b.fishingSkill - a.fishingSkill;
+      })
+      .map((user, index) => ({
+        rank: index + 1,
+        userUuid: user.userUuid,
+        username: user.username,
+        fishingSkill: user.fishingSkill,
+        totalCatches: user.totalCatches
+      }));
+    
+    console.log(`Sending ranking data for ${rankings.length} users`);
+    
+    res.json({ 
+      rankings,
+      totalUsers: rankings.length,
+      lastUpdated: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("Failed to fetch ranking:", error);
+    res.status(500).json({ error: "랭킹 정보를 가져올 수 없습니다." });
   }
 });
 

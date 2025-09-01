@@ -47,6 +47,7 @@ function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [userAdminStatus, setUserAdminStatus] = useState({}); // 다른 사용자들의 관리자 상태
   const [connectedUsers, setConnectedUsers] = useState([]); // 접속자 목록
+  const [rankings, setRankings] = useState([]); // 랭킹 데이터
   const [shopCategory, setShopCategory] = useState("fishing_rod");
   const [showProfile, setShowProfile] = useState(false);
   const [selectedUserProfile, setSelectedUserProfile] = useState(null); // 선택된 사용자 프로필 정보
@@ -282,10 +283,7 @@ function App() {
             console.log("Inventory response:", res.data);
             console.log("Current userUuid state:", userUuid);
                 setInventory(res.data);
-                // 총 갯수로 myCatches 업데이트
-                const totalCount = res.data.reduce((sum, item) => sum + item.count, 0);
-                setMyCatches(totalCount);
-                console.log("Inventory updated, total catches:", totalCount);
+                console.log("Inventory updated");
               } catch (e) {
                 console.error('Failed to fetch inventory:', e);
               }
@@ -433,9 +431,6 @@ function App() {
         const params = { username, userUuid }; // username과 userUuid 모두 전달
         const res = await axios.get(`${serverUrl}/api/inventory/${userId}`, { params });
         setInventory(res.data);
-        // 총 갯수로 myCatches 업데이트
-        const totalCount = res.data.reduce((sum, item) => sum + item.count, 0);
-        setMyCatches(totalCount);
       } catch (e) {
         console.error('Failed to fetch inventory:', e);
       }
@@ -599,6 +594,74 @@ function App() {
     }
   }, [serverUrl, username]);
 
+  // 서버에서 쿨타임 상태 가져오기
+  useEffect(() => {
+    if (!username) return;
+    const fetchCooldownStatus = async () => {
+      try {
+        const userId = idToken ? 'user' : 'null';
+        const params = { username, userUuid };
+        console.log('Fetching cooldown status with params:', { userId, username, userUuid });
+        const res = await axios.get(`${serverUrl}/api/cooldown/${userId}`, { params });
+        console.log('Cooldown status response:', res.data);
+        
+        // 서버에서 받은 쿨타임으로 업데이트
+        setFishingCooldown(res.data.fishingCooldown || 0);
+        setExplorationCooldown(res.data.explorationCooldown || 0);
+      } catch (e) {
+        console.error('Failed to fetch cooldown status:', e);
+        // 에러 시 쿨타임 초기화
+        setFishingCooldown(0);
+        setExplorationCooldown(0);
+      }
+    };
+    
+    fetchCooldownStatus();
+    const id = setInterval(fetchCooldownStatus, 5000); // 5초마다 서버에서 쿨타임 확인
+    return () => clearInterval(id);
+  }, [serverUrl, username, userUuid, idToken]);
+
+  // 랭킹 데이터 가져오기
+  useEffect(() => {
+    const fetchRankings = async () => {
+      try {
+        console.log('Fetching rankings');
+        const res = await axios.get(`${serverUrl}/api/ranking`);
+        console.log('Rankings response:', res.data);
+        setRankings(res.data.rankings || []);
+      } catch (e) {
+        console.error('Failed to fetch rankings:', e);
+        setRankings([]);
+      }
+    };
+    
+    fetchRankings();
+    const id = setInterval(fetchRankings, 30000); // 30초마다 랭킹 새로고침
+    return () => clearInterval(id);
+  }, [serverUrl]);
+
+  // 누적 낚은 물고기 수 가져오기
+  useEffect(() => {
+    if (!username) return;
+    const fetchTotalCatches = async () => {
+      try {
+        const userId = idToken ? 'user' : 'null';
+        const params = { username, userUuid };
+        console.log('Fetching total catches with params:', { userId, username, userUuid });
+        const res = await axios.get(`${serverUrl}/api/total-catches/${userId}`, { params });
+        console.log('Total catches response:', res.data);
+        setMyCatches(res.data.totalCatches || 0);
+      } catch (e) {
+        console.error('Failed to fetch total catches:', e);
+        setMyCatches(0);
+      }
+    };
+    
+    fetchTotalCatches();
+    const id = setInterval(fetchTotalCatches, 10000); // 10초마다 누적 낚은 물고기 수 확인
+    return () => clearInterval(id);
+  }, [serverUrl, username, userUuid, idToken]);
+
   // 사용자 장비 정보 가져오기
   useEffect(() => {
     if (!username) return;
@@ -633,7 +696,7 @@ function App() {
     fetchFishingSkill();
   }, [serverUrl, username, idToken]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = input.trim();
     if (!text) return;
     
@@ -650,11 +713,22 @@ function App() {
         alert(`낚시하기 쿨타임이 ${formatCooldown(fishingCooldown)} 남았습니다!`);
         return;
       }
-      // 낚시하기 쿨타임 설정
+      // 서버에 낚시 쿨타임 설정
       const cooldownTime = getFishingCooldownTime();
-      setFishingCooldown(cooldownTime);
-      localStorage.setItem('fishingCooldown', cooldownTime.toString());
-      localStorage.setItem('fishingCooldownTime', Date.now().toString());
+      try {
+        const params = { username, userUuid };
+        await axios.post(`${serverUrl}/api/set-fishing-cooldown`, {
+          cooldownDuration: cooldownTime
+        }, { params });
+        
+        // 클라이언트 쿨타임도 즉시 설정
+        setFishingCooldown(cooldownTime);
+        console.log(`Fishing cooldown set: ${cooldownTime}ms`);
+      } catch (error) {
+        console.error('Failed to set fishing cooldown:', error);
+        // 서버 설정 실패 시에도 클라이언트 쿨타임은 설정
+        setFishingCooldown(cooldownTime);
+      }
     }
     
     const socket = getSocket();
@@ -1140,6 +1214,10 @@ function App() {
       alert('관리자 권한 변경에 실패했습니다.');
     }
   };
+
+
+
+
 
   // 재료 소모 함수
   const consumeMaterial = async (materialName, quantity = 1) => {
@@ -1955,6 +2033,21 @@ function App() {
           >
             <Trophy className="w-4 h-4" />
             <span className="hidden sm:inline">내정보</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("ranking")}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300 font-medium ${
+              activeTab === "ranking"
+                ? isDarkMode
+                  ? "bg-yellow-500/20 text-yellow-400 border border-yellow-400/30"
+                  : "bg-yellow-500/10 text-yellow-600 border border-yellow-500/30"
+                : isDarkMode
+                  ? "text-gray-400 hover:text-gray-300"
+                  : "text-gray-600 hover:text-gray-800"
+            }`}
+          >
+            <Trophy className="w-4 h-4" />
+            <span className="hidden sm:inline">랭킹</span>
           </button>
         </div>
       </div>
@@ -3497,6 +3590,127 @@ function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 랭킹 탭 */}
+      {activeTab === "ranking" && (
+      <div className={`rounded-2xl board-shadow min-h-full flex flex-col ${
+        isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
+      }`}>
+        {/* 랭킹 헤더 */}
+        <div className={`border-b p-4 ${
+          isDarkMode ? "border-white/10" : "border-gray-300/20"
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-yellow-500/20 to-orange-500/20 border ${
+                isDarkMode ? "border-white/10" : "border-yellow-300/30"
+              }`}>
+                <Trophy className={`w-4 h-4 ${
+                  isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                }`} />
+              </div>
+              <div>
+                <h2 className={`text-lg font-semibold ${
+                  isDarkMode ? "text-white" : "text-gray-800"
+                }`}>랭킹</h2>
+                <p className={`text-xs ${
+                  isDarkMode ? "text-gray-400" : "text-gray-600"
+                }`}>총 낚은 물고기 & 낚시 스킬 순위</p>
+              </div>
+            </div>
+            <div className={`px-3 py-1 rounded-full text-xs ${
+              isDarkMode ? "bg-yellow-500/20 text-yellow-400" : "bg-yellow-500/10 text-yellow-600"
+            }`}>
+              총 {rankings.length}명
+            </div>
+          </div>
+        </div>
+        
+        {/* 랭킹 콘텐츠 */}
+        <div className="flex-1 p-4 space-y-3 max-h-[70vh] overflow-y-auto">
+          {rankings.length > 0 ? (
+            rankings.map((user, index) => (
+              <div key={user.userUuid || user.username} className={`p-4 rounded-xl transition-all duration-300 hover:scale-105 cursor-pointer ${
+                isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+              } ${user.username === username ? 
+                (isDarkMode ? "ring-2 ring-yellow-400/50 bg-yellow-500/10" : "ring-2 ring-yellow-500/50 bg-yellow-500/5")
+                : ""
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    {/* 순위 */}
+                    <div className={`flex items-center justify-center w-10 h-10 rounded-full font-bold text-lg ${
+                      user.rank === 1 
+                        ? "bg-gradient-to-br from-yellow-400 to-yellow-600 text-white"
+                        : user.rank === 2 
+                        ? "bg-gradient-to-br from-gray-300 to-gray-500 text-white" 
+                        : user.rank === 3
+                        ? "bg-gradient-to-br from-amber-600 to-amber-800 text-white"
+                        : isDarkMode 
+                        ? "bg-gray-700 text-gray-300"
+                        : "bg-gray-200 text-gray-600"
+                    }`}>
+                      {user.rank <= 3 && user.rank === 1 && "🥇"}
+                      {user.rank <= 3 && user.rank === 2 && "🥈"}
+                      {user.rank <= 3 && user.rank === 3 && "🥉"}
+                      {user.rank > 3 && user.rank}
+                    </div>
+                    
+                    {/* 사용자 정보 */}
+                    <div>
+                      <div className={`font-medium text-base flex items-center gap-2 ${
+                        isDarkMode ? "text-white" : "text-gray-800"
+                      }`}>
+                        {user.username}
+                        {((user.username === username && isAdmin) || userAdminStatus[user.username]) && (
+                          <span className={`text-xs font-bold ${
+                            isDarkMode ? "text-red-400" : "text-red-600"
+                          }`}>👑</span>
+                        )}
+                        {user.username === username && (
+                          <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                            isDarkMode ? "bg-blue-500/20 text-blue-400" : "bg-blue-500/10 text-blue-600"
+                          }`}>나</span>
+                        )}
+                      </div>
+                      <div className={`text-sm ${
+                        isDarkMode ? "text-gray-400" : "text-gray-600"
+                      }`}>
+                        {user.userUuid || "게스트"}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* 통계 */}
+                  <div className="text-right">
+                    <div className={`font-bold text-lg ${
+                      isDarkMode ? "text-blue-400" : "text-blue-600"
+                    }`}>
+                      {user.totalCatches.toLocaleString()}마리
+                    </div>
+                    <div className={`text-sm ${
+                      isDarkMode ? "text-emerald-400" : "text-emerald-600"
+                    }`}>
+                      Lv.{user.fishingSkill}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className={`text-center py-12 ${
+              isDarkMode ? "text-gray-500" : "text-gray-600"
+            }`}>
+              <Trophy className={`w-16 h-16 mx-auto mb-4 opacity-30 ${
+                isDarkMode ? "text-gray-600" : "text-gray-400"
+              }`} />
+              <p>아직 랭킹 데이터가 없습니다.</p>
+              <p className="text-sm mt-2">낚시를 시작해보세요!</p>
+            </div>
+          )}
+        </div>
+      </div>
       )}
 
       {/* 수량 입력 모달 */}
