@@ -559,23 +559,19 @@ io.on("connection", (socket) => {
             googleDisplayName: info?.displayName
           });
           
-          // 클라이언트에서 보낸 username이 데이터베이스의 displayName과 다르고,
-          // Google displayName과도 다르면 닉네임 변경으로 간주
-          const isNicknameChange = username && 
-                                  username !== existingGoogleUser.displayName && 
-                                  username !== info?.displayName;
-          
-          if (isNicknameChange) {
-            console.log("Nickname change detected:", existingGoogleUser.displayName, "->", username);
-            effectiveName = username; // 변경된 닉네임 사용
-          } else {
+          // 데이터베이스에 저장된 displayName이 있으면 항상 우선 사용 (사용자 변경 닉네임 보존)
+          if (existingGoogleUser.displayName) {
             console.log("Using stored displayName (preserving user's custom nickname):", existingGoogleUser.displayName);
             effectiveName = existingGoogleUser.displayName; // 기존 닉네임 보존
+          } else {
+            // displayName이 없는 경우에만 클라이언트 username 또는 구글 displayName 사용
+            effectiveName = username || info?.displayName || "구글사용자";
+            console.log("No stored displayName, using client username or Google displayName:", effectiveName);
           }
         } else {
           // 새 구글 사용자인 경우
-          effectiveName = info?.displayName || username || "구글사용자";
-          console.log("New Google user - using displayName:", effectiveName);
+          effectiveName = username || info?.displayName || "구글사용자";
+          console.log("New Google user - using username/displayName:", effectiveName);
         }
       } else {
         // 게스트 사용자인 경우

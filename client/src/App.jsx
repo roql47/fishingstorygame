@@ -39,6 +39,15 @@ function App() {
   const [idToken, setIdToken] = useState(undefined);
   const [usernameInput, setUsernameInput] = useState("");
   const [activeTab, setActiveTab] = useState("chat");
+
+  // 페이지 로드 시 저장된 Google 토큰 복원
+  useEffect(() => {
+    const storedIdToken = localStorage.getItem("idToken");
+    if (storedIdToken && !idToken) {
+      console.log("Restoring Google token from localStorage:", storedIdToken);
+      setIdToken(storedIdToken);
+    }
+  }, []);
   const [userMoney, setUserMoney] = useState(0);
   const [userAmber, setUserAmber] = useState(0);
   const [userStarPieces, setUserStarPieces] = useState(0);
@@ -2160,7 +2169,7 @@ function App() {
       <div className="relative z-10 max-w-7xl mx-auto p-6">
         <div className={`grid gap-6 min-h-[75vh] ${
           activeTab === "ranking" 
-            ? "grid-cols-1 xl:grid-cols-4" // 랭킹 탭일 때는 4열 그리드 (채팅창과 동일)
+            ? "grid-cols-1" // 랭킹 탭일 때는 1열 그리드 (랭킹만 전체 너비)
             : "grid-cols-1 xl:grid-cols-4"  // 다른 탭일 때는 4열 그리드
         }`}>
           
@@ -2262,12 +2271,9 @@ function App() {
             </div>
           )}
           
-          {/* 메인 콘텐츠 영역 */}
-          <div className={`h-full ${
-            activeTab === "ranking" 
-              ? "xl:col-span-2" // 랭킹 탭일 때는 2열 (랭킹1열 + 메인2열 + 접속자1열 = 4열)
-              : "xl:col-span-3"  // 다른 탭일 때는 3열 (메인3열 + 접속자1열 = 4열)
-          }`}>
+          {/* 메인 콘텐츠 영역 - 랭킹 탭에서는 숨김 */}
+          {activeTab !== "ranking" && (
+          <div className="xl:col-span-3 h-full">
           
           {/* 채팅 탭 */}
           {activeTab === "chat" && (
@@ -3452,9 +3458,11 @@ function App() {
           </div>
           )}
 
-          </div>
-          
-          {/* 사이드바 - 접속자 목록 */}
+                    </div>
+          )}
+
+          {/* 사이드바 - 접속자 목록 - 랭킹 탭에서는 숨김 */}
+          {activeTab !== "ranking" && (
           <div className="xl:col-span-1 h-full">
             <div className={`rounded-2xl board-shadow h-full flex flex-col ${
               isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
@@ -3543,6 +3551,7 @@ function App() {
               </div>
             </div>
           </div>
+          )}
 
         </div>
       </div>
@@ -3847,9 +3856,8 @@ function App() {
             }`} />
             <h3 className={`text-lg font-semibold mb-2 ${
               isDarkMode ? "text-white" : "text-gray-800"
-            }`}>랭킹 보기</h3>
-            <p>왼쪽 사이드바에서 랭킹을 확인하세요!</p>
-            <p className="text-sm mt-2">총 낚은 물고기 수와 낚시 스킬로 순위가 결정됩니다.</p>
+            }`}>랭킹</h3>
+            <p>전체 랭킹이 표시됩니다</p>
           </div>
         </div>
         {/* 기존 랭킹 리스트는 제거됨 */}
