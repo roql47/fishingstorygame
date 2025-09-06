@@ -16,58 +16,60 @@ export default defineConfig({
     minify: 'terser',
     terserOptions: {
       compress: {
-        // 모든 디버깅 정보 제거
+        // 기본 디버깅 정보 제거
         drop_console: true,
         drop_debugger: true,
-        // 사용하지 않는 코드 제거
+        // 안전한 코드 최적화만 적용
         dead_code: true,
         unused: true,
-        // 조건문 최적화
         conditionals: true,
         evaluate: true,
-        // 변수 최적화
+        // 변수 최적화 (보수적)
         reduce_vars: true,
-        reduce_funcs: true,
         join_vars: true,
-        collapse_vars: true,
-        // 함수 인라인화 (강화)
-        inline: 3,
+        // 함수 인라인화 (보수적)
+        inline: 1, // 3에서 1로 줄임 (라이브러리 호환성)
         // 루프 최적화
         loops: true,
-        // 불필요한 괄호 제거
-        unsafe: true,
-        unsafe_comps: true,
-        unsafe_Function: true,
-        unsafe_math: true,
-        unsafe_symbols: true,
-        unsafe_methods: true,
-        unsafe_proto: true,
-        unsafe_regexp: true,
-        // 문자열 압축
-        passes: 3, // 3번 압축 패스
-        pure_getters: true,
+        // 위험한 최적화 비활성화 (라이브러리 호환성)
+        unsafe: false,
+        unsafe_comps: false,
+        unsafe_Function: false,
+        unsafe_math: false,
+        unsafe_symbols: false,
+        unsafe_methods: false,
+        unsafe_proto: false,
+        unsafe_regexp: false,
+        // 압축 패스 줄임 (안정성)
+        passes: 1, // 3에서 1로 줄임
+        pure_getters: false, // 라이브러리 호환성을 위해 비활성화
         pure_funcs: [
           'console.log', 'console.warn', 'console.error', 
-          'console.info', 'console.debug', 'console.trace',
-          'Math.floor', 'Math.ceil', 'Math.round'
+          'console.info', 'console.debug', 'console.trace'
         ]
       },
       mangle: {
-        // 🔒 최대 강도 변수명 난독화
+        // 🔒 변수명 난독화 (라이브러리 호환성 고려)
         toplevel: true,
-        eval: true,
-        // 함수 이름도 난독화
-        keep_fnames: false,
-        // 클래스 이름도 난독화  
-        keep_classnames: false,
-        // 프로퍼티 난독화 (주의: 일부 라이브러리 호환성 문제 가능)
-        properties: {
-          regex: /^_/ // _로 시작하는 프로퍼티만 난독화
-        },
+        // 함수 이름 보존 (라이브러리 호환성)
+        keep_fnames: true,
+        // 클래스 이름 보존 (라이브러리 호환성)
+        keep_classnames: true,
+        // 프로퍼티 난독화 비활성화 (라이브러리 호환성)
+        properties: false,
         // Safari 10 호환성
         safari10: true,
-        // 예약어 사용
-        reserved: []
+        // 라이브러리 관련 예약어 보호
+        reserved: [
+          // Socket.IO 관련
+          'emit', 'on', 'off', 'connect', 'disconnect', 'socket',
+          // React 관련
+          'React', 'ReactDOM', 'useState', 'useEffect', 'useCallback',
+          // Axios 관련
+          'axios', 'get', 'post', 'put', 'delete',
+          // 기타 중요한 함수들
+          'addEventListener', 'removeEventListener', 'setTimeout', 'setInterval'
+        ]
       },
       format: {
         // 모든 주석 제거

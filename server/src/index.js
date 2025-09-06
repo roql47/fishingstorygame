@@ -3538,20 +3538,47 @@ if (require('fs').existsSync(staticDir)) {
   console.log("Static directory contents:", require('fs').readdirSync(staticDir));
 }
 
+// Assets 디렉토리 확인
+const assetsDir = path.join(staticDir, 'assets');
+console.log("Assets directory:", assetsDir);
+console.log("Assets directory exists:", require('fs').existsSync(assetsDir));
+if (require('fs').existsSync(assetsDir)) {
+  const assetsFiles = require('fs').readdirSync(assetsDir);
+  console.log("Assets directory contents:", assetsFiles);
+  
+  // CSS 파일 특별히 확인
+  const cssFiles = assetsFiles.filter(file => file.endsWith('.css'));
+  console.log("CSS files found:", cssFiles);
+}
+
 // Assets 경로를 먼저 처리 (우선순위 높음)
-app.use('/assets', express.static(path.join(staticDir, 'assets'), {
+app.use('/assets', (req, res, next) => {
+  console.log("=== ASSETS REQUEST ===");
+  console.log("Requested path:", req.path);
+  console.log("Full URL:", req.url);
+  console.log("Request headers:", req.headers);
+  
+  // 실제 파일 경로
+  const requestedFile = path.join(assetsDir, req.path);
+  console.log("Looking for file:", requestedFile);
+  console.log("File exists:", require('fs').existsSync(requestedFile));
+  
+  next();
+}, express.static(assetsDir, {
   setHeaders: (res, filePath) => {
-    console.log("Serving asset:", filePath);
+    console.log("=== SERVING ASSET ===");
+    console.log("File path:", filePath);
+    console.log("File exists check:", require('fs').existsSync(filePath));
     
     // CSS 파일에 대한 MIME 타입 명시적 설정
     if (filePath.endsWith('.css')) {
       res.setHeader('Content-Type', 'text/css; charset=utf-8');
-      console.log("Set CSS MIME type for:", filePath);
+      console.log("✅ Set CSS MIME type for:", filePath);
     }
     // JS 파일에 대한 MIME 타입 설정
     else if (filePath.endsWith('.js')) {
       res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-      console.log("Set JS MIME type for:", filePath);
+      console.log("✅ Set JS MIME type for:", filePath);
     }
     // 이미지 파일들
     else if (filePath.endsWith('.png')) {
@@ -3572,6 +3599,8 @@ app.use('/assets', express.static(path.join(staticDir, 'assets'), {
     
     // CORS 헤더 (필요한 경우)
     res.setHeader('Access-Control-Allow-Origin', '*');
+    
+    console.log("Response headers set:", res.getHeaders());
   }
 }));
 
@@ -3622,6 +3651,27 @@ app.use((req, res, next) => {
       res.status(500).send('Server Error');
     }
   });
+});
+
+// 404 에러 핸들러 (모든 라우트 처리 후)
+app.use((req, res) => {
+  console.log("=== 404 NOT FOUND ===");
+  console.log("Requested URL:", req.url);
+  console.log("Method:", req.method);
+  console.log("Headers:", req.headers);
+  
+  // CSS 파일 요청인 경우 특별 처리
+  if (req.path.endsWith('.css')) {
+    console.log("❌ CSS file not found:", req.path);
+    console.log("Available CSS files in assets:");
+    const assetsDir = path.join(staticDir, 'assets');
+    if (require('fs').existsSync(assetsDir)) {
+      const cssFiles = require('fs').readdirSync(assetsDir).filter(f => f.endsWith('.css'));
+      console.log(cssFiles);
+    }
+  }
+  
+  res.status(404).send(`File not found: ${req.path}`);
 });
 
 // 계정 삭제 API
