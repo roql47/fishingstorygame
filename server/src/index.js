@@ -1736,6 +1736,18 @@ app.post("/api/update-nickname", async (req, res) => {
       return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
     }
     
+    // 닉네임 중복 체크 (자신 제외)
+    const trimmedNickname = newNickname.trim();
+    const existingUser = await UserUuidModel.findOne({ 
+      displayName: trimmedNickname,
+      userUuid: { $ne: userUuid } // 자신은 제외
+    });
+    
+    if (existingUser) {
+      console.log(`Nickname already exists: ${trimmedNickname} (used by ${existingUser.userUuid})`);
+      return res.status(400).json({ error: "이미 사용 중인 닉네임입니다." });
+    }
+    
     // displayName 업데이트
     user.displayName = newNickname.trim();
     await user.save();

@@ -2553,7 +2553,7 @@ function App() {
                               <div className={`text-xs ${
                                 isDarkMode ? "text-gray-400" : "text-gray-600"
                               }`}>
-                                🐟 {user.totalFish}마리
+                                🐟 {user.totalCatches || 0}마리
                               </div>
                             </div>
                           </div>
@@ -2795,30 +2795,6 @@ function App() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    onClick={async () => {
-                      try {
-                        const userId = idToken ? 'user' : 'null';
-                        const params = { username, userUuid };
-                        console.log("Manual inventory refresh:", { userId, username, userUuid });
-                        const res = await axios.get(`${serverUrl}/api/inventory/${userId}`, { params });
-                        console.log("Manual inventory result:", res.data);
-                        setInventory(res.data);
-                        const totalCount = res.data.reduce((sum, item) => sum + item.count, 0);
-                        setMyCatches(totalCount);
-                      } catch (e) {
-                        console.error('Failed to refresh inventory:', e);
-                      }
-                    }}
-                    className={`p-2 rounded-full transition-all hover:scale-110 ${
-                      isDarkMode 
-                        ? "bg-blue-500/20 hover:bg-blue-500/30 text-blue-400" 
-                        : "bg-blue-500/20 hover:bg-blue-500/30 text-blue-600"
-                    }`}
-                    title="인벤토리 새로고침"
-                  >
-                    🔄
-                  </button>
                   <div className={`flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border ${
                     isDarkMode ? "border-yellow-400/20" : "border-yellow-500/30"
                   }`}>
