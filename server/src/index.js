@@ -2463,15 +2463,16 @@ app.delete("/api/delete-account", async (req, res) => {
       MaterialModel.deleteMany({ userUuid }),
       FishingSkillModel.deleteMany({ userUuid }),
       StarPieceModel.deleteMany({ userUuid }),
-      FishingCooldownModel.deleteMany({ userUuid }),
-      ExplorationCooldownModel.deleteMany({ userUuid })
+      CompanionModel.deleteMany({ userUuid }),
+      AdminModel.deleteMany({ userUuid }),
+      CooldownModel.deleteMany({ userUuid })
     ]);
     
     // 삭제 결과 로그
     const schemaNames = [
       'UserUuid', 'Catch', 'UserMoney', 'UserAmber', 
       'UserEquipment', 'Material', 'FishingSkill', 
-      'StarPiece', 'FishingCooldown', 'ExplorationCooldown'
+      'StarPiece', 'Companion', 'Admin', 'Cooldown'
     ];
     
     deletionResults.forEach((result, index) => {
