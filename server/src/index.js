@@ -199,6 +199,7 @@ const userUuidSchema = new mongoose.Schema(
     username: { type: String, required: true }, // 현재 닉네임 (변경 가능)
     displayName: { type: String, required: true }, // 사용자가 설정한 표시 이름 (닉네임 변경 시 업데이트)
     originalGoogleId: { type: String }, // 구글 로그인 ID (변경 불가)
+    originalKakaoId: { type: String }, // 카카오 로그인 ID (변경 불가)
     isGuest: { type: Boolean, default: false }, // 게스트 여부
     createdAt: { type: Date, default: Date.now }
   },
@@ -247,7 +248,7 @@ async function generateNextUuid() {
 }
 
 // 사용자 등록/조회 함수
-async function getOrCreateUser(username, googleId = null) {
+async function getOrCreateUser(username, googleId = null, kakaoId = null) {
   try {
     let user;
     
@@ -267,6 +268,24 @@ async function getOrCreateUser(username, googleId = null) {
       } else if (user.username !== username && username) {
         // 구글 사용자의 경우 기존 닉네임 유지 (사용자가 변경한 닉네임 보존)
         console.log(`Google user found with existing nickname: ${user.username} (keeping instead of ${username})`);
+        // 닉네임 업데이트 하지 않음 - 기존 닉네임 유지
+      }
+    } else if (kakaoId) {
+      // 카카오 로그인 사용자
+      user = await UserUuidModel.findOne({ originalKakaoId: kakaoId });
+      if (!user) {
+        const userUuid = await generateNextUuid();
+        user = await UserUuidModel.create({
+          userUuid,
+          username: username || "카카오사용자",
+          displayName: username || "카카오사용자",
+          originalKakaoId: kakaoId,
+          isGuest: false
+        });
+        console.log(`Created new Kakao user: ${userUuid} (${username})`);
+      } else if (user.username !== username && username) {
+        // 카카오 사용자의 경우 기존 닉네임 유지 (사용자가 변경한 닉네임 보존)
+        console.log(`Kakao user found with existing nickname: ${user.username} (keeping instead of ${username})`);
         // 닉네임 업데이트 하지 않음 - 기존 닉네임 유지
       }
     } else {
@@ -472,6 +491,42 @@ async function verifyGoogleIdToken(idToken) {
   }
 }
 
+// 카카오 토큰 처리 함수
+function parseKakaoToken(idToken) {
+  try {
+    if (!idToken || !idToken.startsWith('kakao_')) {
+      return null;
+    }
+    
+    // kakao_${kakaoId}_${accessToken} 형식에서 정보 추출
+    const parts = idToken.split('_');
+    if (parts.length < 3) {
+      console.log("Invalid kakao token format");
+      return null;
+    }
+    
+    const kakaoId = parts[1];
+    const accessToken = parts.slice(2).join('_'); // 토큰에 _가 있을 수 있음
+    
+    console.log("Kakao token parsed successfully:", {
+      kakaoId: kakaoId,
+      hasAccessToken: !!accessToken
+    });
+    
+    return {
+      sub: `kakao_${kakaoId}`, // 구글의 sub와 유사한 고유 ID
+      kakaoId: kakaoId,
+      accessToken: accessToken,
+      provider: 'kakao',
+      userId: `kakao_${kakaoId}`,
+      displayName: `카카오사용자${kakaoId}`
+    };
+  } catch (error) {
+    console.error("Failed to parse Kakao token:", error.message);
+    return null;
+  }
+}
+
 // 접속자 관리
 const connectedUsers = new Map();
 const processingJoins = new Set(); // 중복 join 요청 방지
@@ -537,41 +592,71 @@ io.on("connection", (socket) => {
       console.log("=== CHAT:JOIN DEBUG ===");
       console.log("Received parameters:", { username, idToken: !!idToken, userUuid });
       
-      const info = await verifyGoogleIdToken(idToken);
+      // 토큰 타입에 따라 처리 (구글 또는 카카오)
+      let info = null;
+      let socialId = null;
+      let provider = 'guest';
       
-            // UUID 기반 사용자 등록/조회
-      const googleId = info?.sub || null; // 구글 ID (sub claim)
+      if (idToken && idToken.startsWith('kakao_')) {
+        // 카카오 토큰 처리
+        info = parseKakaoToken(idToken);
+        if (info) {
+          socialId = info.sub;
+          provider = 'kakao';
+          console.log("Kakao login detected:", { socialId, provider });
+        }
+      } else if (idToken) {
+        // 구글 토큰 처리
+        info = await verifyGoogleIdToken(idToken);
+        if (info) {
+          socialId = info.sub;
+          provider = 'google';
+          console.log("Google login detected:", { socialId, provider });
+        }
+      }
+      
+      // UUID 기반 사용자 등록/조회
+      const googleId = provider === 'google' ? socialId : null; // 구글 ID (구 호환성을 위해 유지)
+      const kakaoId = provider === 'kakao' ? socialId : null; // 카카오 ID
       
       // 닉네임 우선순위 결정 (구글 로그인 여부에 따라)
       let effectiveName;
       
-      // 구글 로그인 시 기존 사용자의 닉네임 보존
-      if (googleId) {
-        console.log("Google login detected, checking for existing user with Google ID:", googleId);
-        const existingGoogleUser = await UserUuidModel.findOne({ originalGoogleId: googleId });
+      // 소셜 로그인 시 기존 사용자의 닉네임 보존
+      if (socialId) {
+        console.log(`${provider} login detected, checking for existing user with ${provider} ID:`, socialId);
         
-        if (existingGoogleUser) {
-          // 기존 구글 사용자가 있으면 데이터베이스의 닉네임을 우선 사용
-          console.log("Found existing Google user:", {
-            userUuid: existingGoogleUser.userUuid,
-            storedDisplayName: existingGoogleUser.displayName,
+        let existingSocialUser = null;
+        if (provider === 'google') {
+          existingSocialUser = await UserUuidModel.findOne({ originalGoogleId: googleId });
+        } else if (provider === 'kakao') {
+          existingSocialUser = await UserUuidModel.findOne({ originalKakaoId: kakaoId });
+        }
+        
+        if (existingSocialUser) {
+          // 기존 소셜 사용자가 있으면 데이터베이스의 닉네임을 우선 사용
+          console.log(`Found existing ${provider} user:`, {
+            userUuid: existingSocialUser.userUuid,
+            storedDisplayName: existingSocialUser.displayName,
             clientUsername: username,
-            googleDisplayName: info?.displayName
+            socialDisplayName: info?.displayName
           });
           
           // 데이터베이스에 저장된 displayName이 있으면 항상 우선 사용 (사용자 변경 닉네임 보존)
-          if (existingGoogleUser.displayName) {
-            console.log("Using stored displayName (preserving user's custom nickname):", existingGoogleUser.displayName);
-            effectiveName = existingGoogleUser.displayName; // 기존 닉네임 보존
+          if (existingSocialUser.displayName) {
+            console.log("Using stored displayName (preserving user's custom nickname):", existingSocialUser.displayName);
+            effectiveName = existingSocialUser.displayName; // 기존 닉네임 보존
           } else {
-            // displayName이 없는 경우에만 클라이언트 username 또는 구글 displayName 사용
-            effectiveName = username || info?.displayName || "구글사용자";
-            console.log("No stored displayName, using client username or Google displayName:", effectiveName);
+            // displayName이 없는 경우에만 클라이언트 username 또는 소셜 displayName 사용
+            const defaultName = provider === 'kakao' ? "카카오사용자" : "구글사용자";
+            effectiveName = username || info?.displayName || defaultName;
+            console.log(`No stored displayName, using client username or ${provider} displayName:`, effectiveName);
           }
         } else {
-          // 새 구글 사용자인 경우
-          effectiveName = username || info?.displayName || "구글사용자";
-          console.log("New Google user - using username/displayName:", effectiveName);
+          // 새 소셜 사용자인 경우
+          const defaultName = provider === 'kakao' ? "카카오사용자" : "구글사용자";
+          effectiveName = username || info?.displayName || defaultName;
+          console.log(`New ${provider} user - using username/displayName:`, effectiveName);
         }
       } else {
         // 게스트 사용자인 경우
@@ -628,7 +713,7 @@ io.on("connection", (socket) => {
           }
         } else {
           console.log(`[PRIORITY 1] User with userUuid ${userUuid} not found, creating new user`);
-          user = await getOrCreateUser(effectiveName, googleId);
+          user = await getOrCreateUser(effectiveName, googleId, kakaoId);
         }
       } else if (googleId) {
         // 2순위: 구글 사용자 (새 로그인 또는 기존 사용자)
@@ -660,7 +745,7 @@ io.on("connection", (socket) => {
           }
         } else {
           console.log(`[PRIORITY 2] Creating new Google user`);
-          user = await getOrCreateUser(effectiveName, googleId);
+          user = await getOrCreateUser(effectiveName, googleId, kakaoId);
         }
       } else {
         // 3순위: 게스트 사용자 (새 로그인) - 기존 사용자 찾기 시도
@@ -668,7 +753,7 @@ io.on("connection", (socket) => {
         user = await UserUuidModel.findOne({ username: effectiveName, isGuest: true });
         if (!user) {
           console.log(`[PRIORITY 3] Creating new guest user`);
-          user = await getOrCreateUser(effectiveName, googleId);
+          user = await getOrCreateUser(effectiveName, googleId, kakaoId);
         } else {
           console.log(`[PRIORITY 3] Found existing guest user:`, { userUuid: user.userUuid, username: user.username });
         }
@@ -683,15 +768,23 @@ io.on("connection", (socket) => {
       socket.data.displayName = user.username;
       socket.data.idToken = idToken;
       socket.data.originalGoogleId = user.originalGoogleId;
+      socket.data.originalKakaoId = user.originalKakaoId;
     
       // 같은 구글 아이디로 중복 접속 방지 (PC/모바일 동시 접속 차단)
-      if (googleId) {
-        const existingGoogleConnection = Array.from(connectedUsers.entries())
-          .find(([socketId, userData]) => userData.originalGoogleId === googleId && socketId !== socket.id);
+      if (socialId) {
+        const existingSocialConnection = Array.from(connectedUsers.entries())
+          .find(([socketId, userData]) => {
+            if (provider === 'google') {
+              return userData.originalGoogleId === googleId && socketId !== socket.id;
+            } else if (provider === 'kakao') {
+              return userData.originalKakaoId === kakaoId && socketId !== socket.id;
+            }
+            return false;
+          });
         
-        if (existingGoogleConnection) {
-          const [existingSocketId, existingUserData] = existingGoogleConnection;
-          console.log(`🚨 Duplicate Google login detected! Disconnecting previous session: ${existingUserData.username} (${existingSocketId})`);
+        if (existingSocialConnection) {
+          const [existingSocketId, existingUserData] = existingSocialConnection;
+          console.log(`🚨 Duplicate ${provider} login detected! Disconnecting previous session: ${existingUserData.username} (${existingSocketId})`);
           
           // 기존 연결에 중복 로그인 알림 전송
           const existingSocket = io.sockets.sockets.get(existingSocketId);
@@ -750,10 +843,11 @@ io.on("connection", (socket) => {
         displayName: user.displayName || user.username, // 데이터베이스에 저장된 displayName 사용
         userId: socket.data.userId,
         hasIdToken: !!idToken, // ID 토큰 보유 여부
-        loginType: idToken ? 'Google' : 'Guest',
+        loginType: provider === 'google' ? 'Google' : provider === 'kakao' ? 'Kakao' : 'Guest',
         joinTime: new Date(),
         socketId: socket.id,
-        originalGoogleId: user.originalGoogleId // 구글 ID 정보도 추가
+        originalGoogleId: user.originalGoogleId, // 구글 ID 정보
+        originalKakaoId: user.originalKakaoId // 카카오 ID 정보도 추가
       });
     
       console.log("User joined:", { 

@@ -48,6 +48,73 @@ function App() {
       setIdToken(storedIdToken);
     }
   }, []);
+
+  // 카카오 SDK 초기화
+  useEffect(() => {
+    if (window.Kakao && !window.Kakao.isInitialized()) {
+      window.Kakao.init('b6e5e78104c937096dd67d2010366278'); // 카카오 JavaScript 앱 키
+      console.log('Kakao SDK initialized');
+    }
+  }, []);
+
+  // 카카오 로그인 처리 함수
+  const handleKakaoLogin = () => {
+    if (!window.Kakao) {
+      alert('카카오 SDK가 로드되지 않았습니다. 페이지를 새로고침해주세요.');
+      return;
+    }
+
+    window.Kakao.Auth.login({
+      success: function(authObj) {
+        console.log('Kakao login success:', authObj);
+        
+        // 사용자 정보 가져오기
+        window.Kakao.API.request({
+          url: '/v2/user/me',
+          success: function(response) {
+            console.log('Kakao user info:', response);
+            
+            const kakaoId = response.id;
+            const kakaoNickname = response.kakao_account?.profile?.nickname || `카카오사용자${kakaoId}`;
+            
+            // 기존에 저장된 닉네임이 있으면 그것을 보존
+            const existingNickname = localStorage.getItem("nickname");
+            const existingUserUuid = localStorage.getItem("userUuid");
+            
+            console.log("Kakao login - existing nickname:", existingNickname);
+            console.log("Kakao login - existing userUuid:", existingUserUuid);
+            console.log("Kakao login - kakao nickname:", kakaoNickname);
+            
+            // 기존 사용자인 경우 기존 닉네임을 보존
+            if (existingUserUuid && existingNickname) {
+              console.log("Kakao login - preserving existing nickname:", existingNickname);
+              setUsername(existingNickname);
+            } else {
+              // 새 사용자인 경우 카카오 닉네임 사용
+              console.log("Kakao login - new user, using kakao nickname:", kakaoNickname);
+              setUsername(kakaoNickname);
+              localStorage.setItem("nickname", kakaoNickname);
+            }
+            
+            // 카카오 토큰 정보 저장 (구글과 구분하기 위해 kakaoToken으로 저장)
+            const kakaoToken = `kakao_${kakaoId}_${authObj.access_token}`;
+            setIdToken(kakaoToken);
+            localStorage.setItem("idToken", kakaoToken);
+            
+            console.log("Kakao login successful:", existingUserUuid && existingNickname ? existingNickname : kakaoNickname);
+          },
+          fail: function(error) {
+            console.error('Failed to get Kakao user info:', error);
+            alert('카카오 사용자 정보를 가져오는데 실패했습니다.');
+          }
+        });
+      },
+      fail: function(err) {
+        console.error('Kakao login failed:', err);
+        alert('카카오 로그인에 실패했습니다.');
+      }
+    });
+  };
   const [userMoney, setUserMoney] = useState(0);
   const [userAmber, setUserAmber] = useState(0);
   const [userStarPieces, setUserStarPieces] = useState(0);
@@ -1445,11 +1512,31 @@ function App() {
         // 호박석 지급
         setTimeout(async () => {
           await addAmber(amberReward);
-          setTimeout(() => {
-            setShowBattleModal(false);
-            setBattleState(null);
-            alert(`승리! 호박석 ${amberReward}개를 획득했습니다!${prefixBonus}`);
-          }, 1000);
+        setTimeout(() => {
+          // 승리 시 탐사 쿨타임 설정 (10분)
+          const explorationCooldownTime = 10 * 60 * 1000; // 10분
+          setExplorationCooldown(explorationCooldownTime);
+          localStorage.setItem('explorationCooldown', explorationCooldownTime.toString());
+          localStorage.setItem('explorationCooldownTime', Date.now().toString());
+          
+          // 서버에도 탐사 쿨타임 설정
+          const setServerCooldown = async () => {
+            try {
+              const params = { username, userUuid };
+              await axios.post(`${serverUrl}/api/set-exploration-cooldown`, {
+                cooldownDuration: explorationCooldownTime
+              }, { params });
+              console.log(`Server exploration cooldown set after victory: ${explorationCooldownTime}ms`);
+            } catch (error) {
+              console.error('Failed to set server exploration cooldown after victory:', error);
+            }
+          };
+          setServerCooldown();
+          
+          setShowBattleModal(false);
+          setBattleState(null);
+          alert(`승리! 호박석 ${amberReward}개를 획득했습니다!${prefixBonus}`);
+        }, 1000);
         }, 1000);
 
         return {
@@ -1500,6 +1587,26 @@ function App() {
         newLog.push(`패배했습니다... 재료를 잃었습니다.`);
         
         setTimeout(() => {
+          // 패배 시 탐사 쿨타임 설정 (10분)
+          const explorationCooldownTime = 10 * 60 * 1000; // 10분
+          setExplorationCooldown(explorationCooldownTime);
+          localStorage.setItem('explorationCooldown', explorationCooldownTime.toString());
+          localStorage.setItem('explorationCooldownTime', Date.now().toString());
+          
+          // 서버에도 탐사 쿨타임 설정
+          const setServerCooldown = async () => {
+            try {
+              const params = { username, userUuid };
+              await axios.post(`${serverUrl}/api/set-exploration-cooldown`, {
+                cooldownDuration: explorationCooldownTime
+              }, { params });
+              console.log(`Server exploration cooldown set after defeat: ${explorationCooldownTime}ms`);
+            } catch (error) {
+              console.error('Failed to set server exploration cooldown after defeat:', error);
+            }
+          };
+          setServerCooldown();
+          
           setShowBattleModal(false);
           setBattleState(null);
           alert("패배했습니다...");
@@ -1920,7 +2027,7 @@ function App() {
             
             <div className="space-y-6">
               {/* Google 로그인 영역 */}
-              <div className="text-center">
+              <div className="text-center space-y-4">
                 <button
                   className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-4 rounded-xl transition-all duration-300 transform hover:scale-105 hover:shadow-2xl flex items-center justify-center gap-3 glow-effect"
                   onClick={() => {
@@ -1952,6 +2059,62 @@ function App() {
                   <Fish className="w-5 h-5" />
                   <span className="text-lg">Google 계정으로 시작하기</span>
                 </button>
+
+                {/* 카카오 로그인 버튼 */}
+                <button
+                  className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-semibold py-4 rounded-xl transition-all duration-300 transform hover:scale-105 hover:shadow-2xl flex items-center justify-center gap-3"
+                  onClick={handleKakaoLogin}
+                >
+                  <div className="w-5 h-5 bg-black rounded-sm flex items-center justify-center">
+                    <span className="text-yellow-400 text-xs font-bold">K</span>
+                  </div>
+                  <span className="text-lg">카카오 계정으로 시작하기</span>
+                </button>
+
+                {/* 구분선 */}
+                <div className="relative py-2">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-600"></div>
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="px-4 bg-gray-900 text-gray-400">또는</span>
+                  </div>
+                </div>
+
+                {/* 게스트 로그인 버튼 */}
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="닉네임을 입력하세요"
+                      className="flex-1 px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent"
+                      value={usernameInput}
+                      onChange={(e) => setUsernameInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && usernameInput.trim()) {
+                          setUsername(usernameInput.trim());
+                          localStorage.setItem("nickname", usernameInput.trim());
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        if (usernameInput.trim()) {
+                          setUsername(usernameInput.trim());
+                          localStorage.setItem("nickname", usernameInput.trim());
+                        } else {
+                          alert("닉네임을 입력해주세요!");
+                        }
+                      }}
+                      className="px-6 py-3 bg-gray-700/50 hover:bg-gray-600/50 text-white rounded-lg transition-all duration-300 transform hover:scale-105 border border-gray-600/50"
+                    >
+                      시작
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400 text-center">
+                    게스트로 시작하면 데이터가 저장되지 않습니다
+                  </p>
+                </div>
                 
                 {/* 모바일 사용자를 위한 안내 메시지 */}
                 {/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) && (
