@@ -268,18 +268,21 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
         const userUuid = await generateNextUuid();
         user = await UserUuidModel.create({
           userUuid,
-          username: username || "구글사용자",
-          displayName: username || "구글사용자",
+          username: username || "구글사용자", // 구글에서 제공하는 원래 이름
+          displayName: username || "구글사용자", // 초기에는 구글 이름과 동일, 나중에 사용자가 변경
           originalGoogleId: googleId,
           isGuest: false,
           termsAccepted: false,
           darkMode: true
         });
-        console.log(`Created new Google user: ${userUuid} (${username})`);
-      } else if (user.username !== username && username) {
-        // 구글 사용자의 경우 기존 닉네임 유지 (사용자가 변경한 닉네임 보존)
-        console.log(`Google user found with existing nickname: ${user.username} (keeping instead of ${username})`);
-        // 닉네임 업데이트 하지 않음 - 기존 닉네임 유지
+        console.log(`Created new Google user: ${userUuid} (username: ${username})`);
+      } else {
+        // 구글 사용자의 경우 username(구글 이름)은 업데이트하지만 displayName은 보존
+        if (user.username !== username && username) {
+          console.log(`Updating Google username from ${user.username} to ${username}, keeping displayName: ${user.displayName}`);
+          user.username = username; // 구글 이름 업데이트
+          await user.save();
+        }
       }
     } else if (kakaoId) {
       // 카카오 로그인 사용자
@@ -288,18 +291,21 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
         const userUuid = await generateNextUuid();
         user = await UserUuidModel.create({
           userUuid,
-          username: username || "카카오사용자",
-          displayName: username || "카카오사용자",
+          username: username || "카카오사용자", // 카카오에서 제공하는 원래 닉네임
+          displayName: username || "카카오사용자", // 초기에는 카카오 닉네임과 동일, 나중에 사용자가 변경
           originalKakaoId: kakaoId,
           isGuest: false,
           termsAccepted: false,
           darkMode: true
         });
-        console.log(`Created new Kakao user: ${userUuid} (${username})`);
-      } else if (user.username !== username && username) {
-        // 카카오 사용자의 경우 기존 닉네임 유지 (사용자가 변경한 닉네임 보존)
-        console.log(`Kakao user found with existing nickname: ${user.username} (keeping instead of ${username})`);
-        // 닉네임 업데이트 하지 않음 - 기존 닉네임 유지
+        console.log(`Created new Kakao user: ${userUuid} (username: ${username})`);
+      } else {
+        // 카카오 사용자의 경우 username(카카오 닉네임)은 업데이트하지만 displayName은 보존
+        if (user.username !== username && username) {
+          console.log(`Updating Kakao username from ${user.username} to ${username}, keeping displayName: ${user.displayName}`);
+          user.username = username; // 카카오 닉네임 업데이트
+          await user.save();
+        }
       }
     } else {
       // 게스트 사용자 - 기존 사용자를 찾되, 없으면 새로 생성
@@ -1869,6 +1875,61 @@ app.get("/api/user-settings/:userId", async (req, res) => {
   } catch (error) {
     console.error("Failed to get user settings:", error);
     res.status(500).json({ error: "사용자 설정 조회에 실패했습니다: " + error.message });
+  }
+});
+
+// 사용자 displayName 설정 API (최초 닉네임 설정용)
+app.post("/api/set-display-name/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { username, userUuid, googleId } = req.query;
+    const { displayName } = req.body;
+    
+    console.log("=== SET DISPLAY NAME API ===");
+    console.log("Request params:", { userId, username, userUuid, googleId });
+    console.log("Request body:", { displayName });
+    
+    if (!displayName || !displayName.trim()) {
+      return res.status(400).json({ error: "닉네임이 필요합니다." });
+    }
+    
+    let user;
+    if (userUuid && userUuid !== 'null' && userUuid !== 'undefined') {
+      user = await UserUuidModel.findOne({ userUuid });
+    } else if (userId !== 'null') {
+      // 구글/카카오 사용자 - originalGoogleId로 찾기
+      if (googleId) {
+        console.log(`Looking for Google user with originalGoogleId: ${googleId}`);
+        user = await UserUuidModel.findOne({ originalGoogleId: googleId });
+      } else {
+        // 구글 ID가 없으면 username으로 찾기 (fallback)
+        user = await UserUuidModel.findOne({ username, isGuest: false });
+      }
+    } else {
+      // 게스트 사용자
+      user = await UserUuidModel.findOne({ username, isGuest: true });
+    }
+    
+    if (!user) {
+      return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+    }
+    
+    // displayName만 업데이트 (username은 소셜 이름으로 유지)
+    user.displayName = displayName.trim();
+    await user.save();
+    
+    console.log(`Display name updated for ${user.userUuid}: ${displayName}`);
+    res.json({ 
+      success: true, 
+      message: "닉네임이 설정되었습니다.",
+      userUuid: user.userUuid,
+      username: user.username,
+      displayName: user.displayName
+    });
+    
+  } catch (error) {
+    console.error("Failed to set display name:", error);
+    res.status(500).json({ error: "닉네임 설정에 실패했습니다: " + error.message });
   }
 });
 

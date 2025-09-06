@@ -242,15 +242,15 @@ function App() {
       
       console.log("User settings loaded from server:", settings);
       
-      // 상태 업데이트
-      setUsername(settings.username || '');
+      // 상태 업데이트 (displayName을 게임 닉네임으로 사용)
+      setUsername(settings.displayName || settings.username || '');
       setUserUuid(settings.userUuid || null);
       setIsDarkMode(settings.darkMode !== undefined ? settings.darkMode : true);
       setFishingCooldown(settings.fishingCooldown || 0);
       setExplorationCooldown(settings.explorationCooldown || 0);
       
       // 로컬스토리지에도 최소한의 정보만 저장 (호환성을 위해)
-      if (settings.username) localStorage.setItem("nickname", settings.username);
+      if (settings.displayName) localStorage.setItem("nickname", settings.displayName);
       if (settings.userUuid) localStorage.setItem("userUuid", settings.userUuid);
       if (settings.originalGoogleId) localStorage.setItem("googleId", settings.originalGoogleId);
       localStorage.setItem("darkMode", settings.darkMode.toString());
@@ -1216,9 +1216,22 @@ function App() {
         return;
       }
 
-      // 닉네임 설정
-      setUsername(initialNickname.trim());
-      localStorage.setItem("nickname", initialNickname.trim());
+      // 서버에 displayName 설정 (새로운 API 사용)
+      const userId = idToken ? 'user' : 'null';
+      const displayNameResponse = await axios.post(`${serverUrl}/api/set-display-name/${userId}`, {
+        displayName: initialNickname.trim()
+      }, { params });
+
+      if (!displayNameResponse.data.success) {
+        alert("닉네임 설정에 실패했습니다.");
+        return;
+      }
+
+      // 클라이언트 상태 업데이트
+      setUsername(displayNameResponse.data.displayName); // displayName을 username으로 사용
+      setUserUuid(displayNameResponse.data.userUuid);
+      localStorage.setItem("nickname", displayNameResponse.data.displayName);
+      localStorage.setItem("userUuid", displayNameResponse.data.userUuid);
       
       // 서버에 약관 동의 저장
       await saveUserSettings({ termsAccepted: true });
@@ -1226,11 +1239,12 @@ function App() {
       setShowTermsModal(false);
       setIsFirstLogin(false);
       
-      // 소켓 연결
+      // 소켓 연결 (displayName을 사용)
       const socket = getSocket();
-      socket.emit("chat:join", { username: initialNickname.trim(), idToken, userUuid });
+      socket.emit("chat:join", { username: displayNameResponse.data.displayName, idToken, userUuid: displayNameResponse.data.userUuid });
       
-      console.log("Initial nickname set:", initialNickname.trim());
+      console.log("Initial nickname set:", displayNameResponse.data.displayName);
+      console.log("User data:", displayNameResponse.data);
     } catch (error) {
       console.error("Failed to set initial nickname:", error);
       const errorMessage = error.response?.data?.error || "닉네임 설정에 실패했습니다.";
