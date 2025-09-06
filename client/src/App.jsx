@@ -522,8 +522,39 @@ function App() {
       console.log("=== USERS UPDATE DEBUG ===");
       console.log("Received users list:", users);
       console.log("Users count:", users?.length || 0);
-      setConnectedUsers(users); // connectedUsers 상태 업데이트
-      setOnlineUsers(users);
+      
+      // 실시간 업데이트 데이터 검증
+      if (!Array.isArray(users)) {
+        console.error('Invalid users update format:', users);
+        return;
+      }
+      
+      // 사용자 데이터 유효성 재검증
+      const validUsers = users.filter(user => {
+        if (!user.userUuid || !user.username) {
+          console.warn('Invalid user in real-time update:', user);
+          return false;
+        }
+        return true;
+      });
+      
+      // 중복 제거
+      const uniqueUsers = validUsers.reduce((acc, user) => {
+        const existingIndex = acc.findIndex(u => u.userUuid === user.userUuid);
+        if (existingIndex >= 0) {
+          // 더 최근 데이터로 교체
+          if (!acc[existingIndex].joinTime || (user.joinTime && user.joinTime > acc[existingIndex].joinTime)) {
+            acc[existingIndex] = user;
+          }
+        } else {
+          acc.push(user);
+        }
+        return acc;
+      }, []);
+      
+      console.log(`Real-time update: ${uniqueUsers.length} validated users`);
+      setConnectedUsers(uniqueUsers); // connectedUsers 상태 업데이트
+      setOnlineUsers(uniqueUsers);
     };
 
     const onReactionUpdate = (data) => {
@@ -858,24 +889,63 @@ function App() {
     });
   }, [messages, username, serverUrl]);
 
-  // 접속자 목록 가져오기
+  // 접속자 목록 가져오기 (보안 강화)
   useEffect(() => {
     const fetchConnectedUsers = async () => {
       try {
         console.log('Fetching connected users');
         const res = await axios.get(`${serverUrl}/api/connected-users`);
         console.log('Connected users response:', res.data);
-        setConnectedUsers(res.data.users || []);
+        
+        // 서버 응답 검증
+        if (!res.data.users || !Array.isArray(res.data.users)) {
+          console.error('Invalid connected users response format');
+          return;
+        }
+        
+        // 사용자 데이터 유효성 검증
+        const validUsers = res.data.users.filter(user => {
+          // 필수 필드 검증
+          if (!user.userUuid || !user.username) {
+            console.warn('Invalid user data:', user);
+            return false;
+          }
+          
+          // 체크섬 검증 (선택적 - 서버에서 제공하는 경우)
+          if (user.checksum) {
+            // 클라이언트에서는 체크섬을 검증할 수 없지만, 존재 여부는 확인
+            console.log(`User ${user.username} has checksum: ${user.checksum}`);
+          }
+          
+          return true;
+        });
+        
+        // 중복 사용자 제거 (userUuid 기준)
+        const uniqueUsers = validUsers.reduce((acc, user) => {
+          const existingIndex = acc.findIndex(u => u.userUuid === user.userUuid);
+          if (existingIndex >= 0) {
+            // 더 최근 데이터로 교체
+            if (user.lastSeen > acc[existingIndex].lastSeen) {
+              acc[existingIndex] = user;
+            }
+          } else {
+            acc.push(user);
+          }
+          return acc;
+        }, []);
+        
+        console.log(`Validated ${uniqueUsers.length} unique users out of ${res.data.users.length} received`);
+        setConnectedUsers(uniqueUsers);
         
         // 접속자들의 관리자 상태도 확인
-        res.data.users?.forEach(async (user) => {
+        uniqueUsers.forEach(async (user) => {
           if (user.username !== username && !userAdminStatus.hasOwnProperty(user.username)) {
             await checkUserAdminStatus(user.username);
           }
         });
       } catch (e) {
         console.error('Failed to fetch connected users:', e);
-        setConnectedUsers([]);
+        // 네트워크 오류 시 기존 목록 유지 (빈 배열로 초기화하지 않음)
       }
     };
     
@@ -1005,25 +1075,24 @@ function App() {
         alert(`낚시하기 쿨타임이 ${formatCooldown(fishingCooldown)} 남았습니다!`);
         return;
       }
-      // 서버에 낚시 쿨타임 설정
-      const cooldownTime = getFishingCooldownTime();
+      // 서버에 낚시 쿨타임 설정 (서버에서 쿨타임 계산)
       try {
         const params = { username, userUuid };
-        await axios.post(`${serverUrl}/api/set-fishing-cooldown`, {
-          cooldownDuration: cooldownTime
-        }, { params });
+        const response = await axios.post(`${serverUrl}/api/set-fishing-cooldown`, {}, { params });
         
-        // 클라이언트 쿨타임도 즉시 설정
-        setFishingCooldown(cooldownTime);
+        // 서버에서 계산된 쿨타임으로 클라이언트 설정
+        const serverCooldownTime = response.data.remainingTime || 0;
+        setFishingCooldown(serverCooldownTime);
         
         // 서버에도 쿨타임 저장
-        await saveUserSettings({ fishingCooldown: cooldownTime });
+        await saveUserSettings({ fishingCooldown: serverCooldownTime });
         
-        console.log(`Fishing cooldown set: ${cooldownTime}ms`);
+        console.log(`Fishing cooldown set: ${serverCooldownTime}ms`);
       } catch (error) {
         console.error('Failed to set fishing cooldown:', error);
-        // 서버 설정 실패 시에도 클라이언트 쿨타임은 설정
-        setFishingCooldown(cooldownTime);
+        // 서버 설정 실패 시 기본 쿨타임 설정 (5분)
+        const fallbackCooldownTime = 5 * 60 * 1000; // 5분
+        setFishingCooldown(fallbackCooldownTime);
       }
     }
     
@@ -1681,12 +1750,24 @@ function App() {
       return;
     }
 
-    // 탐사 쿨타임 설정 (10분)
-    const explorationCooldownTime = 10 * 60 * 1000; // 10분
-      setExplorationCooldown(explorationCooldownTime);
-    
-    // 서버에 쿨타임 저장
-    await saveUserSettings({ explorationCooldown: explorationCooldownTime });
+    // 서버에 탐사 시작 쿨타임 설정 요청
+    try {
+      const params = { username, userUuid };
+      const response = await axios.post(`${serverUrl}/api/set-exploration-cooldown`, {
+        type: 'start'
+      }, { params });
+      
+      const serverCooldownTime = response.data.remainingTime || (10 * 60 * 1000);
+      setExplorationCooldown(serverCooldownTime);
+      
+      // 서버에 쿨타임 저장
+      await saveUserSettings({ explorationCooldown: serverCooldownTime });
+    } catch (error) {
+      console.error('Failed to set exploration start cooldown:', error);
+      // 실패 시 기본값 설정
+      const fallbackCooldownTime = 10 * 60 * 1000;
+      setExplorationCooldown(fallbackCooldownTime);
+    }
 
     console.log(`Starting exploration with ${material.material}, current count: ${material.count}`);
 
@@ -1760,12 +1841,17 @@ function App() {
         }
       }
       
-      // 탐사 쿨타임을 절반으로 설정 (5분)
-      const halfCooldownTime = 5 * 60 * 1000; // 5분
-      setExplorationCooldown(halfCooldownTime);
+      // 서버에 도망 쿨타임 설정 요청
+      const params = { username, userUuid };
+      const response = await axios.post(`${serverUrl}/api/set-exploration-cooldown`, {
+        type: 'flee'
+      }, { params });
+      
+      const serverCooldownTime = response.data.remainingTime || (5 * 60 * 1000);
+      setExplorationCooldown(serverCooldownTime);
       
       // 서버에 쿨타임 저장
-      await saveUserSettings({ explorationCooldown: halfCooldownTime });
+      await saveUserSettings({ explorationCooldown: serverCooldownTime });
       
       // 도망 메시지 추가
       const fleeLog = [...battleState.log, `${battleState.enemy}에게서 도망쳤습니다!`, `탐사 쿨타임이 절반으로 감소했습니다. (5분)`];
@@ -1817,13 +1903,25 @@ function App() {
         // 호박석 지급
         setTimeout(async () => {
           await addAmber(amberReward);
-          setTimeout(() => {
-          // 승리 시 탐사 쿨타임 설정 (10분)
-          const explorationCooldownTime = 10 * 60 * 1000; // 10분
-          setExplorationCooldown(explorationCooldownTime);
-          
-          // 서버에 쿨타임 저장
-          saveUserSettings({ explorationCooldown: explorationCooldownTime });
+          setTimeout(async () => {
+            // 서버에 승리 쿨타임 설정 요청
+            try {
+              const params = { username, userUuid };
+              const response = await axios.post(`${serverUrl}/api/set-exploration-cooldown`, {
+                type: 'victory'
+              }, { params });
+              
+              const serverCooldownTime = response.data.remainingTime || (10 * 60 * 1000);
+              setExplorationCooldown(serverCooldownTime);
+              
+              // 서버에 쿨타임 저장
+              await saveUserSettings({ explorationCooldown: serverCooldownTime });
+            } catch (error) {
+              console.error('Failed to set victory cooldown:', error);
+              // 실패 시 기본값 설정
+              const fallbackCooldownTime = 10 * 60 * 1000;
+              setExplorationCooldown(fallbackCooldownTime);
+            }
           
             setShowBattleModal(false);
             setBattleState(null);
@@ -1878,13 +1976,25 @@ function App() {
         // 패배
         newLog.push(`패배했습니다... 재료를 잃었습니다.`);
         
-        setTimeout(() => {
-          // 패배 시 탐사 쿨타임 설정 (10분)
-          const explorationCooldownTime = 10 * 60 * 1000; // 10분
-          setExplorationCooldown(explorationCooldownTime);
-          
-          // 서버에 쿨타임 저장
-          saveUserSettings({ explorationCooldown: explorationCooldownTime });
+        setTimeout(async () => {
+          // 서버에 패배 쿨타임 설정 요청
+          try {
+            const params = { username, userUuid };
+            const response = await axios.post(`${serverUrl}/api/set-exploration-cooldown`, {
+              type: 'defeat'
+            }, { params });
+            
+            const serverCooldownTime = response.data.remainingTime || (10 * 60 * 1000);
+            setExplorationCooldown(serverCooldownTime);
+            
+            // 서버에 쿨타임 저장
+            await saveUserSettings({ explorationCooldown: serverCooldownTime });
+          } catch (error) {
+            console.error('Failed to set defeat cooldown:', error);
+            // 실패 시 기본값 설정
+            const fallbackCooldownTime = 10 * 60 * 1000;
+            setExplorationCooldown(fallbackCooldownTime);
+          }
           
           setShowBattleModal(false);
           setBattleState(null);
@@ -2900,60 +3010,57 @@ function App() {
                             }`}>{m.content}</span>
                           </div>
                             
-                            {/* 반응 버튼들과 표시 영역 (인스타그램 스타일) */}
-                            <div className="flex items-center justify-between mt-1">
-                              {/* 반응 버튼들 (왼쪽) */}
-                              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                                <button
-                                  onClick={() => addReaction(i, 'heart')}
-                                  className={`p-1 rounded-full hover:scale-110 transition-all duration-200 ${
-                                    m.reactions?.heart?.includes(username)
-                                      ? "text-red-500" 
-                                      : isDarkMode ? "text-gray-400 hover:text-red-400" : "text-gray-500 hover:text-red-500"
-                                  }`}
-                                  title="하트"
-                                >
-                                  <Heart className={`w-3.5 h-3.5 ${
-                                    m.reactions?.heart?.includes(username) ? "fill-current" : ""
-                                  }`} />
-                                </button>
-                                <button
-                                  onClick={() => addReaction(i, 'thumbsup')}
-                                  className={`p-1 rounded-full hover:scale-110 transition-all duration-200 ${
-                                    m.reactions?.thumbsup?.includes(username)
-                                      ? "text-blue-500" 
-                                      : isDarkMode ? "text-gray-400 hover:text-blue-400" : "text-gray-500 hover:text-blue-500"
-                                  }`}
-                                  title="좋아요"
-                                >
-                                  <ThumbsUp className={`w-3.5 h-3.5 ${
-                                    m.reactions?.thumbsup?.includes(username) ? "fill-current" : ""
-                                  }`} />
-                                </button>
-                              </div>
-                              
-                              {/* 반응 카운트 표시 (오른쪽) */}
-                              {m.reactions && Object.keys(m.reactions).length > 0 && (
-                                <div className="flex gap-1">
-                                  {Object.entries(m.reactions).map(([reactionType, users]) => (
-                                    <div
-                                      key={reactionType}
-                                      className={`flex items-center gap-0.5 text-xs ${
-                                        isDarkMode ? "text-gray-400" : "text-gray-500"
-                                      }`}
-                                      title={`${users.join(', ')}님이 반응했습니다`}
-                                    >
-                                      {reactionType === 'heart' ? (
-                                        <Heart className="w-2.5 h-2.5 text-red-400 fill-current" />
-                                      ) : (
-                                        <ThumbsUp className="w-2.5 h-2.5 text-blue-400 fill-current" />
-                                      )}
-                                      <span className="text-xs">{users.length}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                            {/* 반응 버튼들 (호버 시 표시) */}
+                            <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                              <button
+                                onClick={() => addReaction(i, 'heart')}
+                                className={`p-1 rounded-full hover:scale-110 transition-all duration-200 ${
+                                  m.reactions?.heart?.includes(username)
+                                    ? "text-red-500" 
+                                    : isDarkMode ? "text-gray-400 hover:text-red-400" : "text-gray-500 hover:text-red-500"
+                                }`}
+                                title="하트"
+                              >
+                                <Heart className={`w-3.5 h-3.5 ${
+                                  m.reactions?.heart?.includes(username) ? "fill-current" : ""
+                                }`} />
+                              </button>
+                              <button
+                                onClick={() => addReaction(i, 'thumbsup')}
+                                className={`p-1 rounded-full hover:scale-110 transition-all duration-200 ${
+                                  m.reactions?.thumbsup?.includes(username)
+                                    ? "text-blue-500" 
+                                    : isDarkMode ? "text-gray-400 hover:text-blue-400" : "text-gray-500 hover:text-blue-500"
+                                }`}
+                                title="좋아요"
+                              >
+                                <ThumbsUp className={`w-3.5 h-3.5 ${
+                                  m.reactions?.thumbsup?.includes(username) ? "fill-current" : ""
+                                }`} />
+                              </button>
                             </div>
+                            
+                            {/* 반응 카운트 표시 (말풍선 오른쪽 아래) */}
+                            {m.reactions && Object.keys(m.reactions).length > 0 && (
+                              <div className="flex gap-1 justify-end mt-1">
+                                {Object.entries(m.reactions).map(([reactionType, users]) => (
+                                  <div
+                                    key={reactionType}
+                                    className={`flex items-center gap-0.5 text-xs ${
+                                      isDarkMode ? "text-gray-400" : "text-gray-500"
+                                    }`}
+                                    title={`${users.join(', ')}님이 반응했습니다`}
+                                  >
+                                    {reactionType === 'heart' ? (
+                                      <Heart className="w-2.5 h-2.5 text-red-400 fill-current" />
+                                    ) : (
+                                      <ThumbsUp className="w-2.5 h-2.5 text-blue-400 fill-current" />
+                                    )}
+                                    <span className="text-xs">{users.length}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -3711,7 +3818,7 @@ function App() {
                   <div className="flex justify-between">
                     <span className={`text-sm ${
                       isDarkMode ? "text-gray-400" : "text-gray-600"
-                    }`}>총 낚은 물고기</span>
+                    }`}>보유 물고기</span>
                     <span className={`text-sm font-medium ${
                       isDarkMode ? "text-blue-400" : "text-blue-600"
                     }`}>{myCatches}마리</span>
@@ -4256,7 +4363,7 @@ function App() {
                     </div>
                     <div className={`text-xs ${
                       isDarkMode ? "text-gray-500" : "text-gray-600"
-                    }`}>총 낚은 물고기</div>
+                    }`}>보유 물고기</div>
                   </div>
                   <div className="text-center">
                     <div className={`font-bold text-lg ${
@@ -4704,7 +4811,7 @@ function App() {
                   <div className={`text-left space-y-1 text-sm ${
                     isDarkMode ? "text-gray-400" : "text-gray-600"
                   }`}>
-                    <div>• 모든 낚은 물고기 ({myCatches}마리)</div>
+                    <div>• 모든 보유 물고기 ({myCatches}마리)</div>
                     <div>• 골드 ({userMoney.toLocaleString()}골드)</div>
                     <div>• 호박석 ({userAmber.toLocaleString()}개)</div>
                     <div>• 장착된 장비 ({userEquipment.fishingRod || '없음'})</div>

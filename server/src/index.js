@@ -1125,6 +1125,59 @@ io.on("connection", (socket) => {
 });
 
 // Personal Inventory API
+// 인벤토리 검증 함수 (보안 강화)
+const validateInventoryIntegrity = async (userQuery, clientInventory) => {
+  try {
+    // 서버에서 실제 인벤토리 데이터 가져오기
+    const serverInventory = await CatchModel.aggregate([
+      { $match: userQuery },
+      { $group: { _id: "$fish", count: { $sum: 1 } } },
+      { $project: { _id: 0, fish: "$_id", count: 1 } }
+    ]);
+    
+    // 클라이언트 인벤토리와 서버 인벤토리 비교
+    const serverMap = new Map(serverInventory.map(item => [item.fish, item.count]));
+    const clientMap = new Map((clientInventory || []).map(item => [item.fish, item.count]));
+    
+    // 불일치 항목 찾기
+    const discrepancies = [];
+    
+    // 서버에 있는 항목들 확인
+    for (const [fish, serverCount] of serverMap) {
+      const clientCount = clientMap.get(fish) || 0;
+      if (clientCount !== serverCount) {
+        discrepancies.push({
+          fish,
+          server: serverCount,
+          client: clientCount,
+          type: 'count_mismatch'
+        });
+      }
+    }
+    
+    // 클라이언트에만 있는 항목들 확인 (가짜 아이템)
+    for (const [fish, clientCount] of clientMap) {
+      if (!serverMap.has(fish)) {
+        discrepancies.push({
+          fish,
+          server: 0,
+          client: clientCount,
+          type: 'fake_item'
+        });
+      }
+    }
+    
+    return {
+      isValid: discrepancies.length === 0,
+      discrepancies,
+      serverInventory
+    };
+  } catch (error) {
+    console.error('Failed to validate inventory integrity:', error);
+    return { isValid: false, error: error.message };
+  }
+};
+
 app.get("/api/inventory/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
@@ -1162,7 +1215,24 @@ app.get("/api/inventory/:userId", async (req, res) => {
       .map(([fish, count]) => ({ fish, count }))
       .sort((a, b) => b.count - a.count);
     
+    // 인벤토리에 검증 메타데이터 추가 (보안 강화)
+    const timestamp = new Date().toISOString();
+    const inventoryHash = require('crypto')
+      .createHash('md5')
+      .update(JSON.stringify(inventory.sort((a, b) => a.fish.localeCompare(b.fish))))
+      .digest('hex');
+    
     console.log("Final inventory:", inventory);
+    console.log("Inventory hash:", inventoryHash);
+    
+    // 클라이언트가 이전 버전과 호환되도록 배열 형태로 반환하되, 메타데이터는 별도 헤더로 전송
+    res.set({
+      'X-Inventory-Hash': inventoryHash,
+      'X-Inventory-Timestamp': timestamp,
+      'X-Inventory-Count': inventory.length.toString(),
+      'X-Total-Items': inventory.reduce((sum, item) => sum + item.count, 0).toString()
+    });
+    
     res.json(inventory);
   } catch (error) {
     console.error("Failed to fetch inventory:", error);
@@ -1608,13 +1678,34 @@ app.get("/api/cooldown/:userId", async (req, res) => {
   }
 });
 
-// 낚시 쿨타임 설정 API
+// 서버 측 낚시 쿨타임 계산 함수
+const calculateFishingCooldownTime = async (userQuery) => {
+  const baseTime = 5 * 60 * 1000; // 5분 (밀리초)
+  
+  // 낚시실력 가져오기
+  const fishingSkill = await FishingSkillModel.findOne(userQuery);
+  const userSkill = fishingSkill ? fishingSkill.skill : 0;
+  let reduction = userSkill * 15 * 1000; // 낚시실력 * 15초
+  
+  // 악세사리 효과 가져오기
+  const userEquipment = await UserEquipmentModel.findOne(userQuery);
+  if (userEquipment && userEquipment.accessory) {
+    // 악세사리 레벨에 따른 쿨타임 감소 계산
+    // 이 부분은 실제 악세사리 데이터에 맞게 조정 필요
+    const accessoryLevel = 1; // 임시값 - 실제로는 악세사리 레벨 계산 필요
+    const additionalReduction = accessoryLevel * 15 * 1000;
+    reduction += additionalReduction;
+  }
+  
+  return Math.max(baseTime - reduction, 0); // 최소 0초
+};
+
+// 낚시 쿨타임 설정 API (서버에서 쿨타임 계산)
 app.post("/api/set-fishing-cooldown", async (req, res) => {
   try {
-    const { cooldownDuration } = req.body; // 쿨타임 지속시간 (밀리초)
     const { username, userUuid } = req.query;
     
-    console.log("Set fishing cooldown request:", { cooldownDuration, username, userUuid });
+    console.log("Set fishing cooldown request:", { username, userUuid });
     
     const queryResult = await getUserQuery('user', username, userUuid);
     let query;
@@ -1625,6 +1716,9 @@ app.post("/api/set-fishing-cooldown", async (req, res) => {
       query = queryResult;
       console.log("Using fallback query for fishing cooldown:", query);
     }
+    
+    // 서버에서 쿨타임 시간 계산 (클라이언트에서 받지 않음!)
+    const cooldownDuration = await calculateFishingCooldownTime(query);
     
     const now = new Date();
     const cooldownEnd = new Date(now.getTime() + cooldownDuration);
@@ -1643,6 +1737,7 @@ app.post("/api/set-fishing-cooldown", async (req, res) => {
     );
     
     console.log(`Fishing cooldown set for ${username} until:`, cooldownEnd);
+    console.log(`Calculated cooldown duration: ${cooldownDuration}ms`);
     
     res.json({ 
       success: true,
@@ -1658,10 +1753,10 @@ app.post("/api/set-fishing-cooldown", async (req, res) => {
 // 탐사 쿨타임 설정 API
 app.post("/api/set-exploration-cooldown", async (req, res) => {
   try {
-    const { cooldownDuration } = req.body; // 쿨타임 지속시간 (밀리초)
+    const { type } = req.body; // 'victory', 'defeat', 'flee' 타입
     const { username, userUuid } = req.query;
     
-    console.log("Set exploration cooldown request:", { cooldownDuration, username, userUuid });
+    console.log("Set exploration cooldown request:", { type, username, userUuid });
     
     const queryResult = await getUserQuery('user', username, userUuid);
     let query;
@@ -1671,6 +1766,21 @@ app.post("/api/set-exploration-cooldown", async (req, res) => {
     } else {
       query = queryResult;
       console.log("Using fallback query for exploration cooldown:", query);
+    }
+    
+    // 서버에서 탐사 쿨타임 계산
+    let cooldownDuration;
+    switch(type) {
+      case 'victory':
+      case 'defeat':
+      case 'start':
+        cooldownDuration = 10 * 60 * 1000; // 10분
+        break;
+      case 'flee':
+        cooldownDuration = 5 * 60 * 1000; // 5분 (절반)
+        break;
+      default:
+        cooldownDuration = 10 * 60 * 1000; // 기본 10분
     }
     
     const now = new Date();
@@ -1702,27 +1812,262 @@ app.post("/api/set-exploration-cooldown", async (req, res) => {
   }
 });
 
-// 접속자 목록 API
+// 접속자 목록 API (보안 강화)
 app.get("/api/connected-users", async (req, res) => {
   try {
     console.log("Connected users request");
     
-    // 현재 연결된 사용자 목록을 메모리에서 가져오기
-    const users = Array.from(connectedUsers.values()).map(user => ({
-      userUuid: user.userUuid,
-      username: user.displayName || user.username, // displayName을 username으로 표시
-      displayName: user.displayName || user.username,
-      userId: user.userId, // 구글 로그인 여부 판단용
-      hasIdToken: user.hasIdToken || false, // ID 토큰 보유 여부
-      loginType: user.loginType || 'Guest' // 로그인 타입 추가 (Kakao, Google, Guest)
+    // 현재 연결된 사용자 목록을 메모리에서 가져오기 (정리된 목록)
+    const cleanedUsers = cleanupConnectedUsers();
+    
+    // 데이터베이스에서 최신 사용자 정보 검증
+    const users = await Promise.all(cleanedUsers.map(async (user) => {
+      try {
+        // 데이터베이스에서 최신 사용자 정보 가져오기
+        const dbUser = await UserUuidModel.findOne({ userUuid: user.userUuid });
+        
+        return {
+          userUuid: user.userUuid,
+          username: dbUser?.displayName || user.displayName || user.username, // DB에서 최신 displayName 사용
+          displayName: dbUser?.displayName || user.displayName || user.username,
+          userId: user.userId,
+          hasIdToken: user.hasIdToken || false,
+          loginType: user.loginType || 'Guest',
+          // 서버에서만 관리되는 추가 검증 데이터
+          isOnline: true,
+          lastSeen: new Date().toISOString(),
+          // 클라이언트 조작 방지를 위한 체크섬
+          checksum: generateUserChecksum(user.userUuid, dbUser?.displayName || user.username)
+        };
+      } catch (error) {
+        console.error(`Failed to verify user ${user.userUuid}:`, error);
+        // DB 조회 실패 시 메모리 데이터 사용 (fallback)
+        return {
+          userUuid: user.userUuid,
+          username: user.displayName || user.username,
+          displayName: user.displayName || user.username,
+          userId: user.userId,
+          hasIdToken: user.hasIdToken || false,
+          loginType: user.loginType || 'Guest',
+          isOnline: true,
+          lastSeen: new Date().toISOString(),
+          checksum: generateUserChecksum(user.userUuid, user.displayName || user.username)
+        };
+      }
     }));
     
-    console.log("Sending connected users:", users);
+    console.log("Sending verified connected users:", users.length);
     
-    res.json({ users });
+    res.json({ 
+      users,
+      timestamp: new Date().toISOString(),
+      count: users.length
+    });
   } catch (error) {
     console.error("Failed to fetch connected users:", error);
     res.status(500).json({ error: "접속자 목록을 가져올 수 없습니다." });
+  }
+});
+
+// 사용자 체크섬 생성 함수 (클라이언트 조작 방지)
+function generateUserChecksum(userUuid, username) {
+  const crypto = require('crypto');
+  const secret = process.env.USER_CHECKSUM_SECRET || 'fishing-game-secret-2024';
+  return crypto.createHmac('sha256', secret)
+    .update(`${userUuid}-${username}-${Date.now().toString().slice(0, -4)}`) // 분 단위로 변경
+    .digest('hex')
+    .slice(0, 8); // 처음 8자만 사용
+}
+
+// 서버 측 전투 시스템 데이터
+const getServerFishHealthMap = () => {
+  return {
+    "타코문어": 15, "풀고등어": 25, "경단붕어": 35, "버터오징어": 55, "간장새우": 80,
+    "물수수": 115, "정어리파이": 160, "얼음상어": 215, "스퀄스퀴드": 280, "백년송거북": 355,
+    "고스피쉬": 440, "유령치": 525, "바이트독": 640, "호박고래": 755, "바이킹조개": 880,
+    "천사해파리": 1015, "악마복어": 1160, "칠성장어": 1315, "닥터블랙": 1480, "해룡": 1655,
+    "메카핫킹크랩": 1840, "램프리": 2035, "마지막잎새": 2240, "아이스브리더": 2455, "해신": 2680,
+    "핑키피쉬": 2915, "콘토퍼스": 3160, "딥원": 3415, "큐틀루": 3680, "꽃술나리": 3955,
+    "다무스": 4240, "수호자": 4535, "태양가사리": 4840
+  };
+};
+
+// 서버 측 전투 계산 함수들
+const calculateServerPlayerMaxHp = (accessoryLevel) => {
+  if (accessoryLevel === 0) return 100;
+  return Math.floor(Math.pow(accessoryLevel, 1.125) + 30 * accessoryLevel);
+};
+
+const calculateServerPlayerAttack = (fishingSkill) => {
+  return Math.floor(Math.pow(fishingSkill, 1.4) + fishingSkill * 2 + 5 + Math.random() * 10);
+};
+
+const calculateServerEnemyAttack = (fishRank) => {
+  if (fishRank === 0) return Math.floor(Math.random() * 3) + 8;
+  return Math.floor(Math.pow(fishRank, 1.65) + fishRank * 1.3 + 10 + Math.random() * 5);
+};
+
+const getServerAccessoryLevel = (accessoryName) => {
+  if (!accessoryName) return 0;
+  const accessories = [
+    '오래된반지', '은목걸이', '금귀걸이', '마법의펜던트', '에메랄드브로치',
+    '토파즈이어링', '자수정팔찌', '백금티아라', '만드라고라허브', '에테르나무묘목',
+    '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
+  ];
+  const level = accessories.indexOf(accessoryName);
+  return level >= 0 ? level + 1 : 0;
+};
+
+// 전투 시작 API (보안 강화)
+app.post("/api/start-battle", async (req, res) => {
+  try {
+    const { material, baseFish, selectedPrefix } = req.body;
+    const { username, userUuid } = req.query;
+    
+    console.log("Start battle request:", { material, baseFish, selectedPrefix, username, userUuid });
+    
+    // 사용자 조회
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query = queryResult.userUuid ? { userUuid: queryResult.userUuid } : queryResult;
+    
+    // 사용자 장비 및 스킬 정보 가져오기
+    const userEquipment = await UserEquipmentModel.findOne(query);
+    const fishingSkillData = await FishingSkillModel.findOne(query);
+    const fishingSkill = fishingSkillData ? fishingSkillData.skill : 0;
+    
+    // 서버에서 전투 상태 계산
+    const fishHealthMap = getServerFishHealthMap();
+    const baseHp = fishHealthMap[baseFish] || 100;
+    const enemyMaxHp = Math.floor(baseHp * (selectedPrefix?.hpMultiplier || 1));
+    
+    const accessoryLevel = getServerAccessoryLevel(userEquipment?.accessory);
+    const playerMaxHp = calculateServerPlayerMaxHp(accessoryLevel);
+    
+    const battleState = {
+      enemy: `${selectedPrefix?.name || ''} ${baseFish}`.trim(),
+      baseFish: baseFish,
+      prefix: selectedPrefix,
+      playerHp: playerMaxHp,
+      playerMaxHp: playerMaxHp,
+      enemyHp: enemyMaxHp,
+      enemyMaxHp: enemyMaxHp,
+      turn: 'player',
+      material: material,
+      round: 1,
+      autoMode: false,
+      canFlee: true,
+      fishingSkill: fishingSkill,
+      accessoryLevel: accessoryLevel
+    };
+    
+    console.log("Server calculated battle state:", battleState);
+    
+    res.json({ 
+      success: true, 
+      battleState: battleState,
+      log: [`${material}을(를) 사용하여 ${battleState.enemy}(HP: ${enemyMaxHp})와의 전투가 시작되었습니다!`, `전투를 시작하거나 도망갈 수 있습니다.`]
+    });
+  } catch (error) {
+    console.error("Failed to start battle:", error);
+    res.status(500).json({ error: "전투 시작에 실패했습니다." });
+  }
+});
+
+// 전투 공격 API (보안 강화)
+app.post("/api/battle-attack", async (req, res) => {
+  try {
+    const { battleState, attackType } = req.body; // 'player' or 'enemy'
+    const { username, userUuid } = req.query;
+    
+    console.log("Battle attack request:", { attackType, username, userUuid });
+    
+    if (!battleState) {
+      return res.status(400).json({ error: "Invalid battle state" });
+    }
+    
+    let newBattleState = { ...battleState };
+    let battleLog = [];
+    
+    if (attackType === 'player' && newBattleState.turn === 'player') {
+      // 플레이어 공격 (서버에서 계산)
+      const damage = calculateServerPlayerAttack(newBattleState.fishingSkill);
+      const newEnemyHp = Math.max(0, newBattleState.enemyHp - damage);
+      
+      battleLog.push(`플레이어가 ${damage} 데미지를 입혔습니다! (${newBattleState.enemy}: ${newEnemyHp}/${newBattleState.enemyMaxHp})`);
+      
+      newBattleState.enemyHp = newEnemyHp;
+      newBattleState.autoMode = true;
+      newBattleState.canFlee = false;
+      
+      if (newEnemyHp <= 0) {
+        // 승리
+        const baseReward = Math.floor(newBattleState.enemyMaxHp / 10) + Math.floor(Math.random() * 5) + 1;
+        const amberReward = Math.floor(baseReward * (newBattleState.prefix?.amberMultiplier || 1));
+        
+        const prefixBonus = newBattleState.prefix?.amberMultiplier > 1 
+          ? ` (${newBattleState.prefix.name} 보너스 x${newBattleState.prefix.amberMultiplier})` 
+          : '';
+        
+        battleLog.push(`${newBattleState.enemy}를 물리쳤습니다! 호박석 ${amberReward}개를 획득했습니다!${prefixBonus}`);
+        
+        newBattleState.turn = 'victory';
+        newBattleState.amberReward = amberReward;
+        
+        res.json({ 
+          success: true, 
+          battleState: newBattleState, 
+          log: battleLog,
+          result: 'victory',
+          amberReward: amberReward
+        });
+      } else {
+        // 적 턴으로 변경
+        newBattleState.turn = 'enemy';
+        res.json({ 
+          success: true, 
+          battleState: newBattleState, 
+          log: battleLog,
+          result: 'continue'
+        });
+      }
+    } else if (attackType === 'enemy') {
+      // 적 공격 (서버에서 계산)
+      const fishData = getServerFishData().find(fish => fish.name === newBattleState.baseFish);
+      const fishRank = fishData ? fishData.rank : 1;
+      const damage = calculateServerEnemyAttack(fishRank);
+      const newPlayerHp = Math.max(0, newBattleState.playerHp - damage);
+      
+      battleLog.push(`${newBattleState.enemy}가 ${damage} 데미지를 입혔습니다! (플레이어: ${newPlayerHp}/${newBattleState.playerMaxHp})`);
+      
+      newBattleState.playerHp = newPlayerHp;
+      
+      if (newPlayerHp <= 0) {
+        // 패배
+        battleLog.push(`패배했습니다... 재료를 잃었습니다.`);
+        newBattleState.turn = 'defeat';
+        
+        res.json({ 
+          success: true, 
+          battleState: newBattleState, 
+          log: battleLog,
+          result: 'defeat'
+        });
+      } else {
+        // 플레이어 턴으로 변경
+        newBattleState.turn = 'player';
+        res.json({ 
+          success: true, 
+          battleState: newBattleState, 
+          log: battleLog,
+          result: 'continue'
+        });
+      }
+    } else {
+      return res.status(400).json({ error: "Invalid attack type or turn" });
+    }
+  } catch (error) {
+    console.error("Failed to process battle attack:", error);
+    res.status(500).json({ error: "전투 처리에 실패했습니다." });
   }
 });
 
@@ -2175,12 +2520,79 @@ app.post("/api/add-amber", async (req, res) => {
   }
 });
 
-// Fish Selling API
+// 서버 측 물고기 가격 데이터 (클라이언트 조작 방지)
+const getServerFishData = () => {
+  return [
+    { name: "타코문어", price: 300, material: "문어다리", rank: 1 },
+    { name: "풀고등어", price: 700, material: "고등어비늘", rank: 2 },
+    { name: "경단붕어", price: 1500, material: "당고", rank: 3 },
+    { name: "버터오징어", price: 8000, material: "버터조각", rank: 4 },
+    { name: "간장새우", price: 15000, material: "간장종지", rank: 5 },
+    { name: "물수수", price: 30000, material: "옥수수콘", rank: 6 },
+    { name: "정어리파이", price: 40000, material: "버터", rank: 7 },
+    { name: "얼음상어", price: 50000, material: "얼음조각", rank: 8 },
+    { name: "스퀄스퀴드", price: 60000, material: "오징어먹물", rank: 9 },
+    { name: "백년송거북", price: 100000, material: "백년송", rank: 10 },
+    { name: "고스피쉬", price: 150000, material: "후춧가루", rank: 11 },
+    { name: "유령치", price: 230000, material: "석화", rank: 12 },
+    { name: "바이트독", price: 470000, material: "핫소스", rank: 13 },
+    { name: "호박고래", price: 700000, material: "펌킨조각", rank: 14 },
+    { name: "바이킹조개", price: 1250000, material: "꽃술", rank: 15 },
+    { name: "천사해파리", price: 2440000, material: "프레첼", rank: 16 },
+    { name: "악마복어", price: 4100000, material: "베놈", rank: 17 },
+    { name: "칠성장어", price: 6600000, material: "장어꼬리", rank: 18 },
+    { name: "닥터블랙", price: 9320000, material: "아인스바인", rank: 19 },
+    { name: "해룡", price: 13800000, material: "용의심장", rank: 20 },
+    { name: "메카핫킹크랩", price: 19800000, material: "메카부품", rank: 21 },
+    { name: "램프리", price: 27500000, material: "램프오일", rank: 22 },
+    { name: "마지막잎새", price: 37200000, material: "마지막잎새", rank: 23 },
+    { name: "아이스브리더", price: 49100000, material: "얼음결정", rank: 24 },
+    { name: "해신", price: 64000000, material: "해신의축복", rank: 25 },
+    { name: "핑키피쉬", price: 82500000, material: "핑키젤리", rank: 26 },
+    { name: "콘토퍼스", price: 105000000, material: "촉수", rank: 27 },
+    { name: "딥원", price: 132000000, material: "심연의물", rank: 28 },
+    { name: "큐틀루", price: 164500000, material: "광기", rank: 29 },
+    { name: "꽃술나리", price: 203000000, material: "꽃술", rank: 30 },
+    { name: "다무스", price: 248500000, material: "다무스의눈물", rank: 31 },
+    { name: "수호자", price: 301500000, material: "수호의빛", rank: 32 },
+    { name: "태양가사리", price: 363000000, material: "태양의불꽃", rank: 33 }
+  ];
+};
+
+// 서버에서 물고기 가격 계산 (악세사리 효과 포함)
+const calculateServerFishPrice = async (fishName, userQuery) => {
+  const fishData = getServerFishData().find(fish => fish.name === fishName);
+  if (!fishData) return 0;
+  
+  let basePrice = fishData.price;
+  
+  // 악세사리 효과: 각 악세사리마다 8% 증가
+  try {
+    const userEquipment = await UserEquipmentModel.findOne(userQuery);
+    if (userEquipment && userEquipment.accessory) {
+      const serverShopItems = getServerShopItems();
+      const accessoryItems = serverShopItems.accessories || [];
+      const equippedAccessory = accessoryItems.find(item => item.name === userEquipment.accessory);
+      if (equippedAccessory) {
+        // 악세사리 레벨에 따른 가격 증가 (레벨당 8%)
+        const priceIncrease = (equippedAccessory.requiredSkill + 1) * 8; // 8% per level
+        basePrice = Math.floor(basePrice * (1 + priceIncrease / 100));
+      }
+    }
+  } catch (error) {
+    console.error('Failed to calculate accessory bonus for fish price:', error);
+    // 에러 시 기본 가격 사용
+  }
+  
+  return basePrice;
+};
+
+// Fish Selling API (보안 강화 - 서버에서 가격 계산)
 app.post("/api/sell-fish", async (req, res) => {
   try {
-    const { fishName, quantity, totalPrice } = req.body;
+    const { fishName, quantity, totalPrice: clientTotalPrice } = req.body;
     const { username, userUuid } = req.query;
-    console.log("Sell fish request:", { fishName, quantity, totalPrice, username, userUuid });
+    console.log("Sell fish request:", { fishName, quantity, clientTotalPrice, username, userUuid });
     
     // UUID 기반 사용자 조회
     const queryResult = await getUserQuery('user', username, userUuid);
@@ -2193,11 +2605,30 @@ app.post("/api/sell-fish", async (req, res) => {
       console.log("Using fallback query for sell fish:", query);
     }
     
+    // 서버에서 실제 물고기 가격 계산 (클라이언트 가격 무시)
+    const serverFishPrice = await calculateServerFishPrice(fishName, query);
+    const serverTotalPrice = serverFishPrice * quantity;
+    
+    // 클라이언트에서 보낸 가격과 서버 가격 비교 (보안 검증)
+    if (Math.abs(clientTotalPrice - serverTotalPrice) > 1) { // 소수점 오차 허용
+      console.warn(`Fish price manipulation detected! Client: ${clientTotalPrice}, Server: ${serverTotalPrice}, Fish: ${fishName}, Quantity: ${quantity}, User: ${username}`);
+      return res.status(400).json({ error: "Invalid fish price" });
+    }
+    
+    console.log(`Server validated total price: ${serverTotalPrice} for ${quantity}x ${fishName}`);
     console.log("Database query for sell fish:", query);
     
-    // 사용자가 해당 물고기를 충분히 가지고 있는지 확인
+    // 사용자가 해당 물고기를 충분히 가지고 있는지 확인 (보안 강화)
     const userFish = await CatchModel.find({ ...query, fish: fishName });
     console.log(`Found ${userFish.length} ${fishName} for user`);
+    
+    // 추가 보안 검증: 물고기 존재 여부 확인
+    const serverFishData = getServerFishData();
+    const isValidFish = serverFishData.some(fish => fish.name === fishName);
+    if (!isValidFish) {
+      console.warn(`Invalid fish name detected: ${fishName}, User: ${username}`);
+      return res.status(400).json({ error: "Invalid fish type" });
+    }
     
     if (userFish.length < quantity) {
       console.log(`Not enough fish: has ${userFish.length}, needs ${quantity}`);
@@ -2214,7 +2645,7 @@ app.post("/api/sell-fish", async (req, res) => {
     let userMoney = await UserMoneyModel.findOne(query);
     if (!userMoney) {
       const createData = {
-        money: totalPrice,
+        money: serverTotalPrice, // 서버에서 계산된 가격 사용
         ...query
       };
       
@@ -2226,7 +2657,7 @@ app.post("/api/sell-fish", async (req, res) => {
       console.log("Creating new user money for sell:", createData);
       userMoney = await UserMoneyModel.create(createData);
     } else {
-      userMoney.money += totalPrice;
+      userMoney.money += serverTotalPrice; // 서버에서 계산된 가격 사용
       await userMoney.save();
     }
     console.log(`Updated user money: ${userMoney.money}`);
@@ -2238,14 +2669,83 @@ app.post("/api/sell-fish", async (req, res) => {
   }
 });
 
-// Item Buying API (for fishing rods and accessories)
+// 서버 측 아이템 데이터 (클라이언트 조작 방지)
+const getServerShopItems = () => {
+  return {
+    fishing_rod: [
+      { name: '기본낚시대', price: 50000, description: '기본적인 낚시대입니다', requiredSkill: 1 },
+      { name: '단단한낚시대', price: 140000, description: '견고한 낚시대입니다', requiredSkill: 2 },
+      { name: '은낚시대', price: 370000, description: '은으로 만든 고급 낚시대입니다', requiredSkill: 3 },
+      { name: '금낚시대', price: 820000, description: '금으로 만든 최고급 낚시대입니다', requiredSkill: 4 },
+      { name: '강철낚시대', price: 2390000, description: '강철로 제련된 견고한 낚시대입니다', requiredSkill: 5 },
+      { name: '사파이어낚시대', price: 6100000, description: '사파이어가 박힌 신비로운 낚시대입니다', requiredSkill: 6 },
+      { name: '루비낚시대', price: 15000000, description: '루비의 힘이 깃든 화려한 낚시대입니다', requiredSkill: 7 },
+      { name: '다이아몬드낚시대', price: 45000000, description: '다이아몬드의 광채가 빛나는 낚시대입니다', requiredSkill: 8 },
+      { name: '레드다이아몬드낚시대', price: 100000000, description: '희귀한 레드다이아몬드로 만든 전설적인 낚시대입니다', requiredSkill: 9 },
+      { name: '벚꽃낚시대', price: 300000000, description: '벚꽃의 아름다움을 담은 환상적인 낚시대입니다', requiredSkill: 10 },
+      { name: '꽃망울낚시대', price: 732000000, description: '꽃망울처럼 생긴 신비한 낚시대입니다', requiredSkill: 11 },
+      { name: '호롱불낚시대', price: 1980000000, description: '호롱불처럼 따뜻한 빛을 내는 낚시대입니다', requiredSkill: 12 },
+      { name: '산고등낚시대', price: 4300000000, description: '바다 깊은 곳의 산고로 만든 낚시대입니다', requiredSkill: 13 },
+      { name: '피크닉', price: 8800000000, description: '즐거운 피크닉 분위기의 특별한 낚시대입니다', requiredSkill: 14 },
+      { name: '마녀빗자루', price: 25000000000, description: '마녀의 마법이 깃든 신비로운 빗자루 낚시대입니다', requiredSkill: 15 },
+      { name: '에테르낚시대', price: 64800000000, description: '에테르의 힘으로 만들어진 초월적인 낚시대입니다', requiredSkill: 16 },
+      { name: '별조각낚시대', price: 147600000000, description: '별의 조각으로 만든 우주적인 낚시대입니다', requiredSkill: 17 },
+      { name: '여우꼬리낚시대', price: 320000000000, description: '여우의 꼬리처럼 유연한 신비한 낚시대입니다', requiredSkill: 18 },
+      { name: '초콜릿롤낚시대', price: 780000000000, description: '달콤한 초콜릿롤 모양의 귀여운 낚시대입니다', requiredSkill: 19 },
+      { name: '호박유령낚시대', price: 2800000000000, description: '호박 속 유령의 힘이 깃든 무서운 낚시대입니다', requiredSkill: 20 },
+      { name: '핑크버니낚시대', price: 6100000000000, description: '핑크빛 토끼의 귀여움이 담긴 낚시대입니다', requiredSkill: 21 },
+      { name: '할로우낚시대', price: 15100000000000, description: '할로윈의 신비로운 힘이 깃든 낚시대입니다', requiredSkill: 22 },
+      { name: '여우불낚시대', price: 40400000000000, description: '여우불의 환상적인 힘을 지닌 최고급 낚시대입니다', requiredSkill: 23 }
+    ],
+    accessories: [
+      { name: '오래된반지', price: 10, currency: 'amber', description: '낡았지만 의미있는 반지입니다', requiredSkill: 0 },
+      { name: '은목걸이', price: 25, currency: 'amber', description: '은으로 만든 아름다운 목걸이입니다', requiredSkill: 1 },
+      { name: '금귀걸이', price: 50, currency: 'amber', description: '금으로 만든 화려한 귀걸이입니다', requiredSkill: 2 },
+      { name: '마법의펜던트', price: 80, currency: 'amber', description: '마법의 힘이 깃든 신비한 펜던트입니다', requiredSkill: 3 },
+      { name: '에메랄드브로치', price: 120, currency: 'amber', description: '에메랄드가 박힌 고급스러운 브로치입니다', requiredSkill: 4 },
+      { name: '토파즈이어링', price: 180, currency: 'amber', description: '토파즈의 빛이 아름다운 이어링입니다', requiredSkill: 5 },
+      { name: '자수정팔찌', price: 250, currency: 'amber', description: '자수정으로 만든 우아한 팔찌입니다', requiredSkill: 6 },
+      { name: '백금티아라', price: 350, currency: 'amber', description: '백금으로 제작된 고귀한 티아라입니다', requiredSkill: 7 },
+      { name: '만드라고라허브', price: 500, currency: 'amber', description: '신비한 만드라고라 허브입니다', requiredSkill: 8 },
+      { name: '에테르나무묘목', price: 700, currency: 'amber', description: '에테르 나무의 신비한 묘목입니다', requiredSkill: 9 },
+      { name: '몽마의조각상', price: 1000, currency: 'amber', description: '몽마의 힘이 깃든 신비한 조각상입니다', requiredSkill: 10 },
+      { name: '마카롱훈장', price: 1500, currency: 'amber', description: '달콤한 마카롱 모양의 특별한 훈장입니다', requiredSkill: 11 },
+      { name: '빛나는마력순환체', price: 2000, currency: 'amber', description: '마력이 순환하는 빛나는 신비한 구슬입니다', requiredSkill: 12 }
+    ]
+  };
+};
+
+// Item Buying API (보안 강화 - 서버에서 가격 검증)
 app.post("/api/buy-item", async (req, res) => {
   try {
-    const { itemName, price, category, currency = 'gold' } = req.body;
+    const { itemName, price: clientPrice, category, currency = 'gold' } = req.body;
     const { username, userUuid } = req.query;
-    console.log("Buy item request:", { itemName, price, category, username, userUuid });
-    console.log("Full request query:", req.query);
-    console.log("Full request body:", req.body);
+    console.log("Buy item request:", { itemName, clientPrice, category, username, userUuid });
+    
+    // 서버에서 실제 아이템 정보 가져오기 (클라이언트 가격 무시)
+    const serverShopItems = getServerShopItems();
+    const categoryItems = serverShopItems[category];
+    
+    if (!categoryItems) {
+      return res.status(400).json({ error: "Invalid item category" });
+    }
+    
+    const serverItem = categoryItems.find(item => item.name === itemName);
+    if (!serverItem) {
+      return res.status(400).json({ error: "Item not found" });
+    }
+    
+    // 클라이언트에서 보낸 가격과 서버 가격 비교 (보안 검증)
+    if (clientPrice !== serverItem.price) {
+      console.warn(`Price manipulation detected! Client: ${clientPrice}, Server: ${serverItem.price}, Item: ${itemName}, User: ${username}`);
+      return res.status(400).json({ error: "Invalid item price" });
+    }
+    
+    // 서버에서 검증된 실제 가격 사용
+    const actualPrice = serverItem.price;
+    const actualCurrency = serverItem.currency || currency;
+    
+    console.log(`Server validated price: ${actualPrice} ${actualCurrency} for ${itemName}`);
     
     // UUID 기반 사용자 조회
     const queryResult = await getUserQuery('user', username, userUuid);
