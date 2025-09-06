@@ -489,7 +489,8 @@ function App() {
     console.log("useEffect [username, idToken] triggered:", { username, idToken, userUuid });
     console.log("Current localStorage nickname:", localStorage.getItem("nickname"));
     console.log("Current localStorage userUuid:", localStorage.getItem("userUuid"));
-    if (!username) return;
+    // username이 없어도 idToken이 있으면 소켓 연결 (이용약관 모달을 위해)
+    if (!username && !idToken) return;
     const socket = getSocket();
 
     const onMessage = (msg) => {
@@ -631,14 +632,17 @@ function App() {
     // 최종 안전장치: 로컬스토리지 닉네임 강제 사용
     const emergencyNickname = localStorage.getItem("nickname");
     const emergencyUuid = localStorage.getItem("userUuid");
-    const safeUsername = (emergencyUuid && emergencyNickname) ? emergencyNickname : finalUsernameToSend;
+    const safeUsername = (emergencyUuid && emergencyNickname) ? emergencyNickname : (finalUsernameToSend || "");
     
     console.log("=== EMERGENCY NICKNAME CHECK ===");
     console.log("Emergency nickname from localStorage:", emergencyNickname);
     console.log("Emergency UUID from localStorage:", emergencyUuid);
     console.log("Safe username (final):", safeUsername);
     
-    socket.emit("chat:join", { username: safeUsername, idToken, userUuid });
+    // username이 없어도 idToken이 있으면 소켓 연결 (이용약관 모달을 위해)
+    if (safeUsername || idToken) {
+      socket.emit("chat:join", { username: safeUsername, idToken, userUuid });
+    }
 
     return () => {
       socket.off("chat:message", onMessage);
@@ -2184,7 +2188,8 @@ function App() {
 
   // "낚시하기" 버튼은 제거하고 채팅 명령으로만 사용합니다
 
-  if (!username) {
+  // 로그인 화면 표시 조건: username이 없고, idToken도 없고, 이용약관 모달도 표시되지 않는 경우
+  if (!username && !idToken && !showTermsModal) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-800 flex items-center justify-center p-4 relative overflow-hidden">
         {/* 배경 장식 요소들 */}
