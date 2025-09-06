@@ -134,46 +134,46 @@ function App() {
         if (window.Kakao.Auth.getAccessToken()) {
           console.log('기존 카카오 토큰 발견:', window.Kakao.Auth.getAccessToken());
           
-          // 사용자 정보 가져오기
+          // 사용자 정보 가져오기 (Promise 방식)
           window.Kakao.API.request({
-            url: '/v2/user/me',
-            success: function(response) {
-              console.log('Kakao user info:', response);
-              
-              const kakaoId = response.id;
-              const kakaoNickname = response.kakao_account?.profile?.nickname || `카카오사용자${kakaoId}`;
-              
-              // 기존에 저장된 닉네임이 있으면 그것을 보존
-              const existingNickname = localStorage.getItem("nickname");
-              const existingUserUuid = localStorage.getItem("userUuid");
-              
-              console.log("Kakao login - existing nickname:", existingNickname);
-              console.log("Kakao login - existing userUuid:", existingUserUuid);
-              console.log("Kakao login - kakao nickname:", kakaoNickname);
-              
-              // 기존 사용자인 경우 기존 닉네임을 보존
-              if (existingUserUuid && existingNickname) {
-                console.log("Kakao login - preserving existing nickname:", existingNickname);
-                setUsername(existingNickname);
-              } else {
-                // 새 사용자인 경우 카카오 닉네임 사용
-                console.log("Kakao login - new user, using kakao nickname:", kakaoNickname);
-                setUsername(kakaoNickname);
-                localStorage.setItem("nickname", kakaoNickname);
-              }
-              
-              // 카카오 토큰 정보 저장
-              const accessToken = window.Kakao.Auth.getAccessToken();
-              const kakaoToken = `kakao_${kakaoId}_${accessToken}`;
-              setIdToken(kakaoToken);
-              localStorage.setItem("idToken", kakaoToken);
-              
-              console.log("Kakao login successful:", existingUserUuid && existingNickname ? existingNickname : kakaoNickname);
-            },
-            fail: function(error) {
-              console.error('Failed to get Kakao user info:', error);
-              alert('카카오 사용자 정보를 가져오는데 실패했습니다.');
+            url: '/v2/user/me'
+          })
+          .then(function(response) {
+            console.log('Kakao user info:', response);
+            
+            const kakaoId = response.id;
+            const kakaoNickname = response.kakao_account?.profile?.nickname || `카카오사용자${kakaoId}`;
+            
+            // 기존에 저장된 닉네임이 있으면 그것을 보존
+            const existingNickname = localStorage.getItem("nickname");
+            const existingUserUuid = localStorage.getItem("userUuid");
+            
+            console.log("Kakao login - existing nickname:", existingNickname);
+            console.log("Kakao login - existing userUuid:", existingUserUuid);
+            console.log("Kakao login - kakao nickname:", kakaoNickname);
+            
+            // 기존 사용자인 경우 기존 닉네임을 보존
+            if (existingUserUuid && existingNickname) {
+              console.log("Kakao login - preserving existing nickname:", existingNickname);
+              setUsername(existingNickname);
+            } else {
+              // 새 사용자인 경우 카카오 닉네임 사용
+              console.log("Kakao login - new user, using kakao nickname:", kakaoNickname);
+              setUsername(kakaoNickname);
+              localStorage.setItem("nickname", kakaoNickname);
             }
+            
+            // 카카오 토큰 정보 저장
+            const accessToken = window.Kakao.Auth.getAccessToken();
+            const kakaoToken = `kakao_${kakaoId}_${accessToken}`;
+            setIdToken(kakaoToken);
+            localStorage.setItem("idToken", kakaoToken);
+            
+            console.log("Kakao login successful:", existingUserUuid && existingNickname ? existingNickname : kakaoNickname);
+          })
+          .catch(function(error) {
+            console.error('Failed to get Kakao user info:', error);
+            alert('카카오 사용자 정보를 가져오는데 실패했습니다.');
           });
         } else {
           alert('카카오 로그인이 필요합니다. 카카오 웹사이트에서 로그인 후 다시 시도해주세요.');
@@ -428,40 +428,40 @@ function App() {
               // SDK에 토큰 설정
               window.Kakao.Auth.setAccessToken(tokenData.access_token);
               
-              // 사용자 정보 가져오기
+              // 사용자 정보 가져오기 (Promise 방식)
               window.Kakao.API.request({
-                url: '/v2/user/me',
-                success: function(response) {
-                  console.log('Kakao user info from redirect:', response);
-                  
-                  const kakaoId = response.id;
-                  const kakaoNickname = response.kakao_account?.profile?.nickname || `카카오사용자${kakaoId}`;
-                  
-                  // 기존에 저장된 닉네임이 있으면 그것을 보존
-                  const existingNickname = localStorage.getItem("nickname");
-                  const existingUserUuid = localStorage.getItem("userUuid");
-                  
-                  // 기존 사용자인 경우 기존 닉네임을 보존
-                  if (existingUserUuid && existingNickname) {
-                    setUsername(existingNickname);
-                  } else {
-                    setUsername(kakaoNickname);
-                    localStorage.setItem("nickname", kakaoNickname);
-                  }
-                  
-                  // 카카오 토큰 정보 저장
-                  const kakaoToken = `kakao_${kakaoId}_${tokenData.access_token}`;
-                  setIdToken(kakaoToken);
-                  localStorage.setItem("idToken", kakaoToken);
-                  
-                  console.log("Kakao login from redirect successful");
-                  
-                  // URL에서 인증 코드 제거
-                  window.history.replaceState({}, document.title, window.location.pathname);
-                },
-                fail: function(error) {
-                  console.error('Failed to get Kakao user info from redirect:', error);
+                url: '/v2/user/me'
+              })
+              .then(function(response) {
+                console.log('Kakao user info from redirect:', response);
+                
+                const kakaoId = response.id;
+                const kakaoNickname = response.kakao_account?.profile?.nickname || `카카오사용자${kakaoId}`;
+                
+                // 기존에 저장된 닉네임이 있으면 그것을 보존
+                const existingNickname = localStorage.getItem("nickname");
+                const existingUserUuid = localStorage.getItem("userUuid");
+                
+                // 기존 사용자인 경우 기존 닉네임을 보존
+                if (existingUserUuid && existingNickname) {
+                  setUsername(existingNickname);
+                } else {
+                  setUsername(kakaoNickname);
+                  localStorage.setItem("nickname", kakaoNickname);
                 }
+                
+                // 카카오 토큰 정보 저장
+                const kakaoToken = `kakao_${kakaoId}_${tokenData.access_token}`;
+                setIdToken(kakaoToken);
+                localStorage.setItem("idToken", kakaoToken);
+                
+                console.log("Kakao login from redirect successful");
+                
+                // URL에서 인증 코드 제거
+                window.history.replaceState({}, document.title, window.location.pathname);
+              })
+              .catch(function(error) {
+                console.error('Failed to get Kakao user info from redirect:', error);
               });
             } else {
               console.error('카카오 토큰 교환 실패:', tokenData);
