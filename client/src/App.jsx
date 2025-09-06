@@ -51,10 +51,21 @@ function App() {
 
   // 카카오 SDK 초기화
   useEffect(() => {
-    if (window.Kakao && !window.Kakao.isInitialized()) {
-      window.Kakao.init('b6e5e78104c937096dd67d2010366278'); // 카카오 JavaScript 앱 키
-      console.log('Kakao SDK initialized');
-    }
+    const initKakaoSDK = () => {
+      if (window.Kakao && !window.Kakao.isInitialized()) {
+        try {
+          window.Kakao.init('b6e5e78104c937096dd67d2010366278'); // 카카오 JavaScript 앱 키
+          console.log('Kakao SDK initialized successfully');
+        } catch (error) {
+          console.error('Failed to initialize Kakao SDK:', error);
+        }
+      } else if (!window.Kakao) {
+        // SDK가 아직 로드되지 않은 경우 잠시 후 재시도
+        setTimeout(initKakaoSDK, 1000);
+      }
+    };
+
+    initKakaoSDK();
   }, []);
 
   // 카카오 로그인 처리 함수
@@ -64,56 +75,86 @@ function App() {
       return;
     }
 
-    window.Kakao.Auth.login({
-      success: function(authObj) {
-        console.log('Kakao login success:', authObj);
+    // SDK가 완전히 로드될 때까지 기다리기
+    const waitForKakaoSDK = () => {
+      return new Promise((resolve, reject) => {
+        let attempts = 0;
+        const maxAttempts = 10;
         
-        // 사용자 정보 가져오기
-        window.Kakao.API.request({
-          url: '/v2/user/me',
-          success: function(response) {
-            console.log('Kakao user info:', response);
+        const checkSDK = () => {
+          attempts++;
+          
+          if (window.Kakao && window.Kakao.Auth && typeof window.Kakao.Auth.login === 'function') {
+            resolve();
+          } else if (attempts >= maxAttempts) {
+            reject(new Error('카카오 SDK 로딩 시간 초과'));
+          } else {
+            setTimeout(checkSDK, 500);
+          }
+        };
+        
+        checkSDK();
+      });
+    };
+
+    // SDK 로딩 대기 후 로그인 실행
+    waitForKakaoSDK()
+      .then(() => {
+        window.Kakao.Auth.login({
+          success: function(authObj) {
+            console.log('Kakao login success:', authObj);
             
-            const kakaoId = response.id;
-            const kakaoNickname = response.kakao_account?.profile?.nickname || `카카오사용자${kakaoId}`;
-            
-            // 기존에 저장된 닉네임이 있으면 그것을 보존
-            const existingNickname = localStorage.getItem("nickname");
-            const existingUserUuid = localStorage.getItem("userUuid");
-            
-            console.log("Kakao login - existing nickname:", existingNickname);
-            console.log("Kakao login - existing userUuid:", existingUserUuid);
-            console.log("Kakao login - kakao nickname:", kakaoNickname);
-            
-            // 기존 사용자인 경우 기존 닉네임을 보존
-            if (existingUserUuid && existingNickname) {
-              console.log("Kakao login - preserving existing nickname:", existingNickname);
-              setUsername(existingNickname);
-            } else {
-              // 새 사용자인 경우 카카오 닉네임 사용
-              console.log("Kakao login - new user, using kakao nickname:", kakaoNickname);
-              setUsername(kakaoNickname);
-              localStorage.setItem("nickname", kakaoNickname);
-            }
-            
-            // 카카오 토큰 정보 저장 (구글과 구분하기 위해 kakaoToken으로 저장)
-            const kakaoToken = `kakao_${kakaoId}_${authObj.access_token}`;
-            setIdToken(kakaoToken);
-            localStorage.setItem("idToken", kakaoToken);
-            
-            console.log("Kakao login successful:", existingUserUuid && existingNickname ? existingNickname : kakaoNickname);
+            // 사용자 정보 가져오기
+            window.Kakao.API.request({
+              url: '/v2/user/me',
+              success: function(response) {
+                console.log('Kakao user info:', response);
+                
+                const kakaoId = response.id;
+                const kakaoNickname = response.kakao_account?.profile?.nickname || `카카오사용자${kakaoId}`;
+                
+                // 기존에 저장된 닉네임이 있으면 그것을 보존
+                const existingNickname = localStorage.getItem("nickname");
+                const existingUserUuid = localStorage.getItem("userUuid");
+                
+                console.log("Kakao login - existing nickname:", existingNickname);
+                console.log("Kakao login - existing userUuid:", existingUserUuid);
+                console.log("Kakao login - kakao nickname:", kakaoNickname);
+                
+                // 기존 사용자인 경우 기존 닉네임을 보존
+                if (existingUserUuid && existingNickname) {
+                  console.log("Kakao login - preserving existing nickname:", existingNickname);
+                  setUsername(existingNickname);
+                } else {
+                  // 새 사용자인 경우 카카오 닉네임 사용
+                  console.log("Kakao login - new user, using kakao nickname:", kakaoNickname);
+                  setUsername(kakaoNickname);
+                  localStorage.setItem("nickname", kakaoNickname);
+                }
+                
+                // 카카오 토큰 정보 저장 (구글과 구분하기 위해 kakaoToken으로 저장)
+                const kakaoToken = `kakao_${kakaoId}_${authObj.access_token}`;
+                setIdToken(kakaoToken);
+                localStorage.setItem("idToken", kakaoToken);
+                
+                console.log("Kakao login successful:", existingUserUuid && existingNickname ? existingNickname : kakaoNickname);
+              },
+              fail: function(error) {
+                console.error('Failed to get Kakao user info:', error);
+                alert('카카오 사용자 정보를 가져오는데 실패했습니다.');
+              }
+            });
           },
-          fail: function(error) {
-            console.error('Failed to get Kakao user info:', error);
-            alert('카카오 사용자 정보를 가져오는데 실패했습니다.');
+          fail: function(err) {
+            console.error('Kakao login failed:', err);
+            alert('카카오 로그인에 실패했습니다.');
           }
         });
-      },
-      fail: function(err) {
-        console.error('Kakao login failed:', err);
-        alert('카카오 로그인에 실패했습니다.');
-      }
-    });
+      })
+      .catch((error) => {
+        console.error('Kakao SDK loading failed:', error);
+        alert('카카오 SDK 로딩에 실패했습니다. 페이지를 새로고침해주세요.');
+      });
   };
   const [userMoney, setUserMoney] = useState(0);
   const [userAmber, setUserAmber] = useState(0);
