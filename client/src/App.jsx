@@ -111,11 +111,28 @@ function App() {
     console.log('모든 체크 완료, 카카오 로그인 실행');
 
     try {
-      // 5. 카카오 로그인 실행 (authorize 사용)
+      // 5. 카카오 로그인 실행 (최신 SDK 방식)
+      console.log('카카오 authorize 실행 중...');
+      
+      // authorize는 Promise를 반환하지 않고 리다이렉트 방식으로 작동
+      // 대신 간단한 팝업 방식으로 변경
       window.Kakao.Auth.authorize({
-        redirectUri: window.location.origin,
-        success: function(authObj) {
-          console.log('Kakao authorize success:', authObj);
+        redirectUri: window.location.origin
+      });
+      
+      // 리다이렉트 후 처리는 페이지 로드 시 URL 파라미터로 처리
+      console.log('카카오 로그인 리다이렉트 시작됨');
+      
+    } catch (error) {
+      console.error('카카오 authorize 실행 중 오류:', error);
+      
+      // authorize가 실패하면 대안으로 간단한 로그인 시도
+      try {
+        console.log('대안 방법 시도: 카카오 토큰으로 직접 로그인');
+        
+        // 토큰이 있는지 확인하고 사용자 정보 가져오기
+        if (window.Kakao.Auth.getAccessToken()) {
+          console.log('기존 카카오 토큰 발견:', window.Kakao.Auth.getAccessToken());
           
           // 사용자 정보 가져오기
           window.Kakao.API.request({
@@ -145,8 +162,9 @@ function App() {
                 localStorage.setItem("nickname", kakaoNickname);
               }
               
-              // 카카오 토큰 정보 저장 (구글과 구분하기 위해 kakaoToken으로 저장)
-              const kakaoToken = `kakao_${kakaoId}_${authObj.access_token}`;
+              // 카카오 토큰 정보 저장
+              const accessToken = window.Kakao.Auth.getAccessToken();
+              const kakaoToken = `kakao_${kakaoId}_${accessToken}`;
               setIdToken(kakaoToken);
               localStorage.setItem("idToken", kakaoToken);
               
@@ -157,15 +175,13 @@ function App() {
               alert('카카오 사용자 정보를 가져오는데 실패했습니다.');
             }
           });
-        },
-        fail: function(err) {
-          console.error('Kakao authorize failed:', err);
-          alert('카카오 로그인에 실패했습니다: ' + (err.error_description || err.error || '알 수 없는 오류'));
+        } else {
+          alert('카카오 로그인이 필요합니다. 카카오 웹사이트에서 로그인 후 다시 시도해주세요.');
         }
-      });
-    } catch (error) {
-      console.error('카카오 로그인 실행 중 오류:', error);
-      alert('카카오 로그인 실행 중 오류가 발생했습니다.');
+      } catch (fallbackError) {
+        console.error('대안 방법도 실패:', fallbackError);
+        alert('카카오 로그인에 실패했습니다. 페이지를 새로고침 후 다시 시도해주세요.');
+      }
     }
   };
   const [userMoney, setUserMoney] = useState(0);
@@ -362,8 +378,10 @@ function App() {
   // URL에서 ID 토큰 처리 (리디렉션 후)
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.hash.substring(1));
-    const idToken = urlParams.get('id_token');
+    const searchParams = new URLSearchParams(window.location.search);
     
+    // 구글 ID 토큰 처리
+    const idToken = urlParams.get('id_token');
     if (idToken) {
       // 팝업 창에서 실행 중인지 확인
       if (window.opener && !window.opener.closed) {
@@ -378,6 +396,85 @@ function App() {
         handleCredentialResponse(idToken);
         // URL에서 토큰 제거
         window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+    
+    // 카카오 인증 코드 처리
+    const kakaoCode = searchParams.get('code');
+    const kakaoState = searchParams.get('state');
+    
+    if (kakaoCode && window.location.search.includes('code=')) {
+      console.log('카카오 인증 코드 감지:', kakaoCode);
+      
+      // 카카오 SDK로 토큰 교환
+      if (window.Kakao && window.Kakao.Auth) {
+        try {
+          // 인증 코드로 토큰 요청
+          fetch(`https://kauth.kakao.com/oauth/token`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: new URLSearchParams({
+              grant_type: 'authorization_code',
+              client_id: 'b6e5e78104c937096dd67d2010366278',
+              redirect_uri: window.location.origin,
+              code: kakaoCode
+            })
+          })
+          .then(response => response.json())
+          .then(tokenData => {
+            if (tokenData.access_token) {
+              console.log('카카오 토큰 교환 성공:', tokenData);
+              
+              // SDK에 토큰 설정
+              window.Kakao.Auth.setAccessToken(tokenData.access_token);
+              
+              // 사용자 정보 가져오기
+              window.Kakao.API.request({
+                url: '/v2/user/me',
+                success: function(response) {
+                  console.log('Kakao user info from redirect:', response);
+                  
+                  const kakaoId = response.id;
+                  const kakaoNickname = response.kakao_account?.profile?.nickname || `카카오사용자${kakaoId}`;
+                  
+                  // 기존에 저장된 닉네임이 있으면 그것을 보존
+                  const existingNickname = localStorage.getItem("nickname");
+                  const existingUserUuid = localStorage.getItem("userUuid");
+                  
+                  // 기존 사용자인 경우 기존 닉네임을 보존
+                  if (existingUserUuid && existingNickname) {
+                    setUsername(existingNickname);
+                  } else {
+                    setUsername(kakaoNickname);
+                    localStorage.setItem("nickname", kakaoNickname);
+                  }
+                  
+                  // 카카오 토큰 정보 저장
+                  const kakaoToken = `kakao_${kakaoId}_${tokenData.access_token}`;
+                  setIdToken(kakaoToken);
+                  localStorage.setItem("idToken", kakaoToken);
+                  
+                  console.log("Kakao login from redirect successful");
+                  
+                  // URL에서 인증 코드 제거
+                  window.history.replaceState({}, document.title, window.location.pathname);
+                },
+                fail: function(error) {
+                  console.error('Failed to get Kakao user info from redirect:', error);
+                }
+              });
+            } else {
+              console.error('카카오 토큰 교환 실패:', tokenData);
+            }
+          })
+          .catch(error => {
+            console.error('카카오 토큰 요청 오류:', error);
+          });
+        } catch (error) {
+          console.error('카카오 리다이렉트 처리 오류:', error);
+        }
       }
     }
   }, []);
