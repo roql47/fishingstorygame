@@ -152,15 +152,17 @@ function App() {
             console.log("Kakao login - existing userUuid:", existingUserUuid);
             console.log("Kakao login - kakao nickname:", kakaoNickname);
             
-            // 기존 사용자인 경우 기존 닉네임을 보존
-            if (existingUserUuid && existingNickname) {
-              console.log("Kakao login - preserving existing nickname:", existingNickname);
+            // 기존 사용자인 경우 (userUuid가 있고 이용약관 동의됨) 기존 닉네임을 보존
+            const termsAccepted = localStorage.getItem("termsAccepted");
+            if (existingUserUuid && existingNickname && termsAccepted) {
+              console.log("Kakao login - existing user with nickname:", existingNickname);
               setUsername(existingNickname);
             } else {
-              // 새 사용자인 경우 카카오 닉네임 사용
-              console.log("Kakao login - new user, using kakao nickname:", kakaoNickname);
-              setUsername(kakaoNickname);
-              localStorage.setItem("nickname", kakaoNickname);
+              // 새 사용자이거나 이용약관 미동의 - 이용약관과 닉네임 설정 필요
+              console.log("Kakao login - new user or terms not accepted, showing terms modal");
+              setIsFirstLogin(true);
+              setShowTermsModal(true);
+              // username은 설정하지 않음 - 모달에서 설정할 예정
             }
             
             // 카카오 토큰 정보 저장
@@ -202,8 +204,6 @@ function App() {
     accessory: null
   });
   const [onlineUsers, setOnlineUsers] = useState([]);
-  const [isEditingNickname, setIsEditingNickname] = useState(false);
-  const [newNickname, setNewNickname] = useState("");
   const [fishingSkill, setFishingSkill] = useState(0);
   const [userUuid, setUserUuid] = useState(() => 
     localStorage.getItem("userUuid") || null
@@ -217,6 +217,12 @@ function App() {
   const [quantityModalData, setQuantityModalData] = useState(null);
   const [inputQuantity, setInputQuantity] = useState(1);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  
+  // 최초 로그인 관련 상태
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [initialNickname, setInitialNickname] = useState("");
+  const [isFirstLogin, setIsFirstLogin] = useState(false);
   
   // 처리 중 상태 (중복 실행 방지)
   const [isProcessingSellAll, setIsProcessingSellAll] = useState(false);
@@ -325,19 +331,21 @@ function App() {
       console.log("Google login - existing userUuid:", existingUserUuid);
       console.log("Google login - google name:", safeName);
       
-      // 기존 사용자인 경우 (userUuid가 있음) 기존 닉네임을 완전히 보존
-      if (existingUserUuid && existingNickname) {
-        console.log("Google login - preserving existing nickname:", existingNickname);
+      // 기존 사용자인 경우 (userUuid가 있고 이용약관 동의됨) 기존 닉네임을 완전히 보존
+      const termsAccepted = localStorage.getItem("termsAccepted");
+      if (existingUserUuid && existingNickname && termsAccepted) {
+        console.log("Google login - existing user with nickname:", existingNickname);
         setUsername(existingNickname);
         // 로컬스토리지는 변경하지 않음 (기존 닉네임 유지)
         
         // 서버에도 기존 닉네임을 전달하여 데이터베이스에서 보존하도록 함
         console.log("Google login - will send existing nickname to server:", existingNickname);
       } else {
-        // 새 사용자인 경우에만 구글 이름 사용
-        console.log("Google login - new user, using google name:", safeName);
-        setUsername(safeName);
-        localStorage.setItem("nickname", safeName);
+        // 새 사용자이거나 이용약관 미동의 - 이용약관과 닉네임 설정 필요
+        console.log("Google login - new user or terms not accepted, showing terms modal");
+        setIsFirstLogin(true);
+        setShowTermsModal(true);
+        // username은 설정하지 않음 - 모달에서 설정할 예정
       }
       localStorage.setItem("idToken", token);
       
@@ -1171,78 +1179,59 @@ function App() {
     }
   };
 
-  // 닉네임 업데이트 함수
-  const updateNickname = async () => {
-    if (!newNickname.trim()) {
+  // 최초 닉네임 설정 함수
+  const setInitialNicknameFunc = async () => {
+    if (!initialNickname.trim()) {
       alert("닉네임을 입력해주세요!");
       return;
     }
-    
-    if (newNickname.trim() === username) {
-      setIsEditingNickname(false);
-      setNewNickname("");
+
+    if (initialNickname.trim().length < 2) {
+      alert("닉네임은 2글자 이상이어야 합니다!");
       return;
     }
-    
+
+    if (initialNickname.trim().length > 12) {
+      alert("닉네임은 12글자 이하여야 합니다!");
+      return;
+    }
+
+    // 특수문자 체크 (한글, 영문, 숫자만 허용)
+    const nicknameRegex = /^[가-힣a-zA-Z0-9]+$/;
+    if (!nicknameRegex.test(initialNickname.trim())) {
+      alert("닉네임은 한글, 영문, 숫자만 사용 가능합니다!");
+      return;
+    }
+
     try {
-      const oldNickname = username;
-      const newNick = newNickname.trim();
-      
-      // 서버에 닉네임 변경 요청 (displayName으로 저장)
-      const response = await axios.post(`${serverUrl}/api/update-nickname`, {
-        newNickname: newNick
-      }, {
-        params: { username: oldNickname, userUuid }
-      });
-      
-      if (response.data.success) {
-        // 로컬에서 닉네임 업데이트
-        setUsername(newNick);
-        localStorage.setItem("nickname", newNick);
-        
-        // UI 상태 초기화
-        setIsEditingNickname(false);
-        setNewNickname("");
-        
-        // 소켓 재연결로 서버에 업데이트된 닉네임 전송 (userUuid 포함)
-        const socket = getSocket();
-        console.log("=== NICKNAME CHANGE DEBUG ===");
-        console.log("Old nickname:", oldNickname);
-        console.log("New nickname:", newNick);
-        console.log("Current userUuid state:", userUuid);
-        console.log("localStorage userUuid:", localStorage.getItem("userUuid"));
-        console.log("localStorage nickname before emit:", localStorage.getItem("nickname"));
-        console.log("Emitting chat:join with new nickname:", { username: newNick, idToken: !!idToken, userUuid });
-        
-        socket.emit("chat:join", { username: newNick, idToken, userUuid });
-        
-        // 성공 메시지
-        setMessages(prev => [...prev, {
-          system: true,
-          username: "system",
-          content: `닉네임이 '${newNick}'으로 변경되었습니다.`,
-          timestamp: new Date().toISOString()
-        }]);
-        
-        console.log(`Nickname changed from ${oldNickname} to ${newNick}`);
-        
-        // 접속자 목록 즉시 새로고침
-        setTimeout(async () => {
-          try {
-            const res = await axios.get(`${serverUrl}/api/connected-users`);
-            setConnectedUsers(res.data.users || []);
-          } catch (e) {
-            console.error('Failed to refresh connected users after nickname change:', e);
-          }
-        }, 500);
-        
-      } else {
-        alert("닉네임 변경에 실패했습니다: " + (response.data.error || "알 수 없는 오류"));
+      // 서버에 닉네임 중복 체크
+      const params = { userUuid };
+      const checkResponse = await axios.post(`${serverUrl}/api/check-nickname`, {
+        nickname: initialNickname.trim()
+      }, { params });
+
+      if (!checkResponse.data.available) {
+        alert("이미 사용 중인 닉네임입니다. 다른 닉네임을 선택해주세요.");
+        return;
       }
+
+      // 닉네임 설정
+      setUsername(initialNickname.trim());
+      localStorage.setItem("nickname", initialNickname.trim());
+      localStorage.setItem("termsAccepted", "true");
       
+      setShowTermsModal(false);
+      setIsFirstLogin(false);
+      
+      // 소켓 연결
+      const socket = getSocket();
+      socket.emit("chat:join", { username: initialNickname.trim(), idToken, userUuid });
+      
+      console.log("Initial nickname set:", initialNickname.trim());
     } catch (error) {
-      console.error("Failed to update nickname:", error);
-      alert("닉네임 변경에 실패했습니다: " + (error.response?.data?.error || error.message));
+      console.error("Failed to set initial nickname:", error);
+      const errorMessage = error.response?.data?.error || "닉네임 설정에 실패했습니다.";
+      alert(errorMessage);
     }
   };
 
@@ -1567,7 +1556,7 @@ function App() {
 
     // 탐사 쿨타임 설정 (10분)
     const explorationCooldownTime = 10 * 60 * 1000; // 10분
-    setExplorationCooldown(explorationCooldownTime);
+      setExplorationCooldown(explorationCooldownTime);
     localStorage.setItem('explorationCooldown', explorationCooldownTime.toString());
     localStorage.setItem('explorationCooldownTime', Date.now().toString());
 
@@ -1710,7 +1699,7 @@ function App() {
         // 호박석 지급
         setTimeout(async () => {
           await addAmber(amberReward);
-        setTimeout(() => {
+          setTimeout(() => {
           // 승리 시 탐사 쿨타임 설정 (10분)
           const explorationCooldownTime = 10 * 60 * 1000; // 10분
           setExplorationCooldown(explorationCooldownTime);
@@ -1731,10 +1720,10 @@ function App() {
           };
           setServerCooldown();
           
-          setShowBattleModal(false);
-          setBattleState(null);
-          alert(`승리! 호박석 ${amberReward}개를 획득했습니다!${prefixBonus}`);
-        }, 1000);
+            setShowBattleModal(false);
+            setBattleState(null);
+            alert(`승리! 호박석 ${amberReward}개를 획득했습니다!${prefixBonus}`);
+          }, 1000);
         }, 1000);
 
         return {
@@ -2366,8 +2355,8 @@ function App() {
               </div>
               <div>
                 <div className="flex items-center gap-3">
-                  <h1 className={`font-bold text-lg ${
-                    isDarkMode ? "text-white gradient-text" : "text-gray-800"
+                <h1 className={`font-bold text-lg ${
+                  isDarkMode ? "text-white gradient-text" : "text-gray-800"
                   }`}>여우이야기</h1>
                   {/* 카카오톡 채널방 링크 */}
                   <a
@@ -3814,9 +3803,9 @@ function App() {
           </div>
           )}
 
-                    </div>
+          </div>
           )}
-
+          
           {/* 사이드바 - 접속자 목록 - 랭킹 탭에서는 숨김 */}
           {activeTab !== "ranking" && (
           <div className="xl:col-span-1 h-full">
@@ -3931,73 +3920,9 @@ function App() {
                   }`} />
                 </div>
                 <div>
-                  {isEditingNickname && !selectedUserProfile ? ( // 내 프로필일 때만 편집 가능
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={newNickname}
-                        onChange={(e) => setNewNickname(e.target.value)}
-                        className={`px-2 py-1 rounded text-sm border ${
-                          isDarkMode 
-                            ? "bg-gray-800 border-gray-600 text-white" 
-                            : "bg-white border-gray-300 text-gray-800"
-                        }`}
-                        placeholder="새 닉네임"
-                        autoFocus
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter') updateNickname();
-                          if (e.key === 'Escape') {
-                            setIsEditingNickname(false);
-                            setNewNickname("");
-                          }
-                        }}
-                      />
-                      <button
-                        onClick={updateNickname}
-                        className={`px-2 py-1 rounded text-xs ${
-                          isDarkMode 
-                            ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30" 
-                            : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20"
-                        }`}
-                      >
-                        저장
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsEditingNickname(false);
-                          setNewNickname("");
-                        }}
-                        className={`px-2 py-1 rounded text-xs ${
-                          isDarkMode 
-                            ? "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30" 
-                            : "bg-gray-500/10 text-gray-600 hover:bg-gray-500/20"
-                        }`}
-                      >
-                        취소
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
                       <h2 className={`text-lg font-semibold ${
                         isDarkMode ? "text-white" : "text-gray-800"
                       }`}>{selectedUserProfile ? `${selectedUserProfile.username}님의 프로필` : `${username}님의 프로필`}</h2>
-                      {!selectedUserProfile && ( // 내 프로필일 때만 수정 버튼 표시
-                        <button
-                          onClick={() => {
-                            setIsEditingNickname(true);
-                            setNewNickname(username);
-                          }}
-                          className={`px-2 py-1 rounded text-xs transition-all duration-300 hover:scale-105 ${
-                            isDarkMode 
-                              ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30" 
-                              : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20"
-                          }`}
-                        >
-                          수정
-                        </button>
-                      )}
-                    </div>
-                  )}
                   <div className="flex flex-col gap-1">
                     {(selectedUserProfile ? otherUserData?.userUuid : userUuid) && (
                       <div className="flex items-center gap-2">
@@ -4196,11 +4121,11 @@ function App() {
         </div>
       )}
 
-      {/* 랭킹 탭 */}
-      {activeTab === "ranking" && (
-      <div className={`rounded-2xl board-shadow min-h-full flex flex-col ${
-        isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
-      }`}>
+          {/* 랭킹 탭 */}
+          {activeTab === "ranking" && (
+            <div className={`rounded-2xl board-shadow min-h-full flex flex-col ${
+              isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
+            }`}>
         {/* 랭킹 헤더 */}
         <div className={`border-b p-4 ${
           isDarkMode ? "border-white/10" : "border-gray-300/20"
@@ -4328,7 +4253,7 @@ function App() {
             </div>
           )}
         </div> {/* 숨겨진 div 닫기 */}
-      </div>
+            </div>
       )}
 
       {/* 수량 입력 모달 */}
@@ -4826,15 +4751,15 @@ function App() {
               <div className="flex gap-4">
                 {battleState.turn === 'player' && !battleState.autoMode && (
                   <div className="flex gap-3 w-full">
-                    <button
-                      onClick={playerAttack}
-                      className={`flex-1 py-3 px-6 rounded-lg font-bold text-lg transition-all duration-300 hover:scale-105 ${
-                        isDarkMode
-                          ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 glow-effect"
-                          : "bg-red-500/10 text-red-600 hover:bg-red-500/20"
-                      }`}
-                    >
-                      공격하기
+                  <button
+                    onClick={playerAttack}
+                    className={`flex-1 py-3 px-6 rounded-lg font-bold text-lg transition-all duration-300 hover:scale-105 ${
+                      isDarkMode
+                        ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 glow-effect"
+                        : "bg-red-500/10 text-red-600 hover:bg-red-500/20"
+                    }`}
+                  >
+                    공격하기
                     </button>
                     {battleState.canFlee && (
                       <button
@@ -4846,7 +4771,7 @@ function App() {
                         }`}
                       >
                         도망가기
-                      </button>
+                  </button>
                     )}
                   </div>
                 )}
@@ -4875,10 +4800,10 @@ function App() {
                 
                 {battleState.turn === 'enemy' && (
                   <div className="flex gap-2 w-full">
-                    <div className={`flex-1 py-3 px-6 rounded-lg text-center font-medium ${
-                      isDarkMode ? "bg-gray-500/20 text-gray-400" : "bg-gray-300/30 text-gray-600"
-                    }`}>
-                      적의 턴...
+                  <div className={`flex-1 py-3 px-6 rounded-lg text-center font-medium ${
+                    isDarkMode ? "bg-gray-500/20 text-gray-400" : "bg-gray-300/30 text-gray-600"
+                  }`}>
+                    적의 턴...
                     </div>
                     {battleState.autoMode && (
                       <button
@@ -4912,15 +4837,134 @@ function App() {
                           ? isDarkMode
                             ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30"
                             : "bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20"
-                          : isDarkMode
-                            ? "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30"
-                            : "bg-gray-300/30 text-gray-600 hover:bg-gray-300/50"
+                        : isDarkMode
+                          ? "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30"
+                          : "bg-gray-300/30 text-gray-600 hover:bg-gray-300/50"
                     }`}
                   >
                     {battleState.turn === 'victory' ? '승리!' : battleState.turn === 'fled' ? '도망 성공!' : '패배...'}
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 이용약관 및 닉네임 설정 모달 */}
+      {showTermsModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className={`w-full max-w-lg rounded-2xl board-shadow ${
+            isDarkMode ? "glass-card" : "bg-white/95 backdrop-blur-md border border-gray-300/30"
+          }`}>
+            {/* 모달 헤더 */}
+            <div className={`p-6 border-b ${
+              isDarkMode ? "border-white/10" : "border-gray-300/20"
+            }`}>
+              <div className="text-center">
+                <div className={`flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 mx-auto mb-4 border ${
+                  isDarkMode ? "border-white/10" : "border-blue-300/30"
+                }`}>
+                  <Fish className={`w-8 h-8 ${
+                    isDarkMode ? "text-blue-400" : "text-blue-600"
+                  }`} />
+                </div>
+                <h2 className={`text-2xl font-bold ${
+                  isDarkMode ? "text-white" : "text-gray-800"
+                }`}>여우이야기에 오신 것을 환영합니다!</h2>
+                <p className={`text-sm mt-2 ${
+                  isDarkMode ? "text-gray-400" : "text-gray-600"
+                }`}>서비스 이용을 위해 약관 동의와 닉네임 설정이 필요합니다</p>
+              </div>
+            </div>
+            
+            {/* 모달 콘텐츠 */}
+            <div className="p-6 space-y-6">
+              {/* 이용약관 */}
+              <div className={`p-4 rounded-xl max-h-48 overflow-y-auto ${
+                isDarkMode ? "glass-input" : "bg-gray-50/80 border border-gray-300/30"
+              }`}>
+                <h3 className={`font-semibold mb-3 ${
+                  isDarkMode ? "text-white" : "text-gray-800"
+                }`}>이용약관</h3>
+                <div className={`text-sm space-y-2 ${
+                  isDarkMode ? "text-gray-300" : "text-gray-700"
+                }`}>
+                  <p>1. 본 서비스는 실시간 채팅 낚시 게임 서비스입니다.</p>
+                  <p>2. 사용자는 건전한 게임 문화 조성에 협조해야 합니다.</p>
+                  <p>3. 부적절한 닉네임이나 채팅은 제재 대상입니다.</p>
+                  <p>4. 게임 내 데이터는 서버에 안전하게 저장됩니다.</p>
+                  <p>5. 서비스 개선을 위한 업데이트가 있을 수 있습니다.</p>
+                  <p>6. 문의사항은 카카오톡 채널방을 통해 연락 바랍니다.</p>
+                </div>
+              </div>
+              
+              {/* 약관 동의 체크박스 */}
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="termsCheckbox"
+                  checked={termsAccepted}
+                  onChange={(e) => setTermsAccepted(e.target.checked)}
+                  className="w-5 h-5 rounded border-2 border-blue-500 text-blue-500 focus:ring-blue-500"
+                />
+                <label htmlFor="termsCheckbox" className={`text-sm cursor-pointer ${
+                  isDarkMode ? "text-gray-300" : "text-gray-700"
+                }`}>
+                  위 이용약관에 동의합니다 (필수)
+                </label>
+              </div>
+              
+              {/* 닉네임 입력 */}
+              {termsAccepted && (
+                <div className="space-y-3">
+                  <label className={`block text-sm font-medium ${
+                    isDarkMode ? "text-gray-300" : "text-gray-700"
+                  }`}>
+                    사용할 닉네임을 입력해주세요
+                  </label>
+                  <input
+                    type="text"
+                    value={initialNickname}
+                    onChange={(e) => setInitialNickname(e.target.value)}
+                    placeholder="2-12글자, 한글/영문/숫자만 가능"
+                    className={`w-full px-4 py-3 rounded-lg border focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      isDarkMode 
+                        ? "bg-gray-800 border-gray-600 text-white placeholder-gray-400" 
+                        : "bg-white border-gray-300 text-gray-800 placeholder-gray-500"
+                    }`}
+                    maxLength={12}
+                    autoFocus
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') setInitialNicknameFunc();
+                    }}
+                  />
+                  <p className={`text-xs ${
+                    isDarkMode ? "text-gray-500" : "text-gray-600"
+                  }`}>
+                    ⚠️ 닉네임은 한 번 설정하면 변경할 수 없습니다!
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            {/* 모달 하단 버튼 */}
+            <div className={`p-6 border-t ${
+              isDarkMode ? "border-white/10" : "border-gray-300/20"
+            }`}>
+              <button
+                onClick={setInitialNicknameFunc}
+                disabled={!termsAccepted || !initialNickname.trim()}
+                className={`w-full py-3 px-6 rounded-lg font-medium transition-all duration-300 ${
+                  (!termsAccepted || !initialNickname.trim())
+                    ? "opacity-50 cursor-not-allowed bg-gray-500/20 text-gray-500"
+                    : isDarkMode
+                      ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-400/30 hover:scale-105"
+                      : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border border-blue-500/30 hover:scale-105"
+                }`}
+              >
+                게임 시작하기
+              </button>
             </div>
           </div>
         </div>

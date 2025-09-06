@@ -1713,69 +1713,71 @@ app.post("/api/kakao-token", async (req, res) => {
   }
 });
 
-// 닉네임 업데이트 API
+// 닉네임 변경 API (더 이상 지원하지 않음)
 app.post("/api/update-nickname", async (req, res) => {
   try {
-    const { username, userUuid } = req.query;
-    const { newNickname } = req.body;
+    console.log("=== DEPRECATED UPDATE NICKNAME API ===");
+    console.log("Nickname change is no longer supported");
     
-    console.log("=== UPDATE NICKNAME API ===");
-    console.log("Request params:", { username, userUuid, newNickname });
-    
-    if (!newNickname || !newNickname.trim()) {
-      return res.status(400).json({ error: "새 닉네임이 필요합니다." });
-    }
-    
-    if (!userUuid) {
-      return res.status(400).json({ error: "사용자 UUID가 필요합니다." });
-    }
-    
-    // 데이터베이스에서 사용자 찾기
-    const user = await UserUuidModel.findOne({ userUuid });
-    if (!user) {
-      return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
-    }
-    
-    // 닉네임 중복 체크 (자신 제외)
-    const trimmedNickname = newNickname.trim();
-    const existingUser = await UserUuidModel.findOne({ 
-      displayName: trimmedNickname,
-      userUuid: { $ne: userUuid } // 자신은 제외
-    });
-    
-    if (existingUser) {
-      console.log(`Nickname already exists: ${trimmedNickname} (used by ${existingUser.userUuid})`);
-      return res.status(400).json({ error: "이미 사용 중인 닉네임입니다." });
-    }
-    
-    // displayName 업데이트
-    user.displayName = newNickname.trim();
-    await user.save();
-    
-    // 현재 연결된 사용자 정보도 업데이트
-    for (const [socketId, userData] of connectedUsers.entries()) {
-      if (userData.userUuid === userUuid) {
-        userData.displayName = newNickname.trim();
-        userData.username = newNickname.trim(); // username도 함께 업데이트
-        console.log(`Updated connected user displayName: ${socketId} -> ${newNickname.trim()}`);
-      }
-    }
-    
-    console.log(`Nickname updated for ${userUuid}: ${username} -> ${newNickname.trim()}`);
-    
-    // 모든 클라이언트에게 업데이트된 사용자 목록 전송
-    const usersList = cleanupConnectedUsers();
-    io.emit("users:update", usersList);
-    
-    res.json({ 
-      success: true, 
-      message: "닉네임이 성공적으로 변경되었습니다.",
-      newDisplayName: newNickname.trim()
+    res.status(400).json({ 
+      error: "닉네임 변경 기능이 중단되었습니다. 닉네임은 최초 설정 시에만 가능합니다.",
+      deprecated: true 
     });
     
   } catch (error) {
-    console.error("Failed to update nickname:", error);
-    res.status(500).json({ error: "닉네임 변경에 실패했습니다: " + error.message });
+    console.error("Deprecated nickname update API called:", error);
+    res.status(500).json({ error: "닉네임 변경 기능이 중단되었습니다." });
+  }
+});
+
+// 닉네임 중복 체크 API (최초 설정용)
+app.post("/api/check-nickname", async (req, res) => {
+  try {
+    const { userUuid } = req.query;
+    const { nickname } = req.body;
+    
+    console.log("=== CHECK NICKNAME API ===");
+    console.log("Request params:", { userUuid, nickname });
+    
+    if (!nickname || !nickname.trim()) {
+      return res.status(400).json({ error: "닉네임이 필요합니다." });
+    }
+    
+    const trimmedNickname = nickname.trim();
+    
+    // 닉네임 유효성 검사
+    if (trimmedNickname.length < 2) {
+      return res.status(400).json({ error: "닉네임은 2글자 이상이어야 합니다." });
+    }
+    
+    if (trimmedNickname.length > 12) {
+      return res.status(400).json({ error: "닉네임은 12글자 이하여야 합니다." });
+    }
+    
+    // 특수문자 체크 (한글, 영문, 숫자만 허용)
+    const nicknameRegex = /^[가-힣a-zA-Z0-9]+$/;
+    if (!nicknameRegex.test(trimmedNickname)) {
+      return res.status(400).json({ error: "닉네임은 한글, 영문, 숫자만 사용 가능합니다." });
+    }
+    
+    // 중복 체크 (자신 제외 - userUuid가 있는 경우)
+    const query = userUuid 
+      ? { displayName: trimmedNickname, userUuid: { $ne: userUuid } }
+      : { displayName: trimmedNickname };
+      
+    const existingUser = await UserUuidModel.findOne(query);
+    
+    if (existingUser) {
+      console.log(`Nickname already exists: ${trimmedNickname} (used by ${existingUser.userUuid})`);
+      return res.status(200).json({ available: false, error: "이미 사용 중인 닉네임입니다." });
+    }
+    
+    console.log(`Nickname available: ${trimmedNickname}`);
+    res.json({ available: true, message: "사용 가능한 닉네임입니다." });
+    
+  } catch (error) {
+    console.error("Failed to check nickname:", error);
+    res.status(500).json({ error: "닉네임 확인에 실패했습니다: " + error.message });
   }
 });
 
