@@ -54,7 +54,7 @@ function App() {
     const initKakaoSDK = () => {
       if (window.Kakao && !window.Kakao.isInitialized()) {
         try {
-          window.Kakao.init('b6e5e78104c937096dd67d2010366278'); // 카카오 JavaScript 앱 키
+          window.Kakao.init('4ca63f8b2f7e43690a060c4571eb7bf0'); // 카카오 JavaScript 앱 키
           console.log('Kakao SDK initialized successfully');
         } catch (error) {
           console.error('Failed to initialize Kakao SDK:', error);
@@ -83,7 +83,7 @@ function App() {
     if (!window.Kakao.isInitialized()) {
       console.log('카카오 SDK 초기화 시도');
       try {
-        window.Kakao.init('b6e5e78104c937096dd67d2010366278');
+        window.Kakao.init('4ca63f8b2f7e43690a060c4571eb7bf0');
         console.log('카카오 SDK 초기화 완료');
       } catch (error) {
         console.error('카카오 SDK 초기화 실패:', error);
@@ -417,7 +417,7 @@ function App() {
             },
             body: new URLSearchParams({
               grant_type: 'authorization_code',
-              client_id: 'b6e5e78104c937096dd67d2010366278',
+              client_id: '4ca63f8b2f7e43690a060c4571eb7bf0',
               redirect_uri: window.location.origin,
               code: kakaoCode
             })
