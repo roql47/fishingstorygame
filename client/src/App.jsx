@@ -69,92 +69,103 @@ function App() {
   }, []);
 
   // 카카오 로그인 처리 함수
-  const handleKakaoLogin = () => {
+  const handleKakaoLogin = async () => {
+    console.log('카카오 로그인 시작');
+    
+    // 1. 기본 SDK 체크
     if (!window.Kakao) {
+      console.error('window.Kakao가 존재하지 않음');
       alert('카카오 SDK가 로드되지 않았습니다. 페이지를 새로고침해주세요.');
       return;
     }
 
-    // SDK가 완전히 로드될 때까지 기다리기
-    const waitForKakaoSDK = () => {
-      return new Promise((resolve, reject) => {
-        let attempts = 0;
-        const maxAttempts = 10;
-        
-        const checkSDK = () => {
-          attempts++;
-          
-          if (window.Kakao && window.Kakao.Auth && typeof window.Kakao.Auth.login === 'function') {
-            resolve();
-          } else if (attempts >= maxAttempts) {
-            reject(new Error('카카오 SDK 로딩 시간 초과'));
-          } else {
-            setTimeout(checkSDK, 500);
-          }
-        };
-        
-        checkSDK();
-      });
-    };
+    // 2. SDK 초기화 체크
+    if (!window.Kakao.isInitialized()) {
+      console.log('카카오 SDK 초기화 시도');
+      try {
+        window.Kakao.init('b6e5e78104c937096dd67d2010366278');
+        console.log('카카오 SDK 초기화 완료');
+      } catch (error) {
+        console.error('카카오 SDK 초기화 실패:', error);
+        alert('카카오 SDK 초기화에 실패했습니다.');
+        return;
+      }
+    }
 
-    // SDK 로딩 대기 후 로그인 실행
-    waitForKakaoSDK()
-      .then(() => {
-        window.Kakao.Auth.login({
-          success: function(authObj) {
-            console.log('Kakao login success:', authObj);
-            
-            // 사용자 정보 가져오기
-            window.Kakao.API.request({
-              url: '/v2/user/me',
-              success: function(response) {
-                console.log('Kakao user info:', response);
-                
-                const kakaoId = response.id;
-                const kakaoNickname = response.kakao_account?.profile?.nickname || `카카오사용자${kakaoId}`;
-                
-                // 기존에 저장된 닉네임이 있으면 그것을 보존
-                const existingNickname = localStorage.getItem("nickname");
-                const existingUserUuid = localStorage.getItem("userUuid");
-                
-                console.log("Kakao login - existing nickname:", existingNickname);
-                console.log("Kakao login - existing userUuid:", existingUserUuid);
-                console.log("Kakao login - kakao nickname:", kakaoNickname);
-                
-                // 기존 사용자인 경우 기존 닉네임을 보존
-                if (existingUserUuid && existingNickname) {
-                  console.log("Kakao login - preserving existing nickname:", existingNickname);
-                  setUsername(existingNickname);
-                } else {
-                  // 새 사용자인 경우 카카오 닉네임 사용
-                  console.log("Kakao login - new user, using kakao nickname:", kakaoNickname);
-                  setUsername(kakaoNickname);
-                  localStorage.setItem("nickname", kakaoNickname);
-                }
-                
-                // 카카오 토큰 정보 저장 (구글과 구분하기 위해 kakaoToken으로 저장)
-                const kakaoToken = `kakao_${kakaoId}_${authObj.access_token}`;
-                setIdToken(kakaoToken);
-                localStorage.setItem("idToken", kakaoToken);
-                
-                console.log("Kakao login successful:", existingUserUuid && existingNickname ? existingNickname : kakaoNickname);
-              },
-              fail: function(error) {
-                console.error('Failed to get Kakao user info:', error);
-                alert('카카오 사용자 정보를 가져오는데 실패했습니다.');
+    // 3. Auth 객체 체크
+    if (!window.Kakao.Auth) {
+      console.error('window.Kakao.Auth가 존재하지 않음');
+      alert('카카오 인증 모듈을 찾을 수 없습니다. 페이지를 새로고침해주세요.');
+      return;
+    }
+
+    // 4. login 함수 체크
+    if (typeof window.Kakao.Auth.login !== 'function') {
+      console.error('window.Kakao.Auth.login이 함수가 아님:', typeof window.Kakao.Auth.login);
+      console.log('사용 가능한 Kakao 메소드들:', Object.keys(window.Kakao));
+      console.log('사용 가능한 Kakao.Auth 메소드들:', Object.keys(window.Kakao.Auth || {}));
+      alert('카카오 로그인 함수를 찾을 수 없습니다. 페이지를 새로고침해주세요.');
+      return;
+    }
+
+    console.log('모든 체크 완료, 카카오 로그인 실행');
+
+    try {
+      // 5. 카카오 로그인 실행
+      window.Kakao.Auth.login({
+        success: function(authObj) {
+          console.log('Kakao login success:', authObj);
+          
+          // 사용자 정보 가져오기
+          window.Kakao.API.request({
+            url: '/v2/user/me',
+            success: function(response) {
+              console.log('Kakao user info:', response);
+              
+              const kakaoId = response.id;
+              const kakaoNickname = response.kakao_account?.profile?.nickname || `카카오사용자${kakaoId}`;
+              
+              // 기존에 저장된 닉네임이 있으면 그것을 보존
+              const existingNickname = localStorage.getItem("nickname");
+              const existingUserUuid = localStorage.getItem("userUuid");
+              
+              console.log("Kakao login - existing nickname:", existingNickname);
+              console.log("Kakao login - existing userUuid:", existingUserUuid);
+              console.log("Kakao login - kakao nickname:", kakaoNickname);
+              
+              // 기존 사용자인 경우 기존 닉네임을 보존
+              if (existingUserUuid && existingNickname) {
+                console.log("Kakao login - preserving existing nickname:", existingNickname);
+                setUsername(existingNickname);
+              } else {
+                // 새 사용자인 경우 카카오 닉네임 사용
+                console.log("Kakao login - new user, using kakao nickname:", kakaoNickname);
+                setUsername(kakaoNickname);
+                localStorage.setItem("nickname", kakaoNickname);
               }
-            });
-          },
-          fail: function(err) {
-            console.error('Kakao login failed:', err);
-            alert('카카오 로그인에 실패했습니다.');
-          }
-        });
-      })
-      .catch((error) => {
-        console.error('Kakao SDK loading failed:', error);
-        alert('카카오 SDK 로딩에 실패했습니다. 페이지를 새로고침해주세요.');
+              
+              // 카카오 토큰 정보 저장 (구글과 구분하기 위해 kakaoToken으로 저장)
+              const kakaoToken = `kakao_${kakaoId}_${authObj.access_token}`;
+              setIdToken(kakaoToken);
+              localStorage.setItem("idToken", kakaoToken);
+              
+              console.log("Kakao login successful:", existingUserUuid && existingNickname ? existingNickname : kakaoNickname);
+            },
+            fail: function(error) {
+              console.error('Failed to get Kakao user info:', error);
+              alert('카카오 사용자 정보를 가져오는데 실패했습니다.');
+            }
+          });
+        },
+        fail: function(err) {
+          console.error('Kakao login failed:', err);
+          alert('카카오 로그인에 실패했습니다: ' + (err.error_description || err.error || '알 수 없는 오류'));
+        }
       });
+    } catch (error) {
+      console.error('카카오 로그인 실행 중 오류:', error);
+      alert('카카오 로그인 실행 중 오류가 발생했습니다.');
+    }
   };
   const [userMoney, setUserMoney] = useState(0);
   const [userAmber, setUserAmber] = useState(0);
