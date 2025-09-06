@@ -3748,7 +3748,11 @@ app.use((req, res) => {
 });
 
 // 계정 삭제 API
-app.delete("/api/delete-account", async (req, res) => {
+// 🔧 DELETE와 POST 방식 모두 지원 (호환성)
+app.delete("/api/delete-account", deleteAccountHandler);
+app.post("/api/delete-account", deleteAccountHandler);
+
+async function deleteAccountHandler(req, res) {
   try {
     const { username, userUuid } = req.query;
     
@@ -3825,10 +3829,27 @@ app.delete("/api/delete-account", async (req, res) => {
     console.error("Failed to delete account:", error);
     res.status(500).json({ error: "계정 삭제에 실패했습니다: " + error.message });
   }
+}
+
+// 🔧 이전 API 호환성 지원 (임시)
+app.get("/api/user-profile/:username", async (req, res) => {
+  try {
+    const { username } = req.params;
+    console.log("⚠️  Using legacy API path for username:", username);
+    
+    // 새로운 API로 리다이렉트
+    req.query.username = decodeURIComponent(username);
+    return getUserProfileHandler(req, res);
+  } catch (error) {
+    console.error("Legacy API error:", error);
+    res.status(500).json({ error: "Failed to fetch user profile" });
+  }
 });
 
 // 다른 사용자 프로필 조회 API (특수문자 지원)
-app.get("/api/user-profile", async (req, res) => {
+app.get("/api/user-profile", getUserProfileHandler);
+
+async function getUserProfileHandler(req, res) {
   try {
     const { username } = req.query;
     
@@ -3876,7 +3897,7 @@ app.get("/api/user-profile", async (req, res) => {
     console.error("Failed to fetch user profile:", error);
     res.status(500).json({ error: "Failed to fetch user profile" });
   }
-});
+}
 
 // MongoDB 연결 상태 확인 엔드포인트
 app.get("/api/health", async (req, res) => {

@@ -1274,9 +1274,24 @@ function App() {
     try {
       console.log("=== ACCOUNT DELETION DEBUG ===");
       console.log("Deleting account for:", { username, userUuid });
+      console.log("Server URL:", serverUrl);
+      console.log("Full URL:", `${serverUrl}/api/delete-account?username=${encodeURIComponent(username)}&userUuid=${encodeURIComponent(userUuid)}`);
 
       const params = { username, userUuid };
-      const response = await axios.delete(`${serverUrl}/api/delete-account`, { params });
+      let response;
+      
+      try {
+        // 먼저 DELETE 방식 시도
+        response = await axios.delete(`${serverUrl}/api/delete-account`, { params });
+      } catch (deleteError) {
+        if (deleteError.response?.status === 404 || deleteError.response?.status === 405) {
+          console.log("DELETE 방식 실패, POST 방식으로 재시도...");
+          // DELETE가 실패하면 POST 방식으로 재시도
+          response = await axios.post(`${serverUrl}/api/delete-account`, {}, { params });
+        } else {
+          throw deleteError;
+        }
+      }
 
       if (response.data.success) {
         console.log("Account deletion successful:", response.data);
@@ -1300,6 +1315,15 @@ function App() {
       }
     } catch (error) {
       console.error('Failed to delete account:', error);
+      console.error("Delete account error details:", {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: error.config?.url,
+        method: error.config?.method,
+        params: error.config?.params
+      });
+      
       const errorMessage = error.response?.data?.error || error.message;
       alert('계정 삭제에 실패했습니다: ' + errorMessage);
     }
