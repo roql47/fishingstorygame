@@ -54,7 +54,22 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json());
+// 요청 크기 제한 (보안 강화)
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// MIME 타입 강제 설정 미들웨어
+app.use((req, res, next) => {
+  // CSS 파일 요청에 대한 MIME 타입 강제 설정
+  if (req.path.endsWith('.css')) {
+    res.type('text/css');
+  }
+  // JS 파일 요청에 대한 MIME 타입 강제 설정
+  else if (req.path.endsWith('.js')) {
+    res.type('application/javascript');
+  }
+  next();
+});
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -3484,11 +3499,35 @@ app.get("/api/fishing-skill/:userId", async (req, res) => {
 
 // Static files (serve built client from dist/static)
 const staticDir = path.join(__dirname, "..", "dist", "static");
-app.use(express.static(staticDir));
 
-// SPA fallback (exclude API and socket paths)
-app.get(/^(?!\/api|\/socket\.io).*/, (req, res) => {
-  res.sendFile(path.join(staticDir, "index.html"));
+// MIME 타입 설정 강화
+app.use(express.static(staticDir, {
+  setHeaders: (res, path) => {
+    // CSS 파일에 대한 MIME 타입 명시적 설정
+    if (path.endsWith('.css')) {
+      res.setHeader('Content-Type', 'text/css; charset=utf-8');
+    }
+    // JS 파일에 대한 MIME 타입 설정
+    else if (path.endsWith('.js')) {
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    }
+    // 기타 정적 파일들
+    else if (path.endsWith('.html')) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    }
+    // 캐시 설정 (정적 파일 성능 향상)
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // 1일
+  }
+}));
+
+// SPA fallback (exclude API, socket, and assets paths)
+app.get(/^(?!\/api|\/socket\.io|\/assets).*/, (req, res) => {
+  res.sendFile(path.join(staticDir, "index.html"), (err) => {
+    if (err) {
+      console.error('Error serving index.html:', err);
+      res.status(500).send('Server Error');
+    }
+  });
 });
 
 // 계정 삭제 API
