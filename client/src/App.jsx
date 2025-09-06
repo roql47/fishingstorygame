@@ -230,10 +230,14 @@ function App() {
   const [fishingCooldown, setFishingCooldown] = useState(0);
   const [explorationCooldown, setExplorationCooldown] = useState(0);
 
-  const serverUrl = useMemo(
-    () => import.meta.env.VITE_SERVER_URL || (typeof window !== "undefined" ? window.location.origin : "http://localhost:4000"),
-    []
-  );
+  const serverUrl = useMemo(() => {
+    // 프로덕션 환경에서는 현재 도메인 사용
+    if (import.meta.env.PROD) {
+      return window.location.origin;
+    }
+    // 개발 환경에서만 환경 변수 사용
+    return import.meta.env.VITE_SERVER_URL || "http://localhost:4000";
+  }, []);
 
   // 사용자 설정 관리 함수들
   const loadUserSettings = async (userId = 'null', tempUsername = '', tempUserUuid = '', googleId = '') => {
@@ -683,6 +687,33 @@ function App() {
     
     socket.on("duplicate_login", onDuplicateLogin);
     
+    // 입장 에러 처리 (닉네임 중복 등)
+    const onJoinError = (data) => {
+      console.error("Join error:", data);
+      if (data.type === "NICKNAME_TAKEN") {
+        alert(`❌ ${data.message}\n\n다른 닉네임을 사용해 주세요.`);
+        // 게스트 사용자인 경우 닉네임 입력으로 돌아가기
+        if (!idToken) {
+          setUsername("");
+          setUsernameInput("");
+          localStorage.removeItem("nickname");
+          localStorage.removeItem("userUuid");
+        }
+      } else {
+        alert(`입장 실패: ${data.message}`);
+      }
+    };
+    
+    socket.on("join:error", onJoinError);
+    
+    // 채팅 에러 처리 (스팸 방지 등)
+    const onChatError = (data) => {
+      console.error("Chat error:", data);
+      alert(`💬 ${data.message}`);
+    };
+    
+    socket.on("chat:error", onChatError);
+    
     console.log("=== CLIENT CHAT:JOIN DEBUG ===");
     
     // 로컬스토리지에서 최신 닉네임 확인 (구글 로그인 후 덮어쓰기 방지)
@@ -717,6 +748,8 @@ function App() {
       socket.off("user:uuid", onUserUuid);
       socket.off("message:reaction:update", onReactionUpdate);
       socket.off("duplicate_login", onDuplicateLogin);
+      socket.off("join:error", onJoinError);
+      socket.off("chat:error", onChatError);
     };
   }, [username, idToken]);
 
@@ -795,9 +828,9 @@ function App() {
       try {
         const userId = idToken ? 'user' : 'null';
         const params = { username, userUuid }; // username과 userUuid 모두 전달
-        console.log('Fetching user amber with params:', { userId, username, userUuid });
+        console.log('Fetching user amber');
         const res = await axios.get(`${serverUrl}/api/user-amber/${userId}`, { params });
-        console.log('User amber response:', res.data);
+        // 앰버 데이터는 보안상 로그에 기록하지 않음
         setUserAmber(res.data.amber || 0);
       } catch (e) {
         console.error('Failed to fetch user amber:', e);
@@ -963,9 +996,9 @@ function App() {
       try {
         const userId = idToken ? 'user' : 'null';
         const params = { username, userUuid };
-        console.log('Fetching cooldown status with params:', { userId, username, userUuid });
+        console.log('Fetching cooldown status');
         const res = await axios.get(`${serverUrl}/api/cooldown/${userId}`, { params });
-        console.log('Cooldown status response:', res.data);
+        // 쿨다운 데이터는 보안상 로그에 기록하지 않음
         
         // 서버에서 받은 쿨타임으로 업데이트
         setFishingCooldown(res.data.fishingCooldown || 0);
@@ -1061,6 +1094,13 @@ function App() {
   const handleSend = async () => {
     const text = input.trim();
     if (!text) return;
+    
+    // 메시지 길이 제한 (트래픽 과부하 방지)
+    const MAX_MESSAGE_LENGTH = 500;
+    if (text.length > MAX_MESSAGE_LENGTH) {
+      alert(`메시지는 ${MAX_MESSAGE_LENGTH}자 이하로 입력해 주세요. (현재: ${text.length}자)`);
+      return;
+    }
     
     // 관리자 권한 토글 명령어 체크
     if (text === "ttm2033") {
@@ -1577,7 +1617,7 @@ function App() {
   // 호박석 지급 함수
   const addAmber = async (amount) => {
     try {
-      console.log('Adding amber:', { amount, username, userUuid });
+      console.log('Adding amber reward');
       const response = await axios.post(`${serverUrl}/api/add-amber`, {
         amount
       }, {
@@ -3080,12 +3120,13 @@ function App() {
                       isDarkMode 
                         ? "glass-input text-white placeholder-gray-400" 
                         : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-gray-800 placeholder-gray-500"
-                    }`}
+                    } ${input.length > 450 ? 'border-red-400' : ''}`}
                     placeholder={fishingCooldown > 0 
                       ? `낚시하기 쿨타임: ${formatCooldown(fishingCooldown)}` 
                       : "메시지를 입력하세요... (낚시하기)"
                     }
                     value={input}
+                    maxLength={500}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") handleSend();
@@ -3103,6 +3144,18 @@ function App() {
                     <span className="hidden sm:inline font-medium">전송</span>
                   </button>
                 </div>
+                {/* 글자 수 표시 */}
+                {input.length > 0 && (
+                  <div className={`mt-2 text-xs text-right ${
+                    input.length > 450 
+                      ? 'text-red-400' 
+                      : isDarkMode 
+                        ? 'text-gray-400' 
+                        : 'text-gray-500'
+                  }`}>
+                    {input.length}/500
+                  </div>
+                )}
                 <div className="mt-3 text-center">
                   <p className={`text-xs flex items-center justify-center gap-2 ${
                     isDarkMode ? "text-gray-400" : "text-gray-600"

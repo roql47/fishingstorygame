@@ -29,10 +29,28 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
-// CORS 헤더 추가
+// 보안 헤더 설정
 app.use((req, res, next) => {
+  // 기존 CORS 헤더
   res.header('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
   res.header('Cross-Origin-Embedder-Policy', 'unsafe-none');
+  
+  // 추가 보안 헤더
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  
+  // HTTPS 강제 (프로덕션에서)
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  
+  // 참조자 정책
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  
+  // 권한 정책
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+  
   next();
 });
 
@@ -268,17 +286,44 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
       // 구글 로그인 사용자
       user = await UserUuidModel.findOne({ originalGoogleId: googleId });
       if (!user) {
-        const userUuid = await generateNextUuid();
-        user = await UserUuidModel.create({
-          userUuid,
-          username: username || "구글사용자", // 구글에서 제공하는 원래 이름
-          displayName: username || "구글사용자", // 초기에는 구글 이름과 동일, 나중에 사용자가 변경
-          originalGoogleId: googleId,
-          isGuest: false,
-          termsAccepted: false,
-          darkMode: true
+        // 보안 강화: 구글 사용자도 닉네임 중복 체크
+        const defaultUsername = username || "구글사용자";
+        const existingUser = await UserUuidModel.findOne({ 
+          $or: [
+            { username: defaultUsername },
+            { displayName: defaultUsername }
+          ]
         });
-        console.log(`Created new Google user: ${userUuid} (username: ${username})`);
+        
+        if (existingUser) {
+          // 중복된 경우 고유한 닉네임 생성
+          const timestamp = Date.now().toString().slice(-4);
+          const uniqueUsername = `${defaultUsername}_${timestamp}`;
+          console.log(`Google username conflict resolved: ${defaultUsername} -> ${uniqueUsername}`);
+          
+          const userUuid = await generateNextUuid();
+          user = await UserUuidModel.create({
+            userUuid,
+            username: uniqueUsername,
+            displayName: uniqueUsername,
+            originalGoogleId: googleId,
+            isGuest: false,
+            termsAccepted: false,
+            darkMode: true
+          });
+        } else {
+          const userUuid = await generateNextUuid();
+          user = await UserUuidModel.create({
+            userUuid,
+            username: defaultUsername,
+            displayName: defaultUsername,
+            originalGoogleId: googleId,
+            isGuest: false,
+            termsAccepted: false,
+            darkMode: true
+          });
+        }
+        console.log(`Created new Google user: ${user.userUuid} (username: ${user.username})`);
       } else {
         // 구글 사용자의 경우 username(구글 이름)은 업데이트하지만 displayName은 보존
         if (user.username !== username && username) {
@@ -291,17 +336,44 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
       // 카카오 로그인 사용자
       user = await UserUuidModel.findOne({ originalKakaoId: kakaoId });
       if (!user) {
-        const userUuid = await generateNextUuid();
-        user = await UserUuidModel.create({
-          userUuid,
-          username: username || "카카오사용자", // 카카오에서 제공하는 원래 닉네임
-          displayName: username || "카카오사용자", // 초기에는 카카오 닉네임과 동일, 나중에 사용자가 변경
-          originalKakaoId: kakaoId,
-          isGuest: false,
-          termsAccepted: false,
-          darkMode: true
+        // 보안 강화: 카카오 사용자도 닉네임 중복 체크
+        const defaultUsername = username || "카카오사용자";
+        const existingUser = await UserUuidModel.findOne({ 
+          $or: [
+            { username: defaultUsername },
+            { displayName: defaultUsername }
+          ]
         });
-        console.log(`Created new Kakao user: ${userUuid} (username: ${username})`);
+        
+        if (existingUser) {
+          // 중복된 경우 고유한 닉네임 생성
+          const timestamp = Date.now().toString().slice(-4);
+          const uniqueUsername = `${defaultUsername}_${timestamp}`;
+          console.log(`Kakao username conflict resolved: ${defaultUsername} -> ${uniqueUsername}`);
+          
+          const userUuid = await generateNextUuid();
+          user = await UserUuidModel.create({
+            userUuid,
+            username: uniqueUsername,
+            displayName: uniqueUsername,
+            originalKakaoId: kakaoId,
+            isGuest: false,
+            termsAccepted: false,
+            darkMode: true
+          });
+        } else {
+          const userUuid = await generateNextUuid();
+          user = await UserUuidModel.create({
+            userUuid,
+            username: defaultUsername,
+            displayName: defaultUsername,
+            originalKakaoId: kakaoId,
+            isGuest: false,
+            termsAccepted: false,
+            darkMode: true
+          });
+        }
+        console.log(`Created new Kakao user: ${user.userUuid} (username: ${user.username})`);
       } else {
         // 카카오 사용자의 경우 username(카카오 닉네임)은 업데이트하지만 displayName은 보존
         if (user.username !== username && username) {
@@ -311,9 +383,22 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
         }
       }
     } else {
-      // 게스트 사용자 - 기존 사용자를 찾되, 없으면 새로 생성
+      // 게스트 사용자 - 기존 게스트 사용자를 찾되, 없으면 새로 생성
       user = await UserUuidModel.findOne({ username, isGuest: true });
       if (!user) {
+        // 보안 강화: 다른 사용자(게스트 포함)가 이미 사용 중인 닉네임인지 확인
+        const existingUser = await UserUuidModel.findOne({ 
+          $or: [
+            { username: username },
+            { displayName: username }
+          ]
+        });
+        
+        if (existingUser) {
+          // 이미 사용 중인 닉네임인 경우 에러 발생
+          throw new Error(`NICKNAME_TAKEN: 이미 사용 중인 닉네임입니다: ${username}`);
+        }
+        
         const userUuid = await generateNextUuid();
         user = await UserUuidModel.create({
           userUuid,
@@ -325,7 +410,19 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
         });
         console.log(`Created new guest user: ${userUuid} (${username})`);
       } else if (user.username !== username && username) {
-        // 게스트 사용자의 닉네임이 변경된 경우 업데이트
+        // 게스트 사용자의 닉네임이 변경된 경우 중복 체크 후 업데이트
+        const existingUser = await UserUuidModel.findOne({ 
+          $or: [
+            { username: username },
+            { displayName: username }
+          ],
+          userUuid: { $ne: user.userUuid } // 자신 제외
+        });
+        
+        if (existingUser) {
+          throw new Error(`NICKNAME_TAKEN: 이미 사용 중인 닉네임입니다: ${username}`);
+        }
+        
         const oldUsername = user.username;
         user.username = username;
         user.displayName = username;
@@ -353,12 +450,12 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
 
 // API용 사용자 조회 헬퍼 함수 (userUuid 우선 조회)
 async function getUserQuery(userId, username, userUuid = null) {
-  console.log("getUserQuery called with:", { userId, username, userUuid });
+  // 사용자 식별 정보는 보안상 로그에 기록하지 않음
   
   // 1순위: userUuid로 직접 조회 (가장 정확)
   if (userUuid) {
     const user = await UserUuidModel.findOne({ userUuid });
-    console.log("Found user by userUuid:", user ? { userUuid: user.userUuid, username: user.username } : "Not found");
+    // 사용자 조회 결과는 보안상 로그에 기록하지 않음
     if (user) {
       return { userUuid: user.userUuid, user };
     }
@@ -367,7 +464,7 @@ async function getUserQuery(userId, username, userUuid = null) {
   // 2순위: username으로 UUID 조회
   if (username) {
     const user = await UserUuidModel.findOne({ username });
-    console.log("Found user by username:", user ? { userUuid: user.userUuid, username: user.username } : "Not found");
+    // 사용자 조회 결과는 보안상 로그에 기록하지 않음
     if (user) {
       return { userUuid: user.userUuid, user };
     }
@@ -383,6 +480,53 @@ async function getUserQuery(userId, username, userUuid = null) {
   } else {
     console.log("Using fallback with default user");
     return { userId: 'user', user: null };
+  }
+}
+
+// 사용자 소유권 검증 함수 (보안 강화)
+async function validateUserOwnership(requestedUserQuery, requestingUserUuid, requestingUsername) {
+  try {
+    // 요청하는 사용자의 정보 확인
+    let requestingUser = null;
+    if (requestingUserUuid) {
+      requestingUser = await UserUuidModel.findOne({ userUuid: requestingUserUuid });
+    } else if (requestingUsername) {
+      requestingUser = await UserUuidModel.findOne({ username: requestingUsername });
+    }
+    
+    if (!requestingUser) {
+      console.warn("Requesting user not found:", { requestingUserUuid, requestingUsername });
+      return { isValid: false, reason: "Requesting user not found" };
+    }
+    
+    // 요청된 데이터의 소유자 확인
+    let targetUser = null;
+    if (requestedUserQuery.userUuid) {
+      targetUser = await UserUuidModel.findOne({ userUuid: requestedUserQuery.userUuid });
+    } else if (requestedUserQuery.username) {
+      targetUser = await UserUuidModel.findOne({ username: requestedUserQuery.username });
+    }
+    
+    if (!targetUser) {
+      console.warn("Target user not found:", requestedUserQuery);
+      return { isValid: false, reason: "Target user not found" };
+    }
+    
+    // 본인의 데이터인지 확인
+    const isSameUser = requestingUser.userUuid === targetUser.userUuid;
+    
+    if (!isSameUser) {
+      console.warn("Unauthorized access attempt:", {
+        requesting: { userUuid: requestingUser.userUuid, username: requestingUser.username },
+        target: { userUuid: targetUser.userUuid, username: targetUser.username }
+      });
+      return { isValid: false, reason: "Unauthorized access to other user's data" };
+    }
+    
+    return { isValid: true, user: targetUser };
+  } catch (error) {
+    console.error("Error validating user ownership:", error);
+    return { isValid: false, reason: "Validation error" };
   }
 }
 
@@ -510,7 +654,7 @@ async function verifyGoogleIdToken(idToken) {
     const userId = payload.sub;
     const displayName = payload.name || payload.email || "구글사용자";
     
-    console.log("Google token verified successfully:", { userId, displayName });
+    console.log("Google token verified successfully");
     return { userId, displayName, sub: payload.sub };
   } catch (error) {
     console.error("Google token verification failed:", error.message);
@@ -535,10 +679,7 @@ function parseKakaoToken(idToken) {
     const kakaoId = parts[1];
     const accessToken = parts.slice(2).join('_'); // 토큰에 _가 있을 수 있음
     
-    console.log("Kakao token parsed successfully:", {
-      kakaoId: kakaoId,
-      hasAccessToken: !!accessToken
-    });
+    console.log("Kakao token parsed successfully");
     
     return {
       sub: `kakao_${kakaoId}`, // 구글의 sub와 유사한 고유 ID
@@ -559,6 +700,13 @@ const connectedUsers = new Map();
 const processingJoins = new Set(); // 중복 join 요청 방지
 const recentJoins = new Map(); // 최근 입장 메시지 추적 (userUuid -> timestamp)
 const processingMaterialConsumption = new Set(); // 중복 재료 소모 요청 방지
+
+// 스팸 방지 및 Rate Limiting
+const userMessageHistory = new Map(); // userUuid -> 메시지 기록
+const MESSAGE_RATE_LIMIT = 5; // 10초 내 최대 메시지 수
+const MESSAGE_TIME_WINDOW = 10000; // 10초
+const MESSAGE_COOLDOWN = 1000; // 연속 메시지 간 최소 간격 (1초)
+const MAX_MESSAGE_LENGTH = 500; // 최대 메시지 길이
 
 // 연결된 사용자 정리 함수 (중복 제거 및 유령 연결 정리)
 function cleanupConnectedUsers() {
@@ -596,6 +744,67 @@ function cleanupConnectedUsers() {
 }
 
 // 주기적 연결 상태 정리 (30초마다)
+// 스팸 방지 검증 함수
+function checkSpamProtection(userUuid, messageContent) {
+  const now = Date.now();
+  const userHistory = userMessageHistory.get(userUuid) || { messages: [], lastMessageTime: 0 };
+  
+  // 1. 메시지 길이 검증
+  if (messageContent.length > MAX_MESSAGE_LENGTH) {
+    return {
+      allowed: false,
+      reason: `메시지가 너무 깁니다. (최대 ${MAX_MESSAGE_LENGTH}자)`
+    };
+  }
+  
+  // 2. 연속 메시지 쿨다운 검증
+  if (now - userHistory.lastMessageTime < MESSAGE_COOLDOWN) {
+    const remainingCooldown = Math.ceil((MESSAGE_COOLDOWN - (now - userHistory.lastMessageTime)) / 1000);
+    return {
+      allowed: false,
+      reason: `너무 빨리 메시지를 보내고 있습니다. ${remainingCooldown}초 후 다시 시도해 주세요.`
+    };
+  }
+  
+  // 3. Rate Limiting 검증 (시간 윈도우 내 메시지 수)
+  const recentMessages = userHistory.messages.filter(timestamp => now - timestamp < MESSAGE_TIME_WINDOW);
+  
+  if (recentMessages.length >= MESSAGE_RATE_LIMIT) {
+    const oldestMessage = Math.min(...recentMessages);
+    const waitTime = Math.ceil((MESSAGE_TIME_WINDOW - (now - oldestMessage)) / 1000);
+    return {
+      allowed: false,
+      reason: `메시지 전송 한도를 초과했습니다. ${waitTime}초 후 다시 시도해 주세요.`
+    };
+  }
+  
+  // 4. 메시지 기록 업데이트
+  recentMessages.push(now);
+  userMessageHistory.set(userUuid, {
+    messages: recentMessages,
+    lastMessageTime: now
+  });
+  
+  return { allowed: true };
+}
+
+// 주기적으로 오래된 메시지 기록 정리 (5분마다)
+setInterval(() => {
+  const now = Date.now();
+  for (const [userUuid, history] of userMessageHistory.entries()) {
+    const recentMessages = history.messages.filter(timestamp => now - timestamp < MESSAGE_TIME_WINDOW * 2);
+    if (recentMessages.length === 0) {
+      userMessageHistory.delete(userUuid);
+    } else {
+      userMessageHistory.set(userUuid, {
+        ...history,
+        messages: recentMessages
+      });
+    }
+  }
+  console.log(`🧹 Message history cleanup: ${userMessageHistory.size} users tracked`);
+}, 300000); // 5분
+
 setInterval(() => {
   console.log("🕐 Performing periodic connection cleanup...");
   const uniqueUsers = cleanupConnectedUsers();
@@ -617,7 +826,7 @@ io.on("connection", (socket) => {
     
     try {
       console.log("=== CHAT:JOIN DEBUG ===");
-      console.log("Received parameters:", { username, idToken: !!idToken, userUuid });
+      console.log("Chat join request received");
       
       // 토큰 타입에 따라 처리 (구글 또는 카카오)
       let info = null;
@@ -938,16 +1147,30 @@ io.on("connection", (socket) => {
     } catch (error) {
       console.error("Error in chat:join:", error);
       console.error("Stack trace:", error.stack);
-      socket.emit("error", { message: "Failed to join chat" });
       
-      // 오류 발생 시에도 기본 입장 메시지 (displayName 우선 사용)
-      const displayName = username || "사용자";
-      io.emit("chat:message", { 
-        system: true, 
-        username: "system", 
-        content: `${displayName} 님이 입장했습니다.`,
-        timestamp: new Date().toISOString()
-      });
+      // 닉네임 중복 에러 처리
+      if (error.message && error.message.includes('NICKNAME_TAKEN')) {
+        const errorMessage = error.message.replace('NICKNAME_TAKEN: ', '');
+        socket.emit("join:error", { 
+          type: "NICKNAME_TAKEN",
+          message: errorMessage 
+        });
+        console.log(`[NICKNAME_TAKEN] ${errorMessage}`);
+      } else {
+        socket.emit("join:error", { 
+          type: "GENERAL_ERROR",
+          message: "채팅 입장에 실패했습니다." 
+        });
+        
+        // 일반 오류 발생 시에만 기본 입장 메시지 (displayName 우선 사용)
+        const displayName = username || "사용자";
+        io.emit("chat:message", { 
+          system: true, 
+          username: "system", 
+          content: `${displayName} 님이 입장했습니다.`,
+          timestamp: new Date().toISOString()
+        });
+      }
     } finally {
       // 처리 완료 후 중복 방지 키 제거
       processingJoins.delete(joinKey);
@@ -972,6 +1195,23 @@ io.on("connection", (socket) => {
   socket.on("chat:message", async (msg) => {
     const trimmed = msg.content.trim();
     const timestamp = msg.timestamp || new Date().toISOString();
+    
+    // 사용자 정보 가져오기
+    const user = connectedUsers.get(socket.id);
+    if (!user || !user.userUuid) {
+      socket.emit("chat:error", { message: "사용자 인증이 필요합니다." });
+      return;
+    }
+    
+    // 스팸 방지 검증 (낚시하기 명령어는 제외)
+    if (trimmed !== "낚시하기") {
+      const spamCheck = checkSpamProtection(user.userUuid, trimmed);
+      if (!spamCheck.allowed) {
+        socket.emit("chat:error", { message: spamCheck.reason });
+        console.log(`[SPAM_BLOCKED] ${user.username}: ${spamCheck.reason}`);
+        return;
+      }
+    }
     
     if (trimmed === "낚시하기") {
       try {
@@ -1004,7 +1244,7 @@ io.on("connection", (socket) => {
         let fishingSkill = await FishingSkillModel.findOne(query);
         const userSkill = fishingSkill ? fishingSkill.skill : 0;
         
-        console.log(`User ${socket.data.userUuid || socket.data.username} fishing skill: ${userSkill}`);
+        // 사용자 낚시 실력 정보는 보안상 로그에 기록하지 않음
         const { fish } = randomFish(userSkill);
         console.log("Random fish result:", fish);
         
@@ -1181,12 +1421,12 @@ const validateInventoryIntegrity = async (userQuery, clientInventory) => {
 app.get("/api/inventory/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
-    const username = req.query.username;
+    const { username, userUuid } = req.query;
     
-    console.log("Inventory request:", { userId, username });
+    console.log("Inventory request:", { userId, username, userUuid });
     
     // UUID 기반 사용자 조회
-    const queryResult = await getUserQuery(userId, username);
+    const queryResult = await getUserQuery(userId, username, userUuid);
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
@@ -1194,6 +1434,13 @@ app.get("/api/inventory/:userId", async (req, res) => {
     } else {
       query = queryResult;
       console.log("Using fallback query for inventory:", query);
+    }
+    
+    // 🔒 보안 검증: 본인 데이터만 조회 가능
+    const ownershipValidation = await validateUserOwnership(query, userUuid, username);
+    if (!ownershipValidation.isValid) {
+      console.warn("Unauthorized inventory access:", ownershipValidation.reason);
+      return res.status(403).json({ error: "Access denied: You can only view your own data" });
     }
     
     console.log("Database query for inventory:", query);
@@ -1240,13 +1487,13 @@ app.get("/api/inventory/:userId", async (req, res) => {
   }
 });
 
-// User Money API
+// User Money API (보안 강화)
 app.get("/api/user-money/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
     const { username, userUuid } = req.query;
     
-    console.log("User money request:", { userId, username, userUuid });
+    console.log("User money request received");
     
     // UUID 기반 사용자 조회
     const queryResult = await getUserQuery(userId, username, userUuid);
@@ -1257,6 +1504,13 @@ app.get("/api/user-money/:userId", async (req, res) => {
     } else {
       query = queryResult;
       console.log("Using fallback query for user money:", query);
+    }
+    
+    // 🔒 보안 검증: 본인 데이터만 조회 가능
+    const ownershipValidation = await validateUserOwnership(query, userUuid, username);
+    if (!ownershipValidation.isValid) {
+      console.warn("Unauthorized money access:", ownershipValidation.reason);
+      return res.status(403).json({ error: "Access denied: You can only view your own data" });
     }
     
     console.log("Database query for user money:", query);
@@ -1286,13 +1540,13 @@ app.get("/api/user-money/:userId", async (req, res) => {
   }
 });
 
-// User Amber API
+// User Amber API (보안 강화)
 app.get("/api/user-amber/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
     const { username, userUuid } = req.query;
     
-    console.log("User amber request:", { userId, username, userUuid });
+    console.log("User amber request received");
     
     // UUID 기반 사용자 조회
     const queryResult = await getUserQuery(userId, username, userUuid);
@@ -1303,6 +1557,13 @@ app.get("/api/user-amber/:userId", async (req, res) => {
     } else {
       query = queryResult;
       console.log("Using fallback query for user amber:", query);
+    }
+    
+    // 🔒 보안 검증: 본인 데이터만 조회 가능
+    const ownershipValidation = await validateUserOwnership(query, userUuid, username);
+    if (!ownershipValidation.isValid) {
+      console.warn("Unauthorized amber access:", ownershipValidation.reason);
+      return res.status(403).json({ error: "Access denied: You can only view your own data" });
     }
     
     console.log("Database query for user amber:", query);
@@ -1402,7 +1663,7 @@ app.post("/api/add-star-pieces", async (req, res) => {
     }
     
     await userStarPieces.save();
-    console.log(`Added ${amount} star pieces. New total: ${userStarPieces.starPieces}`);
+    // 별조각 지급 완료 (보안상 잔액 정보는 로그에 기록하지 않음)
     
     res.json({ success: true, newStarPieces: userStarPieces.starPieces });
   } catch (error) {
@@ -1633,7 +1894,7 @@ app.get("/api/cooldown/:userId", async (req, res) => {
     const { userId } = req.params;
     const { username, userUuid } = req.query;
     
-    console.log("Cooldown status request:", { userId, username, userUuid });
+    console.log("Cooldown status request received");
     
     const queryResult = await getUserQuery(userId, username, userUuid);
     let query;
@@ -1663,10 +1924,7 @@ app.get("/api/cooldown/:userId", async (req, res) => {
       }
     }
     
-    console.log(`Cooldown status for ${username}:`, { 
-      fishingCooldown: Math.max(0, fishingCooldown), 
-      explorationCooldown: Math.max(0, explorationCooldown)
-    });
+    // 쿨다운 데이터는 보안상 로그에 기록하지 않음
     
     res.json({ 
       fishingCooldown: Math.max(0, fishingCooldown),
@@ -1678,26 +1936,34 @@ app.get("/api/cooldown/:userId", async (req, res) => {
   }
 });
 
-// 서버 측 낚시 쿨타임 계산 함수
+// 서버 측 낚시 쿨타임 계산 함수 (수정됨)
 const calculateFishingCooldownTime = async (userQuery) => {
-  const baseTime = 5 * 60 * 1000; // 5분 (밀리초)
-  
-  // 낚시실력 가져오기
-  const fishingSkill = await FishingSkillModel.findOne(userQuery);
-  const userSkill = fishingSkill ? fishingSkill.skill : 0;
-  let reduction = userSkill * 15 * 1000; // 낚시실력 * 15초
-  
-  // 악세사리 효과 가져오기
-  const userEquipment = await UserEquipmentModel.findOne(userQuery);
-  if (userEquipment && userEquipment.accessory) {
-    // 악세사리 레벨에 따른 쿨타임 감소 계산
-    // 이 부분은 실제 악세사리 데이터에 맞게 조정 필요
-    const accessoryLevel = 1; // 임시값 - 실제로는 악세사리 레벨 계산 필요
-    const additionalReduction = accessoryLevel * 15 * 1000;
-    reduction += additionalReduction;
+  try {
+    const baseTime = 5 * 60 * 1000; // 5분 (밀리초)
+    
+    // 낚시실력 가져오기
+    const fishingSkill = await FishingSkillModel.findOne(userQuery);
+    const userSkill = fishingSkill ? fishingSkill.skill : 0;
+    let reduction = userSkill * 15 * 1000; // 낚시실력 * 15초
+    
+    // 악세사리 효과 가져오기
+    const userEquipment = await UserEquipmentModel.findOne(userQuery);
+    if (userEquipment && userEquipment.accessory) {
+      // 서버에서 악세사리 레벨 계산
+      const accessoryLevel = getServerAccessoryLevel(userEquipment.accessory);
+      if (accessoryLevel > 0) {
+        // 악세사리 레벨에 따른 쿨타임 감소 (레벨당 15초)
+        const additionalReduction = accessoryLevel * 15 * 1000;
+        reduction += additionalReduction;
+      }
+    }
+    
+    return Math.max(baseTime - reduction, 0); // 최소 0초
+  } catch (error) {
+    console.error('Error calculating fishing cooldown time:', error);
+    // 에러 시 기본 쿨타임 반환
+    return 5 * 60 * 1000; // 5분
   }
-  
-  return Math.max(baseTime - reduction, 0); // 최소 0초
 };
 
 // 낚시 쿨타임 설정 API (서버에서 쿨타임 계산)
@@ -1705,7 +1971,7 @@ app.post("/api/set-fishing-cooldown", async (req, res) => {
   try {
     const { username, userUuid } = req.query;
     
-    console.log("Set fishing cooldown request:", { username, userUuid });
+    console.log("Set fishing cooldown request received");
     
     const queryResult = await getUserQuery('user', username, userUuid);
     let query;
@@ -1736,8 +2002,7 @@ app.post("/api/set-fishing-cooldown", async (req, res) => {
       { upsert: true, new: true }
     );
     
-    console.log(`Fishing cooldown set for ${username} until:`, cooldownEnd);
-    console.log(`Calculated cooldown duration: ${cooldownDuration}ms`);
+    // 쿨다운 설정 완료 (보안상 상세 정보는 로그에 기록하지 않음)
     
     res.json({ 
       success: true,
@@ -1756,7 +2021,7 @@ app.post("/api/set-exploration-cooldown", async (req, res) => {
     const { type } = req.body; // 'victory', 'defeat', 'flee' 타입
     const { username, userUuid } = req.query;
     
-    console.log("Set exploration cooldown request:", { type, username, userUuid });
+    console.log("Set exploration cooldown request received");
     
     const queryResult = await getUserQuery('user', username, userUuid);
     let query;
@@ -1799,7 +2064,7 @@ app.post("/api/set-exploration-cooldown", async (req, res) => {
       { upsert: true, new: true }
     );
     
-    console.log(`Exploration cooldown set for ${username} until:`, cooldownEnd);
+    // 탐사 쿨다운 설정 완료 (보안상 상세 정보는 로그에 기록하지 않음)
     
     res.json({ 
       success: true,
@@ -2320,7 +2585,7 @@ app.post("/api/user-settings/:userId", async (req, res) => {
     
     console.log("=== UPDATE USER SETTINGS API ===");
     console.log("Request params:", { userId, username, userUuid, googleId });
-    console.log("Request body:", { termsAccepted, darkMode, fishingCooldown, explorationCooldown });
+    console.log("User settings update request received");
     
     let user;
     if (userUuid && userUuid !== 'null' && userUuid !== 'undefined') {
@@ -2510,7 +2775,7 @@ app.post("/api/add-amber", async (req, res) => {
     }
     
     await userAmber.save();
-    console.log(`Added ${amount} amber. New total: ${userAmber.amber}`);
+    // 앰버 지급 완료 (보안상 잔액 정보는 로그에 기록하지 않음)
     
     res.json({ success: true, newAmber: userAmber.amber });
   } catch (error) {
@@ -2660,7 +2925,7 @@ app.post("/api/sell-fish", async (req, res) => {
       userMoney.money += serverTotalPrice; // 서버에서 계산된 가격 사용
       await userMoney.save();
     }
-    console.log(`Updated user money: ${userMoney.money}`);
+    // 골드 업데이트 완료 (보안상 잔액 정보는 로그에 기록하지 않음)
     
     res.json({ success: true, newBalance: userMoney.money });
   } catch (error) {
@@ -2760,32 +3025,35 @@ app.post("/api/buy-item", async (req, res) => {
     
     console.log("Database query for buy item:", query);
     
-    // 화폐 종류에 따른 잔액 확인
-    if (currency === 'amber') {
-      let userAmber = await UserAmberModel.findOne(query);
+    // 화폐 종류에 따른 잔액 확인 및 차감
+    let userMoney = null;
+    let userAmber = null;
+    
+    if (actualCurrency === 'amber') {
+      userAmber = await UserAmberModel.findOne(query);
       
-      if (!userAmber || userAmber.amber < price) {
-        console.log(`Not enough amber: has ${userAmber?.amber || 0}, needs ${price}`);
+      if (!userAmber || userAmber.amber < actualPrice) {
+        // 앰버 부족 (보안상 잔액 정보는 로그에 기록하지 않음)
         return res.status(400).json({ error: "Not enough amber" });
       }
       
       // 호박석 차감
-      userAmber.amber -= price;
+      userAmber.amber -= actualPrice;
       await userAmber.save();
-      console.log(`Amber deducted: ${price}, new balance: ${userAmber.amber}`);
+      // 앰버 차감 완료 (보안상 잔액 정보는 로그에 기록하지 않음)
     } else {
       // 골드 확인 및 차감
-      let userMoney = await UserMoneyModel.findOne(query);
+      userMoney = await UserMoneyModel.findOne(query);
       
-      if (!userMoney || userMoney.money < price) {
-        console.log(`Not enough money: has ${userMoney?.money || 0}, needs ${price}`);
+      if (!userMoney || userMoney.money < actualPrice) {
+        // 골드 부족 (보안상 잔액 정보는 로그에 기록하지 않음)
         return res.status(400).json({ error: "Not enough money" });
       }
       
       // 돈 차감
-      userMoney.money -= price;
+      userMoney.money -= actualPrice;
       await userMoney.save();
-      console.log(`Money deducted: ${price}, new balance: ${userMoney.money}`);
+      // 골드 차감 완료 (보안상 잔액 정보는 로그에 기록하지 않음)
     }
     
     // 장비 자동 장착
@@ -2860,10 +3128,15 @@ app.post("/api/buy-item", async (req, res) => {
         fishingSkill.skill += 1;
         await fishingSkill.save();
       }
-      console.log(`Fishing skill increased to ${fishingSkill.skill} for user`);
+      // 낚시 실력 증가 완료 (보안상 상세 정보는 로그에 기록하지 않음)
     }
     
-    res.json({ success: true, newBalance: userMoney.money });
+    // 구매 성공 응답 (화폐 종류에 따라 적절한 잔액 반환)
+    if (actualCurrency === 'amber') {
+      res.json({ success: true, newAmber: userAmber.amber });
+    } else {
+      res.json({ success: true, newBalance: userMoney.money });
+    }
   } catch (error) {
     console.error("Failed to buy item:", error);
     res.status(500).json({ error: "Failed to buy item" });
@@ -3135,17 +3408,36 @@ app.post("/api/consume-material", async (req, res) => {
   }
 });
 
-// Fishing Skill API
+// Fishing Skill API (보안 강화)
 app.get("/api/fishing-skill/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
     const { username, userUuid } = req.query;
     
-    console.log("Fishing skill request:", { userId, username, userUuid });
+    console.log("Fishing skill request received");
+    
+    // 입력 검증
+    if (!username && !userUuid) {
+      console.warn("Fishing skill request without username or userUuid");
+      return res.status(400).json({ error: "Username or userUuid is required" });
+    }
     
     // UUID 기반 사용자 조회 먼저 시도
     const queryResult = await getUserQuery(userId, username, userUuid);
+    
+    if (!queryResult || (!queryResult.userUuid && !queryResult.username)) {
+      console.warn("Invalid query result for fishing skill:", queryResult);
+      return res.status(400).json({ error: "Invalid user identification" });
+    }
+    
     const query = queryResult.userUuid ? { userUuid: queryResult.userUuid } : queryResult;
+    
+    // 🔒 보안 검증: 본인 데이터만 조회 가능
+    const ownershipValidation = await validateUserOwnership(query, userUuid, username);
+    if (!ownershipValidation.isValid) {
+      console.warn("Unauthorized fishing skill access:", ownershipValidation.reason);
+      return res.status(403).json({ error: "Access denied: You can only view your own data" });
+    }
     
     console.log("Database query for fishing skill:", query);
     
@@ -3164,13 +3456,29 @@ app.get("/api/fishing-skill/:userId", async (req, res) => {
       }
       
       console.log("Creating new fishing skill:", createData);
-      fishingSkill = await FishingSkillModel.create(createData);
+      
+      try {
+        fishingSkill = await FishingSkillModel.create(createData);
+      } catch (createError) {
+        console.error("Failed to create fishing skill:", createError);
+        // 생성 실패 시 기본값 반환
+        return res.json({ skill: 0 });
+      }
     }
     
-    res.json({ skill: fishingSkill.skill });
+    res.json({ skill: fishingSkill.skill || 0 });
   } catch (error) {
     console.error("Failed to fetch fishing skill:", error);
-    res.status(500).json({ error: "Failed to fetch fishing skill" });
+    console.error("Error details:", {
+      message: error.message,
+      stack: error.stack,
+      userId: req.params.userId,
+      username: req.query.username,
+      userUuid: req.query.userUuid
+    });
+    
+    // 에러 발생 시 기본값 반환 (500 에러 대신)
+    res.json({ skill: 0 });
   }
 });
 

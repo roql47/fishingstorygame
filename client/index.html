@@ -5,6 +5,29 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>여우이야기 V1.0</title>
+    
+    <!-- 보안 강화: Content Security Policy -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' 
+        https://t1.kakaocdn.net 
+        https://accounts.google.com 
+        https://apis.google.com;
+      style-src 'self' 'unsafe-inline';
+      img-src 'self' data: blob:;
+      font-src 'self' data:;
+      connect-src 'self' 
+        http://localhost:3001 
+        https://accounts.google.com 
+        https://oauth2.googleapis.com
+        wss://localhost:3001
+        ws://localhost:3001;
+      frame-src 'self' 
+        https://accounts.google.com;
+      object-src 'none';
+      base-uri 'self';
+      form-action 'self';
+    ">
     <!-- 카카오 SDK -->
     <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js" 
             integrity="sha384-TiCUE00h649CAMonG018J2ujOgDKW/kVWlChEuu4jK2vxfAAD0eZxzCKakxg55G4" 
