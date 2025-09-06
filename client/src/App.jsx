@@ -291,7 +291,7 @@ function App() {
         setExplorationCooldown(prev => Math.max(0, prev - 1000));
       }, 1000);
     }
-
+    
     return () => {
       if (fishingTimer) clearInterval(fishingTimer);
       if (explorationTimer) clearInterval(explorationTimer);
@@ -527,7 +527,7 @@ function App() {
     };
 
     const onReactionUpdate = (data) => {
-      const { messageIndex, reactionType, username: reactingUser, messageId } = data;
+      const { messageIndex, reactionType, username: reactingUser, messageId, currentReaction } = data;
       
       setMessages(prevMessages => {
         const newMessages = [...prevMessages];
@@ -539,25 +539,27 @@ function App() {
             message.reactions = {};
           }
           
-          // 해당 반응 타입의 배열이 없으면 생성
-          if (!message.reactions[reactionType]) {
-            message.reactions[reactionType] = [];
-          }
+          // 먼저 사용자의 기존 반응을 모두 제거
+          Object.keys(message.reactions).forEach(type => {
+            const userIndex = message.reactions[type].indexOf(reactingUser);
+            if (userIndex !== -1) {
+              message.reactions[type].splice(userIndex, 1);
+              // 배열이 비었으면 삭제
+              if (message.reactions[type].length === 0) {
+                delete message.reactions[type];
+              }
+            }
+          });
           
-          // 이미 반응한 사용자인지 확인
-          const existingIndex = message.reactions[reactionType].indexOf(reactingUser);
-          
-          if (existingIndex === -1) {
+          // 같은 반응을 다시 누른 게 아니라면 새로운 반응 추가
+          if (currentReaction !== reactionType) {
+            // 해당 반응 타입의 배열이 없으면 생성
+            if (!message.reactions[reactionType]) {
+              message.reactions[reactionType] = [];
+            }
+            
             // 새로운 반응 추가
             message.reactions[reactionType].push(reactingUser);
-          } else {
-            // 기존 반응 제거 (토글)
-            message.reactions[reactionType].splice(existingIndex, 1);
-            
-            // 배열이 비었으면 삭제
-            if (message.reactions[reactionType].length === 0) {
-              delete message.reactions[reactionType];
-            }
           }
           
           // reactions 객체가 비었으면 삭제
@@ -1040,17 +1042,30 @@ function App() {
     await saveUserSettings({ darkMode: newDarkMode });
   };
 
-  // 메시지 반응 추가 함수
+  // 메시지 반응 추가 함수 (하나의 반응만 가능)
   const addReaction = (messageIndex, reactionType) => {
     const socket = getSocket();
     const message = messages[messageIndex];
     const messageId = `${message.username}_${message.timestamp}`;
     
+    // 현재 사용자가 이미 다른 반응을 했는지 확인
+    let currentReaction = null;
+    if (message.reactions) {
+      for (const [type, users] of Object.entries(message.reactions)) {
+        if (users.includes(username)) {
+          currentReaction = type;
+          break;
+        }
+      }
+    }
+    
+    // 같은 반응을 다시 누르면 제거, 다른 반응을 누르면 교체
     socket.emit("message:reaction", {
       messageId,
       messageIndex,
-      reactionType, // 'heart' or 'thumbsup'
-      username
+      reactionType,
+      username,
+      currentReaction // 현재 반응 정보 전송
     });
   };
 
@@ -1224,10 +1239,25 @@ function App() {
   // 현재 사용 가능한 물고기 배열
   const fishTypes = getAvailableFish(fishingSkill);
 
-  // 물고기 판매 가격 정의
+  // 물고기 판매 가격 정의 (악세사리 효과 적용)
   const getFishPrice = (fishName) => {
     const fishData = allFishTypes.find(fish => fish.name === fishName);
-    return fishData ? fishData.price : 0;
+    if (!fishData) return 0;
+    
+    let basePrice = fishData.price;
+    
+    // 악세사리 효과: 각 악세사리마다 8% 증가
+    if (userEquipment.accessory) {
+      const accessoryItems = getAllShopItems().accessories || [];
+      const equippedAccessory = accessoryItems.find(item => item.name === userEquipment.accessory);
+      if (equippedAccessory) {
+        // 악세사리 레벨에 따른 가격 증가 (레벨당 8%)
+        const bonusMultiplier = 1 + (equippedAccessory.requiredSkill + 1) * 0.08;
+        basePrice = Math.floor(basePrice * bonusMultiplier);
+      }
+    }
+    
+    return basePrice;
   };
 
   // 물고기 분해 시 얻는 재료
@@ -1273,7 +1303,7 @@ function App() {
       alert("닉네임은 한글, 영문, 숫자만 사용 가능합니다!");
       return;
     }
-
+    
     try {
       // 서버에 닉네임 중복 체크 (구글 ID도 함께 전달)
       const googleId = localStorage.getItem("googleId");
@@ -1449,10 +1479,22 @@ function App() {
     return Math.floor(Math.pow(fishRank, 1.65) + fishRank * 1.3 + 10 + Math.random() * 5);
   };
 
-  // 낚시대 개수에 따른 낚시 쿨타임 계산
+  // 낚시대 개수에 따른 낚시 쿨타임 계산 (악세사리 효과 적용)
   const getFishingCooldownTime = () => {
     const baseTime = 5 * 60 * 1000; // 5분 (밀리초)
-    const reduction = fishingSkill * 15 * 1000; // 낚시실력(낚시대 개수) * 15초
+    let reduction = fishingSkill * 15 * 1000; // 낚시실력(낚시대 개수) * 15초
+    
+    // 악세사리 효과: 각 악세사리마다 15초 감소
+    if (userEquipment.accessory) {
+      const accessoryItems = getAllShopItems().accessories || [];
+      const equippedAccessory = accessoryItems.find(item => item.name === userEquipment.accessory);
+      if (equippedAccessory) {
+        // 악세사리 레벨에 따른 쿨타임 감소 (레벨당 15초)
+        const additionalReduction = (equippedAccessory.requiredSkill + 1) * 15 * 1000;
+        reduction += additionalReduction;
+      }
+    }
+    
     return Math.max(baseTime - reduction, 0); // 최소 0초
   };
 
@@ -1641,7 +1683,7 @@ function App() {
 
     // 탐사 쿨타임 설정 (10분)
     const explorationCooldownTime = 10 * 60 * 1000; // 10분
-    setExplorationCooldown(explorationCooldownTime);
+      setExplorationCooldown(explorationCooldownTime);
     
     // 서버에 쿨타임 저장
     await saveUserSettings({ explorationCooldown: explorationCooldownTime });
@@ -2153,17 +2195,25 @@ function App() {
   };
 
   // 아이템 구매 함수
-  const buyItem = async (itemName, price, category) => {
-    console.log("buyItem called with:", { itemName, price, category, username, userUuid });
+  const buyItem = async (itemName, price, category, currency = 'gold') => {
+    console.log("buyItem called with:", { itemName, price, category, currency, username, userUuid });
     
     if (!username) {
       alert('사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.');
       return;
     }
     
+    // 화폐 종류에 따른 잔액 확인
+    if (currency === 'amber') {
+      if (userAmber < price) {
+        alert('호박석이 부족합니다!');
+        return;
+      }
+    } else {
     if (userMoney < price) {
       alert('골드가 부족합니다!');
       return;
+      }
     }
     
     try {
@@ -2175,11 +2225,17 @@ function App() {
       const response = await axios.post(`${serverUrl}/api/buy-item`, {
         itemName,
         price,
-        category
+        category,
+        currency // 화폐 종류 전송
       }, { params });
       
       if (response.data.success) {
-        setUserMoney(prev => prev - price);
+        // 화폐 종류에 따라 차감
+        if (currency === 'amber') {
+          setUserAmber(prev => prev - price);
+        } else {
+          setUserMoney(prev => prev - price);
+        }
         
         // 장비 자동 장착
         if (category === 'fishing_rod') {
@@ -2834,64 +2890,70 @@ function App() {
                               })}
                             </div>
                           </div>
-                          <div className="relative group">
-                            <div className={`inline-block px-4 py-2 rounded-xl max-w-fit ${
-                              isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
-                            }`}>
-                              <span className={`text-sm ${
-                                isDarkMode ? "text-gray-200" : "text-gray-700"
-                              }`}>{m.content}</span>
-                            </div>
+                          <div className="group">
+                            {/* 메시지 말풍선 */}
+                          <div className={`inline-block px-4 py-2 rounded-xl max-w-fit ${
+                            isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+                          }`}>
+                            <span className={`text-sm ${
+                              isDarkMode ? "text-gray-200" : "text-gray-700"
+                            }`}>{m.content}</span>
+                          </div>
                             
-                            {/* 반응 버튼들 (호버 시 표시) */}
-                            <div className={`absolute -top-3 right-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 ${
-                              isDarkMode ? "bg-gray-800/90" : "bg-white/90"
-                            } backdrop-blur-sm rounded-lg p-1 border ${
-                              isDarkMode ? "border-gray-700/50" : "border-gray-300/50"
-                            }`}>
-                              <button
-                                onClick={() => addReaction(i, 'heart')}
-                                className={`p-1 rounded hover:scale-110 transition-all duration-200 ${
-                                  isDarkMode ? "hover:bg-red-500/20 text-red-400" : "hover:bg-red-500/10 text-red-500"
-                                }`}
-                                title="하트"
-                              >
-                                <Heart className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => addReaction(i, 'thumbsup')}
-                                className={`p-1 rounded hover:scale-110 transition-all duration-200 ${
-                                  isDarkMode ? "hover:bg-blue-500/20 text-blue-400" : "hover:bg-blue-500/10 text-blue-500"
-                                }`}
-                                title="좋아요"
-                              >
-                                <ThumbsUp className="w-4 h-4" />
-                              </button>
-                            </div>
-                            
-                            {/* 반응 표시 영역 */}
-                            {m.reactions && Object.keys(m.reactions).length > 0 && (
-                              <div className="flex gap-1 mt-1">
-                                {Object.entries(m.reactions).map(([reactionType, users]) => (
-                                  <div
-                                    key={reactionType}
-                                    className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
-                                      isDarkMode 
-                                        ? "bg-gray-700/50 text-gray-300 border border-gray-600/30" 
-                                        : "bg-gray-100/80 text-gray-600 border border-gray-300/30"
-                                    }`}
-                                    title={`${users.join(', ')}님이 반응했습니다`}
-                                  >
-                                    {reactionType === 'heart' ? (
-                                      <Heart className="w-3 h-3 text-red-400 fill-current" />
-                                    ) : (
-                                      <ThumbsUp className="w-3 h-3 text-blue-400 fill-current" />
-                                    )}
-                                    <span>{users.length}</span>
-                                  </div>
-                                ))}
+                            {/* 반응 버튼들과 표시 영역 (인스타그램 스타일) */}
+                            <div className="flex items-center justify-between mt-1">
+                              {/* 반응 버튼들 (왼쪽) */}
+                              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                <button
+                                  onClick={() => addReaction(i, 'heart')}
+                                  className={`p-1 rounded-full hover:scale-110 transition-all duration-200 ${
+                                    m.reactions?.heart?.includes(username)
+                                      ? "text-red-500" 
+                                      : isDarkMode ? "text-gray-400 hover:text-red-400" : "text-gray-500 hover:text-red-500"
+                                  }`}
+                                  title="하트"
+                                >
+                                  <Heart className={`w-3.5 h-3.5 ${
+                                    m.reactions?.heart?.includes(username) ? "fill-current" : ""
+                                  }`} />
+                                </button>
+                                <button
+                                  onClick={() => addReaction(i, 'thumbsup')}
+                                  className={`p-1 rounded-full hover:scale-110 transition-all duration-200 ${
+                                    m.reactions?.thumbsup?.includes(username)
+                                      ? "text-blue-500" 
+                                      : isDarkMode ? "text-gray-400 hover:text-blue-400" : "text-gray-500 hover:text-blue-500"
+                                  }`}
+                                  title="좋아요"
+                                >
+                                  <ThumbsUp className={`w-3.5 h-3.5 ${
+                                    m.reactions?.thumbsup?.includes(username) ? "fill-current" : ""
+                                  }`} />
+                                </button>
                               </div>
-                            )}
+                              
+                              {/* 반응 카운트 표시 (오른쪽) */}
+                              {m.reactions && Object.keys(m.reactions).length > 0 && (
+                                <div className="flex gap-1">
+                                  {Object.entries(m.reactions).map(([reactionType, users]) => (
+                                    <div
+                                      key={reactionType}
+                                      className={`flex items-center gap-0.5 text-xs ${
+                                        isDarkMode ? "text-gray-400" : "text-gray-500"
+                                      }`}
+                                      title={`${users.join(', ')}님이 반응했습니다`}
+                                    >
+                                      {reactionType === 'heart' ? (
+                                        <Heart className="w-2.5 h-2.5 text-red-400 fill-current" />
+                                      ) : (
+                                        <ThumbsUp className="w-2.5 h-2.5 text-blue-400 fill-current" />
+                                      )}
+                                      <span className="text-xs">{users.length}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -3403,18 +3465,28 @@ function App() {
                               itemName: availableItem.name, 
                               price: availableItem.price, 
                               category: shopCategory,
+                              currency: availableItem.currency,
                               currentUsername: username,
                               currentUserUuid: userUuid,
-                              currentUserMoney: userMoney
+                              currentUserMoney: userMoney,
+                              currentUserAmber: userAmber
                             });
-                            buyItem(availableItem.name, availableItem.price, shopCategory);
+                            buyItem(availableItem.name, availableItem.price, shopCategory, availableItem.currency);
                           }}
-                          disabled={availableItem.currency === 'amber' ? true : userMoney < availableItem.price}
+                          disabled={
+                            availableItem.currency === 'amber' 
+                              ? userAmber < availableItem.price
+                              : userMoney < availableItem.price
+                          }
                           className={`w-full py-3 px-6 rounded-lg font-bold text-lg transition-all duration-300 ${
                             availableItem.currency === 'amber'
-                              ? isDarkMode
-                                ? "bg-gray-500/20 text-gray-500 cursor-not-allowed"
-                                : "bg-gray-300/30 text-gray-400 cursor-not-allowed"
+                              ? userAmber >= availableItem.price
+                                ? isDarkMode
+                                  ? "bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 hover:scale-105 glow-effect"
+                                  : "bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 hover:scale-105"
+                                : isDarkMode
+                                  ? "bg-gray-500/20 text-gray-500 cursor-not-allowed"
+                                  : "bg-gray-300/30 text-gray-400 cursor-not-allowed"
                               : userMoney >= availableItem.price
                                 ? isDarkMode
                                   ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 hover:scale-105 glow-effect"
@@ -3425,9 +3497,11 @@ function App() {
                           }`}
                         >
                           {availableItem.currency === 'amber' 
-                            ? "호박석 시스템 준비 중" 
+                            ? userAmber >= availableItem.price
+                              ? "호박석으로 구매하기"
+                              : "호박석 부족"
                             : userMoney >= availableItem.price 
-                              ? "구매하기" 
+                              ? "골드로 구매하기" 
                               : "골드 부족"}
                         </button>
                       </div>
@@ -4359,12 +4433,12 @@ function App() {
                     <div className={`font-bold text-lg ${
                       isDarkMode ? "text-blue-400" : "text-blue-600"
                     }`}>
-                      {user.totalCatches.toLocaleString()}마리
+                      {(user.totalFishCaught || user.totalCatches || 0).toLocaleString()}마리
                     </div>
                     <div className={`text-sm ${
                       isDarkMode ? "text-emerald-400" : "text-emerald-600"
                     }`}>
-                      Lv.{user.fishingSkill}
+                      Lv.{user.fishingSkill || 0}
                     </div>
                   </div>
                 </div>

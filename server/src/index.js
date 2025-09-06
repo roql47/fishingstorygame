@@ -955,16 +955,17 @@ io.on("connection", (socket) => {
   });
 
   socket.on("message:reaction", (data) => {
-    const { messageId, messageIndex, reactionType, username } = data;
+    const { messageId, messageIndex, reactionType, username, currentReaction } = data;
     
-    console.log("Message reaction received:", { messageId, messageIndex, reactionType, username });
+    console.log("Message reaction received:", { messageId, messageIndex, reactionType, username, currentReaction });
     
-    // 모든 클라이언트에게 반응 업데이트 전송
+    // 모든 클라이언트에게 반응 업데이트 전송 (하나의 반응만 허용)
     io.emit("message:reaction:update", {
       messageIndex,
       reactionType,
       username,
-      messageId
+      messageId,
+      currentReaction // 기존 반응 정보도 전송
     });
   });
 
@@ -2240,7 +2241,7 @@ app.post("/api/sell-fish", async (req, res) => {
 // Item Buying API (for fishing rods and accessories)
 app.post("/api/buy-item", async (req, res) => {
   try {
-    const { itemName, price, category } = req.body;
+    const { itemName, price, category, currency = 'gold' } = req.body;
     const { username, userUuid } = req.query;
     console.log("Buy item request:", { itemName, price, category, username, userUuid });
     console.log("Full request query:", req.query);
@@ -2259,18 +2260,33 @@ app.post("/api/buy-item", async (req, res) => {
     
     console.log("Database query for buy item:", query);
     
-    // 사용자 돈 확인
-    let userMoney = await UserMoneyModel.findOne(query);
-    
-    if (!userMoney || userMoney.money < price) {
-      console.log(`Not enough money: has ${userMoney?.money || 0}, needs ${price}`);
-      return res.status(400).json({ error: "Not enough money" });
+    // 화폐 종류에 따른 잔액 확인
+    if (currency === 'amber') {
+      let userAmber = await UserAmberModel.findOne(query);
+      
+      if (!userAmber || userAmber.amber < price) {
+        console.log(`Not enough amber: has ${userAmber?.amber || 0}, needs ${price}`);
+        return res.status(400).json({ error: "Not enough amber" });
+      }
+      
+      // 호박석 차감
+      userAmber.amber -= price;
+      await userAmber.save();
+      console.log(`Amber deducted: ${price}, new balance: ${userAmber.amber}`);
+    } else {
+      // 골드 확인 및 차감
+      let userMoney = await UserMoneyModel.findOne(query);
+      
+      if (!userMoney || userMoney.money < price) {
+        console.log(`Not enough money: has ${userMoney?.money || 0}, needs ${price}`);
+        return res.status(400).json({ error: "Not enough money" });
+      }
+      
+      // 돈 차감
+      userMoney.money -= price;
+      await userMoney.save();
+      console.log(`Money deducted: ${price}, new balance: ${userMoney.money}`);
     }
-    
-    // 돈 차감
-    userMoney.money -= price;
-    await userMoney.save();
-    console.log(`Money deducted: ${price}, new balance: ${userMoney.money}`);
     
     // 장비 자동 장착
     console.log("=== EQUIPMENT SAVE DEBUG ===");
