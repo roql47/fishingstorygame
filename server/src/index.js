@@ -201,6 +201,15 @@ const userUuidSchema = new mongoose.Schema(
     originalGoogleId: { type: String }, // 구글 로그인 ID (변경 불가)
     originalKakaoId: { type: String }, // 카카오 로그인 ID (변경 불가)
     isGuest: { type: Boolean, default: false }, // 게스트 여부
+    
+    // 사용자 설정 (로컬스토리지 대체)
+    termsAccepted: { type: Boolean, default: false }, // 이용약관 동의 여부
+    darkMode: { type: Boolean, default: true }, // 다크모드 설정 (기본값: true)
+    
+    // 쿨타임 정보
+    fishingCooldownEnd: { type: Date, default: null }, // 낚시 쿨타임 종료 시간
+    explorationCooldownEnd: { type: Date, default: null }, // 탐사 쿨타임 종료 시간
+    
     createdAt: { type: Date, default: Date.now }
   },
   { timestamps: { createdAt: true, updatedAt: true } }
@@ -262,7 +271,9 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
           username: username || "구글사용자",
           displayName: username || "구글사용자",
           originalGoogleId: googleId,
-          isGuest: false
+          isGuest: false,
+          termsAccepted: false,
+          darkMode: true
         });
         console.log(`Created new Google user: ${userUuid} (${username})`);
       } else if (user.username !== username && username) {
@@ -280,7 +291,9 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
           username: username || "카카오사용자",
           displayName: username || "카카오사용자",
           originalKakaoId: kakaoId,
-          isGuest: false
+          isGuest: false,
+          termsAccepted: false,
+          darkMode: true
         });
         console.log(`Created new Kakao user: ${userUuid} (${username})`);
       } else if (user.username !== username && username) {
@@ -297,7 +310,9 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
           userUuid,
           username: username || "게스트",
           displayName: username || "게스트",
-          isGuest: true
+          isGuest: true,
+          termsAccepted: false,
+          darkMode: true
         });
         console.log(`Created new guest user: ${userUuid} (${username})`);
       } else if (user.username !== username && username) {
@@ -1733,11 +1748,11 @@ app.post("/api/update-nickname", async (req, res) => {
 // 닉네임 중복 체크 API (최초 설정용)
 app.post("/api/check-nickname", async (req, res) => {
   try {
-    const { userUuid } = req.query;
+    const { userUuid, googleId } = req.query;
     const { nickname } = req.body;
     
     console.log("=== CHECK NICKNAME API ===");
-    console.log("Request params:", { userUuid, nickname });
+    console.log("Request params:", { userUuid, googleId, nickname });
     
     if (!nickname || !nickname.trim()) {
       return res.status(400).json({ error: "닉네임이 필요합니다." });
@@ -1760,10 +1775,26 @@ app.post("/api/check-nickname", async (req, res) => {
       return res.status(400).json({ error: "닉네임은 한글, 영문, 숫자만 사용 가능합니다." });
     }
     
-    // 중복 체크 (자신 제외 - userUuid가 있는 경우)
-    const query = userUuid 
-      ? { displayName: trimmedNickname, userUuid: { $ne: userUuid } }
-      : { displayName: trimmedNickname };
+    // 중복 체크 로직 개선
+    let query;
+    
+    if (googleId) {
+      // 구글 계정인 경우: 같은 구글 계정의 기존 닉네임은 허용
+      query = { 
+        displayName: trimmedNickname, 
+        originalGoogleId: { $ne: googleId } // 다른 구글 계정의 닉네임만 체크
+      };
+      console.log(`Checking nickname for Google user ${googleId}: allowing same account's existing nickname`);
+    } else if (userUuid) {
+      // 일반 사용자인 경우: 자신 제외
+      query = { 
+        displayName: trimmedNickname, 
+        userUuid: { $ne: userUuid } 
+      };
+    } else {
+      // 신규 사용자인 경우: 모든 닉네임 체크
+      query = { displayName: trimmedNickname };
+    }
       
     const existingUser = await UserUuidModel.findOne(query);
     
@@ -1778,6 +1809,115 @@ app.post("/api/check-nickname", async (req, res) => {
   } catch (error) {
     console.error("Failed to check nickname:", error);
     res.status(500).json({ error: "닉네임 확인에 실패했습니다: " + error.message });
+  }
+});
+
+// 사용자 설정 조회 API
+app.get("/api/user-settings/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { username, userUuid } = req.query;
+    
+    console.log("=== GET USER SETTINGS API ===");
+    console.log("Request params:", { userId, username, userUuid });
+    
+    let user;
+    if (userUuid && userUuid !== 'null' && userUuid !== 'undefined') {
+      user = await UserUuidModel.findOne({ userUuid });
+    } else if (userId !== 'null') {
+      // 구글/카카오 사용자 - originalGoogleId나 originalKakaoId로 찾기
+      // 여기서는 username으로 찾되, 추후 토큰 검증으로 개선 가능
+      user = await UserUuidModel.findOne({ username, isGuest: false });
+    } else {
+      // 게스트 사용자
+      user = await UserUuidModel.findOne({ username, isGuest: true });
+    }
+    
+    if (!user) {
+      return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+    }
+    
+    // 쿨타임 계산
+    const now = new Date();
+    const fishingCooldown = user.fishingCooldownEnd && user.fishingCooldownEnd > now 
+      ? Math.max(0, user.fishingCooldownEnd.getTime() - now.getTime()) 
+      : 0;
+    const explorationCooldown = user.explorationCooldownEnd && user.explorationCooldownEnd > now 
+      ? Math.max(0, user.explorationCooldownEnd.getTime() - now.getTime()) 
+      : 0;
+    
+    const settings = {
+      userUuid: user.userUuid,
+      username: user.username,
+      displayName: user.displayName,
+      termsAccepted: user.termsAccepted || false,
+      darkMode: user.darkMode !== undefined ? user.darkMode : true,
+      fishingCooldown,
+      explorationCooldown,
+      originalGoogleId: user.originalGoogleId,
+      originalKakaoId: user.originalKakaoId
+    };
+    
+    console.log("User settings retrieved:", settings);
+    res.json(settings);
+    
+  } catch (error) {
+    console.error("Failed to get user settings:", error);
+    res.status(500).json({ error: "사용자 설정 조회에 실패했습니다: " + error.message });
+  }
+});
+
+// 사용자 설정 업데이트 API
+app.post("/api/user-settings/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { username, userUuid } = req.query;
+    const { termsAccepted, darkMode, fishingCooldown, explorationCooldown } = req.body;
+    
+    console.log("=== UPDATE USER SETTINGS API ===");
+    console.log("Request params:", { userId, username, userUuid });
+    console.log("Request body:", { termsAccepted, darkMode, fishingCooldown, explorationCooldown });
+    
+    let user;
+    if (userUuid && userUuid !== 'null' && userUuid !== 'undefined') {
+      user = await UserUuidModel.findOne({ userUuid });
+    } else if (userId !== 'null') {
+      // 구글/카카오 사용자
+      user = await UserUuidModel.findOne({ username, isGuest: false });
+    } else {
+      // 게스트 사용자
+      user = await UserUuidModel.findOne({ username, isGuest: true });
+    }
+    
+    if (!user) {
+      return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+    }
+    
+    // 설정 업데이트
+    const updates = {};
+    if (termsAccepted !== undefined) updates.termsAccepted = termsAccepted;
+    if (darkMode !== undefined) updates.darkMode = darkMode;
+    
+    // 쿨타임 업데이트
+    if (fishingCooldown !== undefined) {
+      updates.fishingCooldownEnd = fishingCooldown > 0 
+        ? new Date(Date.now() + fishingCooldown) 
+        : null;
+    }
+    if (explorationCooldown !== undefined) {
+      updates.explorationCooldownEnd = explorationCooldown > 0 
+        ? new Date(Date.now() + explorationCooldown) 
+        : null;
+    }
+    
+    await UserUuidModel.updateOne({ userUuid: user.userUuid }, updates);
+    
+    console.log(`User settings updated for ${user.userUuid}:`, updates);
+    res.json({ success: true, message: "사용자 설정이 업데이트되었습니다." });
+    
+  } catch (error) {
+    console.error("Failed to update user settings:", error);
+    res.status(500).json({ error: "사용자 설정 업데이트에 실패했습니다: " + error.message });
   }
 });
 

@@ -25,11 +25,7 @@ import {
 import "./App.css";
 
 function App() {
-  const [username, setUsername] = useState(() => {
-    const storedNickname = localStorage.getItem("nickname");
-    console.log("Initial username from localStorage:", storedNickname);
-    return storedNickname || "";
-  });
+  const [username, setUsername] = useState("");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
   const [inventory, setInventory] = useState([]);
@@ -205,14 +201,8 @@ function App() {
   });
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [fishingSkill, setFishingSkill] = useState(0);
-  const [userUuid, setUserUuid] = useState(() => 
-    localStorage.getItem("userUuid") || null
-  );
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    const stored = localStorage.getItem("darkMode");
-    // 처음 방문자는 다크모드가 기본값
-    return stored !== null ? stored === "true" : true;
-  });
+  const [userUuid, setUserUuid] = useState(null);
+  const [isDarkMode, setIsDarkMode] = useState(true); // 기본값: 다크모드
   const [showQuantityModal, setShowQuantityModal] = useState(false);
   const [quantityModalData, setQuantityModalData] = useState(null);
   const [inputQuantity, setInputQuantity] = useState(1);
@@ -234,32 +224,54 @@ function App() {
   const [battleState, setBattleState] = useState(null); // { enemy, playerHp, enemyHp, turn, log }
   const [showBattleModal, setShowBattleModal] = useState(false);
   
-  // 쿨타임 관련 상태 (localStorage에서 복원)
-  const [fishingCooldown, setFishingCooldown] = useState(() => {
-    const saved = localStorage.getItem('fishingCooldown');
-    const savedTime = localStorage.getItem('fishingCooldownTime');
-    if (saved && savedTime) {
-      const elapsed = Date.now() - parseInt(savedTime);
-      const remaining = parseInt(saved) - elapsed;
-      return Math.max(0, remaining);
-    }
-    return 0;
-  });
-  const [explorationCooldown, setExplorationCooldown] = useState(() => {
-    const saved = localStorage.getItem('explorationCooldown');
-    const savedTime = localStorage.getItem('explorationCooldownTime');
-    if (saved && savedTime) {
-      const elapsed = Date.now() - parseInt(savedTime);
-      const remaining = parseInt(saved) - elapsed;
-      return Math.max(0, remaining);
-    }
-    return 0;
-  });
+  // 쿨타임 관련 상태 (서버에서 로드)
+  const [fishingCooldown, setFishingCooldown] = useState(0);
+  const [explorationCooldown, setExplorationCooldown] = useState(0);
 
   const serverUrl = useMemo(
     () => import.meta.env.VITE_SERVER_URL || (typeof window !== "undefined" ? window.location.origin : "http://localhost:4000"),
     []
   );
+
+  // 사용자 설정 관리 함수들
+  const loadUserSettings = async (userId = 'null', tempUsername = '', tempUserUuid = '') => {
+    try {
+      const params = { username: tempUsername, userUuid: tempUserUuid };
+      const response = await axios.get(`${serverUrl}/api/user-settings/${userId}`, { params });
+      const settings = response.data;
+      
+      console.log("User settings loaded from server:", settings);
+      
+      // 상태 업데이트
+      setUsername(settings.username || '');
+      setUserUuid(settings.userUuid || null);
+      setIsDarkMode(settings.darkMode !== undefined ? settings.darkMode : true);
+      setFishingCooldown(settings.fishingCooldown || 0);
+      setExplorationCooldown(settings.explorationCooldown || 0);
+      
+      // 로컬스토리지에도 최소한의 정보만 저장 (호환성을 위해)
+      if (settings.username) localStorage.setItem("nickname", settings.username);
+      if (settings.userUuid) localStorage.setItem("userUuid", settings.userUuid);
+      if (settings.originalGoogleId) localStorage.setItem("googleId", settings.originalGoogleId);
+      localStorage.setItem("darkMode", settings.darkMode.toString());
+      
+      return settings;
+    } catch (error) {
+      console.error("Failed to load user settings:", error);
+      return null;
+    }
+  };
+
+  const saveUserSettings = async (updates) => {
+    try {
+      const userId = idToken ? 'user' : 'null';
+      const params = { username, userUuid };
+      await axios.post(`${serverUrl}/api/user-settings/${userId}`, updates, { params });
+      console.log("User settings saved to server:", updates);
+    } catch (error) {
+      console.error("Failed to save user settings:", error);
+    }
+  };
 
   // 쿨타임 타이머 useEffect
   useEffect(() => {
@@ -267,42 +279,16 @@ function App() {
     
     if (fishingCooldown > 0) {
       fishingTimer = setInterval(() => {
-        setFishingCooldown(prev => {
-          const newValue = Math.max(0, prev - 1000);
-          if (newValue > 0) {
-            localStorage.setItem('fishingCooldown', newValue.toString());
-            localStorage.setItem('fishingCooldownTime', Date.now().toString());
-          } else {
-            localStorage.removeItem('fishingCooldown');
-            localStorage.removeItem('fishingCooldownTime');
-          }
-          return newValue;
-        });
+        setFishingCooldown(prev => Math.max(0, prev - 1000));
       }, 1000);
-    } else {
-      localStorage.removeItem('fishingCooldown');
-      localStorage.removeItem('fishingCooldownTime');
     }
     
     if (explorationCooldown > 0) {
       explorationTimer = setInterval(() => {
-        setExplorationCooldown(prev => {
-          const newValue = Math.max(0, prev - 1000);
-          if (newValue > 0) {
-            localStorage.setItem('explorationCooldown', newValue.toString());
-            localStorage.setItem('explorationCooldownTime', Date.now().toString());
-          } else {
-            localStorage.removeItem('explorationCooldown');
-            localStorage.removeItem('explorationCooldownTime');
-          }
-          return newValue;
-        });
+        setExplorationCooldown(prev => Math.max(0, prev - 1000));
       }, 1000);
-    } else {
-      localStorage.removeItem('explorationCooldown');
-      localStorage.removeItem('explorationCooldownTime');
     }
-    
+
     return () => {
       if (fishingTimer) clearInterval(fishingTimer);
       if (explorationTimer) clearInterval(explorationTimer);
@@ -323,23 +309,18 @@ function App() {
         ? payload.email.split('@')[0] 
         : googleName;
       
-      // 기존에 저장된 닉네임이 있으면 그것을 완전히 보존 (닉네임 변경 유지)
-      const existingNickname = localStorage.getItem("nickname");
-      const existingUserUuid = localStorage.getItem("userUuid");
+      // 구글 ID 저장 (재로그인 시 기존 사용자 식별용)
+      localStorage.setItem("googleId", payload.sub);
       
-      console.log("Google login - existing nickname:", existingNickname);
-      console.log("Google login - existing userUuid:", existingUserUuid);
+      console.log("Google login - current googleId:", payload.sub);
       console.log("Google login - google name:", safeName);
       
-      // 기존 사용자인 경우 (userUuid가 있고 이용약관 동의됨) 기존 닉네임을 완전히 보존
-      const termsAccepted = localStorage.getItem("termsAccepted");
-      if (existingUserUuid && existingNickname && termsAccepted === "true") {
-        console.log("Google login - existing user with nickname:", existingNickname);
-        setUsername(existingNickname);
-        // 로컬스토리지는 변경하지 않음 (기존 닉네임 유지)
-        
-        // 서버에도 기존 닉네임을 전달하여 데이터베이스에서 보존하도록 함
-        console.log("Google login - will send existing nickname to server:", existingNickname);
+      // 서버에서 사용자 설정 로드 시도 (구글 계정 기반)
+      const settings = await loadUserSettings('user', safeName, '');
+      
+      if (settings && settings.termsAccepted) {
+        console.log("Google login - existing user with settings:", settings);
+        // 기존 사용자로 인식되어 설정이 로드됨
       } else {
         // 새 사용자이거나 이용약관 미동의 - 이용약관과 닉네임 설정 필요
         console.log("Google login - new user or terms not accepted, showing terms modal");
@@ -349,7 +330,7 @@ function App() {
       }
       localStorage.setItem("idToken", token);
       
-      console.log("Google login successful:", existingUserUuid && existingNickname ? existingNickname : safeName);
+      console.log("Google login successful:", settings?.username || safeName);
     } catch (error) {
       console.error("Failed to process Google login:", error);
       // 오류 발생 시 이메일 주소 사용
@@ -646,7 +627,7 @@ function App() {
     
     // username이 없어도 idToken이 있으면 소켓 연결 (이용약관 모달을 위해)
     if (safeUsername || idToken) {
-      socket.emit("chat:join", { username: safeUsername, idToken, userUuid });
+    socket.emit("chat:join", { username: safeUsername, idToken, userUuid });
     }
 
     return () => {
@@ -974,6 +955,10 @@ function App() {
         
         // 클라이언트 쿨타임도 즉시 설정
         setFishingCooldown(cooldownTime);
+        
+        // 서버에도 쿨타임 저장
+        await saveUserSettings({ fishingCooldown: cooldownTime });
+        
         console.log(`Fishing cooldown set: ${cooldownTime}ms`);
       } catch (error) {
         console.error('Failed to set fishing cooldown:', error);
@@ -988,10 +973,13 @@ function App() {
     setInput("");
   };
 
-  const toggleDarkMode = () => {
+  const toggleDarkMode = async () => {
     const newDarkMode = !isDarkMode;
     setIsDarkMode(newDarkMode);
     localStorage.setItem("darkMode", newDarkMode.toString());
+    
+    // 서버에도 저장
+    await saveUserSettings({ darkMode: newDarkMode });
   };
 
   // 계정 초기화 함수
@@ -1070,10 +1058,12 @@ function App() {
 
         alert('계정이 성공적으로 삭제되었습니다. 안녕히 가세요!');
         
-        // 로그아웃 처리
+        // 로그아웃 처리 (계정 삭제 시에는 모든 데이터 삭제)
         localStorage.removeItem("idToken");
         localStorage.removeItem("nickname");
         localStorage.removeItem("userUuid");
+        localStorage.removeItem("googleId");
+        localStorage.removeItem("termsAccepted");
         localStorage.removeItem("darkMode");
         localStorage.removeItem("fishingCooldown");
         localStorage.removeItem("fishingCooldownTime");
@@ -1194,12 +1184,12 @@ function App() {
       alert("닉네임을 입력해주세요!");
       return;
     }
-
+    
     if (initialNickname.trim().length < 2) {
       alert("닉네임은 2글자 이상이어야 합니다!");
       return;
     }
-
+    
     if (initialNickname.trim().length > 12) {
       alert("닉네임은 12글자 이하여야 합니다!");
       return;
@@ -1213,8 +1203,9 @@ function App() {
     }
 
     try {
-      // 서버에 닉네임 중복 체크
-      const params = { userUuid };
+      // 서버에 닉네임 중복 체크 (구글 ID도 함께 전달)
+      const googleId = localStorage.getItem("googleId");
+      const params = { userUuid, googleId };
       const checkResponse = await axios.post(`${serverUrl}/api/check-nickname`, {
         nickname: initialNickname.trim()
       }, { params });
@@ -1227,7 +1218,9 @@ function App() {
       // 닉네임 설정
       setUsername(initialNickname.trim());
       localStorage.setItem("nickname", initialNickname.trim());
-      localStorage.setItem("termsAccepted", "true");
+      
+      // 서버에 약관 동의 저장
+      await saveUserSettings({ termsAccepted: true });
       
       setShowTermsModal(false);
       setIsFirstLogin(false);
@@ -1565,9 +1558,10 @@ function App() {
 
     // 탐사 쿨타임 설정 (10분)
     const explorationCooldownTime = 10 * 60 * 1000; // 10분
-      setExplorationCooldown(explorationCooldownTime);
-    localStorage.setItem('explorationCooldown', explorationCooldownTime.toString());
-    localStorage.setItem('explorationCooldownTime', Date.now().toString());
+    setExplorationCooldown(explorationCooldownTime);
+    
+    // 서버에 쿨타임 저장
+    await saveUserSettings({ explorationCooldown: explorationCooldownTime });
 
     console.log(`Starting exploration with ${material.material}, current count: ${material.count}`);
 
@@ -1644,19 +1638,9 @@ function App() {
       // 탐사 쿨타임을 절반으로 설정 (5분)
       const halfCooldownTime = 5 * 60 * 1000; // 5분
       setExplorationCooldown(halfCooldownTime);
-      localStorage.setItem('explorationCooldown', halfCooldownTime.toString());
-      localStorage.setItem('explorationCooldownTime', Date.now().toString());
       
-      // 서버에도 탐사 쿨타임 설정
-      try {
-        const params = { username, userUuid };
-        await axios.post(`${serverUrl}/api/set-exploration-cooldown`, {
-          cooldownDuration: halfCooldownTime
-        }, { params });
-        console.log(`Server exploration cooldown set: ${halfCooldownTime}ms`);
-      } catch (error) {
-        console.error('Failed to set server exploration cooldown:', error);
-      }
+      // 서버에 쿨타임 저장
+      await saveUserSettings({ explorationCooldown: halfCooldownTime });
       
       // 도망 메시지 추가
       const fleeLog = [...battleState.log, `${battleState.enemy}에게서 도망쳤습니다!`, `탐사 쿨타임이 절반으로 감소했습니다. (5분)`];
@@ -1712,22 +1696,9 @@ function App() {
           // 승리 시 탐사 쿨타임 설정 (10분)
           const explorationCooldownTime = 10 * 60 * 1000; // 10분
           setExplorationCooldown(explorationCooldownTime);
-          localStorage.setItem('explorationCooldown', explorationCooldownTime.toString());
-          localStorage.setItem('explorationCooldownTime', Date.now().toString());
           
-          // 서버에도 탐사 쿨타임 설정
-          const setServerCooldown = async () => {
-            try {
-              const params = { username, userUuid };
-              await axios.post(`${serverUrl}/api/set-exploration-cooldown`, {
-                cooldownDuration: explorationCooldownTime
-              }, { params });
-              console.log(`Server exploration cooldown set after victory: ${explorationCooldownTime}ms`);
-            } catch (error) {
-              console.error('Failed to set server exploration cooldown after victory:', error);
-            }
-          };
-          setServerCooldown();
+          // 서버에 쿨타임 저장
+          saveUserSettings({ explorationCooldown: explorationCooldownTime });
           
             setShowBattleModal(false);
             setBattleState(null);
@@ -1786,22 +1757,9 @@ function App() {
           // 패배 시 탐사 쿨타임 설정 (10분)
           const explorationCooldownTime = 10 * 60 * 1000; // 10분
           setExplorationCooldown(explorationCooldownTime);
-          localStorage.setItem('explorationCooldown', explorationCooldownTime.toString());
-          localStorage.setItem('explorationCooldownTime', Date.now().toString());
           
-          // 서버에도 탐사 쿨타임 설정
-          const setServerCooldown = async () => {
-            try {
-              const params = { username, userUuid };
-              await axios.post(`${serverUrl}/api/set-exploration-cooldown`, {
-                cooldownDuration: explorationCooldownTime
-              }, { params });
-              console.log(`Server exploration cooldown set after defeat: ${explorationCooldownTime}ms`);
-            } catch (error) {
-              console.error('Failed to set server exploration cooldown after defeat:', error);
-            }
-          };
-          setServerCooldown();
+          // 서버에 쿨타임 저장
+          saveUserSettings({ explorationCooldown: explorationCooldownTime });
           
           setShowBattleModal(false);
           setBattleState(null);
@@ -1994,7 +1952,7 @@ function App() {
         const totalPrice = price * item.count;
         totalEarned += totalPrice;
         
-         await sellFish(item.fish, item.count);
+        await sellFish(item.fish, item.count);
       }
       
       setMessages(prev => [...prev, {
@@ -2684,11 +2642,13 @@ function App() {
                       }`}
                       onClick={() => {
                         if (confirm("로그아웃 하시겠습니까?")) {
-                          // 로그아웃 시 termsAccepted는 유지 (닉네임 영구 고정을 위해)
+                          // 로그아웃 시 최소한의 정보만 제거 (구글 ID는 유지)
                           localStorage.removeItem("nickname");
                           localStorage.removeItem("idToken");
                           localStorage.removeItem("userUuid");
-                          // termsAccepted는 제거하지 않음 - 영구 보존
+                          // googleId와 darkMode는 유지
+                          
+                          // 상태 초기화
                           setUsername("");
                           setMessages([]);
                           setInventory([]);
@@ -2698,6 +2658,8 @@ function App() {
                           setUsernameInput("");
                           setActiveTab("chat");
                           setUserUuid(null);
+                          setFishingCooldown(0);
+                          setExplorationCooldown(0);
                         }
                       }}
                     >
