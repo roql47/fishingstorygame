@@ -2433,6 +2433,85 @@ app.get(/^(?!\/api|\/socket\.io).*/, (req, res) => {
   res.sendFile(path.join(staticDir, "index.html"));
 });
 
+// 계정 삭제 API
+app.delete("/api/delete-account", async (req, res) => {
+  try {
+    const { username, userUuid } = req.query;
+    
+    console.log("=== ACCOUNT DELETION REQUEST ===");
+    console.log("Request params:", { username, userUuid });
+    
+    if (!userUuid) {
+      return res.status(400).json({ error: "사용자 UUID가 필요합니다." });
+    }
+    
+    // 사용자 확인
+    const user = await UserUuidModel.findOne({ userUuid });
+    if (!user) {
+      return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+    }
+    
+    console.log(`Deleting all data for user: ${user.username} (${userUuid})`);
+    
+    // 모든 관련 데이터 삭제 (병렬 처리)
+    const deletionResults = await Promise.allSettled([
+      UserUuidModel.deleteOne({ userUuid }),
+      CatchModel.deleteMany({ userUuid }),
+      UserMoneyModel.deleteMany({ userUuid }),
+      UserAmberModel.deleteMany({ userUuid }),
+      UserEquipmentModel.deleteMany({ userUuid }),
+      MaterialModel.deleteMany({ userUuid }),
+      FishingSkillModel.deleteMany({ userUuid }),
+      StarPieceModel.deleteMany({ userUuid }),
+      FishingCooldownModel.deleteMany({ userUuid }),
+      ExplorationCooldownModel.deleteMany({ userUuid })
+    ]);
+    
+    // 삭제 결과 로그
+    const schemaNames = [
+      'UserUuid', 'Catch', 'UserMoney', 'UserAmber', 
+      'UserEquipment', 'Material', 'FishingSkill', 
+      'StarPiece', 'FishingCooldown', 'ExplorationCooldown'
+    ];
+    
+    deletionResults.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        const deletedCount = result.value.deletedCount || (result.value.acknowledged ? 1 : 0);
+        console.log(`✅ ${schemaNames[index]}: ${deletedCount} records deleted`);
+      } else {
+        console.error(`❌ ${schemaNames[index]} deletion failed:`, result.reason);
+      }
+    });
+    
+    // 연결된 사용자 목록에서도 제거
+    for (const [socketId, userData] of connectedUsers.entries()) {
+      if (userData.userUuid === userUuid) {
+        connectedUsers.delete(socketId);
+        console.log(`Removed user from connected users: ${socketId}`);
+      }
+    }
+    
+    // 모든 클라이언트에게 업데이트된 사용자 목록 전송
+    const usersList = cleanupConnectedUsers();
+    io.emit("users:update", usersList);
+    
+    console.log(`✅ Account deletion completed for ${user.username} (${userUuid})`);
+    
+    res.json({ 
+      success: true, 
+      message: "계정이 성공적으로 삭제되었습니다.",
+      deletedUser: {
+        username: user.username,
+        userUuid: userUuid
+      }
+    });
+    
+  } catch (error) {
+    console.error("Failed to delete account:", error);
+    res.status(500).json({ error: "계정 삭제에 실패했습니다: " + error.message });
+  }
+});
+
 // 다른 사용자 프로필 조회 API
 app.get("/api/user-profile/:username", async (req, res) => {
   try {

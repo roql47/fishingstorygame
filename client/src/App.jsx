@@ -1023,6 +1023,56 @@ function App() {
     }
   };
 
+  // 계정 삭제 함수
+  const deleteAccount = async () => {
+    if (!userUuid) {
+      alert('사용자 정보를 찾을 수 없습니다.');
+      return;
+    }
+
+    // 최종 확인
+    const confirmMessage = `정말로 계정을 삭제하시겠습니까?\n\n⚠️ 주의사항:\n• 모든 데이터가 영구적으로 삭제됩니다\n• 복구할 수 없습니다\n• 즉시 로그아웃됩니다\n\n계속하려면 '${username}'을(를) 입력해주세요.`;
+    const userInput = prompt(confirmMessage);
+    
+    if (userInput !== username) {
+      if (userInput !== null) { // 취소가 아닌 경우만
+        alert('닉네임이 일치하지 않습니다. 계정 삭제가 취소되었습니다.');
+      }
+      return;
+    }
+
+    try {
+      console.log("=== ACCOUNT DELETION DEBUG ===");
+      console.log("Deleting account for:", { username, userUuid });
+
+      const params = { username, userUuid };
+      const response = await axios.delete(`${serverUrl}/api/delete-account`, { params });
+
+      if (response.data.success) {
+        console.log("Account deletion successful:", response.data);
+
+        alert('계정이 성공적으로 삭제되었습니다. 안녕히 가세요!');
+        
+        // 로그아웃 처리
+        localStorage.removeItem("idToken");
+        localStorage.removeItem("nickname");
+        localStorage.removeItem("userUuid");
+        localStorage.removeItem("darkMode");
+        localStorage.removeItem("fishingCooldown");
+        localStorage.removeItem("fishingCooldownTime");
+        localStorage.removeItem("explorationCooldown");
+        localStorage.removeItem("explorationCooldownTime");
+        
+        // 페이지 새로고침으로 완전 초기화
+        window.location.reload();
+      }
+    } catch (error) {
+      console.error('Failed to delete account:', error);
+      const errorMessage = error.response?.data?.error || error.message;
+      alert('계정 삭제에 실패했습니다: ' + errorMessage);
+    }
+  };
+
   // 확률 배열은 고정, 낚시실력에 따라 물고기만 변경
   const probabilityTemplate = [40, 24, 15, 8, 5, 3, 2, 1, 0.7, 0.3]; // 고정 확률 배열
 
@@ -2315,9 +2365,28 @@ function App() {
                 }`} />
               </div>
               <div>
-                <h1 className={`font-bold text-lg ${
-                  isDarkMode ? "text-white gradient-text" : "text-gray-800"
-                }`}>Fishing Chat</h1>
+                <div className="flex items-center gap-3">
+                  <h1 className={`font-bold text-lg ${
+                    isDarkMode ? "text-white gradient-text" : "text-gray-800"
+                  }`}>여우이야기</h1>
+                  {/* 카카오톡 채널방 링크 */}
+                  <a
+                    href="https://open.kakao.com/o/guv74VXg"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-all duration-300 hover:scale-105 ${
+                      isDarkMode 
+                        ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 border border-yellow-400/30" 
+                        : "bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 border border-yellow-500/30"
+                    }`}
+                    title="카카오톡 채널방 참여하기"
+                  >
+                    <div className="w-3 h-3 bg-yellow-500 rounded-sm flex items-center justify-center">
+                      <span className="text-white text-[8px] font-bold">K</span>
+                    </div>
+                    <span>채널방</span>
+                  </a>
+                </div>
                 <p className={`text-xs ${
                   isDarkMode ? "text-gray-400" : "text-gray-600"
                 }`}>실시간 낚시 게임</p>
@@ -4093,6 +4162,35 @@ function App() {
                   </div>
                 </div>
               </div>
+
+              {/* 계정 관리 버튼들 (내 프로필일 때만 표시) */}
+              {!selectedUserProfile && (
+                <div className="flex gap-2 pt-4 border-t border-gray-300/20">
+                  {/* 계정 초기화 버튼 */}
+                  <button
+                    onClick={() => setShowResetConfirm(true)}
+                    className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                      isDarkMode
+                        ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 border border-yellow-400/30"
+                        : "bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 border border-yellow-500/30"
+                    }`}
+                  >
+                    계정 초기화
+                  </button>
+                  
+                  {/* 계정 탈퇴 버튼 */}
+                  <button
+                    onClick={deleteAccount}
+                    className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                      isDarkMode
+                        ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-400/30"
+                        : "bg-red-500/10 text-red-600 hover:bg-red-500/20 border border-red-500/30"
+                    }`}
+                  >
+                    계정 탈퇴
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
