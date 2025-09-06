@@ -409,17 +409,15 @@ function App() {
       // 카카오 SDK로 토큰 교환
       if (window.Kakao && window.Kakao.Auth) {
         try {
-          // 인증 코드로 토큰 요청
-          fetch(`https://kauth.kakao.com/oauth/token`, {
+          // 서버를 통해 토큰 교환 (CORS 문제 해결)
+          fetch(`/api/kakao-token`, {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/x-www-form-urlencoded'
+              'Content-Type': 'application/json'
             },
-            body: new URLSearchParams({
-              grant_type: 'authorization_code',
-              client_id: '4ca63f8b2f7e43690a060c4571eb7bf0',
-              redirect_uri: window.location.origin,
-              code: kakaoCode
+            body: JSON.stringify({
+              code: kakaoCode,
+              redirectUri: window.location.origin
             })
           })
           .then(response => response.json())

@@ -451,6 +451,9 @@ function randomFish(fishingSkill = 0) {
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 
+// Kakao auth
+const KAKAO_CLIENT_ID = "4ca63f8b2f7e43690a060c4571eb7bf0";
+
 async function verifyGoogleIdToken(idToken) {
   try {
     if (!idToken) {
@@ -1659,6 +1662,47 @@ app.get("/api/connected-users", async (req, res) => {
   } catch (error) {
     console.error("Failed to fetch connected users:", error);
     res.status(500).json({ error: "접속자 목록을 가져올 수 없습니다." });
+  }
+});
+
+// 카카오 토큰 교환 API
+app.post("/api/kakao-token", async (req, res) => {
+  try {
+    const { code, redirectUri } = req.body;
+    
+    if (!code) {
+      return res.status(400).json({ error: "Authorization code is required" });
+    }
+    
+    console.log("카카오 토큰 교환 요청:", { code: code.substring(0, 10) + "...", redirectUri });
+    
+    // 카카오 토큰 교환 요청
+    const tokenResponse = await fetch('https://kauth.kakao.com/oauth/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: KAKAO_CLIENT_ID,
+        redirect_uri: redirectUri,
+        code: code
+      })
+    });
+    
+    const tokenData = await tokenResponse.json();
+    
+    if (tokenData.access_token) {
+      console.log("카카오 토큰 교환 성공");
+      res.json(tokenData);
+    } else {
+      console.error("카카오 토큰 교환 실패:", tokenData);
+      res.status(400).json({ error: "Failed to exchange token", details: tokenData });
+    }
+    
+  } catch (error) {
+    console.error("카카오 토큰 교환 오류:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
