@@ -3585,8 +3585,8 @@ app.use(express.static(staticDir, {
   }
 }));
 
-// SPA fallback - API, socket, assets 경로는 제외하고 나머지는 모두 index.html로
-app.get('*', (req, res, next) => {
+// SPA fallback handler
+app.use((req, res, next) => {
   // API 요청인 경우 통과
   if (req.path.startsWith('/api/') || req.path.startsWith('/socket.io/')) {
     return next();
@@ -3594,6 +3594,13 @@ app.get('*', (req, res, next) => {
   
   // Assets 요청인 경우 통과 (이미 위에서 처리됨)
   if (req.path.startsWith('/assets/')) {
+    return next();
+  }
+  
+  // 정적 파일 확장자가 있는 경우 통과 (404 처리를 위해)
+  const fileExtensions = ['.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2', '.ttf', '.eot'];
+  const hasFileExtension = fileExtensions.some(ext => req.path.endsWith(ext));
+  if (hasFileExtension) {
     return next();
   }
   
