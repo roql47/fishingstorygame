@@ -2999,8 +2999,21 @@ const getServerShopItems = () => {
 app.post("/api/buy-item", async (req, res) => {
   try {
     const { itemName, price: clientPrice, category, currency = 'gold' } = req.body;
-    const { username, userUuid } = req.query;
-    console.log("Buy item request:", { itemName, clientPrice, category, username, userUuid });
+    let { username, userUuid } = req.query;
+    
+    // URL 디코딩 처리
+    if (userUuid) {
+      userUuid = decodeURIComponent(userUuid);
+    }
+    
+    console.log("=== BUY ITEM REQUEST ===");
+    console.log("Item:", itemName);
+    console.log("Price:", clientPrice);
+    console.log("Category:", category);
+    console.log("Currency:", currency);
+    console.log("Username:", username);
+    console.log("UserUuid (decoded):", userUuid);
+    console.log("Raw query:", req.query);
     
     // 서버에서 실제 아이템 정보 가져오기 (클라이언트 가격 무시)
     const serverShopItems = getServerShopItems();
@@ -3028,7 +3041,12 @@ app.post("/api/buy-item", async (req, res) => {
     console.log(`Server validated price: ${actualPrice} ${actualCurrency} for ${itemName}`);
     
     // UUID 기반 사용자 조회
+    console.log("=== USER QUERY DEBUG ===");
+    console.log("Calling getUserQuery with:", { userId: 'user', username, userUuid });
+    
     const queryResult = await getUserQuery('user', username, userUuid);
+    console.log("getUserQuery result:", queryResult);
+    
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
@@ -3038,7 +3056,15 @@ app.post("/api/buy-item", async (req, res) => {
       console.log("Using fallback query for buy item:", query);
     }
     
-    console.log("Database query for buy item:", query);
+    console.log("Final database query for buy item:", query);
+    
+    // 사용자 존재 확인
+    const userExists = await UserUuidModel.findOne(query);
+    console.log("User exists check:", userExists ? "Found" : "Not found");
+    if (!userExists) {
+      console.error("User not found with query:", query);
+      return res.status(400).json({ error: "User not found" });
+    }
     
     // 화폐 종류에 따른 잔액 확인 및 차감
     let userMoney = null;
@@ -3153,8 +3179,12 @@ app.post("/api/buy-item", async (req, res) => {
       res.json({ success: true, newBalance: userMoney.money });
     }
   } catch (error) {
-    console.error("Failed to buy item:", error);
-    res.status(500).json({ error: "Failed to buy item" });
+    console.error("=== BUY ITEM ERROR ===");
+    console.error("Error message:", error.message);
+    console.error("Error stack:", error.stack);
+    console.error("Request body:", req.body);
+    console.error("Request query:", req.query);
+    res.status(500).json({ error: "Failed to buy item: " + error.message });
   }
 });
 
