@@ -1653,7 +1653,8 @@ app.get("/api/connected-users", async (req, res) => {
       username: user.displayName || user.username, // displayName을 username으로 표시
       displayName: user.displayName || user.username,
       userId: user.userId, // 구글 로그인 여부 판단용
-      hasIdToken: user.hasIdToken || false // ID 토큰 보유 여부
+      hasIdToken: user.hasIdToken || false, // ID 토큰 보유 여부
+      loginType: user.loginType || 'Guest' // 로그인 타입 추가 (Kakao, Google, Guest)
     }));
     
     console.log("Sending connected users:", users);
