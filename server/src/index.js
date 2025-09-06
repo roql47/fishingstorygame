@@ -210,6 +210,9 @@ const userUuidSchema = new mongoose.Schema(
     fishingCooldownEnd: { type: Date, default: null }, // 낚시 쿨타임 종료 시간
     explorationCooldownEnd: { type: Date, default: null }, // 탐사 쿨타임 종료 시간
     
+    // 물고기 카운터
+    totalFishCaught: { type: Number, default: 0 }, // 총 낚은 물고기 수
+    
     createdAt: { type: Date, default: Date.now }
   },
   { timestamps: { createdAt: true, updatedAt: true } }
@@ -914,19 +917,19 @@ io.on("connection", (socket) => {
         const now = Date.now();
         const lastJoinTime = recentJoins.get(user.userUuid);
         
-        if (!lastJoinTime || (now - lastJoinTime) > 5000) {
-          // 5초 이상 지났거나 처음 입장인 경우에만 메시지 전송
+        if (!lastJoinTime || (now - lastJoinTime) > 2000) {
+          // 2초 이상 지났거나 처음 입장인 경우에만 메시지 전송
           recentJoins.set(user.userUuid, now);
           
           io.emit("chat:message", { 
             system: true, 
             username: "system", 
-            content: `${user.username} 님이 입장했습니다.`,
+            content: `${user.displayName || user.username} 님이 입장했습니다.`,
             timestamp: new Date().toISOString()
           });
-          console.log(`[JOIN MESSAGE] Sent join message for new user: ${user.username}`);
+          console.log(`[JOIN MESSAGE] Sent join message for new user: ${user.displayName || user.username}`);
         } else {
-          console.log(`[JOIN MESSAGE] Skipped duplicate join message for ${user.username} (within 5 seconds)`);
+          console.log(`[JOIN MESSAGE] Skipped duplicate join message for ${user.displayName || user.username} (within 2 seconds)`);
         }
       } else {
         console.log(`[JOIN MESSAGE] Skipped join message for already connected user: ${user.username}`);
@@ -937,17 +940,32 @@ io.on("connection", (socket) => {
       console.error("Stack trace:", error.stack);
       socket.emit("error", { message: "Failed to join chat" });
       
-      // 오류 발생 시에도 기본 입장 메시지
+      // 오류 발생 시에도 기본 입장 메시지 (displayName 우선 사용)
+      const displayName = username || "사용자";
       io.emit("chat:message", { 
         system: true, 
         username: "system", 
-        content: `${username || "사용자"} 님이 입장했습니다.`,
+        content: `${displayName} 님이 입장했습니다.`,
         timestamp: new Date().toISOString()
       });
     } finally {
       // 처리 완료 후 중복 방지 키 제거
       processingJoins.delete(joinKey);
     }
+  });
+
+  socket.on("message:reaction", (data) => {
+    const { messageId, messageIndex, reactionType, username } = data;
+    
+    console.log("Message reaction received:", { messageId, messageIndex, reactionType, username });
+    
+    // 모든 클라이언트에게 반응 업데이트 전송
+    io.emit("message:reaction:update", {
+      messageIndex,
+      reactionType,
+      username,
+      messageId
+    });
   });
 
   socket.on("chat:message", async (msg) => {
@@ -1030,6 +1048,20 @@ io.on("connection", (socket) => {
           username: savedCatch.username,
           fish: savedCatch.fish
         });
+
+        // 사용자의 총 물고기 카운트 증가
+        if (socket.data.userUuid) {
+          try {
+            const user = await UserUuidModel.findOne({ userUuid: socket.data.userUuid });
+            if (user) {
+              user.totalFishCaught = (user.totalFishCaught || 0) + 1;
+              await user.save();
+              console.log(`Total fish count updated for ${user.displayName || user.username}: ${user.totalFishCaught}`);
+            }
+          } catch (error) {
+            console.error("Failed to update total fish count:", error);
+          }
+        }
         
         // 성공 메시지
         io.emit("chat:message", {
@@ -1083,7 +1115,7 @@ io.on("connection", (socket) => {
         io.emit("chat:message", { 
           system: true, 
           username: "system", 
-          content: `${user.displayName} 님이 퇴장했습니다.`,
+          content: `${user.displayName || user.username} 님이 퇴장했습니다.`,
           timestamp: new Date()
         });
       }
@@ -2032,55 +2064,42 @@ app.get("/api/ranking", async (req, res) => {
   try {
     console.log("Ranking request");
     
-    // 모든 사용자의 낚시 데이터 수집
-    const [fishingSkills, catches] = await Promise.all([
-      FishingSkillModel.find({}).lean(),
-      CatchModel.aggregate([
-        {
-          $group: {
-            _id: { userUuid: "$userUuid", username: "$username" },
-            totalCatches: { $sum: 1 }
-          }
-        }
-      ])
+    // 모든 사용자의 기본 정보와 낚시 데이터 수집
+    const [users, fishingSkills] = await Promise.all([
+      UserUuidModel.find({}).lean(), // 사용자 기본 정보 (displayName, totalFishCaught 포함)
+      FishingSkillModel.find({}).lean()
     ]);
     
-    // 사용자별 데이터 병합
+    // 사용자별 데이터 병합 (userUuid 기준)
     const userRankingData = new Map();
+    
+    // 사용자 기본 정보 추가
+    users.forEach(user => {
+      if (user.userUuid) {
+        userRankingData.set(user.userUuid, {
+          userUuid: user.userUuid,
+          username: user.username, // 소셜 계정 이름
+          displayName: user.displayName, // 게임 닉네임
+          fishingSkill: 0,
+          totalFishCaught: user.totalFishCaught || 0 // 새로운 총 물고기 카운트 사용
+        });
+      }
+    });
     
     // 낚시 스킬 데이터 추가
     fishingSkills.forEach(skill => {
-      const key = skill.userUuid || skill.username;
-      userRankingData.set(key, {
-        userUuid: skill.userUuid,
-        username: skill.username,
-        fishingSkill: skill.fishingSkill || 0,
-        totalCatches: 0
-      });
-    });
-    
-    // 총 낚은 물고기 데이터 추가
-    catches.forEach(catchData => {
-      const key = catchData._id.userUuid || catchData._id.username;
-      if (userRankingData.has(key)) {
-        userRankingData.get(key).totalCatches = catchData.totalCatches;
-      } else {
-        userRankingData.set(key, {
-          userUuid: catchData._id.userUuid,
-          username: catchData._id.username,
-          fishingSkill: 0,
-          totalCatches: catchData.totalCatches
-        });
+      if (skill.userUuid && userRankingData.has(skill.userUuid)) {
+        userRankingData.get(skill.userUuid).fishingSkill = skill.skill || 0;
       }
     });
     
     // 랭킹 배열로 변환 및 정렬
     const rankings = Array.from(userRankingData.values())
-      .filter(user => user.username && user.username.trim() !== '') // 유효한 사용자만
+      .filter(user => user.displayName && user.displayName.trim() !== '') // 유효한 displayName이 있는 사용자만
       .sort((a, b) => {
         // 1차 정렬: 총 낚은 물고기 수 (내림차순)
-        if (b.totalCatches !== a.totalCatches) {
-          return b.totalCatches - a.totalCatches;
+        if (b.totalFishCaught !== a.totalFishCaught) {
+          return b.totalFishCaught - a.totalFishCaught;
         }
         // 2차 정렬: 낚시 스킬 (내림차순)
         return b.fishingSkill - a.fishingSkill;
@@ -2088,9 +2107,10 @@ app.get("/api/ranking", async (req, res) => {
       .map((user, index) => ({
         rank: index + 1,
         userUuid: user.userUuid,
-        username: user.username,
+        username: user.username, // 소셜 계정 이름
+        displayName: user.displayName, // 게임 닉네임
         fishingSkill: user.fishingSkill,
-        totalCatches: user.totalCatches
+        totalFishCaught: user.totalFishCaught // 새로운 총 물고기 카운트
       }));
     
     console.log(`Sending ranking data for ${rankings.length} users`);
@@ -2762,6 +2782,7 @@ app.get("/api/user-profile/:username", async (req, res) => {
       },
       fishingSkill: fishingSkill?.skill || 0,
       totalCatches: totalCatches || 0,
+      totalFishCaught: user.totalFishCaught || 0, // 새로운 총 물고기 카운트
       createdAt: user.createdAt
     };
     

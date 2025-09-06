@@ -20,7 +20,9 @@ import {
   Diamond,
   Waves,
   Star,
-  Users
+  Users,
+  Heart,
+  ThumbsUp
 } from "lucide-react";
 import "./App.css";
 
@@ -524,6 +526,50 @@ function App() {
       setOnlineUsers(users);
     };
 
+    const onReactionUpdate = (data) => {
+      const { messageIndex, reactionType, username: reactingUser, messageId } = data;
+      
+      setMessages(prevMessages => {
+        const newMessages = [...prevMessages];
+        const message = newMessages[messageIndex];
+        
+        if (message) {
+          // reactions 객체가 없으면 생성
+          if (!message.reactions) {
+            message.reactions = {};
+          }
+          
+          // 해당 반응 타입의 배열이 없으면 생성
+          if (!message.reactions[reactionType]) {
+            message.reactions[reactionType] = [];
+          }
+          
+          // 이미 반응한 사용자인지 확인
+          const existingIndex = message.reactions[reactionType].indexOf(reactingUser);
+          
+          if (existingIndex === -1) {
+            // 새로운 반응 추가
+            message.reactions[reactionType].push(reactingUser);
+          } else {
+            // 기존 반응 제거 (토글)
+            message.reactions[reactionType].splice(existingIndex, 1);
+            
+            // 배열이 비었으면 삭제
+            if (message.reactions[reactionType].length === 0) {
+              delete message.reactions[reactionType];
+            }
+          }
+          
+          // reactions 객체가 비었으면 삭제
+          if (Object.keys(message.reactions).length === 0) {
+            delete message.reactions;
+          }
+        }
+        
+        return newMessages;
+      });
+    };
+
     const onUserUuid = (data) => {
       console.log("=== USER UUID UPDATE DEBUG ===");
       console.log("Received UUID data:", data);
@@ -590,6 +636,7 @@ function App() {
     socket.on("chat:message", onMessage);
     socket.on("users:update", onUsersUpdate);
     socket.on("user:uuid", onUserUuid);
+    socket.on("message:reaction:update", onReactionUpdate);
     
     // 중복 로그인 알림 처리
     const onDuplicateLogin = (data) => {
@@ -635,6 +682,7 @@ function App() {
       socket.off("chat:message", onMessage);
       socket.off("users:update", onUsersUpdate);
       socket.off("user:uuid", onUserUuid);
+      socket.off("message:reaction:update", onReactionUpdate);
       socket.off("duplicate_login", onDuplicateLogin);
     };
   }, [username, idToken]);
@@ -642,6 +690,15 @@ function App() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
+
+  // 채팅 탭으로 돌아올 때 스크롤을 최하단으로 이동
+  useEffect(() => {
+    if (activeTab === "chat" && messages.length > 0) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100); // 탭 전환 애니메이션 완료 후 스크롤
+    }
+  }, [activeTab, messages.length]);
 
   // 재료 가져오기 함수 (전역에서 사용 가능)
   const fetchMaterials = useCallback(async () => {
@@ -983,6 +1040,20 @@ function App() {
     await saveUserSettings({ darkMode: newDarkMode });
   };
 
+  // 메시지 반응 추가 함수
+  const addReaction = (messageIndex, reactionType) => {
+    const socket = getSocket();
+    const message = messages[messageIndex];
+    const messageId = `${message.username}_${message.timestamp}`;
+    
+    socket.emit("message:reaction", {
+      messageId,
+      messageIndex,
+      reactionType, // 'heart' or 'thumbsup'
+      username
+    });
+  };
+
   // 계정 초기화 함수
   const resetAccount = async () => {
     if (!userUuid) {
@@ -1239,10 +1310,7 @@ function App() {
       setShowTermsModal(false);
       setIsFirstLogin(false);
       
-      // 소켓 연결 (displayName을 사용)
-      const socket = getSocket();
-      socket.emit("chat:join", { username: displayNameResponse.data.displayName, idToken, userUuid: displayNameResponse.data.userUuid });
-      
+      // 소켓 연결은 메인 useEffect에서 자동으로 처리됨 (중복 방지)
       console.log("Initial nickname set:", displayNameResponse.data.displayName);
       console.log("User data:", displayNameResponse.data);
     } catch (error) {
@@ -2560,7 +2628,7 @@ function App() {
                     rankings.map((user, index) => (
                       <div key={user.userUuid || user.username} className={`p-3 rounded-lg transition-all duration-300 hover:scale-105 cursor-pointer ${
                         isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
-                      } ${user.username === username ? 
+                      } ${(user.displayName || user.username) === username ? 
                         (isDarkMode ? "ring-2 ring-yellow-400/50 bg-yellow-500/10" : "ring-2 ring-yellow-500/50 bg-yellow-500/5")
                         : ""
                       }`}>
@@ -2594,7 +2662,7 @@ function App() {
                               <div className={`text-xs ${
                                 isDarkMode ? "text-gray-400" : "text-gray-600"
                               }`}>
-                                🐟 {user.totalCatches || 0}마리
+                                🐟 {user.totalFishCaught || 0}마리
                               </div>
                             </div>
                           </div>
@@ -2651,6 +2719,22 @@ function App() {
                   
                   {/* 액션 버튼들 */}
                   <div className="flex gap-2">
+                    {/* 채팅 클리어 버튼 */}
+                    <button
+                      className={`p-2 rounded-lg hover:glow-effect transition-all duration-300 text-blue-400 ${
+                        isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+                      }`}
+                      onClick={() => {
+                        if (confirm("채팅창을 클리어하시겠습니까?")) {
+                          setMessages([]);
+                        }
+                      }}
+                      title="채팅창 클리어"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    
+                    {/* 로그아웃 버튼 */}
                     <button
                       className={`p-2 rounded-lg hover:glow-effect transition-all duration-300 text-red-400 ${
                         isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
@@ -2677,6 +2761,7 @@ function App() {
                           setExplorationCooldown(0);
                         }
                       }}
+                      title="로그아웃"
                     >
                       <LogOut className="w-4 h-4" />
                     </button>
@@ -2749,12 +2834,64 @@ function App() {
                               })}
                             </div>
                           </div>
-                          <div className={`inline-block px-4 py-2 rounded-xl max-w-fit ${
-                            isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
-                          }`}>
-                            <span className={`text-sm ${
-                              isDarkMode ? "text-gray-200" : "text-gray-700"
-                            }`}>{m.content}</span>
+                          <div className="relative group">
+                            <div className={`inline-block px-4 py-2 rounded-xl max-w-fit ${
+                              isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+                            }`}>
+                              <span className={`text-sm ${
+                                isDarkMode ? "text-gray-200" : "text-gray-700"
+                              }`}>{m.content}</span>
+                            </div>
+                            
+                            {/* 반응 버튼들 (호버 시 표시) */}
+                            <div className={`absolute -top-3 right-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 ${
+                              isDarkMode ? "bg-gray-800/90" : "bg-white/90"
+                            } backdrop-blur-sm rounded-lg p-1 border ${
+                              isDarkMode ? "border-gray-700/50" : "border-gray-300/50"
+                            }`}>
+                              <button
+                                onClick={() => addReaction(i, 'heart')}
+                                className={`p-1 rounded hover:scale-110 transition-all duration-200 ${
+                                  isDarkMode ? "hover:bg-red-500/20 text-red-400" : "hover:bg-red-500/10 text-red-500"
+                                }`}
+                                title="하트"
+                              >
+                                <Heart className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => addReaction(i, 'thumbsup')}
+                                className={`p-1 rounded hover:scale-110 transition-all duration-200 ${
+                                  isDarkMode ? "hover:bg-blue-500/20 text-blue-400" : "hover:bg-blue-500/10 text-blue-500"
+                                }`}
+                                title="좋아요"
+                              >
+                                <ThumbsUp className="w-4 h-4" />
+                              </button>
+                            </div>
+                            
+                            {/* 반응 표시 영역 */}
+                            {m.reactions && Object.keys(m.reactions).length > 0 && (
+                              <div className="flex gap-1 mt-1">
+                                {Object.entries(m.reactions).map(([reactionType, users]) => (
+                                  <div
+                                    key={reactionType}
+                                    className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+                                      isDarkMode 
+                                        ? "bg-gray-700/50 text-gray-300 border border-gray-600/30" 
+                                        : "bg-gray-100/80 text-gray-600 border border-gray-300/30"
+                                    }`}
+                                    title={`${users.join(', ')}님이 반응했습니다`}
+                                  >
+                                    {reactionType === 'heart' ? (
+                                      <Heart className="w-3 h-3 text-red-400 fill-current" />
+                                    ) : (
+                                      <ThumbsUp className="w-3 h-3 text-blue-400 fill-current" />
+                                    )}
+                                    <span>{users.length}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -4168,7 +4305,7 @@ function App() {
             rankings.map((user, index) => (
               <div key={user.userUuid || user.username} className={`p-4 rounded-xl transition-all duration-300 hover:scale-105 cursor-pointer ${
                 isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
-              } ${user.username === username ? 
+              } ${(user.displayName || user.username) === username ? 
                 (isDarkMode ? "ring-2 ring-yellow-400/50 bg-yellow-500/10" : "ring-2 ring-yellow-500/50 bg-yellow-500/5")
                 : ""
               }`}>
