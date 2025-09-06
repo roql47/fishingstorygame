@@ -316,12 +316,12 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
           const uniqueUsername = `${defaultUsername}_${timestamp}`;
           console.log(`Google username conflict resolved: ${defaultUsername} -> ${uniqueUsername}`);
           
-          const userUuid = await generateNextUuid();
-          user = await UserUuidModel.create({
-            userUuid,
+        const userUuid = await generateNextUuid();
+        user = await UserUuidModel.create({
+          userUuid,
             username: uniqueUsername,
             displayName: uniqueUsername,
-            originalGoogleId: googleId,
+          originalGoogleId: googleId,
             isGuest: false,
             termsAccepted: false,
             darkMode: true
@@ -339,7 +339,7 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
           });
         }
         console.log(`Created new Google user: ${user.userUuid} (username: ${user.username})`);
-      } else {
+    } else {
         // 구글 사용자의 경우 username(구글 이름)은 업데이트하지만 displayName은 보존
         if (user.username !== username && username) {
           console.log(`Updating Google username from ${user.username} to ${username}, keeping displayName: ${user.displayName}`);
@@ -866,7 +866,7 @@ io.on("connection", (socket) => {
         }
       }
       
-      // UUID 기반 사용자 등록/조회
+            // UUID 기반 사용자 등록/조회
       const googleId = provider === 'google' ? socialId : null; // 구글 ID (구 호환성을 위해 유지)
       const kakaoId = provider === 'kakao' ? socialId : null; // 카카오 ID
       
@@ -971,7 +971,7 @@ io.on("connection", (socket) => {
         console.log(`[PRIORITY 2] Looking for ${provider} user with ID: ${socialId}`);
         // 소셜 타입에 따라 적절한 사용자 검색
         if (provider === 'google') {
-          user = await UserUuidModel.findOne({ originalGoogleId: googleId });
+        user = await UserUuidModel.findOne({ originalGoogleId: googleId });
         } else if (provider === 'kakao') {
           user = await UserUuidModel.findOne({ originalKakaoId: kakaoId });
         }
@@ -1179,12 +1179,12 @@ io.on("connection", (socket) => {
         
         // 일반 오류 발생 시에만 기본 입장 메시지 (displayName 우선 사용)
         const displayName = username || "사용자";
-        io.emit("chat:message", { 
-          system: true, 
-          username: "system", 
+      io.emit("chat:message", { 
+        system: true, 
+        username: "system", 
           content: `${displayName} 님이 입장했습니다.`,
-          timestamp: new Date().toISOString()
-        });
+        timestamp: new Date().toISOString()
+      });
       }
     } finally {
       // 처리 완료 후 중복 방지 키 제거
@@ -2107,7 +2107,7 @@ app.get("/api/connected-users", async (req, res) => {
         const dbUser = await UserUuidModel.findOne({ userUuid: user.userUuid });
         
         return {
-          userUuid: user.userUuid,
+      userUuid: user.userUuid,
           username: dbUser?.displayName || user.displayName || user.username, // DB에서 최신 displayName 사용
           displayName: dbUser?.displayName || user.displayName || user.username,
           userId: user.userId,
@@ -2125,7 +2125,7 @@ app.get("/api/connected-users", async (req, res) => {
         return {
           userUuid: user.userUuid,
           username: user.displayName || user.username,
-          displayName: user.displayName || user.username,
+      displayName: user.displayName || user.username,
           userId: user.userId,
           hasIdToken: user.hasIdToken || false,
           loginType: user.loginType || 'Guest',
@@ -3088,12 +3088,12 @@ app.post("/api/buy-item", async (req, res) => {
       
       if (!userMoney || userMoney.money < actualPrice) {
         // 골드 부족 (보안상 잔액 정보는 로그에 기록하지 않음)
-        return res.status(400).json({ error: "Not enough money" });
-      }
-      
-      // 돈 차감
+      return res.status(400).json({ error: "Not enough money" });
+    }
+    
+    // 돈 차감
       userMoney.money -= actualPrice;
-      await userMoney.save();
+    await userMoney.save();
       // 골드 차감 완료 (보안상 잔액 정보는 로그에 기록하지 않음)
     }
     
@@ -3176,7 +3176,7 @@ app.post("/api/buy-item", async (req, res) => {
     if (actualCurrency === 'amber') {
       res.json({ success: true, newAmber: userAmber.amber });
     } else {
-      res.json({ success: true, newBalance: userMoney.money });
+    res.json({ success: true, newBalance: userMoney.money });
     }
   } catch (error) {
     console.error("=== BUY ITEM ERROR ===");
@@ -3503,7 +3503,7 @@ app.get("/api/fishing-skill/:userId", async (req, res) => {
       console.log("Creating new fishing skill:", createData);
       
       try {
-        fishingSkill = await FishingSkillModel.create(createData);
+      fishingSkill = await FishingSkillModel.create(createData);
       } catch (createError) {
         console.error("Failed to create fishing skill:", createError);
         // 생성 실패 시 기본값 반환
@@ -3530,29 +3530,86 @@ app.get("/api/fishing-skill/:userId", async (req, res) => {
 // Static files (serve built client from dist/static)
 const staticDir = path.join(__dirname, "..", "dist", "static");
 
-// MIME 타입 설정 강화
-app.use(express.static(staticDir, {
-  setHeaders: (res, path) => {
+// 정적 파일 존재 확인
+console.log("=== STATIC FILES DEBUG ===");
+console.log("Static directory:", staticDir);
+console.log("Static directory exists:", require('fs').existsSync(staticDir));
+if (require('fs').existsSync(staticDir)) {
+  console.log("Static directory contents:", require('fs').readdirSync(staticDir));
+}
+
+// Assets 경로를 먼저 처리 (우선순위 높음)
+app.use('/assets', express.static(path.join(staticDir, 'assets'), {
+  setHeaders: (res, filePath) => {
+    console.log("Serving asset:", filePath);
+    
     // CSS 파일에 대한 MIME 타입 명시적 설정
-    if (path.endsWith('.css')) {
+    if (filePath.endsWith('.css')) {
       res.setHeader('Content-Type', 'text/css; charset=utf-8');
+      console.log("Set CSS MIME type for:", filePath);
     }
     // JS 파일에 대한 MIME 타입 설정
-    else if (path.endsWith('.js')) {
+    else if (filePath.endsWith('.js')) {
       res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      console.log("Set JS MIME type for:", filePath);
     }
-    // 기타 정적 파일들
-    else if (path.endsWith('.html')) {
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    // 이미지 파일들
+    else if (filePath.endsWith('.png')) {
+      res.setHeader('Content-Type', 'image/png');
     }
+    else if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {
+      res.setHeader('Content-Type', 'image/jpeg');
+    }
+    else if (filePath.endsWith('.svg')) {
+      res.setHeader('Content-Type', 'image/svg+xml');
+    }
+    else if (filePath.endsWith('.ico')) {
+      res.setHeader('Content-Type', 'image/x-icon');
+    }
+    
     // 캐시 설정 (정적 파일 성능 향상)
     res.setHeader('Cache-Control', 'public, max-age=86400'); // 1일
+    
+    // CORS 헤더 (필요한 경우)
+    res.setHeader('Access-Control-Allow-Origin', '*');
   }
 }));
 
-// SPA fallback (exclude API, socket, and assets paths)
-app.get(/^(?!\/api|\/socket\.io|\/assets).*/, (req, res) => {
-  res.sendFile(path.join(staticDir, "index.html"), (err) => {
+// 나머지 정적 파일들 (index.html 등)
+app.use(express.static(staticDir, {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    }
+    res.setHeader('Cache-Control', 'public, max-age=3600'); // 1시간
+  }
+}));
+
+// SPA fallback - API, socket, assets 경로는 제외하고 나머지는 모두 index.html로
+app.get('*', (req, res, next) => {
+  // API 요청인 경우 통과
+  if (req.path.startsWith('/api/') || req.path.startsWith('/socket.io/')) {
+    return next();
+  }
+  
+  // Assets 요청인 경우 통과 (이미 위에서 처리됨)
+  if (req.path.startsWith('/assets/')) {
+    return next();
+  }
+  
+  console.log("SPA fallback for:", req.path);
+  
+  // index.html 파일 경로
+  const indexPath = path.join(staticDir, "index.html");
+  
+  // index.html 존재 확인
+  if (!require('fs').existsSync(indexPath)) {
+    console.error('index.html not found at:', indexPath);
+    return res.status(404).send('index.html not found');
+  }
+  
+  // index.html 서빙
+  res.sendFile(indexPath, (err) => {
     if (err) {
       console.error('Error serving index.html:', err);
       res.status(500).send('Server Error');
