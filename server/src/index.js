@@ -17,6 +17,31 @@ const {
   getShopItemsByCategory
 } = require("./data/gameData");
 
+// 🔒 닉네임 검증 함수 (서버 사이드)
+const validateNickname = (nickname) => {
+  if (!nickname || typeof nickname !== 'string') {
+    return { valid: false, message: "닉네임이 필요합니다." };
+  }
+  
+  const trimmed = nickname.trim();
+  
+  // 길이 검증
+  if (trimmed.length < 2) {
+    return { valid: false, message: "닉네임은 2글자 이상이어야 합니다." };
+  }
+  if (trimmed.length > 12) {
+    return { valid: false, message: "닉네임은 12글자 이하여야 합니다." };
+  }
+  
+  // 특수문자 검증 (한글, 영문, 숫자만 허용)
+  const nicknameRegex = /^[가-힣a-zA-Z0-9]+$/;
+  if (!nicknameRegex.test(trimmed)) {
+    return { valid: false, message: "닉네임은 한글, 영문, 숫자만 사용 가능합니다." };
+  }
+  
+  return { valid: true, message: "", trimmed };
+};
+
 // dotenv는 개발환경에서만 로드
 if (process.env.NODE_ENV !== 'production') {
   try {
@@ -2519,26 +2544,13 @@ app.post("/api/check-nickname", async (req, res) => {
     console.log("=== CHECK NICKNAME API ===");
     console.log("Request params:", { userUuid, googleId, nickname });
     
-    if (!nickname || !nickname.trim()) {
-      return res.status(400).json({ error: "닉네임이 필요합니다." });
+    // 🔒 통합 닉네임 검증
+    const validation = validateNickname(nickname);
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.message });
     }
     
-    const trimmedNickname = nickname.trim();
-    
-    // 닉네임 유효성 검사
-    if (trimmedNickname.length < 2) {
-      return res.status(400).json({ error: "닉네임은 2글자 이상이어야 합니다." });
-    }
-    
-    if (trimmedNickname.length > 12) {
-      return res.status(400).json({ error: "닉네임은 12글자 이하여야 합니다." });
-    }
-    
-    // 특수문자 체크 (한글, 영문, 숫자만 허용)
-    const nicknameRegex = /^[가-힣a-zA-Z0-9]+$/;
-    if (!nicknameRegex.test(trimmedNickname)) {
-      return res.status(400).json({ error: "닉네임은 한글, 영문, 숫자만 사용 가능합니다." });
-    }
+    const trimmedNickname = validation.trimmed;
     
     // 중복 체크 로직 개선
     let query;
@@ -2648,9 +2660,13 @@ app.post("/api/set-display-name/:userId", async (req, res) => {
     console.log("Request params:", { userId, username, userUuid, googleId });
     console.log("Request body:", { displayName });
     
-    if (!displayName || !displayName.trim()) {
-      return res.status(400).json({ error: "닉네임이 필요합니다." });
+    // 🔒 통합 닉네임 검증
+    const validation = validateNickname(displayName);
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.message });
     }
+    
+    const trimmedDisplayName = validation.trimmed;
     
     let user;
     if (userUuid && userUuid !== 'null' && userUuid !== 'undefined') {
@@ -2674,7 +2690,7 @@ app.post("/api/set-display-name/:userId", async (req, res) => {
     }
     
     // displayName만 업데이트 (username은 소셜 이름으로 유지)
-    user.displayName = displayName.trim();
+    user.displayName = trimmedDisplayName;
     await user.save();
     
     console.log(`Display name updated for ${user.userUuid}: ${displayName}`);
@@ -3811,10 +3827,14 @@ app.delete("/api/delete-account", async (req, res) => {
   }
 });
 
-// 다른 사용자 프로필 조회 API
-app.get("/api/user-profile/:username", async (req, res) => {
+// 다른 사용자 프로필 조회 API (특수문자 지원)
+app.get("/api/user-profile", async (req, res) => {
   try {
-    const { username } = req.params;
+    const { username } = req.query;
+    
+    if (!username) {
+      return res.status(400).json({ error: "Username is required" });
+    }
     
     console.log("Fetching profile for username:", username);
     

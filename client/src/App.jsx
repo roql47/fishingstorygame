@@ -247,6 +247,27 @@ function App() {
     return import.meta.env.VITE_SERVER_URL || "http://localhost:4000";
   }, []);
 
+  // 🔒 닉네임 검증 함수 (재사용 가능)
+  const validateNickname = (nickname) => {
+    const trimmed = nickname.trim();
+    
+    // 길이 검증
+    if (trimmed.length < 2) {
+      return { valid: false, message: "닉네임은 2글자 이상이어야 합니다!" };
+    }
+    if (trimmed.length > 12) {
+      return { valid: false, message: "닉네임은 12글자 이하여야 합니다!" };
+    }
+    
+    // 특수문자 검증 (한글, 영문, 숫자만 허용)
+    const nicknameRegex = /^[가-힣a-zA-Z0-9]+$/;
+    if (!nicknameRegex.test(trimmed)) {
+      return { valid: false, message: "닉네임은 한글, 영문, 숫자만 사용 가능합니다!" };
+    }
+    
+    return { valid: true, message: "", trimmed };
+  };
+
   // 사용자 설정 관리 함수들
   const loadUserSettings = async (userId = 'null', tempUsername = '', tempUserUuid = '', googleId = '') => {
     try {
@@ -1388,9 +1409,11 @@ function App() {
     try {
       console.log("Fetching profile for:", username);
       console.log("Server URL:", serverUrl);
-      console.log("Full URL:", `${serverUrl}/api/user-profile/${encodeURIComponent(username)}`);
+      console.log("Full URL:", `${serverUrl}/api/user-profile?username=${encodeURIComponent(username)}`);
       
-      const response = await axios.get(`${serverUrl}/api/user-profile/${encodeURIComponent(username)}`);
+      const response = await axios.get(`${serverUrl}/api/user-profile`, {
+        params: { username }
+      });
       console.log("Other user profile data:", response.data);
       setOtherUserData(response.data);
     } catch (error) {
@@ -1415,20 +1438,10 @@ function App() {
       return;
     }
     
-    if (initialNickname.trim().length < 2) {
-      alert("닉네임은 2글자 이상이어야 합니다!");
-      return;
-    }
-    
-    if (initialNickname.trim().length > 12) {
-      alert("닉네임은 12글자 이하여야 합니다!");
-      return;
-    }
-
-    // 특수문자 체크 (한글, 영문, 숫자만 허용)
-    const nicknameRegex = /^[가-힣a-zA-Z0-9]+$/;
-    if (!nicknameRegex.test(initialNickname.trim())) {
-      alert("닉네임은 한글, 영문, 숫자만 사용 가능합니다!");
+    // 🔒 통합 닉네임 검증
+    const validation = validateNickname(initialNickname);
+    if (!validation.valid) {
+      alert(validation.message);
       return;
     }
     
@@ -2469,20 +2482,40 @@ function App() {
                       value={usernameInput}
                       onChange={(e) => setUsernameInput(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter" && usernameInput.trim()) {
-                          setUsername(usernameInput.trim());
-                          localStorage.setItem("nickname", usernameInput.trim());
+                        if (e.key === "Enter") {
+                          if (!usernameInput.trim()) {
+                            alert("닉네임을 입력해주세요!");
+                            return;
+                          }
+                          
+                          // 🔒 게스트 닉네임 검증 (Enter)
+                          const validation = validateNickname(usernameInput);
+                          if (!validation.valid) {
+                            alert(validation.message);
+                            return;
+                          }
+                          
+                          setUsername(validation.trimmed);
+                          localStorage.setItem("nickname", validation.trimmed);
                         }
                       }}
                     />
                     <button
                       onClick={() => {
-                        if (usernameInput.trim()) {
-                          setUsername(usernameInput.trim());
-                          localStorage.setItem("nickname", usernameInput.trim());
-                        } else {
+                        if (!usernameInput.trim()) {
                           alert("닉네임을 입력해주세요!");
+                          return;
                         }
+                        
+                        // 🔒 게스트 닉네임 검증
+                        const validation = validateNickname(usernameInput);
+                        if (!validation.valid) {
+                          alert(validation.message);
+                          return;
+                        }
+                        
+                        setUsername(validation.trimmed);
+                        localStorage.setItem("nickname", validation.trimmed);
                       }}
                       className="px-6 py-3 bg-gray-700/50 hover:bg-gray-600/50 text-white rounded-lg transition-all duration-300 transform hover:scale-105 border border-gray-600/50"
                     >
