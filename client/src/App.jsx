@@ -154,7 +154,7 @@ function App() {
             
             // 기존 사용자인 경우 (userUuid가 있고 이용약관 동의됨) 기존 닉네임을 보존
             const termsAccepted = localStorage.getItem("termsAccepted");
-            if (existingUserUuid && existingNickname && termsAccepted) {
+            if (existingUserUuid && existingNickname && termsAccepted === "true") {
               console.log("Kakao login - existing user with nickname:", existingNickname);
               setUsername(existingNickname);
             } else {
@@ -333,7 +333,7 @@ function App() {
       
       // 기존 사용자인 경우 (userUuid가 있고 이용약관 동의됨) 기존 닉네임을 완전히 보존
       const termsAccepted = localStorage.getItem("termsAccepted");
-      if (existingUserUuid && existingNickname && termsAccepted) {
+      if (existingUserUuid && existingNickname && termsAccepted === "true") {
         console.log("Google login - existing user with nickname:", existingNickname);
         setUsername(existingNickname);
         // 로컬스토리지는 변경하지 않음 (기존 닉네임 유지)
@@ -450,12 +450,17 @@ function App() {
                 const existingNickname = localStorage.getItem("nickname");
                 const existingUserUuid = localStorage.getItem("userUuid");
                 
-                // 기존 사용자인 경우 기존 닉네임을 보존
-                if (existingUserUuid && existingNickname) {
+                // 기존 사용자인 경우 (userUuid가 있고 이용약관 동의됨) 기존 닉네임을 보존
+                const termsAccepted = localStorage.getItem("termsAccepted");
+                if (existingUserUuid && existingNickname && termsAccepted === "true") {
+                  console.log("Kakao redirect - existing user with nickname:", existingNickname);
                   setUsername(existingNickname);
                 } else {
-                  setUsername(kakaoNickname);
-                  localStorage.setItem("nickname", kakaoNickname);
+                  // 새 사용자이거나 이용약관 미동의 - 이용약관과 닉네임 설정 필요
+                  console.log("Kakao redirect - new user or terms not accepted, showing terms modal");
+                  setIsFirstLogin(true);
+                  setShowTermsModal(true);
+                  // username은 설정하지 않음 - 모달에서 설정할 예정
                 }
                 
                 // 카카오 토큰 정보 저장
@@ -1989,7 +1994,7 @@ function App() {
         const totalPrice = price * item.count;
         totalEarned += totalPrice;
         
-        await sellFish(item.fish, item.count);
+         await sellFish(item.fish, item.count);
       }
       
       setMessages(prev => [...prev, {
@@ -2679,7 +2684,11 @@ function App() {
                       }`}
                       onClick={() => {
                         if (confirm("로그아웃 하시겠습니까?")) {
+                          // 로그아웃 시 termsAccepted는 유지 (닉네임 영구 고정을 위해)
                           localStorage.removeItem("nickname");
+                          localStorage.removeItem("idToken");
+                          localStorage.removeItem("userUuid");
+                          // termsAccepted는 제거하지 않음 - 영구 보존
                           setUsername("");
                           setMessages([]);
                           setInventory([]);
@@ -2688,6 +2697,7 @@ function App() {
                           setIdToken(undefined);
                           setUsernameInput("");
                           setActiveTab("chat");
+                          setUserUuid(null);
                         }
                       }}
                     >
