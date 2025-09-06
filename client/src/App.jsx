@@ -99,9 +99,9 @@ function App() {
       return;
     }
 
-    // 4. login 함수 체크
-    if (typeof window.Kakao.Auth.login !== 'function') {
-      console.error('window.Kakao.Auth.login이 함수가 아님:', typeof window.Kakao.Auth.login);
+    // 4. authorize 함수 체크 (최신 SDK에서는 login 대신 authorize 사용)
+    if (typeof window.Kakao.Auth.authorize !== 'function') {
+      console.error('window.Kakao.Auth.authorize이 함수가 아님:', typeof window.Kakao.Auth.authorize);
       console.log('사용 가능한 Kakao 메소드들:', Object.keys(window.Kakao));
       console.log('사용 가능한 Kakao.Auth 메소드들:', Object.keys(window.Kakao.Auth || {}));
       alert('카카오 로그인 함수를 찾을 수 없습니다. 페이지를 새로고침해주세요.');
@@ -111,10 +111,11 @@ function App() {
     console.log('모든 체크 완료, 카카오 로그인 실행');
 
     try {
-      // 5. 카카오 로그인 실행
-      window.Kakao.Auth.login({
+      // 5. 카카오 로그인 실행 (authorize 사용)
+      window.Kakao.Auth.authorize({
+        redirectUri: window.location.origin,
         success: function(authObj) {
-          console.log('Kakao login success:', authObj);
+          console.log('Kakao authorize success:', authObj);
           
           // 사용자 정보 가져오기
           window.Kakao.API.request({
@@ -158,7 +159,7 @@ function App() {
           });
         },
         fail: function(err) {
-          console.error('Kakao login failed:', err);
+          console.error('Kakao authorize failed:', err);
           alert('카카오 로그인에 실패했습니다: ' + (err.error_description || err.error || '알 수 없는 오류'));
         }
       });
