@@ -718,17 +718,23 @@ io.on("connection", (socket) => {
           console.log(`[PRIORITY 1] User with userUuid ${userUuid} not found, creating new user`);
           user = await getOrCreateUser(effectiveName, googleId, kakaoId);
         }
-      } else if (googleId) {
-        // 2순위: 구글 사용자 (새 로그인 또는 기존 사용자)
-        console.log(`[PRIORITY 2] Looking for Google user with ID: ${googleId}`);
-        user = await UserUuidModel.findOne({ originalGoogleId: googleId });
+      } else if (socialId) {
+        // 2순위: 소셜 사용자 (구글 또는 카카오 - 새 로그인 또는 기존 사용자)
+        console.log(`[PRIORITY 2] Looking for ${provider} user with ID: ${socialId}`);
+        // 소셜 타입에 따라 적절한 사용자 검색
+        if (provider === 'google') {
+          user = await UserUuidModel.findOne({ originalGoogleId: googleId });
+        } else if (provider === 'kakao') {
+          user = await UserUuidModel.findOne({ originalKakaoId: kakaoId });
+        }
+        
         if (user) {
-          console.log(`[PRIORITY 2] Found existing Google user: ${user.username}`);
+          console.log(`[PRIORITY 2] Found existing ${provider} user: ${user.username}`);
           
           // 닉네임 변경 감지 및 처리
           if (user.username !== effectiveName && effectiveName !== user.displayName) {
             const oldUsername = user.username;
-            console.log(`[PRIORITY 2] Updating nickname from ${oldUsername} to ${effectiveName} for Google user: ${googleId}`);
+            console.log(`[PRIORITY 2] Updating nickname from ${oldUsername} to ${effectiveName} for ${provider} user: ${socialId}`);
             user.username = effectiveName;
             user.displayName = effectiveName;
             await user.save();
@@ -747,7 +753,7 @@ io.on("connection", (socket) => {
             console.log(`[PRIORITY 2] Keeping existing nickname: ${user.username} (matches effectiveName: ${effectiveName})`);
           }
         } else {
-          console.log(`[PRIORITY 2] Creating new Google user`);
+          console.log(`[PRIORITY 2] Creating new ${provider} user`);
           user = await getOrCreateUser(effectiveName, googleId, kakaoId);
         }
       } else {
