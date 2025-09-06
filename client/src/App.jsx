@@ -1285,9 +1285,46 @@ function App() {
   };
 
   // 확률 배열은 고정, 낚시실력에 따라 물고기만 변경
-  // 🔒 난독화된 게임 데이터 로드
-  const probabilityTemplate = getProbabilityData();
-  const allFishTypes = getFishData();
+  // 🔒 서버에서 게임 데이터 로드 (상태 관리)
+  const [gameData, setGameData] = useState({
+    probabilityTemplate: [40, 24, 15, 8, 5, 3, 2, 1, 0.7, 0.3],
+    allFishTypes: [],
+    fishHealthMap: {},
+    fishPrefixes: [],
+    shopData: { fishing_rod: [], accessories: [] }
+  });
+  
+  // 게임 데이터 로드
+  useEffect(() => {
+    const loadGameData = async () => {
+      try {
+        const [fishData, fishHealthData, probabilityData, prefixData, shopData] = await Promise.all([
+          getFishData(),
+          getFishHealthData(),
+          getProbabilityData(),
+          getPrefixData(),
+          getShopData()
+        ]);
+        
+        setGameData({
+          probabilityTemplate: probabilityData,
+          allFishTypes: fishData,
+          fishHealthMap: fishHealthData,
+          fishPrefixes: prefixData,
+          shopData: shopData
+        });
+      } catch (error) {
+        console.error("Failed to load game data:", error);
+        // 기본값 유지
+      }
+    };
+    
+    loadGameData();
+  }, []);
+
+  // 편의를 위한 변수들
+  const probabilityTemplate = gameData.probabilityTemplate;
+  const allFishTypes = gameData.allFishTypes;
 
   // 낚시실력에 따른 물고기 배열 반환 (확률 배열 고정)
   const getAvailableFish = (skill) => {
@@ -1430,9 +1467,9 @@ function App() {
     }
   };
 
-  // 🔒 난독화된 게임 데이터 로드
-  const fishHealthMap = getFishHealthData();
-  const fishPrefixes = getPrefixData();
+  // 🔒 서버에서 로드된 게임 데이터 사용
+  const fishHealthMap = gameData.fishHealthMap;
+  const fishPrefixes = gameData.fishPrefixes;
 
   // 접두어 선택 함수
   const selectFishPrefix = () => {
@@ -1998,9 +2035,9 @@ function App() {
     });
   };
 
-  // 🔒 난독화된 상점 데이터 로드
+  // 🔒 서버에서 로드된 상점 데이터 사용
   const getAllShopItems = () => {
-    return getShopData();
+    return gameData.shopData;
   };
 
   // 현재 구매 가능한 아이템 (낚시실력에 따라)
@@ -2270,7 +2307,7 @@ function App() {
         if (currency === 'amber') {
           setUserAmber(prev => prev - price);
         } else {
-          setUserMoney(prev => prev - price);
+        setUserMoney(prev => prev - price);
         }
         
         // 장비 자동 장착
@@ -3527,12 +3564,12 @@ function App() {
                           className={`w-full py-3 px-6 rounded-lg font-bold text-lg transition-all duration-300 ${
                             availableItem.currency === 'amber'
                               ? userAmber >= availableItem.price
-                                ? isDarkMode
+                              ? isDarkMode
                                   ? "bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 hover:scale-105 glow-effect"
                                   : "bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 hover:scale-105"
                                 : isDarkMode
-                                  ? "bg-gray-500/20 text-gray-500 cursor-not-allowed"
-                                  : "bg-gray-300/30 text-gray-400 cursor-not-allowed"
+                                ? "bg-gray-500/20 text-gray-500 cursor-not-allowed"
+                                : "bg-gray-300/30 text-gray-400 cursor-not-allowed"
                               : userMoney >= availableItem.price
                                 ? isDarkMode
                                   ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 hover:scale-105 glow-effect"

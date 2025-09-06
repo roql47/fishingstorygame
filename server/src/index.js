@@ -5,6 +5,17 @@ const { Server } = require("socket.io");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const { OAuth2Client } = require("google-auth-library");
+// 🔒 게임 데이터 임포트
+const {
+  getFishData,
+  getFishHealthData,
+  getProbabilityData,
+  getPrefixData,
+  getShopData,
+  getFishByName,
+  getAvailableFishBySkill,
+  getShopItemsByCategory
+} = require("./data/gameData");
 
 // dotenv는 개발환경에서만 로드
 if (process.env.NODE_ENV !== 'production') {
@@ -1432,6 +1443,96 @@ const validateInventoryIntegrity = async (userQuery, clientInventory) => {
     return { isValid: false, error: error.message };
   }
 };
+
+// 🔒 게임 데이터 API 엔드포인트들 (서버에서만 제공)
+app.get("/api/game-data/fish", (req, res) => {
+  try {
+    const fishData = getFishData();
+    res.json({ success: true, data: fishData });
+  } catch (error) {
+    console.error("Failed to get fish data:", error);
+    res.status(500).json({ success: false, error: "Failed to load fish data" });
+  }
+});
+
+app.get("/api/game-data/fish-health", (req, res) => {
+  try {
+    const fishHealthData = getFishHealthData();
+    res.json({ success: true, data: fishHealthData });
+  } catch (error) {
+    console.error("Failed to get fish health data:", error);
+    res.status(500).json({ success: false, error: "Failed to load fish health data" });
+  }
+});
+
+app.get("/api/game-data/probability", (req, res) => {
+  try {
+    const probabilityData = getProbabilityData();
+    res.json({ success: true, data: probabilityData });
+  } catch (error) {
+    console.error("Failed to get probability data:", error);
+    res.status(500).json({ success: false, error: "Failed to load probability data" });
+  }
+});
+
+app.get("/api/game-data/prefixes", (req, res) => {
+  try {
+    const prefixData = getPrefixData();
+    res.json({ success: true, data: prefixData });
+  } catch (error) {
+    console.error("Failed to get prefix data:", error);
+    res.status(500).json({ success: false, error: "Failed to load prefix data" });
+  }
+});
+
+app.get("/api/game-data/shop", (req, res) => {
+  try {
+    const shopData = getShopData();
+    res.json({ success: true, data: shopData });
+  } catch (error) {
+    console.error("Failed to get shop data:", error);
+    res.status(500).json({ success: false, error: "Failed to load shop data" });
+  }
+});
+
+// 낚시 스킬에 따른 사용 가능한 물고기 조회
+app.get("/api/game-data/available-fish/:skill", (req, res) => {
+  try {
+    const skill = parseInt(req.params.skill) || 0;
+    const availableFish = getAvailableFishBySkill(skill);
+    res.json({ success: true, data: availableFish });
+  } catch (error) {
+    console.error("Failed to get available fish:", error);
+    res.status(500).json({ success: false, error: "Failed to load available fish" });
+  }
+});
+
+// 특정 물고기 정보 조회
+app.get("/api/game-data/fish/:name", (req, res) => {
+  try {
+    const fishName = decodeURIComponent(req.params.name);
+    const fish = getFishByName(fishName);
+    if (!fish) {
+      return res.status(404).json({ success: false, error: "Fish not found" });
+    }
+    res.json({ success: true, data: fish });
+  } catch (error) {
+    console.error("Failed to get fish by name:", error);
+    res.status(500).json({ success: false, error: "Failed to load fish data" });
+  }
+});
+
+// 상점 카테고리별 아이템 조회
+app.get("/api/game-data/shop/:category", (req, res) => {
+  try {
+    const category = req.params.category;
+    const items = getShopItemsByCategory(category);
+    res.json({ success: true, data: items });
+  } catch (error) {
+    console.error("Failed to get shop items:", error);
+    res.status(500).json({ success: false, error: "Failed to load shop items" });
+  }
+});
 
 app.get("/api/inventory/:userId", async (req, res) => {
   try {
