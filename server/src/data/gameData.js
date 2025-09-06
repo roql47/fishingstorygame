@@ -94,7 +94,7 @@ const PREFIX_DATA = [
 const SHOP_DATA = {
   fishing_rod: [
     { name: '낡은낚시대', price: 10000, description: '오래된 낚시대입니다', requiredSkill: 0 },
-    { name: '일반낚시대', price: 60000, description: '평범한 낚시대입니다', requiredSkill: 1 },
+    { name: '기본낚시대', price: 50000, description: '기본적인 낚시대입니다', requiredSkill: 1 },
     { name: '단단한낚시대', price: 140000, description: '견고한 낚시대입니다', requiredSkill: 2 },
     { name: '은낚시대', price: 370000, description: '은으로 만든 고급 낚시대입니다', requiredSkill: 3 },
     { name: '금낚시대', price: 820000, description: '금으로 만든 최고급 낚시대입니다', requiredSkill: 4 },

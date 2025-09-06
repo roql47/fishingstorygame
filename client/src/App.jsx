@@ -1387,12 +1387,23 @@ function App() {
   const fetchOtherUserProfile = async (username) => {
     try {
       console.log("Fetching profile for:", username);
+      console.log("Server URL:", serverUrl);
+      console.log("Full URL:", `${serverUrl}/api/user-profile/${encodeURIComponent(username)}`);
+      
       const response = await axios.get(`${serverUrl}/api/user-profile/${encodeURIComponent(username)}`);
       console.log("Other user profile data:", response.data);
       setOtherUserData(response.data);
     } catch (error) {
       console.error("Failed to fetch other user profile:", error);
-      alert("사용자 프로필을 불러올 수 없습니다.");
+      console.error("Error details:", {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: error.config?.url
+      });
+      
+      const errorMessage = error.response?.data?.error || "사용자 프로필을 불러올 수 없습니다.";
+      alert(errorMessage);
       setOtherUserData(null);
     }
   };

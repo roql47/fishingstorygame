@@ -2951,7 +2951,7 @@ const calculateServerFishPrice = async (fishName, userQuery) => {
   try {
     const userEquipment = await UserEquipmentModel.findOne(userQuery);
     if (userEquipment && userEquipment.accessory) {
-      const serverShopItems = getServerShopItems();
+      const serverShopItems = getShopData();
       const accessoryItems = serverShopItems.accessories || [];
       const equippedAccessory = accessoryItems.find(item => item.name === userEquipment.accessory);
       if (equippedAccessory) {
@@ -3050,51 +3050,7 @@ app.post("/api/sell-fish", async (req, res) => {
   }
 });
 
-// 서버 측 아이템 데이터 (클라이언트 조작 방지)
-const getServerShopItems = () => {
-  return {
-    fishing_rod: [
-      { name: '기본낚시대', price: 50000, description: '기본적인 낚시대입니다', requiredSkill: 1 },
-      { name: '단단한낚시대', price: 140000, description: '견고한 낚시대입니다', requiredSkill: 2 },
-      { name: '은낚시대', price: 370000, description: '은으로 만든 고급 낚시대입니다', requiredSkill: 3 },
-      { name: '금낚시대', price: 820000, description: '금으로 만든 최고급 낚시대입니다', requiredSkill: 4 },
-      { name: '강철낚시대', price: 2390000, description: '강철로 제련된 견고한 낚시대입니다', requiredSkill: 5 },
-      { name: '사파이어낚시대', price: 6100000, description: '사파이어가 박힌 신비로운 낚시대입니다', requiredSkill: 6 },
-      { name: '루비낚시대', price: 15000000, description: '루비의 힘이 깃든 화려한 낚시대입니다', requiredSkill: 7 },
-      { name: '다이아몬드낚시대', price: 45000000, description: '다이아몬드의 광채가 빛나는 낚시대입니다', requiredSkill: 8 },
-      { name: '레드다이아몬드낚시대', price: 100000000, description: '희귀한 레드다이아몬드로 만든 전설적인 낚시대입니다', requiredSkill: 9 },
-      { name: '벚꽃낚시대', price: 300000000, description: '벚꽃의 아름다움을 담은 환상적인 낚시대입니다', requiredSkill: 10 },
-      { name: '꽃망울낚시대', price: 732000000, description: '꽃망울처럼 생긴 신비한 낚시대입니다', requiredSkill: 11 },
-      { name: '호롱불낚시대', price: 1980000000, description: '호롱불처럼 따뜻한 빛을 내는 낚시대입니다', requiredSkill: 12 },
-      { name: '산고등낚시대', price: 4300000000, description: '바다 깊은 곳의 산고로 만든 낚시대입니다', requiredSkill: 13 },
-      { name: '피크닉', price: 8800000000, description: '즐거운 피크닉 분위기의 특별한 낚시대입니다', requiredSkill: 14 },
-      { name: '마녀빗자루', price: 25000000000, description: '마녀의 마법이 깃든 신비로운 빗자루 낚시대입니다', requiredSkill: 15 },
-      { name: '에테르낚시대', price: 64800000000, description: '에테르의 힘으로 만들어진 초월적인 낚시대입니다', requiredSkill: 16 },
-      { name: '별조각낚시대', price: 147600000000, description: '별의 조각으로 만든 우주적인 낚시대입니다', requiredSkill: 17 },
-      { name: '여우꼬리낚시대', price: 320000000000, description: '여우의 꼬리처럼 유연한 신비한 낚시대입니다', requiredSkill: 18 },
-      { name: '초콜릿롤낚시대', price: 780000000000, description: '달콤한 초콜릿롤 모양의 귀여운 낚시대입니다', requiredSkill: 19 },
-      { name: '호박유령낚시대', price: 2800000000000, description: '호박 속 유령의 힘이 깃든 무서운 낚시대입니다', requiredSkill: 20 },
-      { name: '핑크버니낚시대', price: 6100000000000, description: '핑크빛 토끼의 귀여움이 담긴 낚시대입니다', requiredSkill: 21 },
-      { name: '할로우낚시대', price: 15100000000000, description: '할로윈의 신비로운 힘이 깃든 낚시대입니다', requiredSkill: 22 },
-      { name: '여우불낚시대', price: 40400000000000, description: '여우불의 환상적인 힘을 지닌 최고급 낚시대입니다', requiredSkill: 23 }
-    ],
-    accessories: [
-      { name: '오래된반지', price: 10, currency: 'amber', description: '낡았지만 의미있는 반지입니다', requiredSkill: 0 },
-      { name: '은목걸이', price: 25, currency: 'amber', description: '은으로 만든 아름다운 목걸이입니다', requiredSkill: 1 },
-      { name: '금귀걸이', price: 50, currency: 'amber', description: '금으로 만든 화려한 귀걸이입니다', requiredSkill: 2 },
-      { name: '마법의펜던트', price: 80, currency: 'amber', description: '마법의 힘이 깃든 신비한 펜던트입니다', requiredSkill: 3 },
-      { name: '에메랄드브로치', price: 120, currency: 'amber', description: '에메랄드가 박힌 고급스러운 브로치입니다', requiredSkill: 4 },
-      { name: '토파즈이어링', price: 180, currency: 'amber', description: '토파즈의 빛이 아름다운 이어링입니다', requiredSkill: 5 },
-      { name: '자수정팔찌', price: 250, currency: 'amber', description: '자수정으로 만든 우아한 팔찌입니다', requiredSkill: 6 },
-      { name: '백금티아라', price: 350, currency: 'amber', description: '백금으로 제작된 고귀한 티아라입니다', requiredSkill: 7 },
-      { name: '만드라고라허브', price: 500, currency: 'amber', description: '신비한 만드라고라 허브입니다', requiredSkill: 8 },
-      { name: '에테르나무묘목', price: 700, currency: 'amber', description: '에테르 나무의 신비한 묘목입니다', requiredSkill: 9 },
-      { name: '몽마의조각상', price: 1000, currency: 'amber', description: '몽마의 힘이 깃든 신비한 조각상입니다', requiredSkill: 10 },
-      { name: '마카롱훈장', price: 1500, currency: 'amber', description: '달콤한 마카롱 모양의 특별한 훈장입니다', requiredSkill: 11 },
-      { name: '빛나는마력순환체', price: 2000, currency: 'amber', description: '마력이 순환하는 빛나는 신비한 구슬입니다', requiredSkill: 12 }
-    ]
-  };
-};
+// 🔒 서버 측 아이템 데이터는 gameData.js에서 관리 (중복 제거)
 
 // Item Buying API (보안 강화 - 서버에서 가격 검증)
 app.post("/api/buy-item", async (req, res) => {
@@ -3117,7 +3073,7 @@ app.post("/api/buy-item", async (req, res) => {
     console.log("Raw query:", req.query);
     
     // 서버에서 실제 아이템 정보 가져오기 (클라이언트 가격 무시)
-    const serverShopItems = getServerShopItems();
+    const serverShopItems = getShopData();
     const categoryItems = serverShopItems[category];
     
     if (!categoryItems) {
