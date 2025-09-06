@@ -1816,18 +1816,23 @@ app.post("/api/check-nickname", async (req, res) => {
 app.get("/api/user-settings/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
-    const { username, userUuid } = req.query;
+    const { username, userUuid, googleId } = req.query;
     
     console.log("=== GET USER SETTINGS API ===");
-    console.log("Request params:", { userId, username, userUuid });
+    console.log("Request params:", { userId, username, userUuid, googleId });
     
     let user;
     if (userUuid && userUuid !== 'null' && userUuid !== 'undefined') {
       user = await UserUuidModel.findOne({ userUuid });
     } else if (userId !== 'null') {
       // 구글/카카오 사용자 - originalGoogleId나 originalKakaoId로 찾기
-      // 여기서는 username으로 찾되, 추후 토큰 검증으로 개선 가능
-      user = await UserUuidModel.findOne({ username, isGuest: false });
+      if (googleId) {
+        console.log(`Looking for Google user with originalGoogleId: ${googleId}`);
+        user = await UserUuidModel.findOne({ originalGoogleId: googleId });
+      } else {
+        // 구글 ID가 없으면 username으로 찾기 (fallback)
+        user = await UserUuidModel.findOne({ username, isGuest: false });
+      }
     } else {
       // 게스트 사용자
       user = await UserUuidModel.findOne({ username, isGuest: true });
@@ -1871,19 +1876,25 @@ app.get("/api/user-settings/:userId", async (req, res) => {
 app.post("/api/user-settings/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
-    const { username, userUuid } = req.query;
+    const { username, userUuid, googleId } = req.query;
     const { termsAccepted, darkMode, fishingCooldown, explorationCooldown } = req.body;
     
     console.log("=== UPDATE USER SETTINGS API ===");
-    console.log("Request params:", { userId, username, userUuid });
+    console.log("Request params:", { userId, username, userUuid, googleId });
     console.log("Request body:", { termsAccepted, darkMode, fishingCooldown, explorationCooldown });
     
     let user;
     if (userUuid && userUuid !== 'null' && userUuid !== 'undefined') {
       user = await UserUuidModel.findOne({ userUuid });
     } else if (userId !== 'null') {
-      // 구글/카카오 사용자
-      user = await UserUuidModel.findOne({ username, isGuest: false });
+      // 구글/카카오 사용자 - originalGoogleId로 찾기
+      if (googleId) {
+        console.log(`Looking for Google user with originalGoogleId: ${googleId}`);
+        user = await UserUuidModel.findOne({ originalGoogleId: googleId });
+      } else {
+        // 구글 ID가 없으면 username으로 찾기 (fallback)
+        user = await UserUuidModel.findOne({ username, isGuest: false });
+      }
     } else {
       // 게스트 사용자
       user = await UserUuidModel.findOne({ username, isGuest: true });

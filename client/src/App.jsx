@@ -234,9 +234,9 @@ function App() {
   );
 
   // 사용자 설정 관리 함수들
-  const loadUserSettings = async (userId = 'null', tempUsername = '', tempUserUuid = '') => {
+  const loadUserSettings = async (userId = 'null', tempUsername = '', tempUserUuid = '', googleId = '') => {
     try {
-      const params = { username: tempUsername, userUuid: tempUserUuid };
+      const params = { username: tempUsername, userUuid: tempUserUuid, googleId };
       const response = await axios.get(`${serverUrl}/api/user-settings/${userId}`, { params });
       const settings = response.data;
       
@@ -265,7 +265,8 @@ function App() {
   const saveUserSettings = async (updates) => {
     try {
       const userId = idToken ? 'user' : 'null';
-      const params = { username, userUuid };
+      const googleId = localStorage.getItem("googleId");
+      const params = { username, userUuid, googleId };
       await axios.post(`${serverUrl}/api/user-settings/${userId}`, updates, { params });
       console.log("User settings saved to server:", updates);
     } catch (error) {
@@ -316,7 +317,7 @@ function App() {
       console.log("Google login - google name:", safeName);
       
       // 서버에서 사용자 설정 로드 시도 (구글 계정 기반)
-      const settings = await loadUserSettings('user', safeName, '');
+      const settings = await loadUserSettings('user', safeName, '', payload.sub);
       
       if (settings && settings.termsAccepted) {
         console.log("Google login - existing user with settings:", settings);
