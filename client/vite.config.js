@@ -34,12 +34,12 @@ export default defineConfig({
       }
     },
     
-    // 🔒 기본적인 파일명 해시화
+    // 🔒 강제 캐시 무효화를 위한 파일명 변경
     rollupOptions: {
       output: {
-        entryFileNames: 'assets/[name]-[hash].js',
-        chunkFileNames: 'assets/[name]-[hash].js',
-        assetFileNames: 'assets/[name]-[hash].[ext]'
+        entryFileNames: 'assets/main-[hash]-v20241219.js',
+        chunkFileNames: 'assets/chunk-[hash]-v20241219.js',
+        assetFileNames: 'assets/[name]-[hash]-v20241219.[ext]'
       }
     }
   }

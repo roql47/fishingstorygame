@@ -247,7 +247,7 @@ function App() {
     return import.meta.env.VITE_SERVER_URL || "http://localhost:4000";
   }, []);
 
-  // 🔒 닉네임 검증 함수 (재사용 가능)
+  // 🔒 닉네임 검증 함수 (재사용 가능) - v2024.12.19
   const validateNickname = (nickname) => {
     const trimmed = nickname.trim();
     
@@ -1272,6 +1272,7 @@ function App() {
     }
 
     try {
+      console.log("🔥 CLIENT VERSION: v2024.12.19 - DELETE ACCOUNT");
       console.log("=== ACCOUNT DELETION DEBUG ===");
       console.log("Deleting account for:", { username, userUuid });
       console.log("Server URL:", serverUrl);
@@ -1428,9 +1429,10 @@ function App() {
     return fishData ? fishData.material : null;
   };
 
-  // 다른 사용자 프로필 데이터 가져오기
+  // 다른 사용자 프로필 데이터 가져오기 - v2024.12.19
   const fetchOtherUserProfile = async (username) => {
     try {
+      console.log("🔥 CLIENT VERSION: v2024.12.19 - NEW API");
       console.log("Fetching profile for:", username);
       console.log("Server URL:", serverUrl);
       console.log("Full URL:", `${serverUrl}/api/user-profile?username=${encodeURIComponent(username)}`);
