@@ -1215,11 +1215,25 @@ function App() {
     }
 
     try {
+      console.log("🔥 ACCOUNT RESET - v2024.12.19");
       console.log("=== ACCOUNT RESET DEBUG ===");
       console.log("Resetting account for:", { username, userUuid });
 
       const params = { username, userUuid };
-      const response = await axios.post(`${serverUrl}/api/reset-account`, {}, { params });
+      let response;
+      
+      try {
+        console.log("Trying reset-account API...");
+        response = await axios.post(`${serverUrl}/api/reset-account`, {}, { params });
+        console.log("✅ Reset API success");
+      } catch (resetError) {
+        if (resetError.response?.status === 404) {
+          console.log("❌ reset-account API not found");
+          throw new Error("계정 초기화 API를 찾을 수 없습니다. 서버가 업데이트되지 않았을 수 있습니다.");
+        } else {
+          throw resetError;
+        }
+      }
 
       if (response.data.success) {
         console.log("Account reset successful:", response.data);
@@ -1283,12 +1297,28 @@ function App() {
       
       try {
         // 먼저 DELETE 방식 시도
+        console.log("Trying DELETE method...");
         response = await axios.delete(`${serverUrl}/api/delete-account`, { params });
+        console.log("✅ DELETE method success");
       } catch (deleteError) {
-        if (deleteError.response?.status === 404 || deleteError.response?.status === 405) {
-          console.log("DELETE 방식 실패, POST 방식으로 재시도...");
-          // DELETE가 실패하면 POST 방식으로 재시도
+        if (deleteError.response?.status === 404) {
+          console.log("❌ DELETE failed with 404, trying POST...");
+          try {
+            // DELETE가 404로 실패하면 POST 방식으로 재시도
+            response = await axios.post(`${serverUrl}/api/delete-account`, {}, { params });
+            console.log("✅ POST method success");
+          } catch (postError) {
+            if (postError.response?.status === 404) {
+              console.log("❌ Both DELETE and POST failed with 404");
+              throw new Error("계정 삭제 API를 찾을 수 없습니다. 서버가 업데이트되지 않았을 수 있습니다.");
+            } else {
+              throw postError;
+            }
+          }
+        } else if (deleteError.response?.status === 405) {
+          console.log("❌ DELETE not allowed, trying POST...");
           response = await axios.post(`${serverUrl}/api/delete-account`, {}, { params });
+          console.log("✅ POST method success");
         } else {
           throw deleteError;
         }
@@ -1429,17 +1459,33 @@ function App() {
     return fishData ? fishData.material : null;
   };
 
-  // 다른 사용자 프로필 데이터 가져오기 - v2024.12.19
+  // 다른 사용자 프로필 데이터 가져오기 - v2024.12.19 (Fallback 지원)
   const fetchOtherUserProfile = async (username) => {
     try {
-      console.log("🔥 CLIENT VERSION: v2024.12.19 - NEW API");
+      console.log("🔥 CLIENT VERSION: v2024.12.19 - FALLBACK API");
       console.log("Fetching profile for:", username);
       console.log("Server URL:", serverUrl);
-      console.log("Full URL:", `${serverUrl}/api/user-profile?username=${encodeURIComponent(username)}`);
       
-      const response = await axios.get(`${serverUrl}/api/user-profile`, {
-        params: { username }
-      });
+      let response;
+      
+      try {
+        // 먼저 새로운 API 시도
+        console.log("Trying new API:", `${serverUrl}/api/user-profile?username=${encodeURIComponent(username)}`);
+        response = await axios.get(`${serverUrl}/api/user-profile`, {
+          params: { username }
+        });
+        console.log("✅ New API success");
+      } catch (newApiError) {
+        if (newApiError.response?.status === 404) {
+          console.log("❌ New API failed, trying legacy API...");
+          // 새 API 실패 시 이전 API 시도
+          console.log("Trying legacy API:", `${serverUrl}/api/user-profile/${encodeURIComponent(username)}`);
+          response = await axios.get(`${serverUrl}/api/user-profile/${encodeURIComponent(username)}`);
+          console.log("✅ Legacy API success");
+        } else {
+          throw newApiError;
+        }
+      }
       console.log("Other user profile data:", response.data);
       setOtherUserData(response.data);
     } catch (error) {
