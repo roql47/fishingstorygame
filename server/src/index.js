@@ -1413,7 +1413,143 @@ io.on("connection", (socket) => {
       }
     }
   });
+
+  // 실시간 데이터 동기화 이벤트들
+  socket.on("data:subscribe", ({ userUuid, username }) => {
+    if (userUuid && username) {
+      socket.userUuid = userUuid;
+      socket.username = username;
+      console.log(`User ${username} subscribed to data updates`);
+      
+      // 즉시 현재 데이터 전송
+      sendUserDataUpdate(socket, userUuid, username);
+    }
+  });
+
+  socket.on("data:request", async ({ type, userUuid, username }) => {
+    if (!userUuid || !username) return;
+    
+    try {
+      switch (type) {
+        case 'inventory':
+          const inventory = await getInventoryData(userUuid);
+          socket.emit('data:inventory', inventory);
+          break;
+        case 'materials':
+          const materials = await getMaterialsData(userUuid);
+          socket.emit('data:materials', materials);
+          break;
+        case 'money':
+          const money = await getMoneyData(userUuid);
+          socket.emit('data:money', money);
+          break;
+        case 'amber':
+          const amber = await getAmberData(userUuid);
+          socket.emit('data:amber', amber);
+          break;
+        case 'starPieces':
+          const starPieces = await getStarPiecesData(userUuid);
+          socket.emit('data:starPieces', starPieces);
+          break;
+        case 'cooldown':
+          const cooldown = await getCooldownData(userUuid);
+          socket.emit('data:cooldown', cooldown);
+          break;
+        case 'totalCatches':
+          const totalCatches = await getTotalCatchesData(userUuid);
+          socket.emit('data:totalCatches', totalCatches);
+          break;
+      }
+    } catch (error) {
+      console.error(`Error fetching ${type} for ${username}:`, error);
+    }
+  });
 });
+
+// WebSocket 데이터 조회 함수들
+async function sendUserDataUpdate(socket, userUuid, username) {
+  try {
+    const [inventory, materials, money, amber, starPieces, cooldown, totalCatches] = await Promise.all([
+      getInventoryData(userUuid),
+      getMaterialsData(userUuid),
+      getMoneyData(userUuid),
+      getAmberData(userUuid),
+      getStarPiecesData(userUuid),
+      getCooldownData(userUuid),
+      getTotalCatchesData(userUuid)
+    ]);
+
+    socket.emit('data:update', {
+      inventory,
+      materials,
+      money,
+      amber,
+      starPieces,
+      cooldown,
+      totalCatches
+    });
+  } catch (error) {
+    console.error(`Error sending data update for ${username}:`, error);
+  }
+}
+
+async function getInventoryData(userUuid) {
+  const catches = await CatchModel.aggregate([
+    { $match: { userUuid } },
+    { $group: { _id: "$fish", count: { $sum: 1 } } },
+    { $project: { _id: 0, fish: "$_id", count: 1 } }
+  ]);
+  return catches;
+}
+
+async function getMaterialsData(userUuid) {
+  const materials = await MaterialModel.aggregate([
+    { $match: { userUuid } },
+    { $group: { _id: "$material", count: { $sum: "$quantity" } } },
+    { $project: { _id: 0, material: "$_id", count: 1 } }
+  ]);
+  return materials;
+}
+
+async function getMoneyData(userUuid) {
+  const userMoney = await UserMoneyModel.findOne({ userUuid });
+  return { money: userMoney?.money || 0 };
+}
+
+async function getAmberData(userUuid) {
+  const userAmber = await UserAmberModel.findOne({ userUuid });
+  return { amber: userAmber?.amber || 0 };
+}
+
+async function getStarPiecesData(userUuid) {
+  const starPieces = await StarPieceModel.findOne({ userUuid });
+  return { starPieces: starPieces?.starPieces || 0 };
+}
+
+async function getCooldownData(userUuid) {
+  const user = await UserUuidModel.findOne({ userUuid });
+  const now = new Date();
+  const fishingCooldown = user?.fishingCooldownEnd && user.fishingCooldownEnd > now 
+    ? Math.ceil((user.fishingCooldownEnd - now) / 1000) : 0;
+  const explorationCooldown = user?.explorationCooldownEnd && user.explorationCooldownEnd > now 
+    ? Math.ceil((user.explorationCooldownEnd - now) / 1000) : 0;
+  
+  return { fishingCooldown, explorationCooldown };
+}
+
+async function getTotalCatchesData(userUuid) {
+  const totalCatches = await CatchModel.countDocuments({ userUuid });
+  return { totalCatches };
+}
+
+// 데이터 변경 시 모든 해당 사용자에게 업데이트 전송
+function broadcastUserDataUpdate(userUuid, username, dataType, data) {
+  io.sockets.sockets.forEach((socket) => {
+    if (socket.userUuid === userUuid) {
+      socket.emit(`data:${dataType}`, data);
+    }
+  });
+}
 
 // Personal Inventory API
 // 인벤토리 검증 함수 (보안 강화)
@@ -3726,27 +3862,6 @@ app.use((req, res, next) => {
   });
 });
 
-// 404 에러 핸들러 (모든 라우트 처리 후)
-app.use((req, res) => {
-  console.log("=== 404 NOT FOUND ===");
-  console.log("Requested URL:", req.url);
-  console.log("Method:", req.method);
-  console.log("Headers:", req.headers);
-  
-  // CSS 파일 요청인 경우 특별 처리
-  if (req.path.endsWith('.css')) {
-    console.log("❌ CSS file not found:", req.path);
-    console.log("Available CSS files in assets:");
-    const assetsDir = path.join(staticDir, 'assets');
-    if (require('fs').existsSync(assetsDir)) {
-      const cssFiles = require('fs').readdirSync(assetsDir).filter(f => f.endsWith('.css'));
-      console.log(cssFiles);
-    }
-  }
-  
-  res.status(404).send(`File not found: ${req.path}`);
-});
-
 // 계정 삭제 API
 // 🔧 DELETE와 POST 방식 모두 지원 (호환성)
 app.delete("/api/delete-account", deleteAccountHandler);
@@ -4065,6 +4180,27 @@ app.post("/api/reset-account", async (req, res) => {
 
 const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/fishing_game";
 const PORT = Number(process.env.PORT || 4000);
+
+// 404 에러 핸들러 (모든 라우트 처리 후)
+app.use((req, res) => {
+  console.log("=== 404 NOT FOUND ===");
+  console.log("Requested URL:", req.url);
+  console.log("Method:", req.method);
+  console.log("Headers:", req.headers);
+  
+  // CSS 파일 요청인 경우 특별 처리
+  if (req.path.endsWith('.css')) {
+    console.log("❌ CSS file not found:", req.path);
+    console.log("Available CSS files in assets:");
+    const assetsDir = path.join(staticDir, 'assets');
+    if (require('fs').existsSync(assetsDir)) {
+      const cssFiles = require('fs').readdirSync(assetsDir).filter(f => f.endsWith('.css'));
+      console.log(cssFiles);
+    }
+  }
+  
+  res.status(404).send(`File not found: ${req.path}`);
+});
 
 async function bootstrap() {
   try {

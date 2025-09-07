@@ -35,6 +35,9 @@ import {
 import "./App.css";
 
 function App() {
+  // Socket 초기화
+  const socket = getSocket();
+  
   const [username, setUsername] = useState("");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
@@ -808,102 +811,60 @@ function App() {
     }
   }, [serverUrl, username, userUuid, idToken]);
 
+  // WebSocket을 통한 실시간 데이터 동기화
   useEffect(() => {
-    if (!username) return;
-    const fetchInventory = async () => {
-      try {
-        const userId = idToken ? 'user' : 'null';
-        const params = { username, userUuid }; // username과 userUuid 모두 전달
-        const res = await axios.get(`${serverUrl}/api/inventory/${userId}`, { params });
-        setInventory(res.data);
-      } catch (e) {
-        console.error('Failed to fetch inventory:', e);
+    if (!username || !userUuid || !socket) return;
+
+    // 데이터 구독
+    socket.emit('data:subscribe', { userUuid, username });
+
+    // 실시간 데이터 업데이트 리스너
+    const handleDataUpdate = (data) => {
+      console.log('Received data update:', data);
+      if (data.inventory) setInventory(data.inventory);
+      if (data.materials) setMaterials(data.materials);
+      if (data.money) setUserMoney(data.money.money);
+      if (data.amber) setUserAmber(data.amber.amber);
+      if (data.starPieces) setUserStarPieces(data.starPieces.starPieces);
+      if (data.cooldown) {
+        setFishingCooldown(data.cooldown.fishingCooldown);
+        setExplorationCooldown(data.cooldown.explorationCooldown);
       }
+      if (data.totalCatches) setMyCatches(data.totalCatches.totalCatches);
     };
 
-    fetchInventory();
-    fetchMaterials();
-    const inventoryInterval = setInterval(fetchInventory, 5000);
-    const materialsInterval = setInterval(fetchMaterials, 5000);
+    const handleInventoryUpdate = (data) => setInventory(data);
+    const handleMaterialsUpdate = (data) => setMaterials(data);
+    const handleUsersUpdate = (users) => {
+      console.log('Received users update via WebSocket:', users);
+      setConnectedUsers(users || []);
+    };
+
+    socket.on('data:update', handleDataUpdate);
+    socket.on('data:inventory', handleInventoryUpdate);
+    socket.on('data:materials', handleMaterialsUpdate);
+    socket.on('users:update', handleUsersUpdate);
+
     return () => {
-      clearInterval(inventoryInterval);
-      clearInterval(materialsInterval);
+      socket.off('data:update', handleDataUpdate);
+      socket.off('data:inventory', handleInventoryUpdate);
+      socket.off('data:materials', handleMaterialsUpdate);
+      socket.off('users:update', handleUsersUpdate);
     };
-  }, [serverUrl, username, idToken, fetchMaterials]);
+  }, [username, userUuid, socket]);
 
-  // 사용자 돈 가져오기
-  useEffect(() => {
-    if (!username) return;
-    const fetchUserMoney = async () => {
-      try {
-        const userId = idToken ? 'user' : 'null';
-        const params = { username, userUuid }; // username과 userUuid 모두 전달
-        const res = await axios.get(`${serverUrl}/api/user-money/${userId}`, { params });
-        setUserMoney(res.data.money || 0);
-      } catch (e) {
-        console.error('Failed to fetch user money:', e);
-        setUserMoney(0);
-      }
-    };
-    fetchUserMoney();
-    const id = setInterval(fetchUserMoney, 10000);
-    return () => clearInterval(id);
-  }, [serverUrl, username, userUuid, idToken]);
+  // 사용자 돈은 WebSocket으로 실시간 업데이트됨 (위에서 처리)
 
-  // 사용자 호박석 가져오기
-  useEffect(() => {
-    if (!username) return;
-    const fetchUserAmber = async () => {
-      try {
-        const userId = idToken ? 'user' : 'null';
-        const params = { username, userUuid }; // username과 userUuid 모두 전달
-        console.log('Fetching user amber');
-        const res = await axios.get(`${serverUrl}/api/user-amber/${userId}`, { params });
-        // 앰버 데이터는 보안상 로그에 기록하지 않음
-        setUserAmber(res.data.amber || 0);
-      } catch (e) {
-        console.error('Failed to fetch user amber:', e);
-        console.error('Error response:', e.response?.data);
-        setUserAmber(0);
-      }
-    };
-    fetchUserAmber();
-    const id = setInterval(fetchUserAmber, 10000);
-    return () => clearInterval(id);
-  }, [serverUrl, username, userUuid, idToken]);
+  // 사용자 호박석, 별조각은 WebSocket으로 실시간 업데이트됨 (위에서 처리)
 
-  // 사용자 별조각 가져오기
-  useEffect(() => {
-    if (!username) return;
-    const fetchUserStarPieces = async () => {
-      try {
-        const userId = idToken ? 'user' : 'null';
-        const params = { username, userUuid }; // username과 userUuid 모두 전달
-        console.log('Fetching user star pieces with params:', { userId, username, userUuid });
-        const res = await axios.get(`${serverUrl}/api/star-pieces/${userId}`, { params });
-        console.log('User star pieces response:', res.data);
-        setUserStarPieces(res.data.starPieces || 0);
-      } catch (e) {
-        console.error('Failed to fetch user star pieces:', e);
-        console.error('Error response:', e.response?.data);
-        setUserStarPieces(0);
-      }
-    };
-    fetchUserStarPieces();
-    const id = setInterval(fetchUserStarPieces, 10000);
-    return () => clearInterval(id);
-  }, [serverUrl, username, userUuid, idToken]);
-
-  // 사용자 동료 정보 가져오기
+  // 사용자 동료 정보 가져오기 (초기 로드만, 자주 변경되지 않음)
   useEffect(() => {
     if (!username) return;
     const fetchCompanions = async () => {
       try {
         const userId = idToken ? 'user' : 'null';
         const params = { username, userUuid };
-        console.log('Fetching companions with params:', { userId, username, userUuid });
         const res = await axios.get(`${serverUrl}/api/companions/${userId}`, { params });
-        console.log('Companions response:', res.data);
         setCompanions(res.data.companions || []);
       } catch (e) {
         console.error('Failed to fetch companions:', e);
@@ -911,20 +872,16 @@ function App() {
       }
     };
     fetchCompanions();
-    const id = setInterval(fetchCompanions, 30000); // 30초마다 새로고침
-    return () => clearInterval(id);
   }, [serverUrl, username, userUuid, idToken]);
 
-  // 사용자 관리자 상태 가져오기
+  // 사용자 관리자 상태 가져오기 (초기 로드만, 자주 변경되지 않음)
   useEffect(() => {
     if (!username) return;
     const fetchAdminStatus = async () => {
       try {
         const userId = idToken ? 'user' : 'null';
         const params = { username, userUuid };
-        console.log('Fetching admin status with params:', { userId, username, userUuid });
         const res = await axios.get(`${serverUrl}/api/admin-status/${userId}`, { params });
-        console.log('Admin status response:', res.data);
         setIsAdmin(res.data.isAdmin || false);
       } catch (e) {
         console.error('Failed to fetch admin status:', e);
@@ -932,8 +889,6 @@ function App() {
       }
     };
     fetchAdminStatus();
-    const id = setInterval(fetchAdminStatus, 30000); // 30초마다 새로고침
-    return () => clearInterval(id);
   }, [serverUrl, username, userUuid, idToken]);
 
   // 채팅 메시지의 사용자들 관리자 상태 확인
@@ -1013,45 +968,18 @@ function App() {
     
     if (username) {
       fetchConnectedUsers();
-      const id = setInterval(fetchConnectedUsers, 3000); // 3초마다 새로고침 (더 빈번하게)
+      const id = setInterval(fetchConnectedUsers, 15000); // 15초마다 새로고침 (최적화)
       return () => clearInterval(id);
     }
   }, [serverUrl, username]);
 
-  // 서버에서 쿨타임 상태 가져오기
-  useEffect(() => {
-    if (!username) return;
-    const fetchCooldownStatus = async () => {
-      try {
-        const userId = idToken ? 'user' : 'null';
-        const params = { username, userUuid };
-        console.log('Fetching cooldown status');
-        const res = await axios.get(`${serverUrl}/api/cooldown/${userId}`, { params });
-        // 쿨다운 데이터는 보안상 로그에 기록하지 않음
-        
-        // 서버에서 받은 쿨타임으로 업데이트
-        setFishingCooldown(res.data.fishingCooldown || 0);
-        setExplorationCooldown(res.data.explorationCooldown || 0);
-      } catch (e) {
-        console.error('Failed to fetch cooldown status:', e);
-        // 에러 시 쿨타임 초기화
-        setFishingCooldown(0);
-        setExplorationCooldown(0);
-      }
-    };
-    
-    fetchCooldownStatus();
-    const id = setInterval(fetchCooldownStatus, 5000); // 5초마다 서버에서 쿨타임 확인
-    return () => clearInterval(id);
-  }, [serverUrl, username, userUuid, idToken]);
+  // 쿨타임과 총 낚은 수는 WebSocket으로 실시간 업데이트됨 (위에서 처리)
 
-  // 랭킹 데이터 가져오기
+  // 랭킹 데이터 가져오기 (자주 변경되지 않으므로 주기 증가)
   useEffect(() => {
     const fetchRankings = async () => {
       try {
-        console.log('Fetching rankings');
         const res = await axios.get(`${serverUrl}/api/ranking`);
-        console.log('Rankings response:', res.data);
         setRankings(res.data.rankings || []);
       } catch (e) {
         console.error('Failed to fetch rankings:', e);
@@ -1060,31 +988,9 @@ function App() {
     };
     
     fetchRankings();
-    const id = setInterval(fetchRankings, 30000); // 30초마다 랭킹 새로고침
+    const id = setInterval(fetchRankings, 60000); // 60초마다 랭킹 새로고침 (최적화)
     return () => clearInterval(id);
   }, [serverUrl]);
-
-  // 누적 낚은 물고기 수 가져오기
-  useEffect(() => {
-    if (!username) return;
-    const fetchTotalCatches = async () => {
-      try {
-        const userId = idToken ? 'user' : 'null';
-        const params = { username, userUuid };
-        console.log('Fetching total catches with params:', { userId, username, userUuid });
-        const res = await axios.get(`${serverUrl}/api/total-catches/${userId}`, { params });
-        console.log('Total catches response:', res.data);
-        setMyCatches(res.data.totalCatches || 0);
-      } catch (e) {
-        console.error('Failed to fetch total catches:', e);
-        setMyCatches(0);
-      }
-    };
-    
-    fetchTotalCatches();
-    const id = setInterval(fetchTotalCatches, 10000); // 10초마다 누적 낚은 물고기 수 확인
-    return () => clearInterval(id);
-  }, [serverUrl, username, userUuid, idToken]);
 
   // 사용자 장비 정보 가져오기
   useEffect(() => {
@@ -3079,63 +2985,74 @@ function App() {
                               })}
                             </div>
                           </div>
-                          <div className="group">
-                            {/* 메시지 말풍선 */}
-                          <div className={`inline-block px-4 py-2 rounded-xl max-w-fit ${
-                            isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
-                          }`}>
-                            <span className={`text-sm ${
-                              isDarkMode ? "text-gray-200" : "text-gray-700"
-                            }`}>{m.content}</span>
-                          </div>
+                          {/* 메시지 말풍선 - 인스타그램 스타일 반응 UI 통합 */}
+                          <div className="relative inline-block group">
+                            <div className={`px-4 py-2 rounded-xl max-w-fit ${
+                              isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+                            }`}>
+                              <span className={`text-sm ${
+                                isDarkMode ? "text-gray-200" : "text-gray-700"
+                              }`}>{m.content}</span>
+                            </div>
                             
                             {/* 반응 버튼들 (호버 시 표시) */}
-                            <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                              <button
-                                onClick={() => addReaction(i, 'heart')}
-                                className={`p-1 rounded-full hover:scale-110 transition-all duration-200 ${
-                                  m.reactions?.heart?.includes(username)
-                                    ? "text-red-500" 
-                                    : isDarkMode ? "text-gray-400 hover:text-red-400" : "text-gray-500 hover:text-red-500"
-                                }`}
-                                title="하트"
-                              >
-                                <Heart className={`w-3.5 h-3.5 ${
-                                  m.reactions?.heart?.includes(username) ? "fill-current" : ""
-                                }`} />
-                              </button>
+                            <div className="absolute -bottom-6 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 transform translate-y-2 group-hover:translate-y-0">
                               <button
                                 onClick={() => addReaction(i, 'thumbsup')}
-                                className={`p-1 rounded-full hover:scale-110 transition-all duration-200 ${
+                                className={`p-1.5 rounded-full backdrop-blur-sm border transition-all duration-200 hover:scale-110 ${
                                   m.reactions?.thumbsup?.includes(username)
-                                    ? "text-blue-500" 
-                                    : isDarkMode ? "text-gray-400 hover:text-blue-400" : "text-gray-500 hover:text-blue-500"
+                                    ? "bg-blue-500/20 border-blue-400/50 text-blue-500 shadow-lg shadow-blue-500/25" 
+                                    : isDarkMode 
+                                      ? "bg-gray-800/80 border-gray-600/50 text-gray-400 hover:text-blue-400 hover:bg-blue-500/10 hover:border-blue-400/30" 
+                                      : "bg-white/80 border-gray-300/50 text-gray-500 hover:text-blue-500 hover:bg-blue-50/80 hover:border-blue-300/50"
                                 }`}
                                 title="좋아요"
                               >
-                                <ThumbsUp className={`w-3.5 h-3.5 ${
+                                <ThumbsUp className={`w-3 h-3 ${
                                   m.reactions?.thumbsup?.includes(username) ? "fill-current" : ""
+                                }`} />
+                              </button>
+                              <button
+                                onClick={() => addReaction(i, 'heart')}
+                                className={`p-1.5 rounded-full backdrop-blur-sm border transition-all duration-200 hover:scale-110 ${
+                                  m.reactions?.heart?.includes(username)
+                                    ? "bg-red-500/20 border-red-400/50 text-red-500 shadow-lg shadow-red-500/25" 
+                                    : isDarkMode 
+                                      ? "bg-gray-800/80 border-gray-600/50 text-gray-400 hover:text-red-400 hover:bg-red-500/10 hover:border-red-400/30" 
+                                      : "bg-white/80 border-gray-300/50 text-gray-500 hover:text-red-500 hover:bg-red-50/80 hover:border-red-300/50"
+                                }`}
+                                title="하트"
+                              >
+                                <Heart className={`w-3 h-3 ${
+                                  m.reactions?.heart?.includes(username) ? "fill-current" : ""
                                 }`} />
                               </button>
                             </div>
                             
-                            {/* 반응 카운트 표시 (말풍선 오른쪽 아래) */}
+                            {/* 반응 카운트 표시 (인스타그램 스타일 - 말풍선 오른쪽 하단 모서리) */}
                             {m.reactions && Object.keys(m.reactions).length > 0 && (
-                              <div className="flex gap-1 justify-end mt-1">
-                                {Object.entries(m.reactions).map(([reactionType, users]) => (
+                              <div className="absolute -bottom-2 -right-1 flex gap-0.5 z-10">
+                                {['thumbsup', 'heart'].filter(type => m.reactions[type]).map((reactionType) => (
                                   <div
                                     key={reactionType}
-                                    className={`flex items-center gap-0.5 text-xs ${
-                                      isDarkMode ? "text-gray-400" : "text-gray-500"
+                                    className={`flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full text-[10px] font-medium border-2 transition-all duration-200 hover:scale-110 cursor-pointer ${
+                                      reactionType === 'heart'
+                                        ? isDarkMode
+                                          ? "bg-red-500 text-white border-gray-800 shadow-lg shadow-red-500/30"
+                                          : "bg-red-500 text-white border-white shadow-lg shadow-red-500/30"
+                                        : isDarkMode
+                                          ? "bg-blue-500 text-white border-gray-800 shadow-lg shadow-blue-500/30"
+                                          : "bg-blue-500 text-white border-white shadow-lg shadow-blue-500/30"
                                     }`}
-                                    title={`${users.join(', ')}님이 반응했습니다`}
+                                    title={`${m.reactions[reactionType].join(', ')}님이 ${reactionType === 'heart' ? '하트' : '좋아요'}를 눌렀습니다`}
+                                    onClick={() => addReaction(i, reactionType)}
                                   >
                                     {reactionType === 'heart' ? (
-                                      <Heart className="w-2.5 h-2.5 text-red-400 fill-current" />
+                                      <Heart className="w-2 h-2 fill-current mr-0.5" />
                                     ) : (
-                                      <ThumbsUp className="w-2.5 h-2.5 text-blue-400 fill-current" />
+                                      <ThumbsUp className="w-2 h-2 fill-current mr-0.5" />
                                     )}
-                                    <span className="text-xs">{users.length}</span>
+                                    <span>{m.reactions[reactionType].length}</span>
                                   </div>
                                 ))}
                               </div>
