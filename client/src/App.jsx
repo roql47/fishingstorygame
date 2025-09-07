@@ -262,6 +262,52 @@ function App() {
     return import.meta.env.VITE_SERVER_URL || "http://localhost:4000";
   }, []);
 
+  // 🔐 JWT 인증 헤더를 포함한 axios 요청 함수
+  const authenticatedRequest = useMemo(() => {
+    return {
+      get: (url, config = {}) => {
+        const token = localStorage.getItem("jwtToken");
+        return axios.get(url, {
+          ...config,
+          headers: {
+            ...config.headers,
+            ...(token && { Authorization: `Bearer ${token}` })
+          }
+        });
+      },
+      post: (url, data, config = {}) => {
+        const token = localStorage.getItem("jwtToken");
+        return axios.post(url, data, {
+          ...config,
+          headers: {
+            ...config.headers,
+            ...(token && { Authorization: `Bearer ${token}` })
+          }
+        });
+      },
+      put: (url, data, config = {}) => {
+        const token = localStorage.getItem("jwtToken");
+        return axios.put(url, data, {
+          ...config,
+          headers: {
+            ...config.headers,
+            ...(token && { Authorization: `Bearer ${token}` })
+          }
+        });
+      },
+      delete: (url, config = {}) => {
+        const token = localStorage.getItem("jwtToken");
+        return axios.delete(url, {
+          ...config,
+          headers: {
+            ...config.headers,
+            ...(token && { Authorization: `Bearer ${token}` })
+          }
+        });
+      }
+    };
+  }, []);
+
   // 🔒 닉네임 검증 함수 (재사용 가능) - v2024.12.19
   const validateNickname = (nickname) => {
     const trimmed = nickname.trim();
@@ -756,6 +802,16 @@ function App() {
     socket.on("users:update", onUsersUpdate);
     socket.on("user:uuid", onUserUuid);
     socket.on("message:reaction:update", onReactionUpdate);
+    
+    // 🔐 JWT 토큰 처리
+    socket.on("auth:token", (data) => {
+      console.log("🔐 JWT token received from server");
+      if (data.token) {
+        localStorage.setItem("jwtToken", data.token);
+        localStorage.setItem("jwtExpiresIn", data.expiresIn);
+        console.log(`🔐 JWT token stored, expires in: ${data.expiresIn}`);
+      }
+    });
     
     // 중복 로그인 알림 처리
     const onDuplicateLogin = (data) => {
@@ -2330,11 +2386,12 @@ function App() {
       const price = getFishPrice(fishName);
       const totalPrice = price * quantity;
       
-      const response = await axios.post(`${serverUrl}/api/sell-fish`, {
+      // 🔐 JWT 인증을 사용한 API 호출
+      const response = await authenticatedRequest.post(`${serverUrl}/api/sell-fish`, {
         fishName,
         quantity,
         totalPrice
-      }, { params });
+      });
       
       if (response.data.success) {
         setUserMoney(prev => prev + totalPrice);
@@ -2530,12 +2587,13 @@ function App() {
       
       console.log("Sending buy item request:", { itemName, price, category, params });
       
-      const response = await axios.post(`${serverUrl}/api/buy-item`, {
+      // 🔐 JWT 인증을 사용한 API 호출
+      const response = await authenticatedRequest.post(`${serverUrl}/api/buy-item`, {
         itemName,
         price,
         category,
         currency // 화폐 종류 전송
-      }, { params });
+      });
       
       if (response.data.success) {
         // 화폐 종류에 따라 차감

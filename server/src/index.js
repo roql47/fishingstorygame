@@ -5,6 +5,29 @@ const { Server } = require("socket.io");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const { OAuth2Client } = require("google-auth-library");
+const jwt = require("jsonwebtoken"); // 🔐 JWT 라이브러리 추가
+
+// 🚀 성능 최적화: 프로덕션 환경에서 로깅 축소
+const isProduction = process.env.NODE_ENV === 'production';
+const debugLog = isProduction ? () => {} : console.log;
+const infoLog = console.log; // 중요한 로그는 유지
+const errorLog = console.error; // 에러 로그는 항상 유지
+
+// 🚀 성능 최적화: 낚시 스킬 캐시 (5분 TTL)
+const fishingSkillCache = new Map();
+const SKILL_CACHE_TTL = 5 * 60 * 1000; // 5분
+
+function getCachedFishingSkill(userKey) {
+  const cached = fishingSkillCache.get(userKey);
+  if (cached && Date.now() - cached.timestamp < SKILL_CACHE_TTL) {
+    return cached.skill;
+  }
+  return null;
+}
+
+function setCachedFishingSkill(userKey, skill) {
+  fishingSkillCache.set(userKey, { skill, timestamp: Date.now() });
+}
 // 🔒 게임 데이터 임포트
 const {
   getFishData,
@@ -1466,11 +1489,29 @@ io.on("connection", (socket) => {
       // 클라이언트에게 UUID 정보 전송 (업데이트된 닉네임 포함)
       const displayNameToSend = user.displayName || user.username;
       console.log(`[USER:UUID EVENT] Sending to client: { userUuid: ${user.userUuid}, username: ${user.username}, displayName: ${displayNameToSend} }`);
+      
+      // 🔐 JWT 토큰 생성 및 전송
+      const jwtToken = generateJWT({
+        userUuid: user.userUuid,
+        username: user.username,
+        displayName: displayNameToSend,
+        isAdmin: false // 기본값, 관리자 권한은 별도 처리
+      });
+      
       socket.emit("user:uuid", { 
         userUuid: user.userUuid, 
         username: user.username,
         displayName: displayNameToSend
       });
+      
+      // 🔐 JWT 토큰 별도 전송
+      if (jwtToken) {
+        socket.emit("auth:token", { 
+          token: jwtToken,
+          expiresIn: JWT_EXPIRES_IN
+        });
+        console.log(`🔐 JWT token sent to client: ${user.username}`);
+      }
       
       // 입장/닉네임 변경 메시지 전송 (중복 방지)
       if (isNicknameChange) {
@@ -1570,8 +1611,8 @@ io.on("connection", (socket) => {
     
     if (trimmed === "낚시하기") {
       try {
-        console.log("=== Fishing Request ===");
-        console.log("Socket data:", {
+        debugLog("=== Fishing Request ===");
+        debugLog("Socket data:", {
           userUuid: socket.data.userUuid,
           username: socket.data.username,
           userId: socket.data.userId,
@@ -1580,7 +1621,7 @@ io.on("connection", (socket) => {
         
         // 사용자 식별 확인
         if (!socket.data.userUuid && !socket.data.username && !socket.data.userId) {
-          console.error("No user identification found");
+          errorLog("No user identification found");
           socket.emit("error", { message: "사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요." });
           return;
         }
@@ -1595,13 +1636,25 @@ io.on("connection", (socket) => {
           query = { userId: socket.data.userId || 'user' };
         }
         
-        console.log("Fishing skill query:", query);
-        let fishingSkill = await FishingSkillModel.findOne(query);
-        const userSkill = fishingSkill ? fishingSkill.skill : 0;
+        debugLog("Fishing skill query:", query);
+        
+        // 🚀 캐시된 낚시 스킬 사용 (성능 최적화)
+        const userKey = socket.data.userUuid || socket.data.username || socket.data.userId;
+        let userSkill = getCachedFishingSkill(userKey);
+        
+        if (userSkill === null) {
+          // 캐시 미스 시 DB에서 조회
+          const fishingSkill = await FishingSkillModel.findOne(query);
+          userSkill = fishingSkill ? fishingSkill.skill : 0;
+          setCachedFishingSkill(userKey, userSkill);
+          debugLog(`Fishing skill loaded from DB: ${userSkill}`);
+        } else {
+          debugLog(`Fishing skill from cache: ${userSkill}`);
+        }
         
         // 사용자 낚시 실력 정보는 보안상 로그에 기록하지 않음
         const { fish } = randomFish(userSkill);
-        console.log("Random fish result:", fish);
+        debugLog("Random fish result:", fish);
         
         // 물고기 저장 데이터 준비 (UUID 기반)
         const catchData = {
@@ -1610,7 +1663,7 @@ io.on("connection", (socket) => {
         };
         
         // 사용자 식별 정보 추가 (우선순위: userUuid > username > userId)
-        console.log("Socket data for catch:", {
+        debugLog("Socket data for catch:", {
           userUuid: socket.data.userUuid,
           username: socket.data.username,
           userId: socket.data.userId,
@@ -2137,13 +2190,14 @@ app.get("/api/inventory/:userId", async (req, res) => {
   }
 });
 
-// User Money API (보안 강화)
-app.get("/api/user-money/:userId", async (req, res) => {
+// User Money API (보안 강화 + JWT 인증)
+app.get("/api/user-money/:userId", authenticateJWT, async (req, res) => {
   try {
+    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
+    const { userUuid, username } = req.user;
     const { userId } = req.params;
-    const { username, userUuid } = req.query;
     
-    console.log("User money request received");
+    console.log(`🔐 JWT User money request: ${username} (${userUuid})`);
     
     // UUID 기반 사용자 조회
     const queryResult = await getUserQuery(userId, username, userUuid);
@@ -3904,12 +3958,13 @@ const calculateServerFishPrice = async (fishName, userQuery) => {
   return basePrice;
 };
 
-// Fish Selling API (보안 강화 - 서버에서 가격 계산)
-app.post("/api/sell-fish", async (req, res) => {
+// Fish Selling API (보안 강화 - 서버에서 가격 계산 + JWT 인증)
+app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
   try {
     const { fishName, quantity, totalPrice: clientTotalPrice } = req.body;
-    const { username, userUuid } = req.query;
-    console.log("Sell fish request:", { fishName, quantity, clientTotalPrice, username, userUuid });
+    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
+    const { userUuid, username } = req.user;
+    console.log(`🔐 JWT Sell fish request: ${fishName} x${quantity} by ${username} (${userUuid})`);
     
     // UUID 기반 사용자 조회
     const queryResult = await getUserQuery('user', username, userUuid);
@@ -3928,16 +3983,13 @@ app.post("/api/sell-fish", async (req, res) => {
     
     // 클라이언트에서 보낸 가격과 서버 가격 비교 (보안 검증)
     if (Math.abs(clientTotalPrice - serverTotalPrice) > 1) { // 소수점 오차 허용
-      console.warn(`Fish price manipulation detected! Client: ${clientTotalPrice}, Server: ${serverTotalPrice}, Fish: ${fishName}, Quantity: ${quantity}, User: ${username}`);
+      console.warn(`Fish price manipulation detected! Client: ${clientTotalPrice}, Server: ${serverTotalPrice}`);
       return res.status(400).json({ error: "Invalid fish price" });
     }
     
-    console.log(`Server validated total price: ${serverTotalPrice} for ${quantity}x ${fishName}`);
-    console.log("Database query for sell fish:", query);
-    
     // 사용자가 해당 물고기를 충분히 가지고 있는지 확인 (보안 강화)
     const userFish = await CatchModel.find({ ...query, fish: fishName });
-    console.log(`Found ${userFish.length} ${fishName} for user`);
+    debugLog(`Found ${userFish.length} ${fishName} for user`);
     
     // 추가 보안 검증: 물고기 존재 여부 확인
     const serverFishData = getServerFishData();
@@ -3948,15 +4000,17 @@ app.post("/api/sell-fish", async (req, res) => {
     }
     
     if (userFish.length < quantity) {
-      console.log(`Not enough fish: has ${userFish.length}, needs ${quantity}`);
+      debugLog(`Not enough fish: has ${userFish.length}, needs ${quantity}`);
       return res.status(400).json({ error: "Not enough fish to sell" });
     }
     
-    // 물고기 판매 (quantity만큼 삭제)
-    for (let i = 0; i < quantity; i++) {
-      await CatchModel.findOneAndDelete({ ...query, fish: fishName });
-    }
-    console.log(`Deleted ${quantity} ${fishName}`);
+    // 🚀 물고기 판매 (bulkWrite로 성능 최적화)
+    const fishToDelete = userFish.slice(0, quantity).map(fish => ({
+      deleteOne: { filter: { _id: fish._id } }
+    }));
+    
+    const bulkResult = await CatchModel.bulkWrite(fishToDelete);
+    debugLog(`⚡ Bulk deleted ${bulkResult.deletedCount}/${quantity} ${fishName}`);
     
     // 사용자 돈 업데이트
     let userMoney = await UserMoneyModel.findOne(query);
@@ -3971,7 +4025,7 @@ app.post("/api/sell-fish", async (req, res) => {
         createData.username = username;
       }
       
-      console.log("Creating new user money for sell:", createData);
+      debugLog("Creating new user money for sell:", createData);
       userMoney = await UserMoneyModel.create(createData);
     } else {
       userMoney.money += serverTotalPrice; // 서버에서 계산된 가격 사용
@@ -3988,16 +4042,12 @@ app.post("/api/sell-fish", async (req, res) => {
 
 // 🔒 서버 측 아이템 데이터는 gameData.js에서 관리 (중복 제거)
 
-// Item Buying API (보안 강화 - 서버에서 가격 검증)
-app.post("/api/buy-item", async (req, res) => {
+// Item Buying API (보안 강화 - 서버에서 가격 검증 + JWT 인증)
+app.post("/api/buy-item", authenticateJWT, async (req, res) => {
   try {
     const { itemName, price: clientPrice, category, currency = 'gold' } = req.body;
-    let { username, userUuid } = req.query;
-    
-    // URL 디코딩 처리
-    if (userUuid) {
-      userUuid = decodeURIComponent(userUuid);
-    }
+    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
+    const { userUuid, username } = req.user;
     
     console.log("=== BUY ITEM REQUEST ===");
     console.log("Item:", itemName);
@@ -4156,13 +4206,19 @@ app.post("/api/buy-item", async (req, res) => {
           createData.username = username;
         }
         
-        console.log("Creating new fishing skill:", createData);
+        debugLog("Creating new fishing skill:", createData);
         fishingSkill = await FishingSkillModel.create(createData);
+        // 🚀 캐시 업데이트 (새 사용자)
+        const userKey = userUuid || username;
+        if (userKey) setCachedFishingSkill(userKey, 1);
       } else {
         fishingSkill.skill += 1;
         await fishingSkill.save();
+        // 🚀 캐시 업데이트 (스킬 증가)
+        const userKey = userUuid || username;
+        if (userKey) setCachedFishingSkill(userKey, fishingSkill.skill);
       }
-      // 낚시 실력 증가 완료 (보안상 상세 정보는 로그에 기록하지 않음)
+      // 낚시 실력 증가 완료
     }
     
     // 구매 성공 응답 (화폐 종류에 따라 적절한 잔액 반환)
@@ -4334,11 +4390,13 @@ app.post("/api/decompose-fish", async (req, res) => {
       return res.status(400).json({ error: "Not enough fish to decompose" });
     }
     
-    // 물고기 제거 (quantity만큼 삭제)
-    for (let i = 0; i < quantity; i++) {
-      await CatchModel.findOneAndDelete({ ...query, fish: fishName });
-    }
-    console.log(`Deleted ${quantity} ${fishName}`);
+    // 🚀 물고기 제거 (bulkWrite로 성능 최적화)
+    const fishToDelete = userFish.slice(0, quantity).map(fish => ({
+      deleteOne: { filter: { _id: fish._id } }
+    }));
+    
+    const bulkDeleteResult = await CatchModel.bulkWrite(fishToDelete);
+    console.log(`⚡ Bulk deleted ${bulkDeleteResult.deletedCount}/${quantity} ${fishName} for decompose`);
     
     // 스타피쉬 분해 시 별조각 지급
     if (fishName === "스타피쉬") {
@@ -4355,7 +4413,7 @@ app.post("/api/decompose-fish", async (req, res) => {
           userUuid: query.userUuid || userUuid,
           starPieces: totalStarPieces
         };
-        console.log("Creating new star pieces record for decompose:", createData);
+        // 보안상 상세 로그 축소
         userStarPieces = new StarPieceModel(createData);
       } else {
         userStarPieces.starPieces = (userStarPieces.starPieces || 0) + totalStarPieces;
@@ -4372,7 +4430,8 @@ app.post("/api/decompose-fish", async (req, res) => {
       return;
     }
     
-    // 일반 물고기 분해 시 재료 추가
+    // 🚀 일반 물고기 분해 시 재료 추가 (bulkWrite로 성능 최적화)
+    const materialsToCreate = [];
     for (let i = 0; i < quantity; i++) {
       const materialData = {
         ...query,
@@ -4385,9 +4444,11 @@ app.post("/api/decompose-fish", async (req, res) => {
         materialData.username = username;
       }
       
-      await MaterialModel.create(materialData);
+      materialsToCreate.push({ insertOne: { document: materialData } });
     }
-    console.log(`Added ${quantity} ${material}`);
+    
+    const bulkCreateResult = await MaterialModel.bulkWrite(materialsToCreate);
+    console.log(`⚡ Bulk created ${bulkCreateResult.insertedCount}/${quantity} ${material}`);
     
     res.json({ success: true });
   } catch (error) {
@@ -5041,6 +5102,90 @@ app.post("/api/reset-account", async (req, res) => {
 const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/fishing_game";
 const PORT = Number(process.env.PORT || 4000);
 
+// 🔐 JWT 설정
+const JWT_SECRET = process.env.JWT_SECRET || "fishing_game_jwt_secret_key_2024";
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
+
+// 🔐 JWT 유틸리티 함수들
+function generateJWT(user) {
+  try {
+    const payload = {
+      userUuid: user.userUuid,
+      username: user.username || user.displayName,
+      isAdmin: user.isAdmin || false
+    };
+    
+    const token = jwt.sign(payload, JWT_SECRET, { 
+      expiresIn: JWT_EXPIRES_IN,
+      issuer: 'fishing-game-server'
+    });
+    
+    console.log(`🔐 JWT generated for user: ${user.username} (${user.userUuid})`);
+    return token;
+  } catch (error) {
+    console.error("🚨 JWT generation failed:", error);
+    return null;
+  }
+}
+
+function verifyJWT(token) {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    console.log(`🔐 JWT verified for user: ${decoded.username} (${decoded.userUuid})`);
+    return decoded;
+  } catch (error) {
+    console.error("🚨 JWT verification failed:", error.message);
+    return null;
+  }
+}
+
+// 🔐 JWT 인증 미들웨어
+function authenticateJWT(req, res, next) {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  
+  if (!token) {
+    console.log("🚨 JWT missing in request");
+    return res.status(401).json({ 
+      error: "Access token required",
+      code: "JWT_MISSING" 
+    });
+  }
+  
+  const decoded = verifyJWT(token);
+  if (!decoded) {
+    return res.status(403).json({ 
+      error: "Invalid or expired token",
+      code: "JWT_INVALID" 
+    });
+  }
+  
+  // 요청 객체에 사용자 정보 추가
+  req.user = decoded;
+  req.userUuid = decoded.userUuid;
+  req.username = decoded.username;
+  
+  console.log(`🔐 JWT authenticated: ${decoded.username} (${decoded.userUuid})`);
+  next();
+}
+
+// 🔐 선택적 JWT 인증 미들웨어 (토큰이 없어도 통과, 있으면 검증)
+function optionalJWT(req, res, next) {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (token) {
+    const decoded = verifyJWT(token);
+    if (decoded) {
+      req.user = decoded;
+      req.userUuid = decoded.userUuid;
+      req.username = decoded.username;
+    }
+  }
+  
+  next();
+}
+
 // 404 에러 핸들러 (모든 라우트 처리 후)
 app.use((req, res) => {
   console.log("=== 404 NOT FOUND ===");
@@ -5067,7 +5212,20 @@ async function bootstrap() {
     console.log("=== MONGODB CONNECTION DEBUG ===");
     console.log("Attempting to connect to MongoDB:", MONGO_URI);
     
-    await mongoose.connect(MONGO_URI);
+    // 🚀 MongoDB 연결 최적화 (성능 향상)
+    await mongoose.connect(MONGO_URI, {
+      // 연결 풀 최적화
+      maxPoolSize: 10, // 최대 연결 수
+      minPoolSize: 2,  // 최소 연결 수 유지
+      maxIdleTimeMS: 30000, // 30초 후 유휴 연결 정리
+      serverSelectionTimeoutMS: 5000, // 5초 서버 선택 타임아웃
+      socketTimeoutMS: 45000, // 45초 소켓 타임아웃
+      // 성능 최적화
+      bufferCommands: false, // 버퍼링 비활성화 (즉시 에러 반환)
+      // 압축 설정
+      compressors: ['zlib'],
+      zlibCompressionLevel: 6
+    });
     
     console.log("✅ MongoDB connected successfully!");
     console.log("Database name:", mongoose.connection.db.databaseName);
@@ -5099,6 +5257,21 @@ async function bootstrap() {
       console.log("✅ DisplayName migration completed");
     } else {
       console.log("✅ All users already have displayName field");
+    }
+    
+    // 🚀 데이터베이스 인덱스 최적화 (성능 향상)
+    infoLog("=== DATABASE INDEX OPTIMIZATION ===");
+    try {
+      // 자주 사용되는 쿼리에 복합 인덱스 추가
+      await CatchModel.collection.createIndex({ userUuid: 1, fish: 1 }); // 물고기 판매/분해
+      await UserMoneyModel.collection.createIndex({ userUuid: 1 }); // 돈 조회
+      await FishingSkillModel.collection.createIndex({ userUuid: 1 }); // 낚시 실력
+      await MaterialModel.collection.createIndex({ userUuid: 1, material: 1 }); // 재료 소모
+      await UserEquipmentModel.collection.createIndex({ userUuid: 1 }); // 장비 조회
+      debugLog("✅ Database indexes optimized");
+    } catch (indexError) {
+      // 인덱스가 이미 존재하면 무시
+      debugLog("Index optimization:", indexError.message);
     }
     
     // [Quest] 자정 리셋 시스템 초기화
