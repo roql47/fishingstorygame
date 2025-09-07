@@ -5,7 +5,7 @@ services:
     plan: free
     buildCommand: npm run build
     startCommand: |
-      node server/src/index.js
+      node --max-old-space-size=512 server/src/index.js
     envVars:
       - key: PORT
         value: 10000
@@ -15,6 +15,16 @@ services:
         value: https://fising-master.onrender.com
       - key: NODE_ENV
         value: production
+      - key: SOCKET_IO_PING_TIMEOUT
+        value: 60000
+      - key: SOCKET_IO_PING_INTERVAL
+        value: 25000
+      - key: ADMIN_SECRET_KEY
+        value: fishing_game_admin_master_key_2024_secure
     healthCheckPath: /api/health
+    # 성능 최적화 설정
+    disk:
+      name: fising-master-disk
+      sizeGB: 1
 
 

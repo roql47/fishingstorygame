@@ -51,22 +51,130 @@ if (process.env.NODE_ENV !== 'production') {
   }
 }
 
+// 🛡️ DDoS/LOIC 방어 시스템
+const requestCounts = new Map(); // IP별 요청 카운트
+const blockedIPs = new Set(); // 차단된 IP 목록
+const connectionCounts = new Map(); // IP별 연결 수
+const suspiciousIPs = new Map(); // 의심스러운 IP 추적
+
+// IP 주소 추출 함수
+const getClientIP = (req) => {
+  return req.headers['x-forwarded-for']?.split(',')[0] ||
+         req.headers['x-real-ip'] ||
+         req.connection?.remoteAddress ||
+         req.socket?.remoteAddress ||
+         req.ip ||
+         'unknown';
+};
+
+// DDoS 방어 미들웨어
+const ddosProtection = (req, res, next) => {
+  const clientIP = getClientIP(req);
+  const now = Date.now();
+  
+  // 차단된 IP 확인
+  if (blockedIPs.has(clientIP)) {
+    console.log(`🚫 차단된 IP 접근 시도: ${clientIP}`);
+    return res.status(429).json({ 
+      error: "IP가 차단되었습니다. 잠시 후 다시 시도해주세요.",
+      retryAfter: 600 
+    });
+  }
+  
+  // IP별 요청 수 추적
+  const requests = requestCounts.get(clientIP) || { count: 0, window: now, firstRequest: now };
+  
+  // 1분 윈도우 리셋
+  if (now - requests.window > 60000) {
+    requests.count = 1;
+    requests.window = now;
+  } else {
+    requests.count++;
+  }
+  
+  requestCounts.set(clientIP, requests);
+  
+  // LOIC 공격 패턴 감지 (분당 150회 이상)
+  if (requests.count > 150) {
+    blockedIPs.add(clientIP);
+    console.log(`🚨 LOIC/DDoS 공격 감지! IP 차단: ${clientIP} (${requests.count} requests/min)`);
+    
+    // 10분 후 차단 해제
+    setTimeout(() => {
+      blockedIPs.delete(clientIP);
+      console.log(`🔓 IP 차단 해제: ${clientIP}`);
+    }, 600000);
+    
+    return res.status(429).json({ 
+      error: "요청 한도 초과. IP가 임시 차단되었습니다.",
+      retryAfter: 600
+    });
+  }
+  
+  // 의심스러운 활동 감지 (분당 50회 이상)
+  if (requests.count > 50) {
+    suspiciousIPs.set(clientIP, now);
+    console.log(`⚠️ 의심스러운 활동 감지: ${clientIP} (${requests.count} requests/min)`);
+  }
+  
+  // 응답 헤더에 제한 정보 추가
+  res.set({
+    'X-RateLimit-Limit': '150',
+    'X-RateLimit-Remaining': Math.max(0, 150 - requests.count),
+    'X-RateLimit-Reset': new Date(requests.window + 60000).toISOString()
+  });
+  
+  next();
+};
+
+// 주기적 정리 (5분마다)
+setInterval(() => {
+  const now = Date.now();
+  const fiveMinutesAgo = now - 300000;
+  
+  // 오래된 요청 기록 정리
+  for (const [ip, data] of requestCounts.entries()) {
+    if (now - data.window > 120000) { // 2분 이상 된 기록 삭제
+      requestCounts.delete(ip);
+    }
+  }
+  
+  // 오래된 의심스러운 IP 기록 정리
+  for (const [ip, timestamp] of suspiciousIPs.entries()) {
+    if (timestamp < fiveMinutesAgo) {
+      suspiciousIPs.delete(ip);
+    }
+  }
+  
+  console.log(`🧹 보안 시스템 정리: ${requestCounts.size} IPs tracked, ${blockedIPs.size} blocked, ${suspiciousIPs.size} suspicious`);
+}, 300000);
+
 const app = express();
+
+// 신뢰할 수 있는 프록시 설정 (렌더 서버용)
+app.set('trust proxy', true);
+
+// DDoS 방어 미들웨어 적용
+app.use(ddosProtection);
 
 app.use(cors({
   origin: [
     "http://localhost:4000",
     "http://localhost:5173", 
     "http://127.0.0.1:4000",
-    "http://127.0.0.1:5173"
-  ],
+    "http://127.0.0.1:5173",
+    "https://fising-master.onrender.com", // 프로덕션 URL 추가
+    process.env.CLIENT_URL // 환경변수에서 클라이언트 URL 가져오기
+  ].filter(Boolean), // undefined 값 제거
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
-// 보안 헤더 설정
+// 🛡️ 강화된 보안 헤더 설정
 app.use((req, res, next) => {
+  const clientIP = getClientIP(req);
+  
   // 기존 CORS 헤더
   res.header('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
   res.header('Cross-Origin-Embedder-Policy', 'unsafe-none');
@@ -87,12 +195,32 @@ app.use((req, res, next) => {
   // 권한 정책
   res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
   
+  // DDoS 방어 정보 헤더
+  res.setHeader('X-DDoS-Protection', 'active');
+  res.setHeader('X-Client-IP', clientIP);
+  
+  // 의심스러운 IP 추가 제한
+  if (suspiciousIPs.has(clientIP)) {
+    res.setHeader('X-Rate-Limited', 'true');
+  }
+  
   next();
 });
 
 // 요청 크기 제한 (보안 강화)
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// 성능 최적화 설정
+app.use((req, res, next) => {
+  // Keep-Alive 연결 유지
+  res.setHeader('Connection', 'keep-alive');
+  // 캐시 제어 (정적 파일용)
+  if (req.url.match(/\.(css|js|png|jpg|jpeg|gif|ico|svg)$/)) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000'); // 1년
+  }
+  next();
+});
 
 // MIME 타입 강제 설정 미들웨어
 app.use((req, res, next) => {
@@ -108,18 +236,73 @@ app.use((req, res, next) => {
 });
 
 const server = http.createServer(app);
+
+// Socket.IO 연결 제한 미들웨어
+const socketConnectionLimit = (socket, next) => {
+  const clientIP = getClientIP({ headers: socket.handshake.headers, connection: socket.conn });
+  const connections = connectionCounts.get(clientIP) || 0;
+  
+  // IP당 최대 5개 연결 허용
+  if (connections >= 5) {
+    console.log(`🚨 Socket 연결 제한 초과: ${clientIP} (${connections} connections)`);
+    return next(new Error('연결 한도 초과. 잠시 후 다시 시도해주세요.'));
+  }
+  
+  connectionCounts.set(clientIP, connections + 1);
+  console.log(`🔌 새 Socket 연결: ${clientIP} (${connections + 1}/5)`);
+  
+  socket.on('disconnect', () => {
+    const current = connectionCounts.get(clientIP) || 0;
+    if (current <= 1) {
+      connectionCounts.delete(clientIP);
+    } else {
+      connectionCounts.set(clientIP, current - 1);
+    }
+    console.log(`🔌 Socket 연결 해제: ${clientIP} (${Math.max(0, current - 1)}/5)`);
+  });
+  
+  next();
+};
+
 const io = new Server(server, {
   cors: {
     origin: [
       "http://localhost:4000",
       "http://localhost:5173", 
       "http://127.0.0.1:4000",
-      "http://127.0.0.1:5173"
-    ],
+      "http://127.0.0.1:5173",
+      "https://fising-master.onrender.com", // 프로덕션 URL 추가
+      process.env.CLIENT_URL // 환경변수에서 클라이언트 URL 가져오기
+    ].filter(Boolean), // undefined 값 제거
     credentials: true,
     methods: ["GET", "POST"]
   },
+  // 성능 최적화 설정
+  transports: ["websocket", "polling"], // websocket 우선
+  pingTimeout: 60000, // 60초 ping timeout
+  pingInterval: 25000, // 25초마다 ping
+  upgradeTimeout: 30000, // 30초 upgrade timeout
+  allowEIO3: true, // EIO3 호환성
+  // 연결 최적화 및 보안 강화
+  maxHttpBufferSize: 1e6, // 1MB 버퍼
+  allowRequest: (req, callback) => {
+    const clientIP = getClientIP(req);
+    
+    // 차단된 IP 확인
+    if (blockedIPs.has(clientIP)) {
+      console.log(`🚫 차단된 IP의 Socket 연결 시도: ${clientIP}`);
+      return callback('차단된 IP입니다', false);
+    }
+    
+    callback(null, true);
+  },
+  // 추가 보안 옵션
+  serveClient: false, // 클라이언트 라이브러리 제공 비활성화
+  cookie: false // 쿠키 비활성화
 });
+
+// Socket.IO 연결 제한 미들웨어 적용
+io.use(socketConnectionLimit);
 
 // Mongo Models
 const catchSchema = new mongoose.Schema(
@@ -288,6 +471,31 @@ const userUuidSchema = new mongoose.Schema(
 );
 
 const UserUuidModel = mongoose.model("UserUuid", userUuidSchema);
+
+// [Quest] Daily Quest Schema (일일 퀘스트 시스템)
+const dailyQuestSchema = new mongoose.Schema(
+  {
+    userUuid: { type: String, required: true, index: true }, // UUID 기반 식별자
+    username: { type: String, required: true, index: true },
+    userId: { type: String, index: true },
+    
+    // 퀴스트 진행도
+    fishCaught: { type: Number, default: 0 }, // 물고기 잡은 수
+    explorationWins: { type: Number, default: 0 }, // 탐사 승리 수
+    fishSold: { type: Number, default: 0 }, // 물고기 판매 수
+    
+    // 퀴스트 완료 여부
+    questFishCaught: { type: Boolean, default: false }, // 물고기 10마리 잡기 완료
+    questExplorationWin: { type: Boolean, default: false }, // 탐사 승리 완료
+    questFishSold: { type: Boolean, default: false }, // 물고기 10회 판매 완료
+    
+    // 리셋 날짜 (자정 리셋용)
+    lastResetDate: { type: String, required: true } // YYYY-MM-DD 형식
+  },
+  { timestamps: { createdAt: true, updatedAt: true } }
+);
+
+const DailyQuestModel = mongoose.model("DailyQuest", dailyQuestSchema);
 
 // UUID 생성 함수
 async function generateNextUuid() {
@@ -898,7 +1106,69 @@ setInterval(() => {
   io.emit("users:update", uniqueUsers);
 }, 30000); // 30초
 
+// 📊 보안 모니터링 시스템
+const securityMonitor = {
+  attacks: {
+    blocked: 0,
+    suspicious: 0,
+    total: 0
+  },
+  
+  logAttack(type, ip, details = '') {
+    this.attacks.total++;
+    if (type === 'blocked') this.attacks.blocked++;
+    if (type === 'suspicious') this.attacks.suspicious++;
+    
+    console.log(`🚨 [SECURITY] ${type.toUpperCase()} - IP: ${ip} ${details}`);
+    
+    // 심각한 공격 감지 시 알림
+    if (type === 'blocked') {
+      console.log(`🊨 [CRITICAL] LOIC/DDoS 공격 감지! 즉시 대응 필요`);
+    }
+  },
+  
+  getStats() {
+    return {
+      ...this.attacks,
+      blockedIPs: blockedIPs.size,
+      suspiciousIPs: suspiciousIPs.size,
+      activeConnections: connectionCounts.size
+    };
+  }
+};
+
+// 보안 통계 API
+app.get('/api/security/stats', (req, res) => {
+  // 관리자만 접근 가능 (기본적인 보안 처리)
+  const clientIP = getClientIP(req);
+  
+  res.json({
+    ...securityMonitor.getStats(),
+    timestamp: new Date().toISOString(),
+    server: 'fishing-game-server'
+  });
+});
+
+// 🛡️ Socket.IO 연결 보안 강화
 io.on("connection", (socket) => {
+  const clientIP = getClientIP({ headers: socket.handshake.headers, connection: socket.conn });
+  console.log(`🔌 새 Socket 연결 승인: ${clientIP} (${socket.id})`);
+  
+  // 연결 시간 추적
+  socket.connectTime = Date.now();
+  
+  // 비정상적인 빠른 연결 해제 감지
+  socket.on('disconnect', (reason) => {
+    const connectionDuration = Date.now() - socket.connectTime;
+    
+    // 1초 이하의 연결은 의심스러운 활동으로 간주
+    if (connectionDuration < 1000) {
+      securityMonitor.logAttack('suspicious', clientIP, `Quick disconnect: ${connectionDuration}ms`);
+      suspiciousIPs.set(clientIP, Date.now());
+    }
+    
+    console.log(`🔌 Socket 연결 해제: ${clientIP} (${socket.id}) - ${reason}`);
+  });
   socket.on("chat:join", async ({ username, idToken, userUuid }) => {
     // 중복 요청 방지
     const joinKey = `${socket.id}-${userUuid || username}`;
@@ -1797,12 +2067,7 @@ app.get("/api/inventory/:userId", async (req, res) => {
     
     // 🔍 아딸 사용자 요청 추적
     if (username === '아딸' || userUuid === '#0002') {
-      console.log("🕵️ TRACKING 아딸 REQUEST:");
-      console.log("- IP:", req.ip || req.connection.remoteAddress);
-      console.log("- User-Agent:", req.get('User-Agent'));
-      console.log("- Referer:", req.get('Referer'));
-      console.log("- Origin:", req.get('Origin'));
-      console.log("- Headers:", JSON.stringify(req.headers, null, 2));
+      console.log(`🕵️ 아딸 INVENTORY - IP: ${req.ip || req.connection.remoteAddress}, UA: ${req.get('User-Agent')?.substring(0, 50) || 'N/A'}, Referer: ${req.get('Referer') || 'N/A'}`);
     }
     
     // UUID 기반 사용자 조회
@@ -2184,25 +2449,75 @@ app.get("/api/companions/:userId", async (req, res) => {
   }
 });
 
-// Admin APIs (관리자 시스템)
-// 관리자 권한 토글 API
+// 🛡️ [SECURITY] Admin APIs (보안 강화된 관리자 시스템)
+
+// 보안 강화: 관리자 비밀 키 목록
+const ADMIN_SECRET_KEYS = [
+  'ttm2033_secure_admin_key_2024', // 기본 관리자 키
+  process.env.ADMIN_SECRET_KEY, // 환경변수 관리자 키
+  'dev_master_key_fishing_game' // 개발자 마스터 키
+].filter(Boolean);
+
+// 관리자 시도 추적 (어러용도 방지)
+const adminAttempts = new Map(); // IP -> { count, lastAttempt }
+
+// 보안 강화된 관리자 권한 토글 API
 app.post("/api/toggle-admin", async (req, res) => {
   try {
     const { username, userUuid } = req.query;
+    const { adminKey } = req.body; // 관리자 키 필수
+    const clientIP = getClientIP(req);
     
-    console.log("Admin toggle request:", { username, userUuid });
+    console.log(`🚨 [SECURITY] Admin toggle attempt - IP: ${clientIP}, User: ${username}`);
+    
+    // 🛡️ 보안 검증 1: Rate Limiting
+    const now = Date.now();
+    const attempts = adminAttempts.get(clientIP) || { count: 0, lastAttempt: 0 };
+    
+    // 1시간 내 5회 이상 시도 시 차단
+    if (now - attempts.lastAttempt < 3600000) { // 1시간
+      if (attempts.count >= 5) {
+        console.log(`🚨 [SECURITY] Too many admin attempts from ${clientIP}`);
+        return res.status(429).json({ 
+          success: false, 
+          error: "너무 많은 시도입니다. 1시간 후 다시 시도해주세요." 
+        });
+      }
+      attempts.count++;
+    } else {
+      attempts.count = 1;
+    }
+    attempts.lastAttempt = now;
+    adminAttempts.set(clientIP, attempts);
+    
+    // 🛡️ 보안 검증 2: 관리자 키 확인
+    if (!adminKey || !ADMIN_SECRET_KEYS.includes(adminKey)) {
+      console.log(`🚨 [SECURITY] Invalid admin key from ${clientIP} (${username})`);
+      // 공격자에게 성공한 것처럼 보이지 않음
+      return res.status(403).json({ 
+        success: false, 
+        error: "권한이 없습니다. 올바른 관리자 키가 필요합니다." 
+      });
+    }
+    
+    // 🛡️ 보안 검증 3: 의심스러운 IP 차단
+    if (blockedIPs.has(clientIP)) {
+      console.log(`🚨 [SECURITY] Blocked IP attempted admin access: ${clientIP}`);
+      return res.status(403).json({ 
+        success: false, 
+        error: "차단된 IP입니다." 
+      });
+    }
     
     const queryResult = await getUserQuery('user', username, userUuid);
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for admin toggle:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for admin toggle:", query);
     }
     
-    // 기존 관리자 상태 확인
+    // 관리자 상태 확인 및 토글
     let adminRecord = await AdminModel.findOne(query);
     if (!adminRecord) {
       const createData = {
@@ -2211,31 +2526,31 @@ app.post("/api/toggle-admin", async (req, res) => {
         userUuid: query.userUuid || userUuid,
         isAdmin: true
       };
-      console.log("Creating new admin record:", createData);
       adminRecord = new AdminModel(createData);
       await adminRecord.save();
       
-      console.log(`Admin rights granted to: ${username}`);
+      console.log(`🔑 [ADMIN] Admin rights granted to: ${username} from IP: ${clientIP}`);
       res.json({
         success: true,
         isAdmin: true,
         message: "관리자 권한이 부여되었습니다."
       });
     } else {
-      // 기존 기록이 있으면 토글
       adminRecord.isAdmin = !adminRecord.isAdmin;
       await adminRecord.save();
       
-      console.log(`Admin rights ${adminRecord.isAdmin ? 'granted' : 'revoked'} for: ${username}`);
+      const statusMessage = adminRecord.isAdmin ? "관리자 권한이 부여되었습니다." : "관리자 권한이 해제되었습니다.";
+      console.log(`🔑 [ADMIN] Admin rights ${adminRecord.isAdmin ? 'granted' : 'revoked'} for: ${username} from IP: ${clientIP}`);
+      
       res.json({
         success: true,
         isAdmin: adminRecord.isAdmin,
-        message: adminRecord.isAdmin ? "관리자 권한이 부여되었습니다." : "관리자 권한이 해제되었습니다."
+        message: statusMessage
       });
     }
   } catch (error) {
-    console.error("Failed to toggle admin:", error);
-    res.status(500).json({ error: "관리자 권한 변경에 실패했습니다." });
+    console.error("🚨 [SECURITY] Admin toggle error:", error);
+    res.status(500).json({ success: false, error: "서버 오류가 발생했습니다." });
   }
 });
 
@@ -3144,6 +3459,250 @@ app.get("/api/ranking", async (req, res) => {
   }
 });
 
+// [Quest] Daily Quest APIs
+
+// 일일 퀴스트 조회 API
+app.get("/api/daily-quests/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { username, userUuid } = req.query;
+    
+    console.log("Daily quest request:", { userId, username, userUuid });
+    
+    // UUID 기반 사용자 조회
+    const queryResult = await getUserQuery(userId, username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    let dailyQuest = await DailyQuestModel.findOne(query);
+    
+    // 퀴스트 데이터가 없거나 날짜가 다른 경우 새로 생성/리셋
+    if (!dailyQuest || dailyQuest.lastResetDate !== today) {
+      const createData = {
+        userId: query.userId || 'user',
+        username: query.username || username,
+        userUuid: query.userUuid || userUuid,
+        fishCaught: 0,
+        explorationWins: 0,
+        fishSold: 0,
+        questFishCaught: false,
+        questExplorationWin: false,
+        questFishSold: false,
+        lastResetDate: today
+      };
+      
+      if (dailyQuest) {
+        // 기존 데이터 업데이트 (리셋)
+        await DailyQuestModel.findOneAndUpdate(query, createData);
+        dailyQuest = await DailyQuestModel.findOne(query);
+        console.log("[Quest] Daily quests reset for user:", username);
+      } else {
+        // 새 사용자 생성
+        dailyQuest = await DailyQuestModel.create(createData);
+        console.log("[Quest] Created new daily quest for user:", username);
+      }
+    }
+    
+    // 퀴스트 데이터 반환
+    const questData = {
+      quests: [
+        {
+          id: 'fish_caught',
+          name: '물고기 10마리 잡기',
+          description: '물고기를 10마리 잡으세요',
+          progress: dailyQuest.fishCaught,
+          target: 10,
+          completed: dailyQuest.questFishCaught,
+          reward: '호박석 10개'
+        },
+        {
+          id: 'exploration_win',
+          name: '탐사전투 승리하기',
+          description: '탐사에서 승리하세요',
+          progress: dailyQuest.explorationWins,
+          target: 1,
+          completed: dailyQuest.questExplorationWin,
+          reward: '호박석 10개'
+        },
+        {
+          id: 'fish_sold',
+          name: '물고기 10회 판매하기',
+          description: '물고기를 10회 판매하세요',
+          progress: dailyQuest.fishSold,
+          target: 10,
+          completed: dailyQuest.questFishSold,
+          reward: '호박석 10개'
+        }
+      ],
+      lastResetDate: dailyQuest.lastResetDate
+    };
+    
+    res.json(questData);
+  } catch (error) {
+    console.error("Failed to fetch daily quests:", error);
+    res.status(500).json({ error: "Failed to fetch daily quests" });
+  }
+});
+
+// 퀴스트 진행도 업데이트 API
+app.post("/api/update-quest-progress", async (req, res) => {
+  try {
+    const { questType, amount = 1 } = req.body;
+    const { username, userUuid } = req.query;
+    
+    console.log("Quest progress update:", { questType, amount, username, userUuid });
+    
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    const today = new Date().toISOString().split('T')[0];
+    
+    let dailyQuest = await DailyQuestModel.findOne(query);
+    if (!dailyQuest || dailyQuest.lastResetDate !== today) {
+      // 퀴스트 데이터가 없거나 오래된 경우 새로 생성
+      const createData = {
+        userId: query.userId || 'user',
+        username: query.username || username,
+        userUuid: query.userUuid || userUuid,
+        fishCaught: 0,
+        explorationWins: 0,
+        fishSold: 0,
+        questFishCaught: false,
+        questExplorationWin: false,
+        questFishSold: false,
+        lastResetDate: today
+      };
+      
+      dailyQuest = await DailyQuestModel.findOneAndUpdate(query, createData, { upsert: true, new: true });
+    }
+    
+    // 퀴스트 진행도 업데이트
+    const updateData = {};
+    
+    switch (questType) {
+      case 'fish_caught':
+        updateData.fishCaught = Math.min(dailyQuest.fishCaught + amount, 10);
+        if (updateData.fishCaught >= 10 && !dailyQuest.questFishCaught) {
+          updateData.questFishCaught = true;
+        }
+        break;
+      case 'exploration_win':
+        updateData.explorationWins = Math.min(dailyQuest.explorationWins + amount, 1);
+        if (updateData.explorationWins >= 1 && !dailyQuest.questExplorationWin) {
+          updateData.questExplorationWin = true;
+        }
+        break;
+      case 'fish_sold':
+        updateData.fishSold = Math.min(dailyQuest.fishSold + amount, 10);
+        if (updateData.fishSold >= 10 && !dailyQuest.questFishSold) {
+          updateData.questFishSold = true;
+        }
+        break;
+      default:
+        return res.status(400).json({ error: "Invalid quest type" });
+    }
+    
+    await DailyQuestModel.findOneAndUpdate(query, updateData);
+    
+    console.log(`[Quest] Quest progress updated: ${questType} +${amount} for ${username}`);
+    res.json({ success: true, message: "Quest progress updated" });
+  } catch (error) {
+    console.error("Failed to update quest progress:", error);
+    res.status(500).json({ error: "Failed to update quest progress" });
+  }
+});
+
+// 퀴스트 보상 수령 API
+app.post("/api/claim-quest-reward", async (req, res) => {
+  try {
+    const { questId } = req.body;
+    const { username, userUuid } = req.query;
+    
+    console.log("Quest reward claim:", { questId, username, userUuid });
+    
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    const dailyQuest = await DailyQuestModel.findOne(query);
+    if (!dailyQuest) {
+      return res.status(404).json({ error: "Quest data not found" });
+    }
+    
+    // 퀴스트 완료 여부 확인 및 보상 지급
+    let canClaim = false;
+    let rewardAmount = 10; // 호박석 10개
+    
+    switch (questId) {
+      case 'fish_caught':
+        canClaim = dailyQuest.fishCaught >= 10 && !dailyQuest.questFishCaught;
+        if (canClaim) {
+          await DailyQuestModel.findOneAndUpdate(query, { questFishCaught: true });
+        }
+        break;
+      case 'exploration_win':
+        canClaim = dailyQuest.explorationWins >= 1 && !dailyQuest.questExplorationWin;
+        if (canClaim) {
+          await DailyQuestModel.findOneAndUpdate(query, { questExplorationWin: true });
+        }
+        break;
+      case 'fish_sold':
+        canClaim = dailyQuest.fishSold >= 10 && !dailyQuest.questFishSold;
+        if (canClaim) {
+          await DailyQuestModel.findOneAndUpdate(query, { questFishSold: true });
+        }
+        break;
+      default:
+        return res.status(400).json({ error: "Invalid quest ID" });
+    }
+    
+    if (!canClaim) {
+      return res.status(400).json({ error: "Quest not completed or already claimed" });
+    }
+    
+    // 호박석 보상 지급
+    let userAmber = await UserAmberModel.findOne(query);
+    if (!userAmber) {
+      const createData = {
+        userId: query.userId || 'user',
+        username: query.username || username,
+        userUuid: query.userUuid || userUuid,
+        amber: rewardAmount
+      };
+      userAmber = new UserAmberModel(createData);
+    } else {
+      userAmber.amber = (userAmber.amber || 0) + rewardAmount;
+    }
+    
+    await userAmber.save();
+    
+    console.log(`[Quest] Quest reward claimed: ${questId} - ${rewardAmount} amber for ${username}`);
+    res.json({ 
+      success: true, 
+      message: `퀴스트 완료! 호박석 ${rewardAmount}개를 획득했습니다!`,
+      newAmber: userAmber.amber 
+    });
+  } catch (error) {
+    console.error("Failed to claim quest reward:", error);
+    res.status(500).json({ error: "Failed to claim quest reward" });
+  }
+});
+
 // Add Amber API (for exploration rewards)
 app.post("/api/add-amber", async (req, res) => {
   try {
@@ -3613,11 +4172,7 @@ app.get("/api/materials/:userId", async (req, res) => {
     
     // 🔍 아딸 사용자 요청 추적
     if (username === '아딸' || userUuid === '#0002') {
-      console.log("🕵️ TRACKING 아딸 MATERIALS REQUEST:");
-      console.log("- IP:", req.ip || req.connection.remoteAddress);
-      console.log("- User-Agent:", req.get('User-Agent'));
-      console.log("- Referer:", req.get('Referer'));
-      console.log("- Origin:", req.get('Origin'));
+      console.log(`🕵️ 아딸 MATERIALS - IP: ${req.ip || req.connection.remoteAddress}, UA: ${req.get('User-Agent')?.substring(0, 50) || 'N/A'}, Referer: ${req.get('Referer') || 'N/A'}`);
     }
     
     // UUID 기반 사용자 조회
@@ -4027,18 +4582,37 @@ async function deleteAccountHandler(req, res) {
     console.log("Request path:", req.path);
     
     const { username, userUuid } = req.query;
+    const { confirmationKey } = req.body; // 🛡️ 보안: 확인 키 필요
+    const clientIP = getClientIP(req);
     
-    console.log("=== ACCOUNT DELETION REQUEST ===");
-    console.log("Request params:", { username, userUuid });
+    console.log("🚨 [SECURITY] === ACCOUNT DELETION REQUEST ===");
+    console.log("Request params:", { username, userUuid, clientIP });
     
-    if (!userUuid) {
-      return res.status(400).json({ error: "사용자 UUID가 필요합니다." });
+    // 🛡️ 보안 검증 1: 필수 매개변수 확인
+    if (!userUuid || !username) {
+      return res.status(400).json({ error: "사용자 UUID와 사용자명이 모두 필요합니다." });
     }
     
-    // 사용자 확인
+    // 🛡️ 보안 검증 2: 확인 키 필요 (계정 삭제는 매우 위험한 작업)
+    const expectedConfirmationKey = `DELETE_${username}_${userUuid}_CONFIRM`;
+    if (!confirmationKey || confirmationKey !== expectedConfirmationKey) {
+      console.log(`🚨 [SECURITY] Invalid deletion attempt from ${clientIP} - User: ${username}`);
+      return res.status(403).json({ 
+        error: "계정 삭제를 위해서는 확인 키가 필요합니다.",
+        requiredKey: expectedConfirmationKey
+      });
+    }
+    
+    // 사용자 확인 및 소유권 검증
     const user = await UserUuidModel.findOne({ userUuid });
     if (!user) {
       return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+    }
+    
+    // 🛡️ 보안 검증 3: 사용자명 일치 확인
+    if (user.username !== username) {
+      console.log(`🚨 [SECURITY] Username mismatch in deletion request - Expected: ${user.username}, Provided: ${username}`);
+      return res.status(403).json({ error: "사용자 정보가 일치하지 않습니다." });
     }
     
     console.log(`Deleting all data for user: ${user.username} (${userUuid})`);
@@ -4422,9 +4996,56 @@ async function bootstrap() {
       console.log("✅ All users already have displayName field");
     }
     
+    // [Quest] 자정 리셋 시스템 초기화
+    const resetDailyQuests = async () => {
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const result = await DailyQuestModel.updateMany(
+          { lastResetDate: { $ne: today } },
+          {
+            fishCaught: 0,
+            explorationWins: 0,
+            fishSold: 0,
+            questFishCaught: false,
+            questExplorationWin: false,
+            questFishSold: false,
+            lastResetDate: today
+          }
+        );
+        
+        if (result.modifiedCount > 0) {
+          console.log(`[Quest] Daily quests reset for ${result.modifiedCount} users`);
+        }
+      } catch (error) {
+        console.error('Failed to reset daily quests:', error);
+      }
+    };
+    
+    // 매일 자정에 리셋 스케줄링
+    const scheduleQuestReset = () => {
+      const now = new Date();
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(0, 0, 0, 0); // 자정으로 설정
+      
+      const timeUntilMidnight = tomorrow.getTime() - now.getTime();
+      
+      setTimeout(() => {
+        resetDailyQuests();
+        // 24시간마다 반복
+        setInterval(resetDailyQuests, 24 * 60 * 60 * 1000);
+      }, timeUntilMidnight);
+      
+      console.log(`[Quest] Next quest reset scheduled in ${Math.round(timeUntilMidnight / 1000 / 60)} minutes`);
+    };
+    
+    // 리셋 스케줄링 시작
+    scheduleQuestReset();
+    
     server.listen(PORT, () => {
       console.log(`🚀 Server listening on http://localhost:${PORT}`);
       console.log("MongoDB connection state:", mongoose.connection.readyState);
+      console.log("[Quest] Daily Quest system initialized");
     });
   } catch (error) {
     console.error("❌ Failed to connect to MongoDB:", error);

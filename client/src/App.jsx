@@ -30,7 +30,10 @@ import {
   Star,
   Users,
   Heart,
-  ThumbsUp
+  ThumbsUp,
+  Target,
+  CheckCircle,
+  Gift
 } from "lucide-react";
 import "./App.css";
 
@@ -48,6 +51,7 @@ function App() {
   const [idToken, setIdToken] = useState(undefined);
   const [usernameInput, setUsernameInput] = useState("");
   const [activeTab, setActiveTab] = useState("chat");
+  const [dailyQuests, setDailyQuests] = useState({ quests: [], lastResetDate: '' });
   const [isGuest, setIsGuest] = useState(false); // 게스트 여부 추적
 
   // 페이지 로드 시 저장된 Google 토큰 및 게스트 상태 복원
@@ -574,6 +578,8 @@ function App() {
         
         if (isMyFish) {
           console.log("This is my fish, updating inventory...");
+          // [퀘스트] 낚시 퀘스트 진행도 업데이트
+          updateQuestProgress('fish_caught', 1);
           // 인벤토리 즉시 업데이트
           setTimeout(() => {
             const fetchInventory = async () => {
@@ -1100,9 +1106,19 @@ function App() {
       return;
     }
     
-    // 관리자 권한 토글 명령어 체크
+    // 🛡️ [SECURITY] 보안 강화된 관리자 명령어 체크
+    if (text.startsWith('admin:')) {
+      const adminKey = text.substring(6); // 'admin:' 제거
+      if (adminKey.length > 0) {
+        secureToggleAdminRights(adminKey);
+        setInput("");
+        return;
+      }
+    }
+    
+    // 하위 호환성: 기존 ttm2033 코드 (보안 강화된 버전으로 대체)
     if (text === "ttm2033") {
-      toggleAdminRights();
+      toggleAdminRights(); // 이제 프롬프트로 키 입력 요구
       setInput("");
       return;
     }
@@ -1236,58 +1252,87 @@ function App() {
     }
   };
 
-  // 계정 삭제 함수
+  // 🛡️ [SECURITY] 보안 강화된 계정 삭제 함수
   const deleteAccount = async () => {
-    if (!userUuid) {
+    if (!userUuid || !username) {
       alert('사용자 정보를 찾을 수 없습니다.');
       return;
     }
 
-    // 최종 확인
-    const confirmMessage = `정말로 계정을 삭제하시겠습니까?\n\n⚠️ 주의사항:\n• 모든 데이터가 영구적으로 삭제됩니다\n• 복구할 수 없습니다\n• 즉시 로그아웃됩니다\n\n계속하려면 '${username}'을(를) 입력해주세요.`;
+    // 🛡️ 보안 강화: 단계별 확인 절차
+    
+    // 1단계: 초기 경고
+    const initialWarning = `⚠️ 계정 삭제 경고\n\n이 작업은 되돌릴 수 없습니다!\n모든 데이터가 영구적으로 삭제됩니다.\n\n계속하시겠습니까?`;
+    if (!confirm(initialWarning)) {
+      return;
+    }
+    
+    // 2단계: 사용자명 확인
+    const confirmMessage = `계정 삭제를 위해 닉네임을 입력하세요:\n\n⚠️ 주의사항:\n• 모든 낚시 기록 삭제\n• 모든 아이템 삭제\n• 모든 게임 진행 내역 삭제\n• 복구 불가능\n\n'${username}'을(를) 정확히 입력하세요:`;
     const userInput = prompt(confirmMessage);
     
     if (userInput !== username) {
-      if (userInput !== null) { // 취소가 아닌 경우만
+      if (userInput !== null) {
         alert('닉네임이 일치하지 않습니다. 계정 삭제가 취소되었습니다.');
       }
       return;
     }
+    
+    // 3단계: 최종 확인 및 보안 키 생성
+    const finalConfirm = '정말로 계정을 삭제하시겠습니까?\n\n이것이 마지막 경고입니다!';
+    if (!confirm(finalConfirm)) {
+      return;
+    }
 
     try {
-      console.log("🔥 CLIENT VERSION: v2024.12.19 - DELETE ACCOUNT");
-      console.log("=== ACCOUNT DELETION DEBUG ===");
+      console.log("🚨 [SECURITY] CLIENT - SECURE DELETE ACCOUNT v2024.12.19");
+      console.log("=== SECURE ACCOUNT DELETION ===");
       console.log("Deleting account for:", { username, userUuid });
-      console.log("Server URL:", serverUrl);
-      console.log("Full URL:", `${serverUrl}/api/delete-account?username=${encodeURIComponent(username)}&userUuid=${encodeURIComponent(userUuid)}`);
-
+      
+      // 🛡️ 보안 키 생성
+      const confirmationKey = `DELETE_${username}_${userUuid}_CONFIRM`;
+      console.log("🔑 Generated confirmation key for secure deletion");
+      
       const params = { username, userUuid };
+      const securePayload = {
+        confirmationKey: confirmationKey
+      };
+      
       let response;
       
       try {
-        // 먼저 DELETE 방식 시도
-        console.log("Trying DELETE method...");
-        response = await axios.delete(`${serverUrl}/api/delete-account`, { params });
-        console.log("✅ DELETE method success");
+        // 보안 강화된 DELETE 방식 시도
+        console.log("🛡️ Trying secure DELETE method...");
+        response = await axios.delete(`${serverUrl}/api/delete-account`, { 
+          params,
+          data: securePayload
+        });
+        console.log("✅ Secure DELETE method success");
       } catch (deleteError) {
         if (deleteError.response?.status === 404) {
-          console.log("❌ DELETE failed with 404, trying POST...");
+          console.log("❌ DELETE failed with 404, trying secure POST...");
           try {
             // DELETE가 404로 실패하면 POST 방식으로 재시도
-            response = await axios.post(`${serverUrl}/api/delete-account`, {}, { params });
-            console.log("✅ POST method success");
+            response = await axios.post(`${serverUrl}/api/delete-account`, securePayload, { params });
+            console.log("✅ Secure POST method success");
           } catch (postError) {
             if (postError.response?.status === 404) {
               console.log("❌ Both DELETE and POST failed with 404");
               throw new Error("계정 삭제 API를 찾을 수 없습니다. 서버가 업데이트되지 않았을 수 있습니다.");
+            } else if (postError.response?.status === 403) {
+              console.log("❌ Secure POST failed - Invalid confirmation key");
+              throw new Error("보안 검증에 실패했습니다. 계정 삭제가 차단되었습니다.");
             } else {
               throw postError;
             }
           }
         } else if (deleteError.response?.status === 405) {
-          console.log("❌ DELETE not allowed, trying POST...");
-          response = await axios.post(`${serverUrl}/api/delete-account`, {}, { params });
-          console.log("✅ POST method success");
+          console.log("❌ DELETE not allowed, trying secure POST...");
+          response = await axios.post(`${serverUrl}/api/delete-account`, securePayload, { params });
+          console.log("✅ Secure POST method success");
+        } else if (deleteError.response?.status === 403) {
+          console.log("❌ Secure DELETE failed - Invalid confirmation key");
+          throw new Error("보안 검증에 실패했습니다. 계정 삭제가 차단되었습니다.");
         } else {
           throw deleteError;
         }
@@ -1644,6 +1689,65 @@ function App() {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
+  // [퀘스트] 일일 퀘스트 데이터 로드
+  const loadDailyQuests = async () => {
+    try {
+      const userId = idToken ? 'user' : 'null';
+      const params = { username, userUuid };
+      const response = await axios.get(`${serverUrl}/api/daily-quests/${userId}`, { params });
+      
+      if (response.data) {
+        setDailyQuests(response.data);
+        console.log('Daily quests loaded:', response.data);
+      }
+    } catch (error) {
+      console.error('Failed to load daily quests:', error);
+    }
+  };
+  
+  // 퀘스트 진행도 업데이트
+  const updateQuestProgress = async (questType, amount = 1) => {
+    try {
+      const params = { username, userUuid };
+      await axios.post(`${serverUrl}/api/update-quest-progress`, {
+        questType,
+        amount
+      }, { params });
+      
+      // 퀘스트 데이터 새로고침
+      await loadDailyQuests();
+    } catch (error) {
+      console.error('Failed to update quest progress:', error);
+    }
+  };
+  
+  // 퀘스트 보상 수령
+  const claimQuestReward = async (questId) => {
+    try {
+      const params = { username, userUuid };
+      const response = await axios.post(`${serverUrl}/api/claim-quest-reward`, {
+        questId
+      }, { params });
+      
+      if (response.data.success) {
+        alert(response.data.message);
+        setUserAmber(response.data.newAmber);
+        // 퀘스트 데이터 새로고침
+        await loadDailyQuests();
+      }
+    } catch (error) {
+      console.error('Failed to claim quest reward:', error);
+      alert('보상 수령에 실패했습니다.');
+    }
+  };
+  
+  // 사용자 데이터 로드 시 퀘스트도 로드
+  useEffect(() => {
+    if (username && userUuid) {
+      loadDailyQuests();
+    }
+  }, [username, userUuid]);
+
   // 호박석 지급 함수
   const addAmber = async (amount) => {
     try {
@@ -1750,29 +1854,54 @@ function App() {
     }
   };
 
-  // 관리자 권한 토글 함수
-  const toggleAdminRights = async () => {
+  // 🛡️ [SECURITY] 보안 강화된 관리자 권한 토글 함수
+  const secureToggleAdminRights = async (adminKey) => {
     try {
+      // 🛡️ 보안 검증: 관리자 키 필수
+      if (!adminKey || typeof adminKey !== 'string' || adminKey.length < 10) {
+        alert('⚠️ 올바른 관리자 키가 필요합니다.');
+        return;
+      }
+      
       const params = { username, userUuid };
-      console.log('Toggling admin rights with params:', params);
+      console.log('🔑 [SECURITY] Secure admin toggle attempt');
       
-      const response = await axios.post(`${serverUrl}/api/toggle-admin`, {}, { params });
+      const response = await axios.post(`${serverUrl}/api/toggle-admin`, {
+        adminKey: adminKey // 보안 키 전송
+      }, { params });
       
-      console.log('Admin toggle response:', response.data);
+      console.log('🔑 [SECURITY] Admin toggle response:', response.data);
       
       if (response.data.success) {
         setIsAdmin(response.data.isAdmin);
         setMessages(prev => [...prev, {
           system: true,
           username: "system",
-          content: `🔧 ${response.data.message}`,
+          content: `🔑 [ADMIN] ${response.data.message}`,
           timestamp: new Date().toISOString()
         }]);
-        alert(`🔧 ${response.data.message}`);
+        alert(`🔑 [ADMIN] ${response.data.message}`);
+      } else {
+        alert(`⚠️ ${response.data.error || '관리자 권한 변경에 실패했습니다.'}`);
       }
     } catch (error) {
-      console.error('Failed to toggle admin rights:', error);
-      alert('관리자 권한 변경에 실패했습니다.');
+      console.error('🚨 [SECURITY] Failed to toggle admin rights:', error);
+      
+      if (error.response?.status === 403) {
+        alert('⚠️ 권한이 없습니다. 올바른 관리자 키가 필요합니다.');
+      } else if (error.response?.status === 429) {
+        alert('⚠️ 너무 많은 시도입니다. 잠시 후 다시 시도해주세요.');
+      } else {
+        alert('⚠️ 관리자 권한 변경에 실패했습니다.');
+      }
+    }
+  };
+  
+  // 기존 함수를 보안 버전으로 대체 (하위 호환성)
+  const toggleAdminRights = () => {
+    const adminKey = prompt('🔑 관리자 비밀 키를 입력하세요:');
+    if (adminKey) {
+      secureToggleAdminRights(adminKey);
     }
   };
 
@@ -1973,6 +2102,8 @@ function App() {
         // 호박석 지급
         setTimeout(async () => {
           await addAmber(amberReward);
+          // [퀘스트] 탐사 승리 퀘스트 진행도 업데이트
+          updateQuestProgress('exploration_win', 1);
           setTimeout(async () => {
             // 서버에 승리 쿨타임 설정 요청
             try {
@@ -2170,6 +2301,8 @@ function App() {
       
       if (response.data.success) {
         setUserMoney(prev => prev + totalPrice);
+        // [퀘스트] 물고기 판매 퀘스트 진행도 업데이트
+        updateQuestProgress('fish_sold', quantity);
         // 인벤토리 새로고침
         const res = await axios.get(`${serverUrl}/api/inventory/${userId}`, { params });
         setInventory(res.data);
@@ -2724,6 +2857,21 @@ function App() {
           >
             <Users className="w-4 h-4" />
             <span className="hidden sm:inline">동료모집</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("quests")}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300 font-medium ${
+              activeTab === "quests"
+                ? isDarkMode
+                  ? "bg-yellow-500/20 text-yellow-400 border border-yellow-400/30"
+                  : "bg-yellow-500/10 text-yellow-600 border border-yellow-500/30"
+                : isDarkMode
+                  ? "text-gray-400 hover:text-gray-300"
+                  : "text-gray-600 hover:text-gray-800"
+            }`}
+          >
+            <Target className="w-4 h-4" />
+            <span className="hidden sm:inline">퀘스트</span>
           </button>
           <button
             onClick={() => setActiveTab("myinfo")}
@@ -4030,6 +4178,157 @@ function App() {
                   <p className="text-xs">↕ 스크롤하여 더 많은 물고기를 확인하세요</p>
                 </div>
               </div>
+            </div>
+          </div>
+          )}
+
+          {/* [퀘스트] 퀘스트 탭 */}
+          {activeTab === "quests" && (
+          <div className={`rounded-2xl board-shadow min-h-full flex flex-col ${
+            isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
+          }`}>
+            {/* 퀘스트 헤더 */}
+            <div className={`border-b p-4 ${
+              isDarkMode ? "border-white/10" : "border-gray-300/30"
+            }`}>
+              <div className="flex items-center gap-3">
+                <Target className={`w-6 h-6 ${
+                  isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                }`} />
+                <h2 className={`text-xl font-bold ${
+                  isDarkMode ? "text-white" : "text-gray-800"
+                }`}>[Quest] 일일 퀘스트</h2>
+              </div>
+              <p className={`text-sm mt-2 ${
+                isDarkMode ? "text-gray-400" : "text-gray-600"
+              }`}>매일 자정에 리셋되는 일일 퀘스트를 완료하고 보상을 받으세요!</p>
+            </div>
+            
+            {/* 퀘스트 목록 */}
+            <div className="p-4 flex-1 overflow-y-auto">
+              {dailyQuests.quests && dailyQuests.quests.length > 0 ? (
+                <div className="space-y-4">
+                  {dailyQuests.quests.map((quest, index) => {
+                    const isCompleted = quest.progress >= quest.target;
+                    const canClaim = isCompleted && !quest.completed;
+                    
+                    return (
+                      <div key={quest.id} className={`p-4 rounded-xl border transition-all duration-300 ${
+                        isDarkMode 
+                          ? quest.completed 
+                            ? "bg-green-500/10 border-green-400/30" 
+                            : canClaim 
+                              ? "bg-yellow-500/10 border-yellow-400/30" 
+                              : "bg-white/5 border-white/10 hover:border-white/20"
+                          : quest.completed
+                            ? "bg-green-50 border-green-200"
+                            : canClaim
+                              ? "bg-yellow-50 border-yellow-200"
+                              : "bg-gray-50 border-gray-200 hover:border-gray-300"
+                      }`}>
+                        {/* 퀘스트 제목 */}
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1">
+                            <h3 className={`font-bold text-lg mb-1 ${
+                              isDarkMode ? "text-white" : "text-gray-800"
+                            }`}>{quest.name}</h3>
+                            <p className={`text-sm ${
+                              isDarkMode ? "text-gray-400" : "text-gray-600"
+                            }`}>{quest.description}</p>
+                          </div>
+                          
+                          {/* 상태 아이콘 */}
+                          <div className="ml-4">
+                            {quest.completed ? (
+                              <CheckCircle className="w-6 h-6 text-green-500" />
+                            ) : canClaim ? (
+                              <Gift className="w-6 h-6 text-yellow-500" />
+                            ) : (
+                              <Target className={`w-6 h-6 ${
+                                isDarkMode ? "text-gray-500" : "text-gray-400"
+                              }`} />
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* 진행도 바 */}
+                        <div className="mb-3">
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className={isDarkMode ? "text-gray-300" : "text-gray-700"}>
+                              진행도
+                            </span>
+                            <span className={`font-medium ${
+                              isDarkMode ? "text-white" : "text-gray-800"
+                            }`}>
+                              {quest.progress} / {quest.target}
+                            </span>
+                          </div>
+                          <div className={`w-full bg-gray-200 rounded-full h-2 ${
+                            isDarkMode ? "bg-white/10" : "bg-gray-200"
+                          }`}>
+                            <div 
+                              className={`h-2 rounded-full transition-all duration-500 ${
+                                quest.completed 
+                                  ? "bg-green-500" 
+                                  : canClaim 
+                                    ? "bg-yellow-500" 
+                                    : "bg-blue-500"
+                              }`}
+                              style={{ width: `${Math.min((quest.progress / quest.target) * 100, 100)}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                        
+                        {/* 보상 및 버튼 */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Gem className="w-4 h-4 text-amber-500" />
+                            <span className={`text-sm font-medium ${
+                              isDarkMode ? "text-amber-400" : "text-amber-600"
+                            }`}>{quest.reward}</span>
+                          </div>
+                          
+                          {quest.completed ? (
+                            <span className="text-sm text-green-500 font-medium">
+                              ✓ 완료
+                            </span>
+                          ) : canClaim ? (
+                            <button
+                              onClick={() => claimQuestReward(quest.id)}
+                              className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg transition-colors duration-200 font-medium text-sm"
+                            >
+                              보상 수령
+                            </button>
+                          ) : (
+                            <span className={`text-sm ${
+                              isDarkMode ? "text-gray-500" : "text-gray-400"
+                            }`}>
+                              진행 중...
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className={`text-center py-12 ${
+                  isDarkMode ? "text-gray-400" : "text-gray-600"
+                }`}>
+                  <Target className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                  <p>퀘스트를 로드하는 중...</p>
+                </div>
+              )}
+              
+              {/* 리셋 정보 */}
+              {dailyQuests.lastResetDate && (
+                <div className={`mt-6 p-3 rounded-lg text-center text-sm ${
+                  isDarkMode ? "bg-white/5 text-gray-400" : "bg-gray-100 text-gray-600"
+                }`}>
+                  <Clock className="w-4 h-4 inline mr-1" />
+                  마지막 리셋: {dailyQuests.lastResetDate} | 다음 리셋: 내일 자정
+                </div>
+              )}
             </div>
           </div>
           )}
