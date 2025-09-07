@@ -531,6 +531,11 @@ async function getUserQuery(userId, username, userUuid = null) {
     // 🔧 특정 사용자에 대한 fallback 차단
     if (username === '아딸') {
       console.log("🚫 Blocking fallback for non-existent user:", username);
+      // 요청 출처 추적을 위한 로깅 (임시)
+      console.log("🔍 Request source tracking:");
+      console.log("- UserAgent:", process.env.REQUEST_USER_AGENT || "Not available");
+      console.log("- IP:", process.env.REQUEST_IP || "Not available"); 
+      console.log("- Referer:", process.env.REQUEST_REFERER || "Not available");
       throw new Error(`User ${username} has been deleted and is no longer accessible`);
     }
     console.log("Using fallback with username:", username);
@@ -1789,6 +1794,16 @@ app.get("/api/inventory/:userId", async (req, res) => {
     const { username, userUuid } = req.query;
     
     console.log("Inventory request:", { userId, username, userUuid });
+    
+    // 🔍 아딸 사용자 요청 추적
+    if (username === '아딸' || userUuid === '#0002') {
+      console.log("🕵️ TRACKING 아딸 REQUEST:");
+      console.log("- IP:", req.ip || req.connection.remoteAddress);
+      console.log("- User-Agent:", req.get('User-Agent'));
+      console.log("- Referer:", req.get('Referer'));
+      console.log("- Origin:", req.get('Origin'));
+      console.log("- Headers:", JSON.stringify(req.headers, null, 2));
+    }
     
     // UUID 기반 사용자 조회
     const queryResult = await getUserQuery(userId, username, userUuid);
@@ -3595,6 +3610,15 @@ app.get("/api/materials/:userId", async (req, res) => {
     const { username, userUuid } = req.query;
     
     console.log("Materials request:", { userId, username, userUuid });
+    
+    // 🔍 아딸 사용자 요청 추적
+    if (username === '아딸' || userUuid === '#0002') {
+      console.log("🕵️ TRACKING 아딸 MATERIALS REQUEST:");
+      console.log("- IP:", req.ip || req.connection.remoteAddress);
+      console.log("- User-Agent:", req.get('User-Agent'));
+      console.log("- Referer:", req.get('Referer'));
+      console.log("- Origin:", req.get('Origin'));
+    }
     
     // UUID 기반 사용자 조회
     const queryResult = await getUserQuery(userId, username, userUuid);
