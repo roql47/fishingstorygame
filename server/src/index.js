@@ -531,7 +531,7 @@ async function getUserQuery(userId, username, userUuid = null) {
     // 🔧 특정 사용자에 대한 fallback 차단
     if (username === '아딸') {
       console.log("🚫 Blocking fallback for non-existent user:", username);
-      return null; // null 반환으로 요청 차단
+      throw new Error(`User ${username} has been deleted and is no longer accessible`);
     }
     console.log("Using fallback with username:", username);
     return { username, user: null };
