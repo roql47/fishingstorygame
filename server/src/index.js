@@ -3754,6 +3754,10 @@ app.post("/api/delete-account", deleteAccountHandler);
 
 async function deleteAccountHandler(req, res) {
   try {
+    console.log("🔥 deleteAccountHandler called - v2024.12.19");
+    console.log("Request method:", req.method);
+    console.log("Request path:", req.path);
+    
     const { username, userUuid } = req.query;
     
     console.log("=== ACCOUNT DELETION REQUEST ===");
@@ -3851,13 +3855,20 @@ app.get("/api/user-profile", getUserProfileHandler);
 
 async function getUserProfileHandler(req, res) {
   try {
+    console.log("🔥 getUserProfileHandler called - v2024.12.19");
+    console.log("Request method:", req.method);
+    console.log("Request path:", req.path);
+    console.log("Request query:", req.query);
+    console.log("Request params:", req.params);
+    
     const { username } = req.query;
     
     if (!username) {
+      console.log("❌ Username missing from query");
       return res.status(400).json({ error: "Username is required" });
     }
     
-    console.log("Fetching profile for username:", username);
+    console.log("✅ Fetching profile for username:", username);
     
     // 사용자 기본 정보 조회
     const user = await UserUuidModel.findOne({ username });
@@ -3898,6 +3909,27 @@ async function getUserProfileHandler(req, res) {
     res.status(500).json({ error: "Failed to fetch user profile" });
   }
 }
+
+// 🔥 서버 버전 및 API 상태 확인 (디버깅용)
+app.get("/api/debug/server-info", (req, res) => {
+  const serverInfo = {
+    version: "v2024.12.19",
+    timestamp: new Date().toISOString(),
+    nodeEnv: process.env.NODE_ENV,
+    availableAPIs: [
+      "GET /api/user-profile (new query-based)",
+      "GET /api/user-profile/:username (legacy)",
+      "POST /api/reset-account",
+      "DELETE /api/delete-account",
+      "POST /api/delete-account",
+      "GET /api/game-data/*"
+    ],
+    message: "Server is running with updated APIs"
+  };
+  
+  console.log("🔥 SERVER DEBUG INFO REQUESTED:", serverInfo);
+  res.json(serverInfo);
+});
 
 // MongoDB 연결 상태 확인 엔드포인트
 app.get("/api/health", async (req, res) => {
