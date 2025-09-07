@@ -1469,16 +1469,29 @@ io.on("connection", (socket) => {
 // WebSocket 데이터 조회 함수들
 async function sendUserDataUpdate(socket, userUuid, username) {
   try {
-    const [inventory, materials, money, amber, starPieces, cooldown, totalCatches] = await Promise.all([
+    console.log(`🚀 Sending data update to ${username}`);
+    const [inventory, materials, money, amber, starPieces, cooldown, totalCatches, companions, adminStatus, equipment] = await Promise.all([
       getInventoryData(userUuid),
       getMaterialsData(userUuid),
       getMoneyData(userUuid),
       getAmberData(userUuid),
       getStarPiecesData(userUuid),
       getCooldownData(userUuid),
-      getTotalCatchesData(userUuid)
+      getTotalCatchesData(userUuid),
+      getCompanionsData(userUuid),
+      getAdminStatusData(userUuid),
+      getEquipmentData(userUuid)
     ]);
 
+    console.log(`📊 Data being sent to ${username}:`, {
+      inventory: inventory?.length || 0,
+      materials: materials?.length || 0,
+      money: money?.money || 0,
+      companions: companions?.companions?.length || 0,
+      adminStatus: adminStatus?.isAdmin || false,
+      equipment: equipment?.fishingRod || 'none'
+    });
+    
     socket.emit('data:update', {
       inventory,
       materials,
@@ -1486,7 +1499,10 @@ async function sendUserDataUpdate(socket, userUuid, username) {
       amber,
       starPieces,
       cooldown,
-      totalCatches
+      totalCatches,
+      companions,
+      adminStatus,
+      equipment
     });
   } catch (error) {
     console.error(`Error sending data update for ${username}:`, error);
@@ -1505,7 +1521,7 @@ async function getInventoryData(userUuid) {
 async function getMaterialsData(userUuid) {
   const materials = await MaterialModel.aggregate([
     { $match: { userUuid } },
-    { $group: { _id: "$material", count: { $sum: "$quantity" } } },
+    { $group: { _id: "$material", count: { $sum: 1 } } },
     { $project: { _id: 0, material: "$_id", count: 1 } }
   ]);
   return materials;
@@ -1540,6 +1556,26 @@ async function getCooldownData(userUuid) {
 async function getTotalCatchesData(userUuid) {
   const totalCatches = await CatchModel.countDocuments({ userUuid });
   return { totalCatches };
+}
+
+async function getCompanionsData(userUuid) {
+  const user = await UserUuidModel.findOne({ userUuid });
+  const companions = user?.companions || [];
+  return { companions };
+}
+
+async function getAdminStatusData(userUuid) {
+  const user = await UserUuidModel.findOne({ userUuid });
+  const isAdmin = user?.isAdmin || false;
+  return { isAdmin };
+}
+
+async function getEquipmentData(userUuid) {
+  const equipment = await UserEquipmentModel.findOne({ userUuid });
+  return {
+    fishingRod: equipment?.fishingRod || null,
+    accessory: equipment?.accessory || null
+  };
 }
 
 // 데이터 변경 시 모든 해당 사용자에게 업데이트 전송
@@ -2213,25 +2249,20 @@ app.get("/api/cooldown/:userId", async (req, res) => {
   }
 });
 
-// 서버 측 낚시 쿨타임 계산 함수 (수정됨)
+// 서버 측 낚시 쿨타임 계산 함수 (악세사리만 영향)
 const calculateFishingCooldownTime = async (userQuery) => {
   try {
     const baseTime = 5 * 60 * 1000; // 5분 (밀리초)
+    let reduction = 0; // 낚시실력은 쿨타임에 영향 없음
     
-    // 낚시실력 가져오기
-    const fishingSkill = await FishingSkillModel.findOne(userQuery);
-    const userSkill = fishingSkill ? fishingSkill.skill : 0;
-    let reduction = userSkill * 15 * 1000; // 낚시실력 * 15초
-    
-    // 악세사리 효과 가져오기
+    // 악세사리 효과만 가져오기
     const userEquipment = await UserEquipmentModel.findOne(userQuery);
     if (userEquipment && userEquipment.accessory) {
       // 서버에서 악세사리 레벨 계산
       const accessoryLevel = getServerAccessoryLevel(userEquipment.accessory);
       if (accessoryLevel > 0) {
         // 악세사리 레벨에 따른 쿨타임 감소 (레벨당 15초)
-        const additionalReduction = accessoryLevel * 15 * 1000;
-        reduction += additionalReduction;
+        reduction = accessoryLevel * 15 * 1000;
       }
     }
     
@@ -3004,9 +3035,13 @@ app.get("/api/ranking", async (req, res) => {
       }
     });
     
-    // 랭킹 배열로 변환 및 정렬
+    // 랭킹 배열로 변환 및 정렬 (게스트 제외)
     const rankings = Array.from(userRankingData.values())
-      .filter(user => user.displayName && user.displayName.trim() !== '') // 유효한 displayName이 있는 사용자만
+      .filter(user => 
+        user.displayName && 
+        user.displayName.trim() !== '' && 
+        !user.displayName.startsWith('Guest#') // 게스트 제외
+      )
       .sort((a, b) => {
         // 1차 정렬: 총 낚은 물고기 수 (내림차순)
         if (b.totalFishCaught !== a.totalFishCaught) {
