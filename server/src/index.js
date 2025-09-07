@@ -1409,6 +1409,13 @@ io.on("connection", (socket) => {
       connectedUsers.delete(socket.id);
       console.log("User disconnected:", user.displayName, "Reason:", reason);
       
+      // 🔧 좀비 WebSocket 방지: socket 객체에서 사용자 정보 정리
+      if (socket.userUuid || socket.username) {
+        console.log(`🧹 Cleaning up socket data for ${socket.username} (${socket.userUuid})`);
+        delete socket.userUuid;
+        delete socket.username;
+      }
+      
       // 같은 userUuid의 다른 연결이 있는지 확인
       const remainingConnections = Array.from(connectedUsers.values())
         .filter(userData => userData.userUuid === user.userUuid);
@@ -1479,6 +1486,15 @@ io.on("connection", (socket) => {
       }
     } catch (error) {
       console.error(`Error fetching ${type} for ${username}:`, error);
+    }
+  });
+
+  // 🔧 데이터 구독 해제 이벤트 처리
+  socket.on("data:unsubscribe", ({ userUuid, username }) => {
+    if (socket.userUuid === userUuid) {
+      console.log(`User ${username} unsubscribed from data updates`);
+      delete socket.userUuid;
+      delete socket.username;
     }
   });
 });
@@ -1597,11 +1613,18 @@ async function getEquipmentData(userUuid) {
 
 // 데이터 변경 시 모든 해당 사용자에게 업데이트 전송
 function broadcastUserDataUpdate(userUuid, username, dataType, data) {
+  let broadcastCount = 0;
   io.sockets.sockets.forEach((socket) => {
-    if (socket.userUuid === userUuid) {
+    // 🔧 좀비 소켓 방지: 연결 상태와 사용자 정보 확인
+    if (socket.userUuid === userUuid && socket.connected) {
       socket.emit(`data:${dataType}`, data);
+      broadcastCount++;
     }
   });
+  
+  if (broadcastCount > 0) {
+    console.log(`📡 Broadcasted ${dataType} update to ${broadcastCount} connections for ${username}`);
+  }
 }
 
 // Personal Inventory API
