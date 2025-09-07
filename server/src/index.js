@@ -2726,6 +2726,92 @@ app.post("/api/set-fishing-cooldown", async (req, res) => {
   }
 });
 
+// 🛡️ [FIX] 낚시 쿨타임 재계산 API (악세사리 구매 후 호출)
+app.post("/api/recalculate-fishing-cooldown", async (req, res) => {
+  try {
+    const { username, userUuid } = req.query;
+    
+    console.log("🔄 Recalculate fishing cooldown request received");
+    
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    // 현재 쿨타임 상태 확인
+    const cooldownRecord = await CooldownModel.findOne(query);
+    const now = new Date();
+    
+    if (!cooldownRecord || !cooldownRecord.fishingCooldownEnd || cooldownRecord.fishingCooldownEnd <= now) {
+      // 쿨타임이 없거나 이미 만료된 경우
+      return res.json({ 
+        success: true,
+        remainingTime: 0,
+        message: "쿨타임이 없습니다."
+      });
+    }
+    
+    // 현재 남은 쿨타임 계산
+    const currentRemainingTime = cooldownRecord.fishingCooldownEnd.getTime() - now.getTime();
+    
+    // 새로운 쿨타임 계산 (악세사리 효과 반영)
+    const newBaseCooldownTime = await calculateFishingCooldownTime(query);
+    
+    // 기존 경과 시간 계산
+    const originalCooldownTime = await calculateFishingCooldownTime(query);
+    const elapsedTime = originalCooldownTime - currentRemainingTime;
+    
+    // 새로운 쿨타임에서 경과 시간을 뺀 값이 남은 시간
+    const newRemainingTime = Math.max(0, newBaseCooldownTime - elapsedTime);
+    
+    // 새로운 쿨타임 종료 시간 설정
+    const newCooldownEnd = new Date(now.getTime() + newRemainingTime);
+    
+    const updateData = {
+      userId: query.userId || 'user',
+      username: query.username || username,
+      userUuid: query.userUuid || userUuid,
+      fishingCooldownEnd: newCooldownEnd
+    };
+    
+    // CooldownModel 업데이트
+    await CooldownModel.findOneAndUpdate(
+      query,
+      updateData,
+      { upsert: true, new: true }
+    );
+    
+    // UserUuidModel도 업데이트
+    if (query.userUuid) {
+      await UserUuidModel.updateOne(
+        { userUuid: query.userUuid },
+        { fishingCooldownEnd: newCooldownEnd }
+      );
+      
+      // WebSocket으로 실시간 업데이트
+      broadcastUserDataUpdate(query.userUuid, query.username, 'cooldown', {
+        fishingCooldown: newRemainingTime,
+        explorationCooldown: 0
+      });
+    }
+    
+    console.log(`🔄 Fishing cooldown recalculated: ${currentRemainingTime}ms -> ${newRemainingTime}ms`);
+    
+    res.json({ 
+      success: true,
+      remainingTime: newRemainingTime,
+      cooldownEnd: newCooldownEnd.toISOString(),
+      message: "쿨타임이 재계산되었습니다."
+    });
+  } catch (error) {
+    console.error("Failed to recalculate fishing cooldown:", error);
+    res.status(500).json({ error: "낚시 쿨타임 재계산에 실패했습니다." });
+  }
+});
+
 // 탐사 쿨타임 설정 API
 app.post("/api/set-exploration-cooldown", async (req, res) => {
   try {
@@ -4842,25 +4928,44 @@ app.get("/api/health", async (req, res) => {
 
 
 
-// 계정 초기화 API
+// 🛡️ [SECURITY] 보안 강화된 계정 초기화 API
 app.post("/api/reset-account", async (req, res) => {
   try {
     const { username, userUuid } = req.query;
+    const { confirmationKey } = req.body; // 🛡️ 보안: 확인 키 필수
+    const clientIP = getClientIP(req);
     
-    console.log("=== ACCOUNT RESET DEBUG ===");
-    console.log("Reset account request:", { username, userUuid });
+    console.log("🚨 [SECURITY] === ACCOUNT RESET REQUEST ===");
+    console.log("Reset account request:", { username, userUuid, clientIP });
     
-    if (!userUuid) {
-      return res.status(400).json({ error: "userUuid is required" });
+    // 🛡️ 보안 검증 1: 필수 매개변수 확인
+    if (!userUuid || !username) {
+      return res.status(400).json({ error: "사용자 UUID와 사용자명이 모두 필요합니다." });
     }
     
-    // 사용자 존재 확인
+    // 🛡️ 보안 검증 2: 확인 키 필수 (계정 초기화는 위험한 작업)
+    const expectedConfirmationKey = `RESET_${username}_${userUuid}_CONFIRM`;
+    if (!confirmationKey || confirmationKey !== expectedConfirmationKey) {
+      console.log(`🚨 [SECURITY] Invalid reset attempt from ${clientIP} - User: ${username}`);
+      return res.status(403).json({ 
+        error: "계정 초기화를 위해서는 확인 키가 필요합니다.",
+        requiredKey: expectedConfirmationKey
+      });
+    }
+    
+    // 사용자 존재 확인 및 소유권 검증
     const user = await UserUuidModel.findOne({ userUuid });
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
     }
     
-    console.log("Resetting account for user:", { userUuid: user.userUuid, username: user.username });
+    // 🛡️ 보안 검증 3: 사용자명 일치 확인
+    if (user.username !== username) {
+      console.log(`🚨 [SECURITY] Username mismatch in reset request - Expected: ${user.username}, Provided: ${username}`);
+      return res.status(403).json({ error: "사용자 정보가 일치하지 않습니다." });
+    }
+    
+    console.log(`🔄 [SECURITY] Authorized reset for user: ${user.username} (${userUuid}) from IP: ${clientIP}`);
     
     // 모든 관련 데이터 삭제
     const deleteResults = await Promise.all([

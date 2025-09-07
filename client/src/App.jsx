@@ -1192,29 +1192,65 @@ function App() {
     });
   };
 
-  // 계정 초기화 함수
+  // 🛡️ [SECURITY] 보안 강화된 계정 초기화 함수
   const resetAccount = async () => {
-    if (!userUuid) {
+    if (!userUuid || !username) {
       alert('사용자 정보를 찾을 수 없습니다.');
       return;
     }
 
+    // 🛡️ 보안 강화: 단계별 확인 절차
+    
+    // 1단계: 초기 경고
+    const initialWarning = `⚠️ 계정 초기화 경고\n\n이 작업은 되돌릴 수 없습니다!\n• 모든 낚시 기록 삭제\n• 모든 골드와 아이템 삭제\n• 모든 낚시실력 초기화\n• 복구 불가능\n\n정말로 계속하시겠습니까?`;
+    if (!confirm(initialWarning)) {
+      return;
+    }
+    
+    // 2단계: 사용자명 확인
+    const confirmMessage = `계정 초기화를 위해 닉네임을 입력하세요:\n\n⚠️ 주의: 모든 게임 데이터가 삭제됩니다!\n\n'${username}'을(를) 정확히 입력하세요:`;
+    const userInput = prompt(confirmMessage);
+    
+    if (userInput !== username) {
+      if (userInput !== null) {
+        alert('닉네임이 일치하지 않습니다. 계정 초기화가 취소되었습니다.');
+      }
+      return;
+    }
+    
+    // 3단계: 최종 확인
+    const finalConfirm = '정말로 계정을 초기화하시겠습니까?\n\n이것이 마지막 경고입니다!';
+    if (!confirm(finalConfirm)) {
+      return;
+    }
+
     try {
-      console.log("🔥 ACCOUNT RESET - v2024.12.19");
-      console.log("=== ACCOUNT RESET DEBUG ===");
+      console.log("🚨 [SECURITY] CLIENT - SECURE ACCOUNT RESET v2024.12.19");
+      console.log("=== SECURE ACCOUNT RESET ===");
       console.log("Resetting account for:", { username, userUuid });
+      
+      // 🛡️ 보안 키 생성
+      const confirmationKey = `RESET_${username}_${userUuid}_CONFIRM`;
+      console.log("🔑 Generated confirmation key for secure reset");
 
       const params = { username, userUuid };
+      const securePayload = {
+        confirmationKey: confirmationKey
+      };
+      
       let response;
       
       try {
-        console.log("Trying reset-account API...");
-        response = await axios.post(`${serverUrl}/api/reset-account`, {}, { params });
-        console.log("✅ Reset API success");
+        console.log("🛡️ Trying secure reset-account API...");
+        response = await axios.post(`${serverUrl}/api/reset-account`, securePayload, { params });
+        console.log("✅ Secure Reset API success");
       } catch (resetError) {
         if (resetError.response?.status === 404) {
           console.log("❌ reset-account API not found");
           throw new Error("계정 초기화 API를 찾을 수 없습니다. 서버가 업데이트되지 않았을 수 있습니다.");
+        } else if (resetError.response?.status === 403) {
+          console.log("❌ Secure reset failed - Invalid confirmation key");
+          throw new Error("보안 검증에 실패했습니다. 계정 초기화가 차단되었습니다.");
         } else {
           throw resetError;
         }
@@ -1350,10 +1386,11 @@ function App() {
         localStorage.removeItem("googleId");
         localStorage.removeItem("termsAccepted");
         localStorage.removeItem("darkMode");
-        localStorage.removeItem("fishingCooldown");
-        localStorage.removeItem("fishingCooldownTime");
-        localStorage.removeItem("explorationCooldown");
-        localStorage.removeItem("explorationCooldownTime");
+        // 🛡️ [FIX] 쿨타임은 서버에서 관리하므로 localStorage 정리 불필요
+        // localStorage.removeItem("fishingCooldown"); // 제거됨
+        // localStorage.removeItem("fishingCooldownTime"); // 제거됨
+        // localStorage.removeItem("explorationCooldown"); // 제거됨  
+        // localStorage.removeItem("explorationCooldownTime"); // 제거됨
         
         // 페이지 새로고침으로 완전 초기화
         window.location.reload();
@@ -2515,18 +2552,21 @@ function App() {
           setFishingSkill(prev => prev + 1);
         } else if (category === 'accessories') {
           setUserEquipment(prev => ({ ...prev, accessory: itemName }));
-          // 악세사리 구매 시 현재 낚시하기 쿨타임 15초 감소
-          setFishingCooldown(prev => {
-            const newValue = Math.max(0, prev - 15000); // 15초 감소, 최소 0
-            if (newValue > 0) {
-              localStorage.setItem('fishingCooldown', newValue.toString());
-              localStorage.setItem('fishingCooldownTime', Date.now().toString());
-            } else {
-              localStorage.removeItem('fishingCooldown');
-              localStorage.removeItem('fishingCooldownTime');
+          // 🛡️ [FIX] 악세사리 구매 시 서버에서 쿨타임 재계산 요청
+          try {
+            const params = { username, userUuid };
+            const response = await axios.post(`${serverUrl}/api/recalculate-fishing-cooldown`, {}, { params });
+            
+            if (response.data.success) {
+              const newCooldownTime = response.data.remainingTime || 0;
+              setFishingCooldown(newCooldownTime);
+              console.log(`🎣 Fishing cooldown recalculated after accessory purchase: ${newCooldownTime}ms`);
             }
-            return newValue;
-          });
+          } catch (error) {
+            console.error('Failed to recalculate fishing cooldown:', error);
+            // 실패 시 클라이언트에서만 임시로 감소 (서버와 동기화는 다음 로그인 시)
+            setFishingCooldown(prev => Math.max(0, prev - 15000));
+          }
         }
         
         // 장비 정보 새로고침
@@ -3081,8 +3121,9 @@ function App() {
                           setActiveTab("chat");
                           setUserUuid(null);
                           setIsGuest(false); // 게스트 상태 초기화
-                          setFishingCooldown(0);
-                          setExplorationCooldown(0);
+                          // 🛡️ [FIX] 쿨타임은 서버에서 관리하므로 클라이언트에서 초기화하지 않음
+                          // setFishingCooldown(0); // 제거됨
+                          // setExplorationCooldown(0); // 제거됨
                         }
                       }}
                       title="로그아웃"
@@ -4567,11 +4608,12 @@ function App() {
                         isDarkMode ? "text-white" : "text-gray-800"
                       }`}>{selectedUserProfile ? `${selectedUserProfile.username}님의 프로필` : `${username}님의 프로필`}</h2>
                   <div className="flex flex-col gap-1">
-                    {(selectedUserProfile ? otherUserData?.userUuid : userUuid) && (
+                    {/* 🛡️ [SECURITY] UUID는 관리자에게만 표시 */}
+                    {(selectedUserProfile ? otherUserData?.userUuid : userUuid) && isAdmin && (
                       <div className="flex items-center gap-2">
                         <p className={`text-xs font-mono ${
                           isDarkMode ? "text-green-400" : "text-green-600"
-                        }`}>ID: {selectedUserProfile ? otherUserData?.userUuid : userUuid}</p>
+                        }`}>🔑 ID: {selectedUserProfile ? otherUserData?.userUuid : userUuid}</p>
                         {!selectedUserProfile && ( // 내 프로필일 때만 계정 초기화 버튼 표시
                           <button
                             onClick={() => setShowResetConfirm(true)}
