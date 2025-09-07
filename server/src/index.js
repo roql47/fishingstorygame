@@ -528,6 +528,11 @@ async function getUserQuery(userId, username, userUuid = null) {
     console.log("Using fallback with userId:", userId);
     return { userId, user: null };
   } else if (username) {
+    // 🔧 특정 사용자에 대한 fallback 차단
+    if (username === '아딸') {
+      console.log("🚫 Blocking fallback for non-existent user:", username);
+      return null; // null 반환으로 요청 차단
+    }
     console.log("Using fallback with username:", username);
     return { username, user: null };
   } else {
@@ -868,6 +873,13 @@ setInterval(() => {
     const socket = io.sockets.sockets.get(socketId);
     if (!socket || !socket.connected) {
       console.log(`🧟 Removing zombie connection: ${socketId} (${userData.username})`);
+      connectedUsers.delete(socketId);
+      zombieCount++;
+    }
+    
+    // 🔧 특정 삭제된 사용자 강제 제거
+    if (userData.username === '아딸' || userData.userUuid === '#0002') {
+      console.log(`🗑️ Force removing deleted user: ${userData.username} (${userData.userUuid})`);
       connectedUsers.delete(socketId);
       zombieCount++;
     }
@@ -1785,6 +1797,11 @@ app.get("/api/inventory/:userId", async (req, res) => {
       query = { userUuid: queryResult.userUuid };
       console.log("Using UUID query for inventory:", query);
     } else {
+      // 🔧 존재하지 않는 사용자에 대한 반복 요청 방지
+      if (userUuid === '#0002' && username === '아딸') {
+        console.log("🚫 Blocking repeated requests for non-existent user:", { userUuid, username });
+        return res.status(404).json({ error: "User not found. Please refresh and login again." });
+      }
       query = queryResult;
       console.log("Using fallback query for inventory:", query);
     }
@@ -3586,6 +3603,11 @@ app.get("/api/materials/:userId", async (req, res) => {
       query = { userUuid: queryResult.userUuid };
       console.log("Using UUID query for materials:", query);
     } else {
+      // 🔧 존재하지 않는 사용자에 대한 반복 요청 방지
+      if (userUuid === '#0002' && username === '아딸') {
+        console.log("🚫 Blocking repeated requests for non-existent user:", { userUuid, username });
+        return res.status(404).json({ error: "User not found. Please refresh and login again." });
+      }
       query = queryResult;
       console.log("Using fallback query for materials:", query);
     }
@@ -4056,6 +4078,34 @@ async function deleteAccountHandler(req, res) {
     res.status(500).json({ error: "계정 삭제에 실패했습니다: " + error.message });
   }
 }
+
+// 🔧 디버그용 메모리 캐시 확인 API (임시)
+app.get("/api/debug/memory-cache", (req, res) => {
+  try {
+    const connectedUsersArray = Array.from(connectedUsers.entries()).map(([socketId, userData]) => ({
+      socketId,
+      userUuid: userData.userUuid,
+      username: userData.username,
+      displayName: userData.displayName,
+      joinTime: userData.joinTime,
+      loginType: userData.loginType
+    }));
+    
+    const memoryInfo = {
+      connectedUsersCount: connectedUsers.size,
+      connectedUsers: connectedUsersArray,
+      processingJoins: Array.from(processingJoins),
+      recentJoins: Array.from(recentJoins.entries()),
+      userMessageHistoryCount: userMessageHistory.size
+    };
+    
+    console.log("🔍 Memory cache debug requested:", memoryInfo);
+    res.json(memoryInfo);
+  } catch (error) {
+    console.error("Failed to get memory cache info:", error);
+    res.status(500).json({ error: "Failed to get memory cache info" });
+  }
+});
 
 // 🔧 이전 API 호환성 지원 (임시)
 app.get("/api/user-profile/:username", async (req, res) => {
