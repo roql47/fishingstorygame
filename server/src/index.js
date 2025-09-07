@@ -506,9 +506,11 @@ async function getUserQuery(userId, username, userUuid = null) {
   // 1순위: userUuid로 직접 조회 (가장 정확)
   if (userUuid) {
     const user = await UserUuidModel.findOne({ userUuid });
-    // 사용자 조회 결과는 보안상 로그에 기록하지 않음
+    console.log(`🔍 getUserQuery - userUuid: ${userUuid}, found: ${!!user}`);
     if (user) {
       return { userUuid: user.userUuid, user };
+    } else {
+      console.log(`❌ User not found with userUuid: ${userUuid}`);
     }
   }
   
@@ -859,6 +861,21 @@ setInterval(() => {
 setInterval(() => {
   console.log("🕐 Performing periodic connection cleanup...");
   const uniqueUsers = cleanupConnectedUsers();
+  
+  // 추가: 좀비 연결 강제 정리
+  let zombieCount = 0;
+  for (const [socketId, userData] of connectedUsers.entries()) {
+    const socket = io.sockets.sockets.get(socketId);
+    if (!socket || !socket.connected) {
+      console.log(`🧟 Removing zombie connection: ${socketId} (${userData.username})`);
+      connectedUsers.delete(socketId);
+      zombieCount++;
+    }
+  }
+  
+  if (zombieCount > 0) {
+    console.log(`🧹 Cleaned up ${zombieCount} zombie connections`);
+  }
   
   // 모든 클라이언트에게 정리된 사용자 목록 전송
   io.emit("users:update", uniqueUsers);

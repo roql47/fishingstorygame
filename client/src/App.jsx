@@ -899,6 +899,8 @@ function App() {
       socket.off('data:inventory', handleInventoryUpdate);
       socket.off('data:materials', handleMaterialsUpdate);
       socket.off('users:update', handleUsersUpdate);
+      // 데이터 구독 해제
+      socket.emit('data:unsubscribe', { userUuid, username });
     };
   }, [username, userUuid, socket]);
 
@@ -958,6 +960,12 @@ function App() {
   // 접속자 목록 가져오기 (보안 강화)
   useEffect(() => {
     const fetchConnectedUsers = async () => {
+      // 브라우저 탭이 비활성화되었거나 사용자가 없으면 요청 중단
+      if (document.hidden || !username || !userUuid) {
+        console.log('Skipping API call - tab inactive or user not available');
+        return;
+      }
+      
       try {
         console.log('Fetching connected users');
         const res = await axios.get(`${serverUrl}/api/connected-users`);
@@ -1027,6 +1035,12 @@ function App() {
   // 랭킹 데이터 가져오기 (자주 변경되지 않으므로 주기 증가)
   useEffect(() => {
     const fetchRankings = async () => {
+      // 브라우저 탭이 비활성화되었으면 요청 중단
+      if (document.hidden) {
+        console.log('Skipping ranking API call - tab inactive');
+        return;
+      }
+      
       try {
         const res = await axios.get(`${serverUrl}/api/ranking`);
         setRankings(res.data.rankings || []);
