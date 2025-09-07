@@ -284,8 +284,29 @@ function App() {
       setUsername(settings.displayName || settings.username || '');
       setUserUuid(settings.userUuid || null);
       setIsDarkMode(settings.darkMode !== undefined ? settings.darkMode : true);
-      setFishingCooldown(settings.fishingCooldown || 0);
-      setExplorationCooldown(settings.explorationCooldown || 0);
+      
+      // 쿨타임 데이터 설정 (서버에서 계산된 남은 시간)
+      console.log('Loading cooldown from settings:', { 
+        fishingCooldown: settings.fishingCooldown, 
+        explorationCooldown: settings.explorationCooldown 
+      });
+      setFishingCooldown(Math.max(0, settings.fishingCooldown || 0));
+      setExplorationCooldown(Math.max(0, settings.explorationCooldown || 0));
+      
+      // 초기 재료 데이터 로드 (모든 로그인 방식에 적용)
+      if (settings.userUuid) {
+        try {
+          console.log('Loading initial materials data for userUuid:', settings.userUuid);
+          const materialsResponse = await axios.get(`${serverUrl}/api/materials/${userId}`, { 
+            params: { username: settings.displayName || settings.username, userUuid: settings.userUuid } 
+          });
+          setMaterials(materialsResponse.data || []);
+          console.log('Initial materials loaded:', materialsResponse.data?.length || 0, 'types');
+        } catch (materialsError) {
+          console.error("Failed to load initial materials:", materialsError);
+          setMaterials([]); // 실패 시 빈 배열
+        }
+      }
       
       // 로컬스토리지에도 최소한의 정보만 저장 (호환성을 위해)
       if (settings.displayName) localStorage.setItem("nickname", settings.displayName);
@@ -359,7 +380,7 @@ function App() {
       
       if (settings && settings.termsAccepted) {
         console.log("Google login - existing user with settings:", settings);
-        // 기존 사용자로 인식되어 설정이 로드됨
+        // 기존 사용자로 인식되어 설정이 로드됨 (재료는 loadUserSettings에서 자동 로드됨)
       } else {
         // 새 사용자이거나 이용약관 미동의 - 이용약관과 닉네임 설정 필요
         console.log("Google login - new user or terms not accepted, showing terms modal");

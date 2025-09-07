@@ -2273,11 +2273,27 @@ app.post("/api/set-fishing-cooldown", async (req, res) => {
       fishingCooldownEnd: cooldownEnd
     };
     
+    // CooldownModel 업데이트 (기존 시스템 호환성)
     await CooldownModel.findOneAndUpdate(
       query,
       updateData,
       { upsert: true, new: true }
     );
+    
+    // UserUuidModel도 동시에 업데이트 (WebSocket 동기화용)
+    if (query.userUuid) {
+      await UserUuidModel.updateOne(
+        { userUuid: query.userUuid },
+        { fishingCooldownEnd: cooldownEnd }
+      );
+      console.log(`Updated fishing cooldown in UserUuidModel for ${query.userUuid}`);
+      
+      // WebSocket으로 실시간 쿨타임 업데이트 전송
+      broadcastUserDataUpdate(query.userUuid, query.username, 'cooldown', {
+        fishingCooldown: cooldownDuration,
+        explorationCooldown: 0 // 현재 탐사 쿨타임 유지
+      });
+    }
     
     // 쿨다운 설정 완료 (보안상 상세 정보는 로그에 기록하지 않음)
     
@@ -2335,11 +2351,27 @@ app.post("/api/set-exploration-cooldown", async (req, res) => {
       explorationCooldownEnd: cooldownEnd
     };
     
+    // CooldownModel 업데이트 (기존 시스템 호환성)
     await CooldownModel.findOneAndUpdate(
       query,
       updateData,
       { upsert: true, new: true }
     );
+    
+    // UserUuidModel도 동시에 업데이트 (WebSocket 동기화용)
+    if (query.userUuid) {
+      await UserUuidModel.updateOne(
+        { userUuid: query.userUuid },
+        { explorationCooldownEnd: cooldownEnd }
+      );
+      console.log(`Updated exploration cooldown in UserUuidModel for ${query.userUuid}`);
+      
+      // WebSocket으로 실시간 쿨타임 업데이트 전송
+      broadcastUserDataUpdate(query.userUuid, query.username, 'cooldown', {
+        fishingCooldown: 0, // 현재 낚시 쿨타임 유지
+        explorationCooldown: cooldownDuration
+      });
+    }
     
     // 탐사 쿨다운 설정 완료 (보안상 상세 정보는 로그에 기록하지 않음)
     
