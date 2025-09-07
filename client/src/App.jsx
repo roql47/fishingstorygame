@@ -48,13 +48,21 @@ function App() {
   const [idToken, setIdToken] = useState(undefined);
   const [usernameInput, setUsernameInput] = useState("");
   const [activeTab, setActiveTab] = useState("chat");
+  const [isGuest, setIsGuest] = useState(false); // 게스트 여부 추적
 
-  // 페이지 로드 시 저장된 Google 토큰 복원
+  // 페이지 로드 시 저장된 Google 토큰 및 게스트 상태 복원
   useEffect(() => {
     const storedIdToken = localStorage.getItem("idToken");
+    const storedIsGuest = localStorage.getItem("isGuest");
+    
     if (storedIdToken && !idToken) {
       console.log("Restoring Google token from localStorage:", storedIdToken);
       setIdToken(storedIdToken);
+    }
+    
+    if (storedIsGuest === "true") {
+      setIsGuest(true);
+      console.log("User is a guest");
     }
   }, []);
 
@@ -269,6 +277,21 @@ function App() {
     }
     
     return { valid: true, message: "", trimmed };
+  };
+
+  // 게스트 닉네임 자동 생성 함수
+  const generateGuestNickname = () => {
+    const randomNum = Math.floor(Math.random() * 9999) + 1;
+    return `Guest#${randomNum}`;
+  };
+
+  // 게스트 로그인 함수
+  const handleGuestLogin = () => {
+    const guestName = generateGuestNickname();
+    setUsername(guestName);
+    setIsGuest(true);
+    localStorage.setItem("nickname", guestName);
+    localStorage.setItem("isGuest", "true");
   };
 
   // 사용자 설정 관리 함수들
@@ -852,6 +875,11 @@ function App() {
         setExplorationCooldown(data.cooldown.explorationCooldown);
       }
       if (data.totalCatches) setMyCatches(data.totalCatches.totalCatches);
+      if (data.companions) setCompanions(data.companions.companions);
+      if (data.adminStatus) {
+        setUserAdminStatus(prev => ({ ...prev, [username]: data.adminStatus.isAdmin }));
+      }
+      if (data.equipment) setUserEquipment(data.equipment);
     };
 
     const handleInventoryUpdate = (data) => setInventory(data);
@@ -1566,8 +1594,8 @@ function App() {
 
   // 사용자 체력 계산 함수 (악세사리 단계 기반)
   const calculatePlayerMaxHp = (accessoryLevel) => {
-    if (accessoryLevel === 0) return 100; // 기본 체력
-    return Math.floor(Math.pow(accessoryLevel, 1.125) + 30 * accessoryLevel);
+    if (accessoryLevel === 0) return 50; // 기본 체력
+    return Math.floor(Math.pow(accessoryLevel, 1.325) + 50 * accessoryLevel + 5 * accessoryLevel);
   };
 
   // 물고기 공격력 계산 함수 (물고기 단계 기반)
@@ -1576,10 +1604,10 @@ function App() {
     return Math.floor(Math.pow(fishRank, 1.65) + fishRank * 1.3 + 10 + Math.random() * 5);
   };
 
-  // 낚시대 개수에 따른 낚시 쿨타임 계산 (악세사리 효과 적용)
+  // 악세사리에 따른 낚시 쿨타임 계산 (낚시실력은 쿨타임에 영향 없음)
   const getFishingCooldownTime = () => {
     const baseTime = 5 * 60 * 1000; // 5분 (밀리초)
-    let reduction = fishingSkill * 15 * 1000; // 낚시실력(낚시대 개수) * 15초
+    let reduction = 0; // 낚시실력은 쿨타임에 영향 없음
     
     // 악세사리 효과: 각 악세사리마다 15초 감소
     if (userEquipment.accessory) {
@@ -2336,9 +2364,11 @@ function App() {
         // 장비 자동 장착
         if (category === 'fishing_rod') {
           setUserEquipment(prev => ({ ...prev, fishingRod: itemName }));
-          // 낚시대 구매 시 낚시실력 +1
+          // 낚시대 구매 시 낚시실력 +1 (쿨타임에는 영향 없음)
           setFishingSkill(prev => prev + 1);
-          // 낚시대 구매 시 현재 낚시하기 쿨타임 15초 감소
+        } else if (category === 'accessories') {
+          setUserEquipment(prev => ({ ...prev, accessory: itemName }));
+          // 악세사리 구매 시 현재 낚시하기 쿨타임 15초 감소
           setFishingCooldown(prev => {
             const newValue = Math.max(0, prev - 15000); // 15초 감소, 최소 0
             if (newValue > 0) {
@@ -2350,8 +2380,6 @@ function App() {
             }
             return newValue;
           });
-        } else if (category === 'accessories') {
-          setUserEquipment(prev => ({ ...prev, accessory: itemName }));
         }
         
         // 장비 정보 새로고침
@@ -2473,56 +2501,15 @@ function App() {
 
                 {/* 게스트 로그인 버튼 */}
                 <div className="space-y-3">
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="닉네임을 입력하세요"
-                      className="flex-1 px-4 py-3 bg-gray-800/50 border border-gray-600/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent"
-                      value={usernameInput}
-                      onChange={(e) => setUsernameInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          if (!usernameInput.trim()) {
-                            alert("닉네임을 입력해주세요!");
-                            return;
-                          }
-                          
-                          // 🔒 게스트 닉네임 검증 (Enter)
-                          const validation = validateNickname(usernameInput);
-                          if (!validation.valid) {
-                            alert(validation.message);
-                            return;
-                          }
-                          
-                          setUsername(validation.trimmed);
-                          localStorage.setItem("nickname", validation.trimmed);
-                        }
-                      }}
-                    />
-                    <button
-                      onClick={() => {
-                        if (!usernameInput.trim()) {
-                          alert("닉네임을 입력해주세요!");
-                          return;
-                        }
-                        
-                        // 🔒 게스트 닉네임 검증
-                        const validation = validateNickname(usernameInput);
-                        if (!validation.valid) {
-                          alert(validation.message);
-                          return;
-                        }
-                        
-                        setUsername(validation.trimmed);
-                        localStorage.setItem("nickname", validation.trimmed);
-                      }}
-                      className="px-6 py-3 bg-gray-700/50 hover:bg-gray-600/50 text-white rounded-lg transition-all duration-300 transform hover:scale-105 border border-gray-600/50"
-                    >
-                      시작
-                    </button>
-                  </div>
+                  <button
+                    onClick={handleGuestLogin}
+                    className="w-full px-6 py-3 bg-gray-700/50 hover:bg-gray-600/50 text-white rounded-lg transition-all duration-300 transform hover:scale-105 border border-gray-600/50 flex items-center justify-center gap-2"
+                  >
+                    <User className="w-4 h-4" />
+                    게스트로 접속
+                  </button>
                   <p className="text-xs text-gray-400 text-center">
-                    게스트로 시작하면 데이터가 저장되지 않습니다
+                    게스트로 접속하면 데이터가 저장되지 않습니다
                   </p>
                 </div>
                 
@@ -2917,18 +2904,21 @@ function App() {
                           localStorage.removeItem("nickname");
                           localStorage.removeItem("idToken");
                           localStorage.removeItem("userUuid");
+                          localStorage.removeItem("isGuest"); // 게스트 상태도 제거
                           // googleId와 darkMode는 유지
                           
                           // 상태 초기화
                           setUsername("");
                           setMessages([]);
                           setInventory([]);
+                          setMaterials([]);
                           setMyCatches(0);
                           setUserMoney(0);
                           setIdToken(undefined);
                           setUsernameInput("");
                           setActiveTab("chat");
                           setUserUuid(null);
+                          setIsGuest(false); // 게스트 상태 초기화
                           setFishingCooldown(0);
                           setExplorationCooldown(0);
                         }

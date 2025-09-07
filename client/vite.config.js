@@ -37,9 +37,9 @@ export default defineConfig({
     // 🔒 강제 캐시 무효화를 위한 파일명 변경
     rollupOptions: {
       output: {
-        entryFileNames: 'assets/main-[hash]-v20241219.js',
-        chunkFileNames: 'assets/chunk-[hash]-v20241219.js',
-        assetFileNames: 'assets/[name]-[hash]-v20241219.[ext]'
+        entryFileNames: 'assets/main-[hash]-' + Date.now() + '.js',
+        chunkFileNames: 'assets/chunk-[hash]-' + Date.now() + '.js',
+        assetFileNames: 'assets/[name]-[hash]-' + Date.now() + '.[ext]'
       }
     }
   }

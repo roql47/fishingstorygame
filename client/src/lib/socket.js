@@ -9,7 +9,7 @@ let socket = null;
 export function getSocket() {
   if (!socket) {
     socket = io(serverUrl, {
-      transports: ["websocket"],
+      transports: ["polling", "websocket"],
     });
   }
   return socket;
