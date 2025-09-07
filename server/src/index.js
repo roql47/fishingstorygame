@@ -6,6 +6,7 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const { OAuth2Client } = require("google-auth-library");
 const jwt = require("jsonwebtoken"); // 🔐 JWT 라이브러리 추가
+const compression = require("compression"); // 🚀 응답 압축
 
 // 🚀 성능 최적화: 프로덕션 환경에서 로깅 축소
 const isProduction = process.env.NODE_ENV === 'production';
@@ -177,58 +178,46 @@ const app = express();
 // 신뢰할 수 있는 프록시 설정 (렌더 서버용)
 app.set('trust proxy', true);
 
-// DDoS 방어 미들웨어 적용
-app.use(ddosProtection);
+// 🚀 DDoS 방어 미들웨어 임시 비활성화 (성능 테스트)
+// app.use(ddosProtection); // 성능 문제로 비활성화
 
-app.use(cors({
-  origin: [
-    "http://localhost:4000",
-    "http://localhost:5173", 
-    "http://127.0.0.1:4000",
-    "http://127.0.0.1:5173",
-    "https://fising-master.onrender.com", // 프로덕션 URL 추가
-    process.env.CLIENT_URL // 환경변수에서 클라이언트 URL 가져오기
-  ].filter(Boolean), // undefined 값 제거
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+// 🚀 간소화된 CORS 설정 (성능 최적화)
+if (isProduction) {
+  // 프로덕션: 필수 설정만
+  app.use(cors({
+    origin: "https://fising-master.onrender.com",
+    credentials: true
+  }));
+} else {
+  // 로컬: 모든 오리진 허용
+  app.use(cors({
+    origin: true,
+    credentials: true
+  }));
+}
+
+// 🚀 최소한의 보안 헤더 (성능 최적화)
+if (isProduction) {
+  app.use((req, res, next) => {
+    // 필수 보안 헤더만
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+    next();
+  });
+}
+// 로컬에서는 보안 헤더 생략
+
+// 🚀 응답 압축 (네트워크 속도 향상)
+app.use(compression({
+  threshold: 1024, // 1KB 이상만 압축
+  level: 6, // 압축 레벨 (1-9, 6이 최적)
+  filter: (req, res) => {
+    // 이미 압축된 데이터는 제외
+    if (req.headers['x-no-compression']) return false;
+    return compression.filter(req, res);
+  }
 }));
-
-// 🛡️ 강화된 보안 헤더 설정
-app.use((req, res, next) => {
-  const clientIP = getClientIP(req);
-  
-  // 기존 CORS 헤더
-  res.header('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
-  res.header('Cross-Origin-Embedder-Policy', 'unsafe-none');
-  
-  // 추가 보안 헤더
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  
-  // HTTPS 강제 (프로덕션에서)
-  if (process.env.NODE_ENV === 'production') {
-    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  }
-  
-  // 참조자 정책
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  
-  // 권한 정책
-  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
-  
-  // DDoS 방어 정보 헤더
-  res.setHeader('X-DDoS-Protection', 'active');
-  res.setHeader('X-Client-IP', clientIP);
-  
-  // 의심스러운 IP 추가 제한
-  if (suspiciousIPs.has(clientIP)) {
-    res.setHeader('X-Rate-Limited', 'true');
-  }
-  
-  next();
-});
 
 // 요청 크기 제한 (보안 강화)
 app.use(express.json({ limit: '10mb' }));
