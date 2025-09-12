@@ -6,7 +6,6 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const { OAuth2Client } = require("google-auth-library");
 const jwt = require("jsonwebtoken"); // 🔐 JWT 라이브러리 추가
-const compression = require("compression"); // 🚀 응답 압축
 
 // 🚀 성능 최적화: 프로덕션 환경에서 로깅 축소
 const isProduction = process.env.NODE_ENV === 'production';
@@ -208,16 +207,6 @@ if (isProduction) {
 }
 // 로컬에서는 보안 헤더 생략
 
-// 🚀 응답 압축 (네트워크 속도 향상)
-app.use(compression({
-  threshold: 1024, // 1KB 이상만 압축
-  level: 6, // 압축 레벨 (1-9, 6이 최적)
-  filter: (req, res) => {
-    // 이미 압축된 데이터는 제외
-    if (req.headers['x-no-compression']) return false;
-    return compression.filter(req, res);
-  }
-}));
 
 // 요청 크기 제한 (보안 강화)
 app.use(express.json({ limit: '10mb' }));
@@ -5207,10 +5196,7 @@ async function bootstrap() {
       serverSelectionTimeoutMS: 5000, // 5초 서버 선택 타임아웃
       socketTimeoutMS: 45000, // 45초 소켓 타임아웃
       // 성능 최적화
-      bufferCommands: false, // 버퍼링 비활성화 (즉시 에러 반환)
-      // 압축 설정
-      compressors: ['zlib'],
-      zlibCompressionLevel: 6
+      bufferCommands: false // 버퍼링 비활성화 (즉시 에러 반환)
     });
     
     console.log("✅ MongoDB connected successfully!");
