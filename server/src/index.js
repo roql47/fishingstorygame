@@ -1175,14 +1175,14 @@ io.on("connection", (socket) => {
     // 중복 요청 방지
     const joinKey = `${socket.id}-${userUuid || username}`;
     if (processingJoins.has(joinKey)) {
-      console.log(`[DUPLICATE JOIN] Ignoring duplicate join request for ${joinKey}`);
+      debugLog(`[DUPLICATE JOIN] Ignoring duplicate join request for ${joinKey}`);
       return;
     }
     
     processingJoins.add(joinKey);
     
     try {
-      console.log("=== CHAT:JOIN DEBUG ===");
+      debugLog("=== CHAT:JOIN DEBUG ===");
       console.log("Chat join request received");
       
       // 토큰 타입에 따라 처리 (구글 또는 카카오)
@@ -1708,6 +1708,17 @@ io.on("connection", (socket) => {
           timestamp,
         });
         
+        // 🚀 낚시 성공 후 클라이언트 인벤토리 업데이트
+        if (socket.data.userUuid) {
+          try {
+            const updatedInventory = await getInventoryData(socket.data.userUuid);
+            socket.emit('data:inventory', updatedInventory);
+            debugLog(`📦 Inventory update sent to ${socket.data.username}`);
+          } catch (inventoryError) {
+            console.error("Failed to send inventory update:", inventoryError);
+          }
+        }
+        
         console.log("=== Fishing SUCCESS ===");
         
       } catch (error) {
@@ -2104,10 +2115,10 @@ app.get("/api/game-data/shop/:category", (req, res) => {
   }
 });
 
-app.get("/api/inventory/:userId", authenticateJWT, async (req, res) => {
+app.get("/api/inventory/:userId", optionalJWT, async (req, res) => {
   try {
-    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
-    const { userUuid, username } = req.user;
+    // 🔐 JWT에서 사용자 정보 추출 (선택적)
+    const { userUuid, username } = req.user || {};
     const { userId } = req.params;
     
     debugLog(`🔐 JWT Inventory request: ${username} (${userUuid})`);
