@@ -102,6 +102,7 @@ const CACHE_TTL = {
   fishingSkill: 5 * 60 * 1000,  // 5분
   userMoney: 30 * 1000,         // 30초
   userAmber: 30 * 1000,         // 30초
+  starPieces: 30 * 1000,        // 30초
   inventory: 10 * 1000          // 10초 (자주 변경됨)
 };
 
@@ -205,6 +206,13 @@ function setCachedData(cacheKey, userKey, data) {
     const oldestKey = dataCache.keys().next().value;
     dataCache.delete(oldestKey);
   }
+}
+
+// 캐시 무효화 함수
+function invalidateCache(cacheKey, userKey) {
+  const key = `${cacheKey}:${userKey}`;
+  dataCache.delete(key);
+  debugLog(`🗑️ 캐시 무효화: ${key}`);
 }
 
 // 기존 함수 호환성 유지
@@ -2098,20 +2106,57 @@ async function getMaterialsData(userUuid) {
 }
 
 async function getMoneyData(userUuid) {
-  return await measureDBQuery("돈조회", async () => {
-    const userMoney = await UserMoneyModel.findOne({ userUuid }, { money: 1, _id: 0 });
+  // 캐시 확인
+  const cached = getCachedData('userMoney', userUuid);
+  if (cached) {
+    return cached;
+  }
+
+  const result = await measureDBQuery("돈조회", async () => {
+    const userMoney = await UserMoneyModel.findOne({ userUuid }, { money: 1, _id: 0 })
+      .hint({ userUuid: 1 }); // 인덱스 힌트 추가
     return { money: userMoney?.money || 0 };
   });
+  
+  // 캐시에 저장
+  setCachedData('userMoney', userUuid, result);
+  return result;
 }
 
 async function getAmberData(userUuid) {
-  const userAmber = await UserAmberModel.findOne({ userUuid });
-  return { amber: userAmber?.amber || 0 };
+  // 캐시 확인
+  const cached = getCachedData('userAmber', userUuid);
+  if (cached) {
+    return cached;
+  }
+
+  const result = await measureDBQuery("호박석조회", async () => {
+    const userAmber = await UserAmberModel.findOne({ userUuid }, { amber: 1, _id: 0 })
+      .hint({ userUuid: 1 }); // 인덱스 힌트 추가
+    return { amber: userAmber?.amber || 0 };
+  });
+  
+  // 캐시에 저장
+  setCachedData('userAmber', userUuid, result);
+  return result;
 }
 
 async function getStarPiecesData(userUuid) {
-  const starPieces = await StarPieceModel.findOne({ userUuid });
-  return { starPieces: starPieces?.starPieces || 0 };
+  // 캐시 확인
+  const cached = getCachedData('starPieces', userUuid);
+  if (cached) {
+    return cached;
+  }
+
+  const result = await measureDBQuery("별조각조회", async () => {
+    const starPieces = await StarPieceModel.findOne({ userUuid }, { starPieces: 1, _id: 0 })
+      .hint({ userUuid: 1 }); // 인덱스 힌트 추가
+    return { starPieces: starPieces?.starPieces || 0 };
+  });
+  
+  // 캐시에 저장
+  setCachedData('starPieces', userUuid, result);
+  return result;
 }
 
 async function getCooldownData(userUuid) {
@@ -4235,6 +4280,11 @@ app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
       )
     );
     // 골드 업데이트 완료 (보안상 잔액 정보는 로그에 기록하지 않음)
+    
+    // 돈 캐시 무효화 (업데이트된 값 반영)
+    if (userUuid) {
+      invalidateCache('userMoney', userUuid);
+    }
     
     res.json({ success: true, newBalance: userMoney.money });
   } catch (error) {
