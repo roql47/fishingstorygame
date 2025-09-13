@@ -5532,27 +5532,27 @@ async function bootstrap() {
     console.log("=== MONGODB CONNECTION DEBUG ===");
     console.log("Attempting to connect to MongoDB:", MONGO_URI);
     
-    // 🚀 MongoDB 연결 최적화 (클러스터 직접 연결)
-    await mongoose.connect(MONGO_URI, {
-      // 클러스터 직접 연결 최적화
-      maxPoolSize: 20, // 클러스터 연결 시 더 많은 풀 허용
-      minPoolSize: 8,  // 최소 연결 수 증가 (즉시 사용 가능)
-      maxIdleTimeMS: 30000, // 30초로 늘림 (클러스터는 더 안정적)
-      serverSelectionTimeoutMS: 30000, // 30초로 복구 (서울→미국 지연 고려)
-      socketTimeoutMS: 20000, // 20초로 단축 (클러스터 응답 빠름)
-      connectTimeoutMS: 30000, // 30초 연결 타임아웃 (서울→미국 지연 고려)
-      heartbeatFrequencyMS: 5000, // 5초마다 heartbeat (더 자주 체크)
-      // 클러스터 성능 최적화
-      bufferCommands: false, // 버퍼링 비활성화
-      maxConnecting: 8, // 클러스터 연결 시도 수 증가
-      // 클러스터 읽기 최적화
-      readPreference: 'nearest', // 가장 가까운 노드 우선
-      readConcern: { level: 'local' }, // 로컬 읽기로 지연 감소
+    // 🚀 MongoDB 연결 (최소 설정 - 디버그 모드)
+    console.log("Connection string length:", MONGO_URI.length);
+    console.log("Connection string starts with:", MONGO_URI.substring(0, 25));
+    
+    // 🚨 강력한 연결 설정 - 모든 타임아웃 늘림
+    const connectionString = MONGO_URI.includes('?') 
+      ? `${MONGO_URI}&serverSelectionTimeoutMS=120000&connectTimeoutMS=120000&socketTimeoutMS=120000&maxPoolSize=5&retryWrites=true`
+      : `${MONGO_URI}?serverSelectionTimeoutMS=120000&connectTimeoutMS=120000&socketTimeoutMS=120000&maxPoolSize=5&retryWrites=true`;
+    
+    console.log("🔗 Connection attempt with 2-minute timeout");
+    console.log("Modified connection string:", connectionString.substring(0, 100) + "...");
+    
+    await mongoose.connect(connectionString, {
+      serverSelectionTimeoutMS: 120000, // 2분
+      connectTimeoutMS: 120000, // 2분  
+      socketTimeoutMS: 120000, // 2분
+      maxPoolSize: 5,
+      minPoolSize: 1,
       retryWrites: true,
       retryReads: true,
-      // 클러스터 전용 설정
-      directConnection: false, // 클러스터 모드 활성화
-      replicaSet: 'atlas-rs0' // Atlas 기본 레플리카 셋
+      readPreference: 'primaryPreferred'
     });
     
     console.log("✅ MongoDB connected successfully!");
