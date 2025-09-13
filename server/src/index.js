@@ -37,34 +37,60 @@ const measureDBQuery = async (queryName, queryFunction) => {
   }
 };
 
-// 🚀 DB 인덱스 최적화 함수
+// 🚀 DB 인덱스 최적화 함수 (중복 방지)
 const optimizeDBIndexes = async () => {
   try {
     console.log('🔧 DB 인덱스 최적화 시작...');
     
-    // UserUuid 컬렉션 인덱스
-    await UserUuidModel.collection.createIndex({ userUuid: 1 }, { background: true });
-    await UserUuidModel.collection.createIndex({ username: 1 }, { background: true });
+    const indexesToCreate = [
+      { collection: UserUuidModel, indexes: [
+        { key: { userUuid: 1 }, name: 'userUuid_1_safe' },
+        { key: { username: 1 }, name: 'username_1_safe' }
+      ]},
+      { collection: CatchModel, indexes: [
+        { key: { userUuid: 1 }, name: 'catch_userUuid_1' },
+        { key: { username: 1 }, name: 'catch_username_1' },
+        { key: { userUuid: 1, 'fish.name': 1 }, name: 'catch_userUuid_fish_1' }
+      ]},
+      { collection: UserMoneyModel, indexes: [
+        { key: { userUuid: 1 }, name: 'money_userUuid_1' }
+      ]},
+      { collection: UserAmberModel, indexes: [
+        { key: { userUuid: 1 }, name: 'amber_userUuid_1' }
+      ]},
+      { collection: StarPieceModel, indexes: [
+        { key: { userUuid: 1 }, name: 'star_userUuid_1' }
+      ]},
+      { collection: DailyQuestModel, indexes: [
+        { key: { userUuid: 1 }, name: 'quest_userUuid_1' },
+        { key: { lastResetDate: 1 }, name: 'quest_resetDate_1' }
+      ]}
+    ];
     
-    // Catch 컬렉션 인덱스 (가장 자주 조회되는 컬렉션)
-    await CatchModel.collection.createIndex({ userUuid: 1 }, { background: true });
-    await CatchModel.collection.createIndex({ username: 1 }, { background: true });
-    await CatchModel.collection.createIndex({ userUuid: 1, 'fish.name': 1 }, { background: true });
+    let createdCount = 0;
+    let skippedCount = 0;
     
-    // UserMoney 컬렉션 인덱스
-    await UserMoneyModel.collection.createIndex({ userUuid: 1 }, { background: true });
+    for (const { collection, indexes } of indexesToCreate) {
+      for (const indexSpec of indexes) {
+        try {
+          await collection.collection.createIndex(indexSpec.key, { 
+            background: true, 
+            name: indexSpec.name 
+          });
+          createdCount++;
+          debugLog(`✅ 인덱스 생성: ${indexSpec.name}`);
+        } catch (error) {
+          if (error.message.includes('already exists') || error.message.includes('same name')) {
+            skippedCount++;
+            debugLog(`⏭️ 인덱스 스킵: ${indexSpec.name} (이미 존재)`);
+          } else {
+            console.warn(`⚠️ 인덱스 생성 실패: ${indexSpec.name} - ${error.message}`);
+          }
+        }
+      }
+    }
     
-    // UserAmber 컬렉션 인덱스
-    await UserAmberModel.collection.createIndex({ userUuid: 1 }, { background: true });
-    
-    // StarPiece 컬렉션 인덱스
-    await StarPieceModel.collection.createIndex({ userUuid: 1 }, { background: true });
-    
-    // DailyQuest 컬렉션 인덱스
-    await DailyQuestModel.collection.createIndex({ userUuid: 1 }, { background: true });
-    await DailyQuestModel.collection.createIndex({ lastResetDate: 1 }, { background: true });
-    
-    console.log('✅ DB 인덱스 최적화 완료!');
+    console.log(`✅ DB 인덱스 최적화 완료! (생성: ${createdCount}, 스킵: ${skippedCount})`);
   } catch (error) {
     console.error('❌ DB 인덱스 최적화 실패:', error.message);
   }
