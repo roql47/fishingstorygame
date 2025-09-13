@@ -5538,8 +5538,8 @@ async function bootstrap() {
     
     // 🚨 강력한 연결 설정 - 모든 타임아웃 늘림
     const connectionString = MONGO_URI.includes('?') 
-      ? `${MONGO_URI}&serverSelectionTimeoutMS=120000&connectTimeoutMS=120000&socketTimeoutMS=120000&maxPoolSize=5&retryWrites=true`
-      : `${MONGO_URI}?serverSelectionTimeoutMS=120000&connectTimeoutMS=120000&socketTimeoutMS=120000&maxPoolSize=5&retryWrites=true`;
+      ? `${MONGO_URI}&serverSelectionTimeoutMS=120000&connectTimeoutMS=120000&socketTimeoutMS=120000&maxPoolSize=5`
+      : `${MONGO_URI}?serverSelectionTimeoutMS=120000&connectTimeoutMS=120000&socketTimeoutMS=120000&maxPoolSize=5`;
     
     console.log("🔗 Connection attempt with 2-minute timeout");
     console.log("Modified connection string:", connectionString.substring(0, 100) + "...");
