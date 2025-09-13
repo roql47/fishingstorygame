@@ -37,20 +37,79 @@ const measureDBQuery = async (queryName, queryFunction) => {
   }
 };
 
-// 🚀 성능 최적화: 낚시 스킬 캐시 (5분 TTL)
-const fishingSkillCache = new Map();
-const SKILL_CACHE_TTL = 5 * 60 * 1000; // 5분
+// 🚀 DB 인덱스 최적화 함수
+const optimizeDBIndexes = async () => {
+  try {
+    console.log('🔧 DB 인덱스 최적화 시작...');
+    
+    // UserUuid 컬렉션 인덱스
+    await UserUuidModel.collection.createIndex({ userUuid: 1 }, { background: true });
+    await UserUuidModel.collection.createIndex({ username: 1 }, { background: true });
+    
+    // Catch 컬렉션 인덱스 (가장 자주 조회되는 컬렉션)
+    await CatchModel.collection.createIndex({ userUuid: 1 }, { background: true });
+    await CatchModel.collection.createIndex({ username: 1 }, { background: true });
+    await CatchModel.collection.createIndex({ userUuid: 1, 'fish.name': 1 }, { background: true });
+    
+    // UserMoney 컬렉션 인덱스
+    await UserMoneyModel.collection.createIndex({ userUuid: 1 }, { background: true });
+    
+    // UserAmber 컬렉션 인덱스
+    await UserAmberModel.collection.createIndex({ userUuid: 1 }, { background: true });
+    
+    // StarPiece 컬렉션 인덱스
+    await StarPieceModel.collection.createIndex({ userUuid: 1 }, { background: true });
+    
+    // DailyQuest 컬렉션 인덱스
+    await DailyQuestModel.collection.createIndex({ userUuid: 1 }, { background: true });
+    await DailyQuestModel.collection.createIndex({ lastResetDate: 1 }, { background: true });
+    
+    console.log('✅ DB 인덱스 최적화 완료!');
+  } catch (error) {
+    console.error('❌ DB 인덱스 최적화 실패:', error.message);
+  }
+};
 
-function getCachedFishingSkill(userKey) {
-  const cached = fishingSkillCache.get(userKey);
-  if (cached && Date.now() - cached.timestamp < SKILL_CACHE_TTL) {
-    return cached.skill;
+// 🚀 성능 최적화: 다중 데이터 캐시 시스템
+const dataCache = new Map();
+const CACHE_TTL = {
+  fishingSkill: 5 * 60 * 1000,  // 5분
+  userMoney: 30 * 1000,         // 30초
+  userAmber: 30 * 1000,         // 30초
+  inventory: 10 * 1000          // 10초 (자주 변경됨)
+};
+
+function getCachedData(cacheKey, userKey) {
+  const key = `${cacheKey}:${userKey}`;
+  const cached = dataCache.get(key);
+  const ttl = CACHE_TTL[cacheKey] || 60000; // 기본 1분
+  
+  if (cached && Date.now() - cached.timestamp < ttl) {
+    debugLog(`🎯 캐시 히트: ${key}`);
+    return cached.data;
   }
   return null;
 }
 
+function setCachedData(cacheKey, userKey, data) {
+  const key = `${cacheKey}:${userKey}`;
+  dataCache.set(key, { data, timestamp: Date.now() });
+  debugLog(`💾 캐시 저장: ${key}`);
+  
+  // 캐시 크기 제한 (메모리 관리)
+  if (dataCache.size > 1000) {
+    const oldestKey = dataCache.keys().next().value;
+    dataCache.delete(oldestKey);
+  }
+}
+
+// 기존 함수 호환성 유지
+function getCachedFishingSkill(userKey) {
+  return getCachedData('fishingSkill', userKey);
+}
+
 function setCachedFishingSkill(userKey, skill) {
-  fishingSkillCache.set(userKey, { skill, timestamp: Date.now() });
+  setCachedData('fishingSkill', userKey, skill);
 }
 // 🔒 게임 데이터 임포트
 const {
@@ -1910,26 +1969,39 @@ async function sendUserDataUpdate(socket, userUuid, username) {
 }
 
 async function getInventoryData(userUuid) {
-  const catches = await CatchModel.aggregate([
-    { $match: { userUuid } },
-    { $group: { _id: "$fish", count: { $sum: 1 } } },
-    { $project: { _id: 0, fish: "$_id", count: 1 } }
-  ]);
-  return catches;
+  return await measureDBQuery("인벤토리조회", async () => {
+    const catches = await CatchModel.aggregate([
+      { $match: { userUuid } },
+      { $group: { _id: "$fish", count: { $sum: 1 } } },
+      { $project: { _id: 0, fish: "$_id", count: 1 } }
+    ], {
+      // 집계 파이프라인 최적화
+      allowDiskUse: false, // 메모리만 사용 (더 빠름)
+      cursor: { batchSize: 1000 } // 배치 크기 최적화
+    });
+    return catches;
+  });
 }
 
 async function getMaterialsData(userUuid) {
-  const materials = await MaterialModel.aggregate([
-    { $match: { userUuid } },
-    { $group: { _id: "$material", count: { $sum: 1 } } },
-    { $project: { _id: 0, material: "$_id", count: 1 } }
-  ]);
-  return materials;
+  return await measureDBQuery("재료조회", async () => {
+    const materials = await MaterialModel.aggregate([
+      { $match: { userUuid } },
+      { $group: { _id: "$material", count: { $sum: 1 } } },
+      { $project: { _id: 0, material: "$_id", count: 1 } }
+    ], {
+      allowDiskUse: false,
+      cursor: { batchSize: 1000 }
+    });
+    return materials;
+  });
 }
 
 async function getMoneyData(userUuid) {
-  const userMoney = await UserMoneyModel.findOne({ userUuid });
-  return { money: userMoney?.money || 0 };
+  return await measureDBQuery("돈조회", async () => {
+    const userMoney = await UserMoneyModel.findOne({ userUuid }, { money: 1, _id: 0 });
+    return { money: userMoney?.money || 0 };
+  });
 }
 
 async function getAmberData(userUuid) {
@@ -4019,7 +4091,12 @@ app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
       deleteOne: { filter: { _id: fish._id } }
     }));
     
-    const bulkResult = await CatchModel.bulkWrite(fishToDelete);
+    const bulkResult = await measureDBQuery(`물고기판매-대량삭제-${quantity}개`, () =>
+      CatchModel.bulkWrite(fishToDelete, {
+        ordered: false, // 순서 상관없이 병렬 처리
+        writeConcern: { w: 1, j: false } // 저널링 비활성화로 속도 향상
+      })
+    );
     debugLog(`⚡ Bulk deleted ${bulkResult.deletedCount}/${quantity} ${fishName}`);
     
     // 사용자 돈 업데이트 (성능 최적화 - upsert 사용)
@@ -4412,7 +4489,12 @@ app.post("/api/decompose-fish", async (req, res) => {
       deleteOne: { filter: { _id: fish._id } }
     }));
     
-    const bulkDeleteResult = await CatchModel.bulkWrite(fishToDelete);
+    const bulkDeleteResult = await measureDBQuery(`물고기분해-대량삭제-${quantity}개`, () =>
+      CatchModel.bulkWrite(fishToDelete, {
+        ordered: false, // 순서 상관없이 병렬 처리
+        writeConcern: { w: 1, j: false } // 저널링 비활성화로 속도 향상
+      })
+    );
     console.log(`⚡ Bulk deleted ${bulkDeleteResult.deletedCount}/${quantity} ${fishName} for decompose`);
     
     // 스타피쉬 분해 시 별조각 지급 (성능 최적화 - upsert 사용)
@@ -5236,19 +5318,29 @@ async function bootstrap() {
     
     // 🚀 MongoDB 연결 최적화 (성능 향상)
     await mongoose.connect(MONGO_URI, {
-      // 연결 풀 최적화
-      maxPoolSize: 10, // 최대 연결 수
-      minPoolSize: 2,  // 최소 연결 수 유지
-      maxIdleTimeMS: 30000, // 30초 후 유휴 연결 정리
-      serverSelectionTimeoutMS: 5000, // 5초 서버 선택 타임아웃
-      socketTimeoutMS: 45000, // 45초 소켓 타임아웃
+      // 연결 풀 최적화 (렌더 서버 512MB RAM 고려)
+      maxPoolSize: 15, // 최대 연결 수 증가
+      minPoolSize: 5,  // 최소 연결 수 증가 (대기 시간 단축)
+      maxIdleTimeMS: 20000, // 20초로 단축 (메모리 효율성)
+      serverSelectionTimeoutMS: 3000, // 3초로 단축 (빠른 실패)
+      socketTimeoutMS: 30000, // 30초로 단축
+      connectTimeoutMS: 10000, // 10초 연결 타임아웃
+      heartbeatFrequencyMS: 10000, // 10초마다 heartbeat
       // 성능 최적화
-      bufferCommands: false // 버퍼링 비활성화 (즉시 에러 반환)
+      bufferCommands: false, // 버퍼링 비활성화 (즉시 에러 반환)
+      maxConnecting: 5, // 동시 연결 시도 수 제한
+      // 읽기 성능 최적화
+      readPreference: 'primaryPreferred', // Primary 우선, 없으면 Secondary
+      retryWrites: true, // 쓰기 재시도 활성화
+      retryReads: true   // 읽기 재시도 활성화
     });
     
     console.log("✅ MongoDB connected successfully!");
     console.log("Database name:", mongoose.connection.db.databaseName);
     console.log("Connection state:", mongoose.connection.readyState); // 1 = connected
+    
+    // 🚀 DB 인덱스 최적화 실행
+    await optimizeDBIndexes();
     
     // 연결 상태 모니터링
     mongoose.connection.on('connected', () => {
