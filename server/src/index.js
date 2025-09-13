@@ -2118,8 +2118,12 @@ app.get("/api/game-data/shop/:category", (req, res) => {
 app.get("/api/inventory/:userId", optionalJWT, async (req, res) => {
   try {
     // 🔐 JWT에서 사용자 정보 추출 (선택적)
-    const { userUuid, username } = req.user || {};
+    const jwtUser = req.user || {};
     const { userId } = req.params;
+    
+    // JWT 또는 쿼리 파라미터에서 정보 가져오기
+    const username = jwtUser.username || req.query.username;
+    const userUuid = jwtUser.userUuid || req.query.userUuid;
     
     debugLog(`🔐 JWT Inventory request: ${username} (${userUuid})`);
     
@@ -2195,8 +2199,8 @@ app.get("/api/inventory/:userId", optionalJWT, async (req, res) => {
 // User Money API (보안 강화 + JWT 인증)
 app.get("/api/user-money/:userId", authenticateJWT, async (req, res) => {
   try {
-    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
-    const { userUuid, username } = req.user;
+    // 🔐 JWT에서 사용자 정보 추출 (선택적)
+    const { userUuid, username } = req.user || {};
     const { userId } = req.params;
     
     console.log(`🔐 JWT User money request: ${username} (${userUuid})`);
@@ -2249,8 +2253,8 @@ app.get("/api/user-money/:userId", authenticateJWT, async (req, res) => {
 // User Amber API (보안 강화 + JWT 인증)
 app.get("/api/user-amber/:userId", authenticateJWT, async (req, res) => {
   try {
-    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
-    const { userUuid, username } = req.user;
+    // 🔐 JWT에서 사용자 정보 추출 (선택적)
+    const { userUuid, username } = req.user || {};
     const { userId } = req.params;
     
     debugLog(`🔐 JWT User amber request: ${username} (${userUuid})`);
@@ -2303,8 +2307,8 @@ app.get("/api/user-amber/:userId", authenticateJWT, async (req, res) => {
 // Star Pieces API (별조각 조회)
 app.get("/api/star-pieces/:userId", authenticateJWT, async (req, res) => {
   try {
-    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
-    const { userUuid, username } = req.user;
+    // 🔐 JWT에서 사용자 정보 추출 (선택적)
+    const { userUuid, username } = req.user || {};
     const { userId } = req.params;
     
     debugLog(`🔐 JWT Star pieces request: ${username} (${userUuid})`);
@@ -4221,11 +4225,15 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
 });
 
 // User Equipment API
-app.get("/api/user-equipment/:userId", authenticateJWT, async (req, res) => {
+app.get("/api/user-equipment/:userId", optionalJWT, async (req, res) => {
   try {
-    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
-    const { userUuid, username } = req.user;
+    // 🔐 JWT에서 사용자 정보 추출 (선택적)
+    const jwtUser = req.user || {};
     const { userId } = req.params;
+    
+    // JWT 또는 쿼리 파라미터에서 정보 가져오기
+    const username = jwtUser.username || req.query.username;
+    const userUuid = jwtUser.userUuid || req.query.userUuid;
     
     debugLog(`🔐 JWT Equipment request: ${username} (${userUuid})`);
     console.log("User equipment request:", { userId, username, userUuid });
@@ -4289,11 +4297,15 @@ app.get("/api/user-equipment/:userId", authenticateJWT, async (req, res) => {
 });
 
 // Materials Inventory API
-app.get("/api/materials/:userId", authenticateJWT, async (req, res) => {
+app.get("/api/materials/:userId", optionalJWT, async (req, res) => {
   try {
-    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
-    const { userUuid, username } = req.user;
+    // 🔐 JWT에서 사용자 정보 추출 (선택적)
+    const jwtUser = req.user || {};
     const { userId } = req.params;
+    
+    // JWT 또는 쿼리 파라미터에서 정보 가져오기
+    const username = jwtUser.username || req.query.username;
+    const userUuid = jwtUser.userUuid || req.query.userUuid;
     
     debugLog(`🔐 JWT Materials request: ${username} (${userUuid})`);
     
@@ -4503,13 +4515,17 @@ app.post("/api/consume-material", async (req, res) => {
 });
 
 // Fishing Skill API (보안 강화)
-app.get("/api/fishing-skill/:userId", authenticateJWT, async (req, res) => {
+app.get("/api/fishing-skill/:userId", optionalJWT, async (req, res) => {
   try {
-    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
-    const { userUuid, username } = req.user;
+    // 🔐 JWT에서 사용자 정보 추출 (선택적)
+    const jwtUser = req.user || {};
     const { userId } = req.params;
     
-    debugLog(`🔐 JWT Fishing skill request: ${username} (${userUuid})`);
+    // JWT 또는 쿼리 파라미터에서 정보 가져오기
+    const username = jwtUser.username || req.query.username;
+    const userUuid = jwtUser.userUuid || req.query.userUuid;
+    
+    debugLog(`🔐 Fishing skill request: ${username} (${userUuid})`);
     
     // 입력 검증
     if (!username && !userUuid) {
