@@ -5502,9 +5502,15 @@ app.post("/api/admin/reset-user-account", async (req, res) => {
     console.log("🔑 [ADMIN] Reset user account request:", { targetUsername, adminUsername });
     
     // 관리자 권한 확인
+    console.log("🔍 [DEBUG] Looking for admin user:", { adminUserUuid, adminUsername });
     const adminUser = await UserUuidModel.findOne({ 
       $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
     });
+    console.log("🔍 [DEBUG] Found admin user:", adminUser ? { 
+      userUuid: adminUser.userUuid, 
+      username: adminUser.username, 
+      isAdmin: adminUser.isAdmin 
+    } : null);
     
     if (!adminUser || !adminUser.isAdmin) {
       console.log("❌ [ADMIN] Unauthorized admin reset attempt:", adminUsername);
@@ -5513,9 +5519,12 @@ app.post("/api/admin/reset-user-account", async (req, res) => {
     
     // 관리자 키 검증
     const validAdminKey = process.env.ADMIN_KEY || "admin_secret_key_2024";
+    console.log("🔍 [DEBUG] Expected admin key:", validAdminKey);
+    console.log("🔍 [DEBUG] Received admin key:", adminKey);
+    console.log("🔍 [DEBUG] ADMIN_KEY env var:", process.env.ADMIN_KEY);
     if (adminKey !== validAdminKey) {
       console.log("❌ [ADMIN] Invalid admin key for reset");
-      return res.status(403).json({ error: "잘못된 관리자 키입니다." });
+      return res.status(403).json({ error: `잘못된 관리자 키입니다. 기대값: ${validAdminKey}` });
     }
     
     // 대상 사용자 찾기
@@ -5586,6 +5595,8 @@ app.post("/api/admin/delete-user-account", async (req, res) => {
     
     // 관리자 키 검증
     const validAdminKey = process.env.ADMIN_KEY || "admin_secret_key_2024";
+    console.log("🔍 [DEBUG] Expected admin key:", validAdminKey);
+    console.log("🔍 [DEBUG] Received admin key:", adminKey);
     if (adminKey !== validAdminKey) {
       console.log("❌ [ADMIN] Invalid admin key for delete");
       return res.status(403).json({ error: "잘못된 관리자 키입니다." });
