@@ -123,7 +123,7 @@ setInterval(async () => {
           updateOne: {
             filter: { userUuid },
             update: { $inc: { totalFishCaught: count } },
-            hint: "userUuid_1" // 기존 unique 인덱스 사용
+// hint 제거 - MongoDB 자동 최적화
           }
         });
       }
@@ -162,7 +162,7 @@ setInterval(async () => {
             updateOne: {
               filter: { userUuid },
               update: updateData,
-              hint: "quest_userUuid_1" // 퀘스트 인덱스 이름 사용
+// hint 제거 - MongoDB 자동 최적화
             }
           });
         }
@@ -2114,7 +2114,7 @@ async function getMoneyData(userUuid) {
 
   const result = await measureDBQuery("돈조회", async () => {
     const userMoney = await UserMoneyModel.findOne({ userUuid }, { money: 1, _id: 0 })
-      .hint("money_userUuid_1"); // UserMoney 인덱스 사용
+; // hint 제거 - MongoDB 자동 최적화
     return { money: userMoney?.money || 0 };
   });
   
@@ -2132,7 +2132,7 @@ async function getAmberData(userUuid) {
 
   const result = await measureDBQuery("호박석조회", async () => {
     const userAmber = await UserAmberModel.findOne({ userUuid }, { amber: 1, _id: 0 })
-      .hint("amber_userUuid_1"); // UserAmber 인덱스 사용
+; // hint 제거 - MongoDB 자동 최적화
     return { amber: userAmber?.amber || 0 };
   });
   
@@ -2150,7 +2150,7 @@ async function getStarPiecesData(userUuid) {
 
   const result = await measureDBQuery("별조각조회", async () => {
     const starPieces = await StarPieceModel.findOne({ userUuid }, { starPieces: 1, _id: 0 })
-      .hint("star_userUuid_1"); // StarPiece 인덱스 사용
+; // hint 제거 - MongoDB 자동 최적화
     return { starPieces: starPieces?.starPieces || 0 };
   });
   
@@ -4216,7 +4216,7 @@ app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
     // 사용자가 해당 물고기를 충분히 가지고 있는지 확인 (보안 강화)
     const userFish = await measureDBQuery(`물고기판매-조회-${fishName}`, () =>
       CatchModel.find({ ...query, fish: fishName })
-        .hint("catch_userUuid_1") // Catch 인덱스 사용
+      // hint 제거 - MongoDB 자동 최적화
     );
     debugLog(`Found ${userFish.length} ${fishName} for user`);
     
@@ -4647,7 +4647,7 @@ app.post("/api/decompose-fish", async (req, res) => {
     // 사용자가 해당 물고기를 충분히 가지고 있는지 확인
     const userFish = await measureDBQuery(`물고기분해-조회-${fishName}`, () =>
       CatchModel.find({ ...query, fish: fishName })
-        .hint("catch_userUuid_1") // Catch 인덱스 사용
+      // hint 제거 - MongoDB 자동 최적화
     );
     console.log(`Found ${userFish.length} ${fishName} for user`);
     
