@@ -5584,9 +5584,15 @@ app.post("/api/admin/delete-user-account", async (req, res) => {
     console.log("🔑 [ADMIN] Delete user account request:", { targetUsername, adminUsername });
     
     // 관리자 권한 확인
+    console.log("🔍 [DEBUG] Looking for admin user:", { adminUserUuid, adminUsername });
     const adminUser = await UserUuidModel.findOne({ 
       $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
     });
+    console.log("🔍 [DEBUG] Found admin user:", adminUser ? { 
+      userUuid: adminUser.userUuid, 
+      username: adminUser.username, 
+      isAdmin: adminUser.isAdmin 
+    } : null);
     
     if (!adminUser || !adminUser.isAdmin) {
       console.log("❌ [ADMIN] Unauthorized admin delete attempt:", adminUsername);
