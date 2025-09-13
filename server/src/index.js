@@ -5619,7 +5619,7 @@ async function bootstrap() {
     console.log("Modified connection string:", connectionString.substring(0, 100) + "...");
     
     await mongoose.connect(connectionString, {
-      // 🚀 렌더 환경 최적화 설정
+      // 🚀 렌더 환경 최적화 설정 (호환성 개선)
       serverSelectionTimeoutMS: 30000, // 30초로 단축 (더 빠른 실패)
       connectTimeoutMS: 30000, // 30초
       socketTimeoutMS: 0, // 무제한 (연결 유지)
@@ -5630,11 +5630,8 @@ async function bootstrap() {
       retryWrites: true,
       retryReads: true,
       readPreference: 'primary', // 더 빠른 읽기를 위해 primary 사용
-      // 🚀 렌더 서버 특화 최적화
-      bufferMaxEntries: 0, // 버퍼링 비활성화 (즉시 실패)
-      bufferCommands: false, // 명령 버퍼링 비활성화
-      heartbeatFrequencyMS: 10000, // 10초마다 하트비트
-      serverSelectionRetryDelayMS: 1000 // 재시도 간격 1초
+      // 🚀 호환성 문제 해결: 지원되지 않는 옵션 제거
+      heartbeatFrequencyMS: 10000 // 10초마다 하트비트
     });
     
     console.log("✅ MongoDB connected successfully!");
