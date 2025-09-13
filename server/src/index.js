@@ -5493,6 +5493,152 @@ app.post("/api/reset-account", async (req, res) => {
   }
 });
 
+// 🔑 관리자 권한: 사용자 계정 초기화 API
+app.post("/api/admin/reset-user-account", async (req, res) => {
+  try {
+    const { targetUsername, adminKey, confirmationKey } = req.body;
+    const { username: adminUsername, userUuid: adminUserUuid } = req.query;
+    
+    console.log("🔑 [ADMIN] Reset user account request:", { targetUsername, adminUsername });
+    
+    // 관리자 권한 확인
+    const adminUser = await UserUuidModel.findOne({ 
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
+    });
+    
+    if (!adminUser || !adminUser.isAdmin) {
+      console.log("❌ [ADMIN] Unauthorized admin reset attempt:", adminUsername);
+      return res.status(403).json({ error: "관리자 권한이 필요합니다." });
+    }
+    
+    // 관리자 키 검증
+    const validAdminKey = process.env.ADMIN_KEY || "admin_secret_key_2024";
+    if (adminKey !== validAdminKey) {
+      console.log("❌ [ADMIN] Invalid admin key for reset");
+      return res.status(403).json({ error: "잘못된 관리자 키입니다." });
+    }
+    
+    // 대상 사용자 찾기
+    const targetUser = await UserUuidModel.findOne({ username: targetUsername });
+    if (!targetUser) {
+      return res.status(404).json({ error: "대상 사용자를 찾을 수 없습니다." });
+    }
+    
+    console.log("🔑 [ADMIN] Resetting account for user:", targetUsername);
+    
+    // 사용자 데이터 삭제 (병렬 처리)
+    const deletePromises = [
+      CatchModel.deleteMany({ userUuid: targetUser.userUuid }),
+      UserMoneyModel.deleteMany({ userUuid: targetUser.userUuid }),
+      UserEquipmentModel.deleteMany({ userUuid: targetUser.userUuid }),
+      MaterialModel.deleteMany({ userUuid: targetUser.userUuid }),
+      FishingSkillModel.deleteMany({ userUuid: targetUser.userUuid }),
+      DailyQuestModel.deleteMany({ userUuid: targetUser.userUuid }),
+      CooldownModel.deleteMany({ userUuid: targetUser.userUuid })
+    ];
+    
+    const deleteResults = await Promise.all(deletePromises);
+    
+    // 기본값으로 재설정
+    const initialData = [
+      UserMoneyModel.create({ userUuid: targetUser.userUuid, username: targetUsername, money: 100 }),
+      UserEquipmentModel.create({ userUuid: targetUser.userUuid, username: targetUsername, fishingRod: null, accessory: null }),
+      FishingSkillModel.create({ userUuid: targetUser.userUuid, username: targetUsername, skill: 0 })
+    ];
+    
+    await Promise.all(initialData);
+    
+    console.log(`🔑 [ADMIN] Account reset completed for ${targetUsername} by ${adminUsername}`);
+    
+    res.json({
+      success: true,
+      message: `${targetUsername} 사용자의 계정이 초기화되었습니다.`,
+      adminAction: {
+        action: "reset",
+        target: targetUsername,
+        admin: adminUsername,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error("Failed to reset user account:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 🔑 관리자 권한: 사용자 계정 삭제 API
+app.post("/api/admin/delete-user-account", async (req, res) => {
+  try {
+    const { targetUsername, adminKey, confirmationKey } = req.body;
+    const { username: adminUsername, userUuid: adminUserUuid } = req.query;
+    
+    console.log("🔑 [ADMIN] Delete user account request:", { targetUsername, adminUsername });
+    
+    // 관리자 권한 확인
+    const adminUser = await UserUuidModel.findOne({ 
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
+    });
+    
+    if (!adminUser || !adminUser.isAdmin) {
+      console.log("❌ [ADMIN] Unauthorized admin delete attempt:", adminUsername);
+      return res.status(403).json({ error: "관리자 권한이 필요합니다." });
+    }
+    
+    // 관리자 키 검증
+    const validAdminKey = process.env.ADMIN_KEY || "admin_secret_key_2024";
+    if (adminKey !== validAdminKey) {
+      console.log("❌ [ADMIN] Invalid admin key for delete");
+      return res.status(403).json({ error: "잘못된 관리자 키입니다." });
+    }
+    
+    // 대상 사용자 찾기
+    const targetUser = await UserUuidModel.findOne({ username: targetUsername });
+    if (!targetUser) {
+      return res.status(404).json({ error: "대상 사용자를 찾을 수 없습니다." });
+    }
+    
+    // 관리자가 자신을 삭제하는 것을 방지
+    if (targetUser.userUuid === adminUserUuid) {
+      return res.status(400).json({ error: "자신의 계정은 삭제할 수 없습니다." });
+    }
+    
+    console.log("🔑 [ADMIN] Deleting account for user:", targetUsername);
+    
+    // 모든 관련 데이터 삭제 (병렬 처리)
+    const deletePromises = [
+      CatchModel.deleteMany({ userUuid: targetUser.userUuid }),
+      UserMoneyModel.deleteMany({ userUuid: targetUser.userUuid }),
+      UserEquipmentModel.deleteMany({ userUuid: targetUser.userUuid }),
+      MaterialModel.deleteMany({ userUuid: targetUser.userUuid }),
+      FishingSkillModel.deleteMany({ userUuid: targetUser.userUuid }),
+      DailyQuestModel.deleteMany({ userUuid: targetUser.userUuid }),
+      CooldownModel.deleteMany({ userUuid: targetUser.userUuid }),
+      UserAmberModel.deleteMany({ userUuid: targetUser.userUuid }),
+      StarPieceModel.deleteMany({ userUuid: targetUser.userUuid }),
+      CompanionModel.deleteMany({ userUuid: targetUser.userUuid }),
+      UserUuidModel.deleteOne({ userUuid: targetUser.userUuid }) // 사용자 자체 삭제
+    ];
+    
+    const deleteResults = await Promise.all(deletePromises);
+    
+    console.log(`🔑 [ADMIN] Account deletion completed for ${targetUsername} by ${adminUsername}`);
+    
+    res.json({
+      success: true,
+      message: `${targetUsername} 사용자의 계정이 삭제되었습니다.`,
+      adminAction: {
+        action: "delete",
+        target: targetUsername,
+        admin: adminUsername,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error("Failed to delete user account:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/fishing_game";
 const PORT = Number(process.env.PORT || 4000);
 

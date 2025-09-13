@@ -2005,6 +2005,132 @@ function App() {
     }
   };
 
+  // 🔑 관리자 권한: 다른 사용자 계정 초기화
+  const adminResetUserAccount = async (targetUsername) => {
+    if (!isAdmin) {
+      alert('⚠️ 관리자 권한이 필요합니다.');
+      return;
+    }
+
+    // 보안 확인
+    const adminKey = prompt('🔑 관리자 비밀 키를 입력하여 권한을 확인하세요:');
+    if (!adminKey) {
+      return;
+    }
+
+    // 확인 단계
+    const confirmMessage = `⚠️ 관리자 권한으로 계정 초기화\n\n대상 사용자: ${targetUsername}\n\n이 작업은 되돌릴 수 없습니다!\n• 모든 낚시 기록 삭제\n• 모든 골드와 아이템 삭제\n• 모든 낚시실력 초기화\n\n정말로 실행하시겠습니까?`;
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    // 최종 확인
+    const finalConfirm = `정말로 '${targetUsername}' 사용자의 계정을 초기화하시겠습니까?\n\n이것이 마지막 경고입니다!`;
+    if (!confirm(finalConfirm)) {
+      return;
+    }
+
+    try {
+      console.log("🔑 [ADMIN] Resetting user account:", targetUsername);
+      
+      const confirmationKey = `ADMIN_RESET_${targetUsername}_${userUuid}_CONFIRM`;
+      
+      const response = await axios.post(`${serverUrl}/api/admin/reset-user-account`, {
+        targetUsername: targetUsername,
+        adminKey: adminKey,
+        confirmationKey: confirmationKey
+      }, {
+        params: { username, userUuid }
+      });
+
+      if (response.data.success) {
+        alert(`✅ '${targetUsername}' 사용자의 계정이 성공적으로 초기화되었습니다.`);
+        
+        // 프로필 모달 닫기
+        setShowProfile(false);
+        setSelectedUserProfile(null);
+        setOtherUserData(null);
+
+        // 관리자 액션 메시지
+        setMessages(prev => [...prev, {
+          system: true,
+          content: `🔑 [관리자] ${targetUsername} 사용자의 계정을 초기화했습니다.`,
+          timestamp: new Date().toISOString()
+        }]);
+      }
+    } catch (error) {
+      console.error('Failed to reset user account:', error);
+      if (error.response?.status === 403) {
+        alert('⚠️ 관리자 권한이 없거나 잘못된 관리자 키입니다.');
+      } else {
+        alert('⚠️ 계정 초기화에 실패했습니다: ' + (error.response?.data?.error || error.message));
+      }
+    }
+  };
+
+  // 🔑 관리자 권한: 다른 사용자 계정 삭제
+  const adminDeleteUserAccount = async (targetUsername) => {
+    if (!isAdmin) {
+      alert('⚠️ 관리자 권한이 필요합니다.');
+      return;
+    }
+
+    // 보안 확인
+    const adminKey = prompt('🔑 관리자 비밀 키를 입력하여 권한을 확인하세요:');
+    if (!adminKey) {
+      return;
+    }
+
+    // 확인 단계
+    const confirmMessage = `⚠️ 관리자 권한으로 계정 삭제\n\n대상 사용자: ${targetUsername}\n\n이 작업은 되돌릴 수 없습니다!\n• 모든 데이터 영구 삭제\n• 계정 완전 삭제\n• 복구 불가능\n\n정말로 실행하시겠습니까?`;
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    // 최종 확인
+    const finalConfirm = `정말로 '${targetUsername}' 사용자의 계정을 삭제하시겠습니까?\n\n이것이 마지막 경고입니다!`;
+    if (!confirm(finalConfirm)) {
+      return;
+    }
+
+    try {
+      console.log("🔑 [ADMIN] Deleting user account:", targetUsername);
+      
+      const confirmationKey = `ADMIN_DELETE_${targetUsername}_${userUuid}_CONFIRM`;
+      
+      const response = await axios.post(`${serverUrl}/api/admin/delete-user-account`, {
+        targetUsername: targetUsername,
+        adminKey: adminKey,
+        confirmationKey: confirmationKey
+      }, {
+        params: { username, userUuid }
+      });
+
+      if (response.data.success) {
+        alert(`✅ '${targetUsername}' 사용자의 계정이 성공적으로 삭제되었습니다.`);
+        
+        // 프로필 모달 닫기
+        setShowProfile(false);
+        setSelectedUserProfile(null);
+        setOtherUserData(null);
+
+        // 관리자 액션 메시지
+        setMessages(prev => [...prev, {
+          system: true,
+          content: `🔑 [관리자] ${targetUsername} 사용자의 계정을 삭제했습니다.`,
+          timestamp: new Date().toISOString()
+        }]);
+      }
+    } catch (error) {
+      console.error('Failed to delete user account:', error);
+      if (error.response?.status === 403) {
+        alert('⚠️ 관리자 권한이 없거나 잘못된 관리자 키입니다.');
+      } else {
+        alert('⚠️ 계정 삭제에 실패했습니다: ' + (error.response?.data?.error || error.message));
+      }
+    }
+  };
+
 
 
 
@@ -3110,12 +3236,26 @@ function App() {
                 <div className="flex-1 p-3 space-y-2 overflow-y-auto">
                   {rankings && rankings.length > 0 ? (
                     rankings.map((user, index) => (
-                      <div key={user.userUuid || user.username} className={`p-3 rounded-lg transition-all duration-300 hover:scale-105 cursor-pointer ${
-                        isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
-                      } ${(user.displayName || user.username) === username ? 
-                        (isDarkMode ? "ring-2 ring-yellow-400/50 bg-yellow-500/10" : "ring-2 ring-yellow-500/50 bg-yellow-500/5")
-                        : ""
-                      }`}>
+                      <div 
+                        key={user.userUuid || user.username} 
+                        className={`p-3 rounded-lg transition-all duration-300 hover:scale-105 cursor-pointer ${
+                          isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+                        } ${(user.displayName || user.username) === username ? 
+                          (isDarkMode ? "ring-2 ring-yellow-400/50 bg-yellow-500/10" : "ring-2 ring-yellow-500/50 bg-yellow-500/5")
+                          : ""
+                        }`}
+                        onClick={async () => {
+                          if ((user.displayName || user.username) === username) {
+                            setSelectedUserProfile(null); // 내 프로필
+                            setOtherUserData(null); // 다른 사용자 데이터 초기화
+                          } else {
+                            setSelectedUserProfile({ username: user.displayName || user.username }); // 다른 사용자 프로필
+                            await fetchOtherUserProfile(user.displayName || user.username); // 해당 사용자 데이터 가져오기
+                          }
+                          setShowProfile(true);
+                        }}
+                        title={`${user.displayName || user.username}님의 프로필 보기`}
+                      >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             {/* 순위 */}
@@ -4896,34 +5036,68 @@ function App() {
                 </div>
               </div>
 
-              {/* 계정 관리 버튼들 (내 프로필일 때만 표시) */}
-              {!selectedUserProfile && (
-                <div className="flex gap-2 pt-4 border-t border-gray-300/20">
-                  {/* 계정 초기화 버튼 */}
-                  <button
-                    onClick={() => setShowResetConfirm(true)}
-                    className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
-                      isDarkMode
-                        ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 border border-yellow-400/30"
-                        : "bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 border border-yellow-500/30"
-                    }`}
-                  >
-                    계정 초기화
-                  </button>
-                  
-                  {/* 계정 탈퇴 버튼 */}
-                  <button
-                    onClick={deleteAccount}
-                    className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
-                      isDarkMode
-                        ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-400/30"
-                        : "bg-red-500/10 text-red-600 hover:bg-red-500/20 border border-red-500/30"
-                    }`}
-                  >
-                    계정 탈퇴
-                  </button>
-                </div>
-              )}
+              {/* 계정 관리 버튼들 */}
+              <div className="flex gap-2 pt-4 border-t border-gray-300/20">
+                {!selectedUserProfile ? (
+                  // 내 프로필일 때
+                  <>
+                    {/* 계정 초기화 버튼 */}
+                    <button
+                      onClick={() => setShowResetConfirm(true)}
+                      className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                        isDarkMode
+                          ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 border border-yellow-400/30"
+                          : "bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 border border-yellow-500/30"
+                      }`}
+                    >
+                      계정 초기화
+                    </button>
+                    
+                    {/* 계정 탈퇴 버튼 */}
+                    <button
+                      onClick={deleteAccount}
+                      className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                        isDarkMode
+                          ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-400/30"
+                          : "bg-red-500/10 text-red-600 hover:bg-red-500/20 border border-red-500/30"
+                      }`}
+                    >
+                      계정 탈퇴
+                    </button>
+                  </>
+                ) : (
+                  // 다른 사용자 프로필일 때 - 관리자만 계정 관리 버튼 표시
+                  isAdmin && (
+                    <>
+                      {/* 관리자 권한: 사용자 계정 초기화 */}
+                      <button
+                        onClick={() => adminResetUserAccount(selectedUserProfile.username)}
+                        className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                          isDarkMode
+                            ? "bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 border border-orange-400/30"
+                            : "bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 border border-orange-500/30"
+                        }`}
+                        title="관리자 권한으로 사용자 계정을 초기화합니다"
+                      >
+                        🔑 계정 초기화
+                      </button>
+                      
+                      {/* 관리자 권한: 사용자 계정 삭제 */}
+                      <button
+                        onClick={() => adminDeleteUserAccount(selectedUserProfile.username)}
+                        className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                          isDarkMode
+                            ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-400/30"
+                            : "bg-red-500/10 text-red-600 hover:bg-red-500/20 border border-red-500/30"
+                        }`}
+                        title="관리자 권한으로 사용자 계정을 삭제합니다"
+                      >
+                        🔑 계정 삭제
+                      </button>
+                    </>
+                  )
+                )}
+              </div>
             </div>
           </div>
         </div>
