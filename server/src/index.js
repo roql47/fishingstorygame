@@ -2975,7 +2975,21 @@ app.get("/api/cooldown/:userId", async (req, res) => {
 });
 
 // 서버 측 낚시 쿨타임 계산 함수 (악세사리만 영향)
+// 🚀 낚시 쿨타임 캐시 (렌더 환경 최적화)
+const cooldownCache = new Map();
+const COOLDOWN_CACHE_TTL = process.env.NODE_ENV === 'production' 
+  ? 5 * 60 * 1000  // 프로덕션: 5분 캐시 (더 오래)
+  : 3 * 60 * 1000; // 개발: 3분 캐시
+
 const calculateFishingCooldownTime = async (userQuery) => {
+  const cacheKey = userQuery.userUuid || userQuery.username;
+  const cached = cooldownCache.get(cacheKey);
+  
+  // 캐시된 쿨타임이 있고 유효하면 반환
+  if (cached && (Date.now() - cached.timestamp) < COOLDOWN_CACHE_TTL) {
+    return cached.cooldownTime;
+  }
+  
   try {
     const baseTime = 5 * 60 * 1000; // 5분 (밀리초)
     let reduction = 0; // 낚시실력은 쿨타임에 영향 없음
@@ -2991,7 +3005,15 @@ const calculateFishingCooldownTime = async (userQuery) => {
       }
     }
     
-    return Math.max(baseTime - reduction, 0); // 최소 0초
+    const cooldownTime = Math.max(baseTime - reduction, 0); // 최소 0초
+    
+    // 계산된 쿨타임을 캐시에 저장
+    cooldownCache.set(cacheKey, {
+      cooldownTime,
+      timestamp: Date.now()
+    });
+    
+    return cooldownTime;
   } catch (error) {
     console.error('Error calculating fishing cooldown time:', error);
     // 에러 시 기본 쿨타임 반환
@@ -3029,25 +3051,29 @@ app.post("/api/set-fishing-cooldown", async (req, res) => {
       fishingCooldownEnd: cooldownEnd
     };
     
-    // CooldownModel 업데이트 (기존 시스템 호환성)
-    await CooldownModel.findOneAndUpdate(
-      query,
-      updateData,
-      { upsert: true, new: true }
-    );
+    // 🚀 병렬 업데이트로 성능 향상
+    const updatePromises = [
+      CooldownModel.findOneAndUpdate(query, updateData, { upsert: true, new: true })
+    ];
     
-    // UserUuidModel도 동시에 업데이트 (WebSocket 동기화용)
     if (query.userUuid) {
-      await UserUuidModel.updateOne(
-        { userUuid: query.userUuid },
-        { fishingCooldownEnd: cooldownEnd }
+      updatePromises.push(
+        UserUuidModel.updateOne(
+          { userUuid: query.userUuid },
+          { fishingCooldownEnd: cooldownEnd }
+        )
       );
-      console.log(`Updated fishing cooldown in UserUuidModel for ${query.userUuid}`);
-      
-      // WebSocket으로 실시간 쿨타임 업데이트 전송
-      broadcastUserDataUpdate(query.userUuid, query.username, 'cooldown', {
-        fishingCooldown: cooldownDuration,
-        explorationCooldown: 0 // 현재 탐사 쿨타임 유지
+    }
+    
+    await Promise.all(updatePromises);
+    
+    // WebSocket 브로드캐스트 (비동기로 처리하여 응답 속도 향상)
+    if (query.userUuid) {
+      setImmediate(() => {
+        broadcastUserDataUpdate(query.userUuid, query.username, 'cooldown', {
+          fishingCooldown: cooldownDuration,
+          explorationCooldown: 0 // 현재 탐사 쿨타임 유지
+        });
       });
     }
     
@@ -3193,25 +3219,29 @@ app.post("/api/set-exploration-cooldown", async (req, res) => {
       explorationCooldownEnd: cooldownEnd
     };
     
-    // CooldownModel 업데이트 (기존 시스템 호환성)
-    await CooldownModel.findOneAndUpdate(
-      query,
-      updateData,
-      { upsert: true, new: true }
-    );
+    // 🚀 병렬 업데이트로 성능 향상
+    const updatePromises = [
+      CooldownModel.findOneAndUpdate(query, updateData, { upsert: true, new: true })
+    ];
     
-    // UserUuidModel도 동시에 업데이트 (WebSocket 동기화용)
     if (query.userUuid) {
-      await UserUuidModel.updateOne(
-        { userUuid: query.userUuid },
-        { explorationCooldownEnd: cooldownEnd }
+      updatePromises.push(
+        UserUuidModel.updateOne(
+          { userUuid: query.userUuid },
+          { explorationCooldownEnd: cooldownEnd }
+        )
       );
-      console.log(`Updated exploration cooldown in UserUuidModel for ${query.userUuid}`);
-      
-      // WebSocket으로 실시간 쿨타임 업데이트 전송
-      broadcastUserDataUpdate(query.userUuid, query.username, 'cooldown', {
-        fishingCooldown: 0, // 현재 낚시 쿨타임 유지
-        explorationCooldown: cooldownDuration
+    }
+    
+    await Promise.all(updatePromises);
+    
+    // WebSocket 브로드캐스트 (비동기로 처리하여 응답 속도 향상)
+    if (query.userUuid) {
+      setImmediate(() => {
+        broadcastUserDataUpdate(query.userUuid, query.username, 'cooldown', {
+          fishingCooldown: 0, // 현재 낚시 쿨타임 유지
+          explorationCooldown: cooldownDuration
+        });
       });
     }
     
@@ -4184,7 +4214,21 @@ const getServerFishData = () => {
 };
 
 // 서버에서 물고기 가격 계산 (악세사리 효과 포함)
+// 🚀 물고기 가격 캐시 (렌더 환경 최적화)
+const fishPriceCache = new Map();
+const FISH_PRICE_CACHE_TTL = process.env.NODE_ENV === 'production' 
+  ? 10 * 60 * 1000  // 프로덕션: 10분 캐시 (더 오래)
+  : 5 * 60 * 1000;  // 개발: 5분 캐시
+
 const calculateServerFishPrice = async (fishName, userQuery) => {
+  const cacheKey = `${fishName}-${userQuery.userUuid || userQuery.username}`;
+  const cached = fishPriceCache.get(cacheKey);
+  
+  // 캐시된 가격이 있고 유효하면 반환
+  if (cached && (Date.now() - cached.timestamp) < FISH_PRICE_CACHE_TTL) {
+    return cached.price;
+  }
+  
   // 🚀 allFishData를 우선 사용 (버그 수정)
   let fishData = allFishData.find(fish => fish.name === fishName);
   if (!fishData) {
@@ -4212,6 +4256,12 @@ const calculateServerFishPrice = async (fishName, userQuery) => {
     console.error('Failed to calculate accessory bonus for fish price:', error);
     // 에러 시 기본 가격 사용
   }
+  
+  // 계산된 가격을 캐시에 저장
+  fishPriceCache.set(cacheKey, {
+    price: basePrice,
+    timestamp: Date.now()
+  });
   
   return basePrice;
 };
@@ -4245,10 +4295,11 @@ app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: "Invalid fish price" });
     }
     
-    // 사용자가 해당 물고기를 충분히 가지고 있는지 확인 (보안 강화)
+    // 사용자가 해당 물고기를 충분히 가지고 있는지 확인 (보안 강화 + 성능 최적화)
     const userFish = await measureDBQuery(`물고기판매-조회-${fishName}`, () =>
-      CatchModel.find({ ...query, fish: fishName }, { _id: 1, fish: 1 }) // projection 최소화
+      CatchModel.find({ ...query, fish: fishName }, { _id: 1 }) // fish 필드 제거 (이미 알고 있음)
         .sort({ _id: 1 }) // 일관된 순서 (인덱스 활용)
+        .limit(quantity + 10) // 필요한 수량보다 약간 많이만 조회 (성능 향상)
         .lean() // Mongoose 오버헤드 제거
     );
     debugLog(`Found ${userFish.length} ${fishName} for user`);
@@ -4296,7 +4347,7 @@ app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
       debugLog(`⚡ Bulk deleted ${deleteResult.deletedCount}/${quantity} ${fishName}`);
     }
     
-    // 사용자 돈 업데이트 (성능 최적화 - upsert 사용)
+    // 🚀 돈 업데이트와 캐시 무효화를 병렬 처리 (성능 최적화)
     const updateData = {
       $inc: { money: serverTotalPrice }, // 서버에서 계산된 가격 사용
       $setOnInsert: {
@@ -4305,19 +4356,18 @@ app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
       }
     };
     
-    const userMoney = await measureDBQuery("물고기판매-돈업데이트", () =>
-      UserMoneyModel.findOneAndUpdate(
-        query,
-        updateData,
-        { upsert: true, new: true }
-      )
-    );
+    const [userMoney] = await Promise.all([
+      measureDBQuery("물고기판매-돈업데이트", () =>
+        UserMoneyModel.findOneAndUpdate(
+          query,
+          updateData,
+          { upsert: true, new: true }
+        )
+      ),
+      // 캐시 무효화를 병렬로 처리
+      userUuid ? Promise.resolve(invalidateCache('userMoney', userUuid)) : Promise.resolve()
+    ]);
     // 골드 업데이트 완료 (보안상 잔액 정보는 로그에 기록하지 않음)
-    
-    // 돈 캐시 무효화 (업데이트된 값 반영)
-    if (userUuid) {
-      invalidateCache('userMoney', userUuid);
-    }
     
     res.json({ success: true, newBalance: userMoney.money });
   } catch (error) {
@@ -4468,6 +4518,14 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
       } else if (category === 'accessories') {
         userEquipment.accessory = itemName;
         console.log(`Accessory: ${oldAccessory} → ${itemName}`);
+        
+        // 🚀 악세사리 구매 시 캐시 무효화 (성능 최적화)
+        const cacheKey = userUuid || username;
+        if (cacheKey) {
+          // 모든 관련 캐시 무효화
+          fishPriceCache.clear(); // 모든 가격 캐시 무효화 (악세사리 효과로 인해)
+          cooldownCache.delete(cacheKey); // 해당 사용자 쿨타임 캐시 무효화
+        }
       }
       
       await userEquipment.save();
@@ -4677,10 +4735,11 @@ app.post("/api/decompose-fish", async (req, res) => {
     
     console.log("Database query for decompose fish:", query);
     
-    // 사용자가 해당 물고기를 충분히 가지고 있는지 확인
+    // 사용자가 해당 물고기를 충분히 가지고 있는지 확인 (성능 최적화)
     const userFish = await measureDBQuery(`물고기분해-조회-${fishName}`, () =>
-      CatchModel.find({ ...query, fish: fishName }, { _id: 1, fish: 1 }) // projection 최소화
+      CatchModel.find({ ...query, fish: fishName }, { _id: 1 }) // fish 필드 제거 (이미 알고 있음)
         .sort({ _id: 1 }) // 일관된 순서 (인덱스 활용)
+        .limit(quantity + 10) // 필요한 수량보다 약간 많이만 조회 (성능 향상)
         .lean() // Mongoose 오버헤드 제거
     );
     console.log(`Found ${userFish.length} ${fishName} for user`);
@@ -4745,25 +4804,31 @@ app.post("/api/decompose-fish", async (req, res) => {
       return;
     }
     
-    // 🚀 일반 물고기 분해 시 재료 추가 (bulkWrite로 성능 최적화)
-    const materialsToCreate = [];
-    for (let i = 0; i < quantity; i++) {
-      const materialData = {
-        ...query,
-        material,
-        displayName: query.username || username || 'User'
-      };
-      
-      // username이 있으면 추가
-      if (username) {
-        materialData.username = username;
-      }
-      
-      materialsToCreate.push({ insertOne: { document: materialData } });
+    // 🚀 일반 물고기 분해 시 재료 추가 (대량 삽입으로 성능 최적화)
+    const materialData = {
+      ...query,
+      material,
+      displayName: query.username || username || 'User'
+    };
+    
+    // username이 있으면 추가
+    if (username) {
+      materialData.username = username;
     }
     
-    const bulkCreateResult = await MaterialModel.bulkWrite(materialsToCreate);
-    console.log(`⚡ Bulk created ${bulkCreateResult.insertedCount}/${quantity} ${material}`);
+    // 단일 재료는 직접 삽입, 다중 재료는 bulkWrite
+    let bulkCreateResult;
+    if (quantity === 1) {
+      bulkCreateResult = await MaterialModel.create(materialData);
+      console.log(`⚡ Single created 1 ${material}`);
+    } else {
+      const materialsToCreate = Array(quantity).fill().map(() => ({ insertOne: { document: materialData } }));
+      bulkCreateResult = await MaterialModel.bulkWrite(materialsToCreate, {
+        ordered: false, // 순서 상관없이 병렬 처리
+        writeConcern: { w: 1, j: false } // 저널링 비활성화로 속도 향상
+      });
+      console.log(`⚡ Bulk created ${bulkCreateResult.insertedCount}/${quantity} ${material}`);
+    }
     
     res.json({ success: true });
   } catch (error) {
@@ -5307,6 +5372,15 @@ app.get("/api/health", async (req, res) => {
   }
 });
 
+// 🚀 Keep-Alive 엔드포인트 (콜드 스타트 방지)
+app.get("/api/ping", (req, res) => {
+  res.json({ 
+    pong: true, 
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime())
+  });
+});
+
 
 
 // 🛡️ [SECURITY] 보안 강화된 계정 초기화 API
@@ -5545,14 +5619,22 @@ async function bootstrap() {
     console.log("Modified connection string:", connectionString.substring(0, 100) + "...");
     
     await mongoose.connect(connectionString, {
-      serverSelectionTimeoutMS: 120000, // 2분
-      connectTimeoutMS: 120000, // 2분  
-      socketTimeoutMS: 120000, // 2분
-      maxPoolSize: 5,
-      minPoolSize: 1,
+      // 🚀 렌더 환경 최적화 설정
+      serverSelectionTimeoutMS: 30000, // 30초로 단축 (더 빠른 실패)
+      connectTimeoutMS: 30000, // 30초
+      socketTimeoutMS: 0, // 무제한 (연결 유지)
+      maxPoolSize: 10, // 렌더 환경에서 더 많은 연결 풀
+      minPoolSize: 2, // 최소 연결 유지
+      maxIdleTimeMS: 30000, // 30초 후 유휴 연결 정리
+      waitQueueTimeoutMS: 5000, // 대기열 타임아웃 5초
       retryWrites: true,
       retryReads: true,
-      readPreference: 'primaryPreferred'
+      readPreference: 'primary', // 더 빠른 읽기를 위해 primary 사용
+      // 🚀 렌더 서버 특화 최적화
+      bufferMaxEntries: 0, // 버퍼링 비활성화 (즉시 실패)
+      bufferCommands: false, // 명령 버퍼링 비활성화
+      heartbeatFrequencyMS: 10000, // 10초마다 하트비트
+      serverSelectionRetryDelayMS: 1000 // 재시도 간격 1초
     });
     
     console.log("✅ MongoDB connected successfully!");

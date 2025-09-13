@@ -1198,12 +1198,11 @@ function App() {
         const params = { username, userUuid };
         const response = await axios.post(`${serverUrl}/api/set-fishing-cooldown`, {}, { params });
         
-        // 서버에서 계산된 쿨타임으로 클라이언트 설정
+        // 🚀 서버에서 계산된 쿨타임으로 클라이언트 설정 (중복 저장 제거)
         const serverCooldownTime = response.data.remainingTime || 0;
         setFishingCooldown(serverCooldownTime);
         
-        // 서버에도 쿨타임 저장
-        await saveUserSettings({ fishingCooldown: serverCooldownTime });
+        // 서버에서 이미 저장했으므로 중복 저장 제거
         
         console.log(`Fishing cooldown set: ${serverCooldownTime}ms`);
       } catch (error) {
@@ -2060,8 +2059,7 @@ function App() {
       const serverCooldownTime = response.data.remainingTime || (10 * 60 * 1000);
       setExplorationCooldown(serverCooldownTime);
       
-      // 서버에 쿨타임 저장
-      await saveUserSettings({ explorationCooldown: serverCooldownTime });
+      // 서버에서 이미 저장했으므로 중복 저장 제거
     } catch (error) {
       console.error('Failed to set exploration start cooldown:', error);
       // 실패 시 기본값 설정
@@ -2150,8 +2148,7 @@ function App() {
       const serverCooldownTime = response.data.remainingTime || (5 * 60 * 1000);
       setExplorationCooldown(serverCooldownTime);
       
-      // 서버에 쿨타임 저장
-      await saveUserSettings({ explorationCooldown: serverCooldownTime });
+      // 서버에서 이미 저장했으므로 중복 저장 제거
       
       // 도망 메시지 추가
       const fleeLog = [...battleState.log, `${battleState.enemy}에게서 도망쳤습니다!`, `탐사 쿨타임이 절반으로 감소했습니다. (5분)`];
@@ -2405,12 +2402,32 @@ function App() {
         setUserMoney(prev => prev + totalPrice);
         // [퀘스트] 물고기 판매 퀘스트 진행도 업데이트
         updateQuestProgress('fish_sold', quantity);
-        // 인벤토리 새로고침
-        const res = await axios.get(`${serverUrl}/api/inventory/${userId}`, { params });
-        const safeInventory = Array.isArray(res.data) ? res.data : [];
-        setInventory(safeInventory);
-        const totalCount = safeInventory.reduce((sum, item) => sum + item.count, 0);
-        setMyCatches(totalCount);
+        
+        // 🚀 인벤토리 최적화: 로컬에서 먼저 업데이트 후 서버에서 검증
+        setInventory(prev => {
+          const updated = prev.map(item => 
+            item.fish === fishName 
+              ? { ...item, count: Math.max(0, item.count - quantity) }
+              : item
+          ).filter(item => item.count > 0);
+          
+          const totalCount = updated.reduce((sum, item) => sum + item.count, 0);
+          setMyCatches(totalCount);
+          return updated;
+        });
+        
+        // 백그라운드에서 서버 동기화 (오류 시에만 다시 로드)
+        setTimeout(async () => {
+          try {
+            const res = await axios.get(`${serverUrl}/api/inventory/${userId}`, { params });
+            const safeInventory = Array.isArray(res.data) ? res.data : [];
+            setInventory(safeInventory);
+            const totalCount = safeInventory.reduce((sum, item) => sum + item.count, 0);
+            setMyCatches(totalCount);
+          } catch (error) {
+            console.error('Background inventory sync failed:', error);
+          }
+        }, 1000);
         
         // 판매 메시지 채팅에 추가
         setMessages(prev => [...prev, {
@@ -2510,16 +2527,54 @@ function App() {
           }]);
         }
         
-        // 인벤토리와 재료 새로고침
-        const userId = idToken ? 'user' : 'null';
-        const inventoryRes = await axios.get(`${serverUrl}/api/inventory/${userId}`, { params });
-        const safeInventory = Array.isArray(inventoryRes.data) ? inventoryRes.data : [];
-        setInventory(safeInventory);
-        const totalCount = safeInventory.reduce((sum, item) => sum + item.count, 0);
-        setMyCatches(totalCount);
-
-        const materialsRes = await axios.get(`${serverUrl}/api/materials/${userId}`, { params });
-        setMaterials(materialsRes.data || []);
+        // 🚀 인벤토리 최적화: 로컬에서 먼저 업데이트
+        setInventory(prev => {
+          const updated = prev.map(item => 
+            item.fish === fishName 
+              ? { ...item, count: Math.max(0, item.count - quantity) }
+              : item
+          ).filter(item => item.count > 0);
+          
+          const totalCount = updated.reduce((sum, item) => sum + item.count, 0);
+          setMyCatches(totalCount);
+          return updated;
+        });
+        
+        // 재료 로컬 업데이트
+        const material = getFishMaterial(fishName);
+        if (material && fishName !== "스타피쉬") {
+          setMaterials(prev => {
+            const existingMaterial = prev.find(m => m.material === material);
+            if (existingMaterial) {
+              return prev.map(m => 
+                m.material === material 
+                  ? { ...m, count: m.count + quantity }
+                  : m
+              );
+            } else {
+              return [...prev, { material, count: quantity }];
+            }
+          });
+        }
+        
+        // 백그라운드에서 서버 동기화
+        setTimeout(async () => {
+          try {
+            const userId = idToken ? 'user' : 'null';
+            const [inventoryRes, materialsRes] = await Promise.all([
+              axios.get(`${serverUrl}/api/inventory/${userId}`, { params }),
+              axios.get(`${serverUrl}/api/materials/${userId}`, { params })
+            ]);
+            
+            const safeInventory = Array.isArray(inventoryRes.data) ? inventoryRes.data : [];
+            setInventory(safeInventory);
+            const totalCount = safeInventory.reduce((sum, item) => sum + item.count, 0);
+            setMyCatches(totalCount);
+            setMaterials(materialsRes.data || []);
+          } catch (error) {
+            console.error('Background sync failed:', error);
+          }
+        }, 1000);
       }
     } catch (error) {
       console.error('Failed to decompose fish:', error);
