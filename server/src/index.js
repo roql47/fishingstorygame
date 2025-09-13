@@ -1675,11 +1675,11 @@ io.on("connection", (socket) => {
           console.log("Using userId for catch:", socket.data.userId);
         }
         
-        console.log("Saving fish catch:", catchData);
+        debugLog("Saving fish catch:", catchData);
         
         // 물고기 저장
         const savedCatch = await CatchModel.create(catchData);
-        console.log("Fish saved successfully:", {
+        debugLog("Fish saved successfully:", {
           _id: savedCatch._id,
           userUuid: savedCatch.userUuid,
           username: savedCatch.username,
@@ -1693,7 +1693,7 @@ io.on("connection", (socket) => {
             if (user) {
               user.totalFishCaught = (user.totalFishCaught || 0) + 1;
               await user.save();
-              console.log(`Total fish count updated for ${user.displayName || user.username}: ${user.totalFishCaught}`);
+              debugLog(`Total fish count updated for ${user.displayName || user.username}: ${user.totalFishCaught}`);
             }
           } catch (error) {
             console.error("Failed to update total fish count:", error);
@@ -1719,7 +1719,7 @@ io.on("connection", (socket) => {
           }
         }
         
-        console.log("=== Fishing SUCCESS ===");
+        debugLog("=== Fishing SUCCESS ===");
         
       } catch (error) {
         console.error("=== Fishing FAILED ===");
@@ -1736,10 +1736,8 @@ io.on("connection", (socket) => {
           timestamp,
         });
       } finally {
-        // 🚀 처리 완료 후 제거 (1초 후)
-        setTimeout(() => {
-          processingFishing.delete(userKey);
-        }, 1000);
+        // 🚀 처리 완료 후 즉시 제거 (성능 최적화)
+        processingFishing.delete(userKey);
       }
     } else {
       io.emit("chat:message", { ...msg, timestamp });
