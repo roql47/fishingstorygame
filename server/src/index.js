@@ -13,6 +13,30 @@ const debugLog = isProduction ? () => {} : console.log;
 const infoLog = console.log; // 중요한 로그는 유지
 const errorLog = console.error; // 에러 로그는 항상 유지
 
+// 🔍 DB 쿼리 성능 측정 헬퍼 함수
+const measureDBQuery = async (queryName, queryFunction) => {
+  const startTime = Date.now();
+  try {
+    const result = await queryFunction();
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    
+    // 느린 쿼리 감지 (100ms 이상)
+    if (duration > 100) {
+      console.warn(`⚠️ 느린 DB 쿼리 감지: ${queryName} - ${duration}ms`);
+    } else {
+      debugLog(`✅ DB 쿼리 완료: ${queryName} - ${duration}ms`);
+    }
+    
+    return result;
+  } catch (error) {
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    console.error(`❌ DB 쿼리 실패: ${queryName} - ${duration}ms`, error.message);
+    throw error;
+  }
+};
+
 // 🚀 성능 최적화: 낚시 스킬 캐시 (5분 TTL)
 const fishingSkillCache = new Map();
 const SKILL_CACHE_TTL = 5 * 60 * 1000; // 5분
@@ -1686,18 +1710,17 @@ io.on("connection", (socket) => {
           fish: savedCatch.fish
         });
 
-        // 사용자의 총 물고기 카운트 증가
+        // 사용자의 총 물고기 카운트 증가 (비동기 처리로 속도 개선)
         if (socket.data.userUuid) {
-          try {
-            const user = await UserUuidModel.findOne({ userUuid: socket.data.userUuid });
-            if (user) {
-              user.totalFishCaught = (user.totalFishCaught || 0) + 1;
-              await user.save();
-              debugLog(`Total fish count updated for ${user.displayName || user.username}: ${user.totalFishCaught}`);
-            }
-          } catch (error) {
+          // 백그라운드에서 비동기로 처리하여 응답 속도 향상
+          measureDBQuery("낚시-총물고기수증가", () => 
+            UserUuidModel.updateOne(
+              { userUuid: socket.data.userUuid },
+              { $inc: { totalFishCaught: 1 } }
+            )
+          ).catch(error => {
             console.error("Failed to update total fish count:", error);
-          }
+          });
         }
         
         // 성공 메시지
@@ -1708,15 +1731,17 @@ io.on("connection", (socket) => {
           timestamp,
         });
         
-        // 🚀 낚시 성공 후 클라이언트 인벤토리 업데이트
+        // 🚀 낚시 성공 후 클라이언트 인벤토리 업데이트 (비동기 처리)
         if (socket.data.userUuid) {
-          try {
-            const updatedInventory = await getInventoryData(socket.data.userUuid);
-            socket.emit('data:inventory', updatedInventory);
-            debugLog(`📦 Inventory update sent to ${socket.data.username}`);
-          } catch (inventoryError) {
-            console.error("Failed to send inventory update:", inventoryError);
-          }
+          // 백그라운드에서 비동기로 처리하여 응답 속도 향상
+          getInventoryData(socket.data.userUuid)
+            .then(updatedInventory => {
+              socket.emit('data:inventory', updatedInventory);
+              debugLog(`📦 Inventory update sent to ${socket.data.username}`);
+            })
+            .catch(inventoryError => {
+              console.error("Failed to send inventory update:", inventoryError);
+            });
         }
         
         debugLog("=== Fishing SUCCESS ===");
@@ -3997,25 +4022,22 @@ app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
     const bulkResult = await CatchModel.bulkWrite(fishToDelete);
     debugLog(`⚡ Bulk deleted ${bulkResult.deletedCount}/${quantity} ${fishName}`);
     
-    // 사용자 돈 업데이트
-    let userMoney = await UserMoneyModel.findOne(query);
-    if (!userMoney) {
-      const createData = {
-        money: serverTotalPrice, // 서버에서 계산된 가격 사용
-        ...query
-      };
-      
-      // username이 있으면 추가
-      if (username) {
-        createData.username = username;
+    // 사용자 돈 업데이트 (성능 최적화 - upsert 사용)
+    const updateData = {
+      $inc: { money: serverTotalPrice }, // 서버에서 계산된 가격 사용
+      $setOnInsert: {
+        ...query,
+        ...(username && { username })
       }
-      
-      debugLog("Creating new user money for sell:", createData);
-      userMoney = await UserMoneyModel.create(createData);
-    } else {
-      userMoney.money += serverTotalPrice; // 서버에서 계산된 가격 사용
-      await userMoney.save();
-    }
+    };
+    
+    const userMoney = await measureDBQuery("물고기판매-돈업데이트", () =>
+      UserMoneyModel.findOneAndUpdate(
+        query,
+        updateData,
+        { upsert: true, new: true }
+      )
+    );
     // 골드 업데이트 완료 (보안상 잔액 정보는 로그에 기록하지 않음)
     
     res.json({ success: true, newBalance: userMoney.money });
@@ -4393,28 +4415,28 @@ app.post("/api/decompose-fish", async (req, res) => {
     const bulkDeleteResult = await CatchModel.bulkWrite(fishToDelete);
     console.log(`⚡ Bulk deleted ${bulkDeleteResult.deletedCount}/${quantity} ${fishName} for decompose`);
     
-    // 스타피쉬 분해 시 별조각 지급
+    // 스타피쉬 분해 시 별조각 지급 (성능 최적화 - upsert 사용)
     if (fishName === "스타피쉬") {
       const starPiecesPerFish = 1; // 스타피쉬 1마리당 별조각 1개
       const totalStarPieces = quantity * starPiecesPerFish;
       
-      let userStarPieces = await StarPieceModel.findOne(query);
-      
-      if (!userStarPieces) {
-        // 새 사용자인 경우 생성
-        const createData = {
+      const updateData = {
+        $inc: { starPieces: totalStarPieces },
+        $setOnInsert: {
           userId: query.userId || 'user',
           username: query.username || username,
-          userUuid: query.userUuid || userUuid,
-          starPieces: totalStarPieces
-        };
-        // 보안상 상세 로그 축소
-        userStarPieces = new StarPieceModel(createData);
-      } else {
-        userStarPieces.starPieces = (userStarPieces.starPieces || 0) + totalStarPieces;
-      }
+          userUuid: query.userUuid || userUuid
+        }
+      };
       
-      await userStarPieces.save();
+      const userStarPieces = await measureDBQuery("물고기분해-별조각지급", () =>
+        StarPieceModel.findOneAndUpdate(
+          query,
+          updateData,
+          { upsert: true, new: true }
+        )
+      );
+      
       console.log(`Added ${totalStarPieces} star pieces from ${quantity} starfish decomposition. New total: ${userStarPieces.starPieces}`);
       
       res.json({ 
