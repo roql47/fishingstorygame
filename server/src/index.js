@@ -5538,9 +5538,9 @@ async function bootstrap() {
       maxPoolSize: 20, // 클러스터 연결 시 더 많은 풀 허용
       minPoolSize: 8,  // 최소 연결 수 증가 (즉시 사용 가능)
       maxIdleTimeMS: 30000, // 30초로 늘림 (클러스터는 더 안정적)
-      serverSelectionTimeoutMS: 2000, // 2초로 단축 (클러스터는 더 빠름)
+      serverSelectionTimeoutMS: 30000, // 30초로 복구 (서울→미국 지연 고려)
       socketTimeoutMS: 20000, // 20초로 단축 (클러스터 응답 빠름)
-      connectTimeoutMS: 5000, // 5초 연결 타임아웃 (클러스터 빠른 연결)
+      connectTimeoutMS: 30000, // 30초 연결 타임아웃 (서울→미국 지연 고려)
       heartbeatFrequencyMS: 5000, // 5초마다 heartbeat (더 자주 체크)
       // 클러스터 성능 최적화
       bufferCommands: false, // 버퍼링 비활성화
