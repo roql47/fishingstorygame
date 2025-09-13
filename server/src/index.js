@@ -123,7 +123,7 @@ setInterval(async () => {
           updateOne: {
             filter: { userUuid },
             update: { $inc: { totalFishCaught: count } },
-            hint: { userUuid: 1 }
+            hint: "userUuid_1" // 기존 unique 인덱스 사용
           }
         });
       }
@@ -162,7 +162,7 @@ setInterval(async () => {
             updateOne: {
               filter: { userUuid },
               update: updateData,
-              hint: { userUuid: 1 }
+              hint: "quest_userUuid_1" // 퀘스트 인덱스 이름 사용
             }
           });
         }
@@ -2084,8 +2084,8 @@ async function getInventoryData(userUuid) {
     ], {
       // 집계 파이프라인 최적화
       allowDiskUse: false, // 메모리만 사용 (더 빠름)
-      cursor: { batchSize: 1000 }, // 배치 크기 최적화
-      hint: { userUuid: 1 } // 인덱스 힌트 강제 사용
+      cursor: { batchSize: 1000 } // 배치 크기 최적화
+      // 집계 파이프라인은 자동으로 최적 인덱스 선택
     });
     return catches;
   });
@@ -2114,7 +2114,7 @@ async function getMoneyData(userUuid) {
 
   const result = await measureDBQuery("돈조회", async () => {
     const userMoney = await UserMoneyModel.findOne({ userUuid }, { money: 1, _id: 0 })
-      .hint({ userUuid: 1 }); // 인덱스 힌트 추가
+      .hint("money_userUuid_1"); // UserMoney 인덱스 사용
     return { money: userMoney?.money || 0 };
   });
   
@@ -2132,7 +2132,7 @@ async function getAmberData(userUuid) {
 
   const result = await measureDBQuery("호박석조회", async () => {
     const userAmber = await UserAmberModel.findOne({ userUuid }, { amber: 1, _id: 0 })
-      .hint({ userUuid: 1 }); // 인덱스 힌트 추가
+      .hint("amber_userUuid_1"); // UserAmber 인덱스 사용
     return { amber: userAmber?.amber || 0 };
   });
   
@@ -2150,7 +2150,7 @@ async function getStarPiecesData(userUuid) {
 
   const result = await measureDBQuery("별조각조회", async () => {
     const starPieces = await StarPieceModel.findOne({ userUuid }, { starPieces: 1, _id: 0 })
-      .hint({ userUuid: 1 }); // 인덱스 힌트 추가
+      .hint("star_userUuid_1"); // StarPiece 인덱스 사용
     return { starPieces: starPieces?.starPieces || 0 };
   });
   
@@ -4216,7 +4216,7 @@ app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
     // 사용자가 해당 물고기를 충분히 가지고 있는지 확인 (보안 강화)
     const userFish = await measureDBQuery(`물고기판매-조회-${fishName}`, () =>
       CatchModel.find({ ...query, fish: fishName })
-        .hint({ userUuid: 1 }) // 인덱스 힌트로 성능 향상
+        .hint("catch_userUuid_1") // Catch 인덱스 사용
     );
     debugLog(`Found ${userFish.length} ${fishName} for user`);
     
@@ -4647,7 +4647,7 @@ app.post("/api/decompose-fish", async (req, res) => {
     // 사용자가 해당 물고기를 충분히 가지고 있는지 확인
     const userFish = await measureDBQuery(`물고기분해-조회-${fishName}`, () =>
       CatchModel.find({ ...query, fish: fishName })
-        .hint({ userUuid: 1 }) // 인덱스 힌트로 성능 향상
+        .hint("catch_userUuid_1") // Catch 인덱스 사용
     );
     console.log(`Found ${userFish.length} ${fishName} for user`);
     

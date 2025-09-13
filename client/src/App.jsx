@@ -636,8 +636,9 @@ function App() {
             const res = await axios.get(`${serverUrl}/api/inventory/${userId}`, { params });
             console.log("Inventory response:", res.data);
             console.log("Current userUuid state:", userUuid);
-                setInventory(res.data);
-                console.log("Inventory updated");
+            const safeInventory = Array.isArray(res.data) ? res.data : [];
+            setInventory(safeInventory);
+            console.log("Inventory updated");
               } catch (e) {
                 console.error('Failed to fetch inventory:', e);
               }
@@ -787,8 +788,9 @@ function App() {
             console.log("Refreshing inventory after UUID update:", { userId, username: finalNickname, userUuid: data.userUuid });
             const res = await axios.get(`${serverUrl}/api/inventory/${userId}`, { params });
             console.log("Inventory after UUID update:", res.data);
-            setInventory(res.data);
-            const totalCount = res.data.reduce((sum, item) => sum + item.count, 0);
+            const safeInventory = Array.isArray(res.data) ? res.data : [];
+            setInventory(safeInventory);
+            const totalCount = safeInventory.reduce((sum, item) => sum + item.count, 0);
             setMyCatches(totalCount);
           } catch (e) {
             console.error('Failed to refresh inventory after UUID update:', e);
@@ -927,7 +929,10 @@ function App() {
     // 실시간 데이터 업데이트 리스너
     const handleDataUpdate = (data) => {
       console.log('Received data update:', data);
-      if (data.inventory) setInventory(data.inventory);
+      if (data.inventory) {
+        const safeInventory = Array.isArray(data.inventory) ? data.inventory : [];
+        setInventory(safeInventory);
+      }
       if (data.materials) setMaterials(data.materials);
       if (data.money) setUserMoney(data.money.money);
       if (data.amber) setUserAmber(data.amber.amber);
@@ -944,7 +949,10 @@ function App() {
       if (data.equipment) setUserEquipment(data.equipment);
     };
 
-    const handleInventoryUpdate = (data) => setInventory(data);
+    const handleInventoryUpdate = (data) => {
+      const safeInventory = Array.isArray(data) ? data : [];
+      setInventory(safeInventory);
+    };
     const handleMaterialsUpdate = (data) => setMaterials(data);
     const handleUsersUpdate = (users) => {
       console.log('Received users update via WebSocket:', users);
@@ -2399,8 +2407,9 @@ function App() {
         updateQuestProgress('fish_sold', quantity);
         // 인벤토리 새로고침
         const res = await axios.get(`${serverUrl}/api/inventory/${userId}`, { params });
-        setInventory(res.data);
-        const totalCount = res.data.reduce((sum, item) => sum + item.count, 0);
+        const safeInventory = Array.isArray(res.data) ? res.data : [];
+        setInventory(safeInventory);
+        const totalCount = safeInventory.reduce((sum, item) => sum + item.count, 0);
         setMyCatches(totalCount);
         
         // 판매 메시지 채팅에 추가
@@ -2504,8 +2513,9 @@ function App() {
         // 인벤토리와 재료 새로고침
         const userId = idToken ? 'user' : 'null';
         const inventoryRes = await axios.get(`${serverUrl}/api/inventory/${userId}`, { params });
-        setInventory(inventoryRes.data);
-        const totalCount = inventoryRes.data.reduce((sum, item) => sum + item.count, 0);
+        const safeInventory = Array.isArray(inventoryRes.data) ? inventoryRes.data : [];
+        setInventory(safeInventory);
+        const totalCount = safeInventory.reduce((sum, item) => sum + item.count, 0);
         setMyCatches(totalCount);
 
         const materialsRes = await axios.get(`${serverUrl}/api/materials/${userId}`, { params });
@@ -3428,7 +3438,7 @@ function App() {
                     }`}>내 인벤토리</h2>
                     <p className={`text-xs ${
                       isDarkMode ? "text-gray-400" : "text-gray-600"
-                    }`}>총 {inventory.reduce((sum, item) => sum + item.count, 0)}마리</p>
+                    }`}>총 {Array.isArray(inventory) ? inventory.reduce((sum, item) => sum + item.count, 0) : 0}마리</p>
                   </div>
                 </div>
                 <div className="flex gap-2">
