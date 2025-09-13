@@ -108,7 +108,7 @@ const CACHE_TTL = {
 // 🚀 배치 업데이트 시스템 (성능 최적화)
 const batchUpdates = {
   fishCount: new Map(), // userUuid -> count
-  questProgress: new Map() // userUuid -> { questType: amount }
+  questProgress: new Map() // userUuid -> { fish_caught: amount, exploration_win: amount, fish_sold: amount }
 };
 
 // 배치 업데이트 처리 (30초마다)
@@ -137,6 +137,46 @@ setInterval(async () => {
         console.log(`✅ 배치 업데이트 완료: ${bulkOps.length}개 사용자 물고기 카운트`);
       }
       batchUpdates.fishCount.clear();
+    }
+
+    // 퀘스트 진행도 배치 업데이트
+    if (batchUpdates.questProgress.size > 0) {
+      const questBulkOps = [];
+      for (const [userUuid, quests] of batchUpdates.questProgress) {
+        const updateData = {};
+        
+        // 각 퀘스트 타입별로 증가값 설정
+        if (quests.fish_caught) {
+          updateData['$inc'] = { ...updateData['$inc'], fishCaught: quests.fish_caught };
+        }
+        if (quests.exploration_win) {
+          updateData['$inc'] = { ...updateData['$inc'], explorationWins: quests.exploration_win };
+        }
+        if (quests.fish_sold) {
+          updateData['$inc'] = { ...updateData['$inc'], fishSold: quests.fish_sold };
+        }
+        
+        if (Object.keys(updateData).length > 0) {
+          questBulkOps.push({
+            updateOne: {
+              filter: { userUuid },
+              update: updateData,
+              hint: { userUuid: 1 }
+            }
+          });
+        }
+      }
+      
+      if (questBulkOps.length > 0) {
+        await measureDBQuery(`배치-퀘스트진행도-${questBulkOps.length}개`, () =>
+          DailyQuestModel.bulkWrite(questBulkOps, { 
+            ordered: false, 
+            writeConcern: { w: 1, j: false } 
+          })
+        );
+        console.log(`✅ 배치 업데이트 완료: ${questBulkOps.length}개 사용자 퀘스트 진행도`);
+      }
+      batchUpdates.questProgress.clear();
     }
   } catch (error) {
     console.error('❌ 배치 업데이트 실패:', error);
@@ -2336,15 +2376,18 @@ app.get("/api/inventory/:userId", optionalJWT, async (req, res) => {
     console.log("Final inventory:", inventory);
     console.log("Inventory hash:", inventoryHash);
     
+    // 안전장치: 배열이 아닌 경우 빈 배열로 처리
+    const safeInventory = Array.isArray(inventory) ? inventory : [];
+    
     // 클라이언트가 이전 버전과 호환되도록 배열 형태로 반환하되, 메타데이터는 별도 헤더로 전송
     res.set({
       'X-Inventory-Hash': inventoryHash,
       'X-Inventory-Timestamp': timestamp,
-      'X-Inventory-Count': inventory.length.toString(),
-      'X-Total-Items': inventory.reduce((sum, item) => sum + item.count, 0).toString()
+      'X-Inventory-Count': safeInventory.length.toString(),
+      'X-Total-Items': safeInventory.reduce((sum, item) => sum + item.count, 0).toString()
     });
     
-    res.json(inventory);
+    res.json(safeInventory);
   } catch (error) {
     console.error("Failed to fetch inventory:", error);
     res.status(500).json({ error: "Failed to fetch inventory" });
@@ -3917,14 +3960,12 @@ app.post("/api/update-quest-progress", async (req, res) => {
         return res.status(400).json({ error: "Invalid quest type" });
     }
     
-    await measureDBQuery(`퀘스트업데이트-${questType}`, () =>
-      DailyQuestModel.findOneAndUpdate(query, updateData, {
-        writeConcern: { w: 1, j: false }, // 저널링 비활성화
-        hint: { userUuid: 1 } // 인덱스 힌트 강제 사용
-      })
-    );
+    // 배치 업데이트에 추가 (즉시 DB 쿼리 없음)
+    const userQuests = batchUpdates.questProgress.get(userUuid) || {};
+    userQuests[questType] = (userQuests[questType] || 0) + amount;
+    batchUpdates.questProgress.set(userUuid, userQuests);
     
-    console.log(`[Quest] Quest progress updated: ${questType} +${amount} for ${username}`);
+    console.log(`[Quest] Quest progress queued for batch: ${questType} +${amount} for ${username} (total pending: ${userQuests[questType]})`);
     res.json({ success: true, message: "Quest progress updated" });
   } catch (error) {
     console.error("Failed to update quest progress:", error);
