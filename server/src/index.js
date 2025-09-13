@@ -105,6 +105,44 @@ const CACHE_TTL = {
   inventory: 10 * 1000          // 10초 (자주 변경됨)
 };
 
+// 🚀 배치 업데이트 시스템 (성능 최적화)
+const batchUpdates = {
+  fishCount: new Map(), // userUuid -> count
+  questProgress: new Map() // userUuid -> { questType: amount }
+};
+
+// 배치 업데이트 처리 (30초마다)
+setInterval(async () => {
+  try {
+    // 물고기 카운트 배치 업데이트
+    if (batchUpdates.fishCount.size > 0) {
+      const bulkOps = [];
+      for (const [userUuid, count] of batchUpdates.fishCount) {
+        bulkOps.push({
+          updateOne: {
+            filter: { userUuid },
+            update: { $inc: { totalFishCaught: count } },
+            hint: { userUuid: 1 }
+          }
+        });
+      }
+      
+      if (bulkOps.length > 0) {
+        await measureDBQuery(`배치-물고기카운트-${bulkOps.length}개`, () =>
+          UserUuidModel.bulkWrite(bulkOps, { 
+            ordered: false, 
+            writeConcern: { w: 1, j: false } 
+          })
+        );
+        console.log(`✅ 배치 업데이트 완료: ${bulkOps.length}개 사용자 물고기 카운트`);
+      }
+      batchUpdates.fishCount.clear();
+    }
+  } catch (error) {
+    console.error('❌ 배치 업데이트 실패:', error);
+  }
+}, 30000); // 30초마다 실행
+
 function getCachedData(cacheKey, userKey) {
   const key = `${cacheKey}:${userKey}`;
   const cached = dataCache.get(key);
@@ -1795,17 +1833,12 @@ io.on("connection", (socket) => {
           fish: savedCatch.fish
         });
 
-        // 사용자의 총 물고기 카운트 증가 (비동기 처리로 속도 개선)
+        // 사용자의 총 물고기 카운트 증가 (배치 처리로 성능 최적화)
         if (socket.data.userUuid) {
-          // 백그라운드에서 비동기로 처리하여 응답 속도 향상
-          measureDBQuery("낚시-총물고기수증가", () => 
-            UserUuidModel.updateOne(
-              { userUuid: socket.data.userUuid },
-              { $inc: { totalFishCaught: 1 } }
-            )
-          ).catch(error => {
-            console.error("Failed to update total fish count:", error);
-          });
+          // 배치 업데이트에 추가 (즉시 DB 쿼리 없음)
+          const currentCount = batchUpdates.fishCount.get(socket.data.userUuid) || 0;
+          batchUpdates.fishCount.set(socket.data.userUuid, currentCount + 1);
+          debugLog(`📊 배치 업데이트 추가: ${socket.data.userUuid} 물고기 +1 (총 대기: ${currentCount + 1})`);
         }
         
         // 성공 메시지
@@ -2003,7 +2036,8 @@ async function getInventoryData(userUuid) {
     ], {
       // 집계 파이프라인 최적화
       allowDiskUse: false, // 메모리만 사용 (더 빠름)
-      cursor: { batchSize: 1000 } // 배치 크기 최적화
+      cursor: { batchSize: 1000 }, // 배치 크기 최적화
+      hint: { userUuid: 1 } // 인덱스 힌트 강제 사용
     });
     return catches;
   });
@@ -3883,7 +3917,12 @@ app.post("/api/update-quest-progress", async (req, res) => {
         return res.status(400).json({ error: "Invalid quest type" });
     }
     
-    await DailyQuestModel.findOneAndUpdate(query, updateData);
+    await measureDBQuery(`퀘스트업데이트-${questType}`, () =>
+      DailyQuestModel.findOneAndUpdate(query, updateData, {
+        writeConcern: { w: 1, j: false }, // 저널링 비활성화
+        hint: { userUuid: 1 } // 인덱스 힌트 강제 사용
+      })
+    );
     
     console.log(`[Quest] Quest progress updated: ${questType} +${amount} for ${username}`);
     res.json({ success: true, message: "Quest progress updated" });
@@ -4089,7 +4128,10 @@ app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
     }
     
     // 사용자가 해당 물고기를 충분히 가지고 있는지 확인 (보안 강화)
-    const userFish = await CatchModel.find({ ...query, fish: fishName });
+    const userFish = await measureDBQuery(`물고기판매-조회-${fishName}`, () =>
+      CatchModel.find({ ...query, fish: fishName })
+        .hint({ userUuid: 1 }) // 인덱스 힌트로 성능 향상
+    );
     debugLog(`Found ${userFish.length} ${fishName} for user`);
     
     // 🚀 물고기 존재 여부 확인 (두 데이터에서 모두 확인)
@@ -4112,18 +4154,28 @@ app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: "Not enough fish to sell" });
     }
     
-    // 🚀 물고기 판매 (bulkWrite로 성능 최적화)
-    const fishToDelete = userFish.slice(0, quantity).map(fish => ({
-      deleteOne: { filter: { _id: fish._id } }
-    }));
-    
-    const bulkResult = await measureDBQuery(`물고기판매-대량삭제-${quantity}개`, () =>
-      CatchModel.bulkWrite(fishToDelete, {
-        ordered: false, // 순서 상관없이 병렬 처리
-        writeConcern: { w: 1, j: false } // 저널링 비활성화로 속도 향상
-      })
-    );
-    debugLog(`⚡ Bulk deleted ${bulkResult.deletedCount}/${quantity} ${fishName}`);
+    // 🚀 물고기 판매 (수량에 따른 최적화)
+    let deleteResult;
+    if (quantity === 1) {
+      // 단일 아이템은 직접 삭제 (더 빠름)
+      deleteResult = await measureDBQuery(`물고기판매-단일삭제`, () =>
+        CatchModel.deleteOne({ _id: userFish[0]._id }, { writeConcern: { w: 1, j: false } })
+      );
+      debugLog(`⚡ Single deleted ${deleteResult.deletedCount}/1 ${fishName}`);
+    } else {
+      // 다중 아이템은 bulkWrite 사용
+      const fishToDelete = userFish.slice(0, quantity).map(fish => ({
+        deleteOne: { filter: { _id: fish._id } }
+      }));
+      
+      deleteResult = await measureDBQuery(`물고기판매-대량삭제-${quantity}개`, () =>
+        CatchModel.bulkWrite(fishToDelete, {
+          ordered: false, // 순서 상관없이 병렬 처리
+          writeConcern: { w: 1, j: false } // 저널링 비활성화로 속도 향상
+        })
+      );
+      debugLog(`⚡ Bulk deleted ${deleteResult.deletedCount}/${quantity} ${fishName}`);
+    }
     
     // 사용자 돈 업데이트 (성능 최적화 - upsert 사용)
     const updateData = {
@@ -4502,7 +4554,10 @@ app.post("/api/decompose-fish", async (req, res) => {
     console.log("Database query for decompose fish:", query);
     
     // 사용자가 해당 물고기를 충분히 가지고 있는지 확인
-    const userFish = await CatchModel.find({ ...query, fish: fishName });
+    const userFish = await measureDBQuery(`물고기분해-조회-${fishName}`, () =>
+      CatchModel.find({ ...query, fish: fishName })
+        .hint({ userUuid: 1 }) // 인덱스 힌트로 성능 향상
+    );
     console.log(`Found ${userFish.length} ${fishName} for user`);
     
     if (userFish.length < quantity) {
@@ -4510,18 +4565,28 @@ app.post("/api/decompose-fish", async (req, res) => {
       return res.status(400).json({ error: "Not enough fish to decompose" });
     }
     
-    // 🚀 물고기 제거 (bulkWrite로 성능 최적화)
-    const fishToDelete = userFish.slice(0, quantity).map(fish => ({
-      deleteOne: { filter: { _id: fish._id } }
-    }));
-    
-    const bulkDeleteResult = await measureDBQuery(`물고기분해-대량삭제-${quantity}개`, () =>
-      CatchModel.bulkWrite(fishToDelete, {
-        ordered: false, // 순서 상관없이 병렬 처리
-        writeConcern: { w: 1, j: false } // 저널링 비활성화로 속도 향상
-      })
-    );
-    console.log(`⚡ Bulk deleted ${bulkDeleteResult.deletedCount}/${quantity} ${fishName} for decompose`);
+    // 🚀 물고기 제거 (수량에 따른 최적화)
+    let deleteResult;
+    if (quantity === 1) {
+      // 단일 아이템은 직접 삭제 (더 빠름)
+      deleteResult = await measureDBQuery(`물고기분해-단일삭제`, () =>
+        CatchModel.deleteOne({ _id: userFish[0]._id }, { writeConcern: { w: 1, j: false } })
+      );
+      console.log(`⚡ Single deleted ${deleteResult.deletedCount}/1 ${fishName} for decompose`);
+    } else {
+      // 다중 아이템은 bulkWrite 사용
+      const fishToDelete = userFish.slice(0, quantity).map(fish => ({
+        deleteOne: { filter: { _id: fish._id } }
+      }));
+      
+      deleteResult = await measureDBQuery(`물고기분해-대량삭제-${quantity}개`, () =>
+        CatchModel.bulkWrite(fishToDelete, {
+          ordered: false, // 순서 상관없이 병렬 처리
+          writeConcern: { w: 1, j: false } // 저널링 비활성화로 속도 향상
+        })
+      );
+      console.log(`⚡ Bulk deleted ${deleteResult.deletedCount}/${quantity} ${fishName} for decompose`);
+    }
     
     // 스타피쉬 분해 시 별조각 지급 (성능 최적화 - upsert 사용)
     if (fishName === "스타피쉬") {
