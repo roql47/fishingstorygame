@@ -21,9 +21,11 @@ const measureDBQuery = async (queryName, queryFunction) => {
     const endTime = Date.now();
     const duration = endTime - startTime;
     
-    // 느린 쿼리 감지 (100ms 이상)
-    if (duration > 100) {
+    // 느린 쿼리 감지 (렌더 서버 기준 200ms 이상)
+    if (duration > 200) {
       console.warn(`⚠️ 느린 DB 쿼리 감지: ${queryName} - ${duration}ms`);
+    } else if (duration > 100) {
+      debugLog(`🟡 보통 속도 쿼리: ${queryName} - ${duration}ms`);
     } else {
       debugLog(`✅ DB 쿼리 완료: ${queryName} - ${duration}ms`);
     }
@@ -182,7 +184,7 @@ setInterval(async () => {
   } catch (error) {
     console.error('❌ 배치 업데이트 실패:', error);
   }
-}, 30000); // 30초마다 실행
+}, 60000); // 60초마다 실행 (더 효율적인 배치 처리)
 
 function getCachedData(cacheKey, userKey) {
   const key = `${cacheKey}:${userKey}`;
@@ -1902,7 +1904,7 @@ io.on("connection", (socket) => {
           // 백그라운드에서 비동기로 처리하여 응답 속도 향상
           getInventoryData(socket.data.userUuid)
             .then(updatedInventory => {
-              socket.emit('data:inventory', updatedInventory);
+              socket.emit('data:inventory', JSON.parse(JSON.stringify(updatedInventory || [])));
               debugLog(`📦 Inventory update sent to ${socket.data.username}`);
             })
             .catch(inventoryError => {
@@ -1990,31 +1992,31 @@ io.on("connection", (socket) => {
       switch (type) {
         case 'inventory':
           const inventory = await getInventoryData(userUuid);
-          socket.emit('data:inventory', inventory);
+          socket.emit('data:inventory', JSON.parse(JSON.stringify(inventory || [])));
           break;
         case 'materials':
           const materials = await getMaterialsData(userUuid);
-          socket.emit('data:materials', materials);
+          socket.emit('data:materials', JSON.parse(JSON.stringify(materials || [])));
           break;
         case 'money':
           const money = await getMoneyData(userUuid);
-          socket.emit('data:money', money);
+          socket.emit('data:money', JSON.parse(JSON.stringify(money || { money: 0 })));
           break;
         case 'amber':
           const amber = await getAmberData(userUuid);
-          socket.emit('data:amber', amber);
+          socket.emit('data:amber', JSON.parse(JSON.stringify(amber || { amber: 0 })));
           break;
         case 'starPieces':
           const starPieces = await getStarPiecesData(userUuid);
-          socket.emit('data:starPieces', starPieces);
+          socket.emit('data:starPieces', JSON.parse(JSON.stringify(starPieces || { starPieces: 0 })));
           break;
         case 'cooldown':
           const cooldown = await getCooldownData(userUuid);
-          socket.emit('data:cooldown', cooldown);
+          socket.emit('data:cooldown', JSON.parse(JSON.stringify(cooldown || { fishingCooldown: 0, explorationCooldown: 0 })));
           break;
         case 'totalCatches':
           const totalCatches = await getTotalCatchesData(userUuid);
-          socket.emit('data:totalCatches', totalCatches);
+          socket.emit('data:totalCatches', JSON.parse(JSON.stringify(totalCatches || { totalFishCaught: 0 })));
           break;
       }
     } catch (error) {
@@ -2058,18 +2060,21 @@ async function sendUserDataUpdate(socket, userUuid, username) {
       equipment: equipment?.fishingRod || 'none'
     });
     
-    socket.emit('data:update', {
-      inventory,
-      materials,
-      money,
-      amber,
-      starPieces,
-      cooldown,
-      totalCatches,
-      companions,
-      adminStatus,
-      equipment
-    });
+    // 순환 참조 방지를 위한 데이터 직렬화
+    const safeData = {
+      inventory: JSON.parse(JSON.stringify(inventory || [])),
+      materials: JSON.parse(JSON.stringify(materials || [])),
+      money: JSON.parse(JSON.stringify(money || { money: 0 })),
+      amber: JSON.parse(JSON.stringify(amber || { amber: 0 })),
+      starPieces: JSON.parse(JSON.stringify(starPieces || { starPieces: 0 })),
+      cooldown: JSON.parse(JSON.stringify(cooldown || { fishingCooldown: 0, explorationCooldown: 0 })),
+      totalCatches: JSON.parse(JSON.stringify(totalCatches || { totalFishCaught: 0 })),
+      companions: JSON.parse(JSON.stringify(companions || { companions: [] })),
+      adminStatus: JSON.parse(JSON.stringify(adminStatus || { isAdmin: false })),
+      equipment: JSON.parse(JSON.stringify(equipment || { fishingRod: null, accessory: null }))
+    };
+
+    socket.emit('data:update', safeData);
   } catch (error) {
     console.error(`Error sending data update for ${username}:`, error);
   }
@@ -2077,15 +2082,28 @@ async function sendUserDataUpdate(socket, userUuid, username) {
 
 async function getInventoryData(userUuid) {
   return await measureDBQuery("인벤토리조회", async () => {
+    // 🔍 Query Profiler 최적화: $match를 최대한 앞으로, IXSCAN 보장
     const catches = await CatchModel.aggregate([
-      { $match: { userUuid } },
+      // 1단계: 인덱스 활용을 위한 정확한 필터
+      { $match: { userUuid: userUuid } }, // 명시적 타입 매칭
+      
+      // 2단계: 필요한 필드만 projection (docsExamined 최소화)
+      { $project: { fish: 1, _id: 0 } },
+      
+      // 3단계: 그룹핑 (메모리 사용량 최소화)
       { $group: { _id: "$fish", count: { $sum: 1 } } },
-      { $project: { _id: 0, fish: "$_id", count: 1 } }
+      
+      // 4단계: 최종 출력 형태
+      { $project: { _id: 0, fish: "$_id", count: 1 } },
+      
+      // 5단계: 정렬 (일관된 결과)
+      { $sort: { fish: 1 } }
     ], {
-      // 집계 파이프라인 최적화
-      allowDiskUse: false, // 메모리만 사용 (더 빠름)
-      cursor: { batchSize: 1000 } // 배치 크기 최적화
-      // 집계 파이프라인은 자동으로 최적 인덱스 선택
+      // Profiler 기반 최적화 옵션
+      allowDiskUse: false, // 메모리만 사용 (IXSCAN → FETCH만)
+      cursor: { batchSize: 100 }, // 작은 배치로 메모리 효율성
+      maxTimeMS: 5000, // 5초 타임아웃
+      collation: { locale: "simple" } // 단순 정렬로 성능 향상
     });
     return catches;
   });
@@ -2093,13 +2111,27 @@ async function getInventoryData(userUuid) {
 
 async function getMaterialsData(userUuid) {
   return await measureDBQuery("재료조회", async () => {
+    // 🔍 Query Profiler 최적화: 인벤토리와 동일한 패턴 적용
     const materials = await MaterialModel.aggregate([
-      { $match: { userUuid } },
+      // 1단계: 인덱스 기반 필터
+      { $match: { userUuid: userUuid } },
+      
+      // 2단계: 필요한 필드만 projection
+      { $project: { material: 1, _id: 0 } },
+      
+      // 3단계: 그룹핑
       { $group: { _id: "$material", count: { $sum: 1 } } },
-      { $project: { _id: 0, material: "$_id", count: 1 } }
+      
+      // 4단계: 최종 형태
+      { $project: { _id: 0, material: "$_id", count: 1 } },
+      
+      // 5단계: 정렬
+      { $sort: { material: 1 } }
     ], {
       allowDiskUse: false,
-      cursor: { batchSize: 1000 }
+      cursor: { batchSize: 100 },
+      maxTimeMS: 5000,
+      collation: { locale: "simple" }
     });
     return materials;
   });
@@ -2201,7 +2233,7 @@ function broadcastUserDataUpdate(userUuid, username, dataType, data) {
   io.sockets.sockets.forEach((socket) => {
     // 🔧 좀비 소켓 방지: 연결 상태와 사용자 정보 확인
     if (socket.userUuid === userUuid && socket.connected) {
-      socket.emit(`data:${dataType}`, data);
+      socket.emit(`data:${dataType}`, JSON.parse(JSON.stringify(data || {})));
       broadcastCount++;
     }
   });
@@ -4215,8 +4247,9 @@ app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
     
     // 사용자가 해당 물고기를 충분히 가지고 있는지 확인 (보안 강화)
     const userFish = await measureDBQuery(`물고기판매-조회-${fishName}`, () =>
-      CatchModel.find({ ...query, fish: fishName })
-      // hint 제거 - MongoDB 자동 최적화
+      CatchModel.find({ ...query, fish: fishName }, { _id: 1, fish: 1 }) // projection 최소화
+        .sort({ _id: 1 }) // 일관된 순서 (인덱스 활용)
+        .lean() // Mongoose 오버헤드 제거
     );
     debugLog(`Found ${userFish.length} ${fishName} for user`);
     
@@ -4646,8 +4679,9 @@ app.post("/api/decompose-fish", async (req, res) => {
     
     // 사용자가 해당 물고기를 충분히 가지고 있는지 확인
     const userFish = await measureDBQuery(`물고기분해-조회-${fishName}`, () =>
-      CatchModel.find({ ...query, fish: fishName })
-      // hint 제거 - MongoDB 자동 최적화
+      CatchModel.find({ ...query, fish: fishName }, { _id: 1, fish: 1 }) // projection 최소화
+        .sort({ _id: 1 }) // 일관된 순서 (인덱스 활용)
+        .lean() // Mongoose 오버헤드 제거
     );
     console.log(`Found ${userFish.length} ${fishName} for user`);
     
@@ -5498,23 +5532,27 @@ async function bootstrap() {
     console.log("=== MONGODB CONNECTION DEBUG ===");
     console.log("Attempting to connect to MongoDB:", MONGO_URI);
     
-    // 🚀 MongoDB 연결 최적화 (성능 향상)
+    // 🚀 MongoDB 연결 최적화 (클러스터 직접 연결)
     await mongoose.connect(MONGO_URI, {
-      // 연결 풀 최적화 (렌더 서버 512MB RAM 고려)
-      maxPoolSize: 15, // 최대 연결 수 증가
-      minPoolSize: 5,  // 최소 연결 수 증가 (대기 시간 단축)
-      maxIdleTimeMS: 20000, // 20초로 단축 (메모리 효율성)
-      serverSelectionTimeoutMS: 3000, // 3초로 단축 (빠른 실패)
-      socketTimeoutMS: 30000, // 30초로 단축
-      connectTimeoutMS: 10000, // 10초 연결 타임아웃
-      heartbeatFrequencyMS: 10000, // 10초마다 heartbeat
-      // 성능 최적화
-      bufferCommands: false, // 버퍼링 비활성화 (즉시 에러 반환)
-      maxConnecting: 5, // 동시 연결 시도 수 제한
-      // 읽기 성능 최적화
-      readPreference: 'primaryPreferred', // Primary 우선, 없으면 Secondary
-      retryWrites: true, // 쓰기 재시도 활성화
-      retryReads: true   // 읽기 재시도 활성화
+      // 클러스터 직접 연결 최적화
+      maxPoolSize: 20, // 클러스터 연결 시 더 많은 풀 허용
+      minPoolSize: 8,  // 최소 연결 수 증가 (즉시 사용 가능)
+      maxIdleTimeMS: 30000, // 30초로 늘림 (클러스터는 더 안정적)
+      serverSelectionTimeoutMS: 2000, // 2초로 단축 (클러스터는 더 빠름)
+      socketTimeoutMS: 20000, // 20초로 단축 (클러스터 응답 빠름)
+      connectTimeoutMS: 5000, // 5초 연결 타임아웃 (클러스터 빠른 연결)
+      heartbeatFrequencyMS: 5000, // 5초마다 heartbeat (더 자주 체크)
+      // 클러스터 성능 최적화
+      bufferCommands: false, // 버퍼링 비활성화
+      maxConnecting: 8, // 클러스터 연결 시도 수 증가
+      // 클러스터 읽기 최적화
+      readPreference: 'nearest', // 가장 가까운 노드 우선
+      readConcern: { level: 'local' }, // 로컬 읽기로 지연 감소
+      retryWrites: true,
+      retryReads: true,
+      // 클러스터 전용 설정
+      directConnection: false, // 클러스터 모드 활성화
+      replicaSet: 'atlas-rs0' // Atlas 기본 레플리카 셋
     });
     
     console.log("✅ MongoDB connected successfully!");
@@ -5556,10 +5594,15 @@ async function bootstrap() {
     infoLog("=== DATABASE INDEX OPTIMIZATION ===");
     try {
       // 자주 사용되는 쿼리에 복합 인덱스 추가
+      // 🔍 Query Profiler 기반 복합 인덱스 최적화
       await CatchModel.collection.createIndex({ userUuid: 1, fish: 1 }); // 물고기 판매/분해
+      await CatchModel.collection.createIndex({ userUuid: 1, _id: 1 }); // 정렬 최적화
+      await CatchModel.collection.createIndex({ userUuid: 1, fish: 1, _id: 1 }); // 집계 최적화
+      
       await UserMoneyModel.collection.createIndex({ userUuid: 1 }); // 돈 조회
       await FishingSkillModel.collection.createIndex({ userUuid: 1 }); // 낚시 실력
       await MaterialModel.collection.createIndex({ userUuid: 1, material: 1 }); // 재료 소모
+      await MaterialModel.collection.createIndex({ userUuid: 1, _id: 1 }); // 재료 집계 최적화
       await UserEquipmentModel.collection.createIndex({ userUuid: 1 }); // 장비 조회
       debugLog("✅ Database indexes optimized");
     } catch (indexError) {
