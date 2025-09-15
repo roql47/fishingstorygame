@@ -2062,9 +2062,17 @@ async function sendUserDataUpdate(socket, userUuid, username) {
     
     // 순환 참조 방지를 위한 데이터 직렬화
     const safeData = {
-      inventory: JSON.parse(JSON.stringify(inventory || [])),
-      materials: JSON.parse(JSON.stringify(materials || [])),
-      money: JSON.parse(JSON.stringify(money || { money: 0 })),
+      inventory: inventory ? inventory.map(item => ({
+        fish: item.fish,
+        count: item.count,
+        _id: item._id
+      })) : [],
+      materials: materials ? materials.map(item => ({
+        material: item.material,
+        count: item.count,
+        _id: item._id
+      })) : [],
+      money: money ? { money: money.money } : { money: 0 },
       amber: JSON.parse(JSON.stringify(amber || { amber: 0 })),
       starPieces: JSON.parse(JSON.stringify(starPieces || { starPieces: 0 })),
       cooldown: JSON.parse(JSON.stringify(cooldown || { fishingCooldown: 0, explorationCooldown: 0 })),
@@ -5384,11 +5392,16 @@ app.get("/api/ping", (req, res) => {
 
 
 // 🛡️ [SECURITY] 보안 강화된 계정 초기화 API
-app.post("/api/reset-account", async (req, res) => {
+app.post("/api/reset-account", authenticateJWT, async (req, res) => {
   try {
-    const { username, userUuid } = req.query;
+    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
+    const { userUuid: jwtUserUuid, username: jwtUsername } = req.user;
     const { confirmationKey } = req.body; // 🛡️ 보안: 확인 키 필수
     const clientIP = getClientIP(req);
+    
+    // JWT에서 추출한 정보 사용 (쿼리 파라미터 무시)
+    const username = jwtUsername;
+    const userUuid = jwtUserUuid;
     
     console.log("🚨 [SECURITY] === ACCOUNT RESET REQUEST ===");
     console.log("Reset account request:", { username, userUuid, clientIP });
