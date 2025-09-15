@@ -236,7 +236,6 @@ function App() {
   
   // IP 차단 관리 상태
   const [blockedIPs, setBlockedIPs] = useState([]);
-  const [connectedUsers, setConnectedUsers] = useState([]);
   const [newIPAddress, setNewIPAddress] = useState('');
   const [blockReason, setBlockReason] = useState('');
   const [showIPManager, setShowIPManager] = useState(false);
