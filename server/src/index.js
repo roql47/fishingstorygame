@@ -273,7 +273,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 // 🛡️ DDoS/LOIC 방어 시스템
 const requestCounts = new Map(); // IP별 요청 카운트
-const blockedIPs = new Set(); // 차단된 IP 목록
+const ddosBlockedIPs = new Set(); // DDoS 차단된 IP 목록 (기존 시스템)
 const connectionCounts = new Map(); // IP별 연결 수
 const suspiciousIPs = new Map(); // 의심스러운 IP 추적
 
@@ -293,7 +293,7 @@ const ddosProtection = (req, res, next) => {
   const now = Date.now();
   
   // 차단된 IP 확인
-  if (blockedIPs.has(clientIP)) {
+  if (ddosBlockedIPs.has(clientIP)) {
     console.log(`🚫 차단된 IP 접근 시도: ${clientIP}`);
     return res.status(429).json({ 
       error: "IP가 차단되었습니다. 잠시 후 다시 시도해주세요.",
@@ -316,12 +316,12 @@ const ddosProtection = (req, res, next) => {
   
   // LOIC 공격 패턴 감지 (분당 150회 이상)
   if (requests.count > 150) {
-    blockedIPs.add(clientIP);
+    ddosBlockedIPs.add(clientIP);
     console.log(`🚨 LOIC/DDoS 공격 감지! IP 차단: ${clientIP} (${requests.count} requests/min)`);
     
     // 10분 후 차단 해제
     setTimeout(() => {
-      blockedIPs.delete(clientIP);
+      ddosBlockedIPs.delete(clientIP);
       console.log(`🔓 IP 차단 해제: ${clientIP}`);
     }, 600000);
     
@@ -366,7 +366,7 @@ setInterval(() => {
     }
   }
   
-  console.log(`🧹 보안 시스템 정리: ${requestCounts.size} IPs tracked, ${blockedIPs.size} blocked, ${suspiciousIPs.size} suspicious`);
+  console.log(`🧹 보안 시스템 정리: ${requestCounts.size} IPs tracked, ${ddosBlockedIPs.size} blocked, ${suspiciousIPs.size} suspicious`);
 }, 300000);
 
 const app = express();
@@ -490,7 +490,7 @@ const io = new Server(server, {
     const clientIP = getClientIP(req);
     
     // 차단된 IP 확인
-    if (blockedIPs.has(clientIP)) {
+    if (ddosBlockedIPs.has(clientIP)) {
       console.log(`🚫 차단된 IP의 Socket 연결 시도: ${clientIP}`);
       return callback('차단된 IP입니다', false);
     }
@@ -1332,7 +1332,7 @@ const securityMonitor = {
   getStats() {
     return {
       ...this.attacks,
-      blockedIPs: blockedIPs.size,
+      blockedIPs: ddosBlockedIPs.size,
       suspiciousIPs: suspiciousIPs.size,
       activeConnections: connectionCounts.size
     };
@@ -2823,18 +2823,28 @@ function isValidIPAddress(ip) {
   });
 }
 
-// IP 차단 미들웨어
+// IP 차단 미들웨어 (관리자 차단 + DDoS 차단 통합)
 function blockSuspiciousIP(req, res, next) {
   const clientIP = getClientIP(req);
   
+  // 1. 관리자 차단 확인
   if (blockedIPs.has(clientIP)) {
     const blockInfo = blockedIPs.get(clientIP);
-    console.log(`🚫 [BLOCKED] Access denied for ${clientIP} - Reason: ${blockInfo.reason}`);
+    console.log(`🚫 [ADMIN-BLOCKED] Access denied for ${clientIP} - Reason: ${blockInfo.reason}`);
     return res.status(403).json({ 
       error: "Access denied",
       message: `Your IP has been blocked. Reason: ${blockInfo.reason}`,
       blockedAt: blockInfo.blockedAt,
       blockedBy: blockInfo.blockedBy
+    });
+  }
+  
+  // 2. DDoS 차단 확인
+  if (ddosBlockedIPs.has(clientIP)) {
+    console.log(`🚫 [DDOS-BLOCKED] DDoS protection blocked IP: ${clientIP}`);
+    return res.status(429).json({ 
+      error: "Too many requests",
+      message: "Your IP has been temporarily blocked due to suspicious activity"
     });
   }
   
@@ -2893,7 +2903,7 @@ app.post("/api/toggle-admin", async (req, res) => {
     }
     
     // 🛡️ 보안 검증 3: 의심스러운 IP 차단
-    if (blockedIPs.has(clientIP)) {
+    if (ddosBlockedIPs.has(clientIP)) {
       console.log(`🚨 [SECURITY] Blocked IP attempted admin access: ${clientIP}`);
       return res.status(403).json({ 
         success: false, 
