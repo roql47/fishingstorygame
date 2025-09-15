@@ -236,6 +236,7 @@ function App() {
   
   // IP 차단 관리 상태
   const [blockedIPs, setBlockedIPs] = useState([]);
+  const [connectedUsers, setConnectedUsers] = useState([]);
   const [newIPAddress, setNewIPAddress] = useState('');
   const [blockReason, setBlockReason] = useState('');
   const [showIPManager, setShowIPManager] = useState(false);
@@ -2105,6 +2106,22 @@ function App() {
     }
   };
 
+  // 현재 접속자 IP 조회
+  const fetchConnectedUserIPs = async () => {
+    if (!isAdmin) return;
+    
+    try {
+      const params = { username, userUuid };
+      const response = await axios.get(`${serverUrl}/api/admin/user-ips`, { params });
+      
+      if (response.data.success) {
+        setConnectedUsers(response.data.connectedUsers || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch user IPs:', error);
+    }
+  };
+
   // IP 차단
   const blockIP = async () => {
     if (!newIPAddress || !isValidIP(newIPAddress)) {
@@ -2164,6 +2181,7 @@ function App() {
   const openIPManager = () => {
     setShowIPManager(true);
     fetchBlockedIPs();
+    fetchConnectedUserIPs();
   };
 
   // 🔑 관리자 권한: 다른 사용자 계정 삭제
@@ -5611,11 +5629,79 @@ function App() {
                 </button>
               </div>
 
+              {/* 현재 접속자 IP 목록 */}
+              <div className={`p-4 rounded-lg mb-6 ${
+                isDarkMode ? "bg-blue-900/20" : "bg-blue-50"
+              }`}>
+                <h3 className={`text-lg font-semibold mb-4 ${
+                  isDarkMode ? "text-blue-300" : "text-blue-800"
+                }`}>🌐 현재 접속자 IP ({connectedUsers.length}명)</h3>
+                
+                {connectedUsers.length === 0 ? (
+                  <div className={`text-center py-4 ${
+                    isDarkMode ? "text-blue-400" : "text-blue-600"
+                  }`}>
+                    현재 접속 중인 사용자가 없습니다.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {connectedUsers.map((user, index) => (
+                      <div
+                        key={`${user.userUuid}-${index}`}
+                        className={`p-3 rounded-lg border ${
+                          isDarkMode
+                            ? "bg-blue-800/30 border-blue-600/50"
+                            : "bg-blue-100/50 border-blue-200"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-1">
+                              <span className={`font-bold ${
+                                isDarkMode ? "text-blue-300" : "text-blue-700"
+                              }`}>👤 {user.username}</span>
+                              <span className={`text-xs px-2 py-1 rounded-full ${
+                                isDarkMode
+                                  ? "bg-blue-500/20 text-blue-300"
+                                  : "bg-blue-500/10 text-blue-600"
+                              }`}>접속 중</span>
+                            </div>
+                            
+                            <div className={`text-sm space-y-1 ${
+                              isDarkMode ? "text-blue-200" : "text-blue-600"
+                            }`}>
+                              <p><strong>IP:</strong> <span className="font-mono">{user.ipAddress}</span></p>
+                              <p><strong>UUID:</strong> <span className="font-mono text-xs">{user.userUuid}</span></p>
+                              <p><strong>접속시간:</strong> {new Date(user.connectedAt).toLocaleString('ko-KR')}</p>
+                            </div>
+                          </div>
+                          
+                          <button
+                            onClick={() => {
+                              setNewIPAddress(user.ipAddress);
+                              setBlockReason(`${user.username} 사용자 차단`);
+                            }}
+                            className={`px-3 py-2 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                              isDarkMode
+                                ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-400/30"
+                                : "bg-red-500/10 text-red-600 hover:bg-red-500/20 border border-red-500/30"
+                            }`}
+                            title="이 IP를 차단 목록에 추가"
+                          >
+                            🚫 차단 준비
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* 차단된 IP 목록 */}
               <div>
                 <h3 className={`text-lg font-semibold mb-4 ${
                   isDarkMode ? "text-white" : "text-gray-800"
-                }`}>차단된 IP 목록 ({blockedIPs.length}개)</h3>
+                }`}>🚫 차단된 IP 목록 ({blockedIPs.length}개)</h3>
                 
                 {blockedIPs.length === 0 ? (
                   <div className={`text-center py-8 ${

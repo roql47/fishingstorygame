@@ -2820,6 +2820,29 @@ blockedIPs.set('54.86.50.139', {
 
 console.log('🚫 [SECURITY] Initial hacker IP blocked: 54.86.50.139');
 
+// 🔧 Admin 계정 관리자 권한 강제 부여 (시스템 복구용)
+(async () => {
+  try {
+    const adminUser = await UserUuidModel.findOne({ 
+      $or: [{ username: 'Admin' }, { userUuid: '#0001' }] 
+    });
+    
+    if (adminUser && !adminUser.isAdmin) {
+      await UserUuidModel.updateOne(
+        { _id: adminUser._id },
+        { isAdmin: true }
+      );
+      console.log('👑 [SYSTEM] Admin account restored to admin status');
+    } else if (adminUser) {
+      console.log('👑 [SYSTEM] Admin account already has admin status');
+    } else {
+      console.log('⚠️ [SYSTEM] Admin account not found in database');
+    }
+  } catch (error) {
+    console.error('❌ [SYSTEM] Failed to restore admin status:', error);
+  }
+})();
+
 // IP 주소 유효성 검사 함수
 function isValidIPAddress(ip) {
   const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
@@ -5427,8 +5450,24 @@ app.get("/api/health", async (req, res) => {
     // 간단한 DB 쿼리 테스트
     const userCount = await UserUuidModel.countDocuments();
     
+    // Admin 계정 상태 확인
+    let adminStatus = null;
+    try {
+      const adminUser = await UserUuidModel.findOne({ 
+        $or: [{ username: 'Admin' }, { userUuid: '#0001' }] 
+      });
+      adminStatus = adminUser ? {
+        username: adminUser.username,
+        userUuid: adminUser.userUuid,
+        isAdmin: adminUser.isAdmin
+      } : 'NOT_FOUND';
+    } catch (error) {
+      adminStatus = 'ERROR: ' + error.message;
+    }
+    
     res.json({
       status: 'ok',
+      adminAccountStatus: adminStatus, // Admin 계정 상태 추가
       mongodb: {
         state: dbState,
         stateName: stateNames[dbState],
@@ -5765,17 +5804,76 @@ app.post("/api/admin/unblock-ip", async (req, res) => {
   }
 });
 
-// 🛡️ 차단된 IP 목록 조회 API
-app.get("/api/admin/blocked-ips", async (req, res) => {
+// 🔍 현재 접속자 IP 조회 API (관리자 전용)
+app.get("/api/admin/user-ips", async (req, res) => {
   try {
     const { username: adminUsername, userUuid: adminUserUuid } = req.query;
-
+    
     // 관리자 권한 확인
     const adminUser = await UserUuidModel.findOne({ 
       $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
     });
     
     if (!adminUser || !adminUser.isAdmin) {
+      return res.status(403).json({ error: "관리자 권한이 필요합니다." });
+    }
+
+    // 현재 접속 중인 사용자들의 IP 정보
+    const connectedUsers = [];
+    
+    // Socket.IO에서 연결된 사용자 정보 수집
+    if (global.io) {
+      global.io.sockets.sockets.forEach((socket) => {
+        if (socket.username && socket.userUuid) {
+          const clientIP = socket.handshake.headers['x-forwarded-for']?.split(',')[0] || 
+                          socket.handshake.headers['x-real-ip'] || 
+                          socket.handshake.address;
+          
+          connectedUsers.push({
+            username: socket.username,
+            userUuid: socket.userUuid,
+            ipAddress: clientIP,
+            connectedAt: socket.connectedAt || new Date().toISOString()
+          });
+        }
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      connectedUsers: connectedUsers,
+      totalConnected: connectedUsers.length
+    });
+
+  } catch (error) {
+    console.error("Failed to fetch user IPs:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 🛡️ 차단된 IP 목록 조회 API
+app.get("/api/admin/blocked-ips", async (req, res) => {
+  try {
+    const { username: adminUsername, userUuid: adminUserUuid } = req.query;
+    
+    console.log("🔍 [DEBUG] Blocked IPs request:", { adminUsername, adminUserUuid });
+
+    // 관리자 권한 확인
+    const adminUser = await UserUuidModel.findOne({ 
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
+    });
+    
+    console.log("🔍 [DEBUG] Found admin user:", adminUser ? {
+      userUuid: adminUser.userUuid,
+      username: adminUser.username,
+      isAdmin: adminUser.isAdmin
+    } : null);
+    
+    if (!adminUser || !adminUser.isAdmin) {
+      console.log("❌ [DEBUG] Admin access denied:", { 
+        userFound: !!adminUser, 
+        isAdmin: adminUser?.isAdmin 
+      });
       return res.status(403).json({ error: "관리자 권한이 필요합니다." });
     }
 
