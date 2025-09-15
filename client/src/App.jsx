@@ -233,6 +233,12 @@ function App() {
   const [inputQuantity, setInputQuantity] = useState(1);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   
+  // IP 차단 관리 상태
+  const [blockedIPs, setBlockedIPs] = useState([]);
+  const [newIPAddress, setNewIPAddress] = useState('');
+  const [blockReason, setBlockReason] = useState('');
+  const [showIPManager, setShowIPManager] = useState(false);
+  
   // 최초 로그인 관련 상태
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -2066,6 +2072,97 @@ function App() {
         alert('⚠️ 계정 초기화에 실패했습니다: ' + (error.response?.data?.error || error.message));
       }
     }
+  };
+
+  // 🛡️ IP 차단 관리 함수들
+  
+  // IP 유효성 검사
+  const isValidIP = (ip) => {
+    const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
+    if (!ipRegex.test(ip)) return false;
+    
+    const parts = ip.split('.');
+    return parts.every(part => {
+      const num = parseInt(part);
+      return num >= 0 && num <= 255;
+    });
+  };
+
+  // 차단된 IP 목록 조회
+  const fetchBlockedIPs = async () => {
+    if (!isAdmin) return;
+    
+    try {
+      const params = { username, userUuid };
+      const response = await axios.get(`${serverUrl}/api/admin/blocked-ips`, { params });
+      
+      if (response.data.success) {
+        setBlockedIPs(response.data.blockedIPs || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch blocked IPs:', error);
+    }
+  };
+
+  // IP 차단
+  const blockIP = async () => {
+    if (!newIPAddress || !isValidIP(newIPAddress)) {
+      alert('❌ 올바른 IP 주소를 입력하세요.\n예: 192.168.1.1');
+      return;
+    }
+
+    const adminKey = prompt('🔑 관리자 비밀 키를 입력하세요:');
+    if (!adminKey) return;
+
+    try {
+      const response = await axios.post(`${serverUrl}/api/admin/block-ip`, {
+        ipAddress: newIPAddress,
+        reason: blockReason || '관리자에 의한 수동 차단',
+        adminKey: adminKey
+      }, {
+        params: { username, userUuid }
+      });
+
+      if (response.data.success) {
+        alert(`✅ IP ${newIPAddress}가 차단되었습니다.`);
+        setNewIPAddress('');
+        setBlockReason('');
+        fetchBlockedIPs(); // 목록 새로고침
+      }
+    } catch (error) {
+      alert(`❌ IP 차단 실패: ${error.response?.data?.error || error.message}`);
+    }
+  };
+
+  // IP 차단 해제
+  const unblockIP = async (ipAddress) => {
+    const adminKey = prompt('🔑 관리자 비밀 키를 입력하세요:');
+    if (!adminKey) return;
+
+    const confirmMessage = `정말로 IP ${ipAddress}의 차단을 해제하시겠습니까?`;
+    if (!confirm(confirmMessage)) return;
+
+    try {
+      const response = await axios.post(`${serverUrl}/api/admin/unblock-ip`, {
+        ipAddress: ipAddress,
+        adminKey: adminKey
+      }, {
+        params: { username, userUuid }
+      });
+
+      if (response.data.success) {
+        alert(`✅ IP ${ipAddress} 차단이 해제되었습니다.`);
+        fetchBlockedIPs(); // 목록 새로고림
+      }
+    } catch (error) {
+      alert(`❌ 차단 해제 실패: ${error.response?.data?.error || error.message}`);
+    }
+  };
+
+  // IP 관리자 패널 열기
+  const openIPManager = () => {
+    setShowIPManager(true);
+    fetchBlockedIPs();
   };
 
   // 🔑 관리자 권한: 다른 사용자 계정 삭제
@@ -4877,18 +4974,31 @@ function App() {
                         <p className={`text-xs font-mono ${
                           isDarkMode ? "text-green-400" : "text-green-600"
                         }`}>🔑 ID: {selectedUserProfile ? otherUserData?.userUuid : userUuid}</p>
-                        {!selectedUserProfile && ( // 내 프로필일 때만 계정 초기화 버튼 표시
-                          <button
-                            onClick={() => setShowResetConfirm(true)}
-                            className={`text-xs px-2 py-1 rounded transition-all duration-300 hover:scale-105 ${
-                              isDarkMode 
-                                ? "bg-red-500/20 text-red-400 hover:bg-red-500/30" 
-                                : "bg-red-500/10 text-red-600 hover:bg-red-500/20"
-                            }`}
-                            title="모든 데이터를 초기화합니다"
-                          >
-                            계정 초기화
-                          </button>
+                        {!selectedUserProfile && ( // 내 프로필일 때만 관리자 기능 표시
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setShowResetConfirm(true)}
+                              className={`text-xs px-2 py-1 rounded transition-all duration-300 hover:scale-105 ${
+                                isDarkMode 
+                                  ? "bg-red-500/20 text-red-400 hover:bg-red-500/30" 
+                                  : "bg-red-500/10 text-red-600 hover:bg-red-500/20"
+                              }`}
+                              title="모든 데이터를 초기화합니다"
+                            >
+                              계정 초기화
+                            </button>
+                            <button
+                              onClick={openIPManager}
+                              className={`text-xs px-2 py-1 rounded transition-all duration-300 hover:scale-105 ${
+                                isDarkMode 
+                                  ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30" 
+                                  : "bg-purple-500/10 text-purple-600 hover:bg-purple-500/20"
+                              }`}
+                              title="IP 차단 관리"
+                            >
+                              🛡️ IP 관리
+                            </button>
+                          </div>
                         )}
                       </div>
                     )}
@@ -5416,6 +5526,151 @@ function App() {
                 >
                   {quantityModalData.type === 'sell' ? '판매하기' : '분해하기'}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* IP 차단 관리 모달 */}
+      {showIPManager && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className={`max-w-4xl w-full max-h-[90vh] overflow-y-auto rounded-lg shadow-xl ${
+            isDarkMode ? "bg-gray-800" : "bg-white"
+          }`}>
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className={`text-xl font-bold ${
+                  isDarkMode ? "text-white" : "text-gray-800"
+                }`}>🛡️ IP 차단 관리</h2>
+                <button
+                  onClick={() => setShowIPManager(false)}
+                  className={`p-2 rounded-full hover:bg-gray-600/20 transition-colors ${
+                    isDarkMode ? "text-gray-400 hover:text-white" : "text-gray-600 hover:text-gray-800"
+                  }`}
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* IP 차단 추가 폼 */}
+              <div className={`p-4 rounded-lg mb-6 ${
+                isDarkMode ? "bg-gray-700/50" : "bg-gray-50"
+              }`}>
+                <h3 className={`text-lg font-semibold mb-4 ${
+                  isDarkMode ? "text-white" : "text-gray-800"
+                }`}>새 IP 차단</h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${
+                      isDarkMode ? "text-gray-300" : "text-gray-700"
+                    }`}>IP 주소</label>
+                    <input
+                      type="text"
+                      value={newIPAddress}
+                      onChange={(e) => setNewIPAddress(e.target.value)}
+                      placeholder="예: 192.168.1.1"
+                      pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"
+                      className={`w-full px-3 py-2 rounded-lg border transition-colors ${
+                        isDarkMode
+                          ? "bg-gray-600 border-gray-500 text-white placeholder-gray-400 focus:border-purple-400"
+                          : "bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-purple-500"
+                      } focus:outline-none focus:ring-2 focus:ring-purple-500/20`}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${
+                      isDarkMode ? "text-gray-300" : "text-gray-700"
+                    }`}>차단 사유</label>
+                    <input
+                      type="text"
+                      value={blockReason}
+                      onChange={(e) => setBlockReason(e.target.value)}
+                      placeholder="예: 해킹 시도, 스팸 등"
+                      className={`w-full px-3 py-2 rounded-lg border transition-colors ${
+                        isDarkMode
+                          ? "bg-gray-600 border-gray-500 text-white placeholder-gray-400 focus:border-purple-400"
+                          : "bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-purple-500"
+                      } focus:outline-none focus:ring-2 focus:ring-purple-500/20`}
+                    />
+                  </div>
+                </div>
+                
+                <button
+                  onClick={blockIP}
+                  className={`mt-4 px-4 py-2 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                    isDarkMode
+                      ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-400/30"
+                      : "bg-red-500/10 text-red-600 hover:bg-red-500/20 border border-red-500/30"
+                  }`}
+                >
+                  🚫 IP 차단
+                </button>
+              </div>
+
+              {/* 차단된 IP 목록 */}
+              <div>
+                <h3 className={`text-lg font-semibold mb-4 ${
+                  isDarkMode ? "text-white" : "text-gray-800"
+                }`}>차단된 IP 목록 ({blockedIPs.length}개)</h3>
+                
+                {blockedIPs.length === 0 ? (
+                  <div className={`text-center py-8 ${
+                    isDarkMode ? "text-gray-400" : "text-gray-600"
+                  }`}>
+                    차단된 IP가 없습니다.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {blockedIPs.map((ip, index) => (
+                      <div
+                        key={`${ip.address}-${index}`}
+                        className={`p-4 rounded-lg border ${
+                          isDarkMode
+                            ? "bg-gray-700/50 border-gray-600"
+                            : "bg-gray-50 border-gray-200"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className={`font-mono font-bold text-lg ${
+                                isDarkMode ? "text-red-400" : "text-red-600"
+                              }`}>🚫 {ip.address}</span>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                isDarkMode
+                                  ? "bg-red-500/20 text-red-400"
+                                  : "bg-red-500/10 text-red-600"
+                              }`}>차단됨</span>
+                            </div>
+                            
+                            <div className={`text-sm space-y-1 ${
+                              isDarkMode ? "text-gray-300" : "text-gray-700"
+                            }`}>
+                              <p><strong>사유:</strong> {ip.reason}</p>
+                              <p><strong>차단일:</strong> {new Date(ip.blockedAt).toLocaleString('ko-KR')}</p>
+                              <p><strong>차단자:</strong> {ip.blockedBy}</p>
+                            </div>
+                          </div>
+                          
+                          <button
+                            onClick={() => unblockIP(ip.address)}
+                            className={`px-3 py-2 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                              isDarkMode
+                                ? "bg-green-500/20 text-green-400 hover:bg-green-500/30 border border-green-400/30"
+                                : "bg-green-500/10 text-green-600 hover:bg-green-500/20 border border-green-500/30"
+                            }`}
+                            title="차단 해제"
+                          >
+                            ✅ 해제
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

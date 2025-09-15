@@ -377,6 +377,9 @@ app.set('trust proxy', true);
 // 🚀 DDoS 방어 미들웨어 임시 비활성화 (성능 테스트)
 // app.use(ddosProtection); // 성능 문제로 비활성화
 
+// IP 차단 미들웨어를 모든 요청에 적용
+app.use(blockSuspiciousIP);
+
 // 🚀 간소화된 CORS 설정 (성능 최적화)
 if (isProduction) {
   // 프로덕션: 필수 설정만
@@ -2795,6 +2798,48 @@ app.get("/api/companions/:userId", async (req, res) => {
     res.status(500).json({ error: "동료 정보를 가져올 수 없습니다." });
   }
 });
+
+// 🛡️ [SECURITY] IP Blocking System (IP 차단 관리 시스템)
+const blockedIPs = new Map(); // IP -> { reason, blockedAt, blockedBy }
+
+// 초기 해커 IP 차단
+blockedIPs.set('54.86.50.139', {
+  reason: '해킹 시도 (관리자 권한 탈취, 계정 초기화 공격)',
+  blockedAt: new Date().toISOString(),
+  blockedBy: 'System'
+});
+
+console.log('🚫 [SECURITY] Initial hacker IP blocked: 54.86.50.139');
+
+// IP 주소 유효성 검사 함수
+function isValidIPAddress(ip) {
+  const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
+  if (!ipRegex.test(ip)) return false;
+  
+  const parts = ip.split('.');
+  return parts.every(part => {
+    const num = parseInt(part);
+    return num >= 0 && num <= 255;
+  });
+}
+
+// IP 차단 미들웨어
+function blockSuspiciousIP(req, res, next) {
+  const clientIP = getClientIP(req);
+  
+  if (blockedIPs.has(clientIP)) {
+    const blockInfo = blockedIPs.get(clientIP);
+    console.log(`🚫 [BLOCKED] Access denied for ${clientIP} - Reason: ${blockInfo.reason}`);
+    return res.status(403).json({ 
+      error: "Access denied",
+      message: `Your IP has been blocked. Reason: ${blockInfo.reason}`,
+      blockedAt: blockInfo.blockedAt,
+      blockedBy: blockInfo.blockedBy
+    });
+  }
+  
+  next();
+}
 
 // 🛡️ [SECURITY] Admin APIs (보안 강화된 관리자 시스템)
 
@@ -5597,6 +5642,145 @@ app.post("/api/admin/reset-user-account", async (req, res) => {
 });
 
 // 🔑 관리자 권한: 사용자 계정 삭제 API
+// 🛡️ IP 차단 API
+app.post("/api/admin/block-ip", async (req, res) => {
+  try {
+    const { ipAddress, reason, adminKey } = req.body;
+    const { username: adminUsername, userUuid: adminUserUuid } = req.query;
+    const clientIP = getClientIP(req);
+
+    console.log("🛡️ [ADMIN] Block IP request:", { ipAddress, reason, adminUsername });
+
+    // 관리자 권한 확인
+    const adminUser = await UserUuidModel.findOne({ 
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
+    });
+    
+    if (!adminUser || !adminUser.isAdmin) {
+      console.log("❌ [ADMIN] Unauthorized IP block attempt:", adminUsername);
+      return res.status(403).json({ error: "관리자 권한이 필요합니다." });
+    }
+
+    // 관리자 키 검증
+    const validAdminKey = process.env.ADMIN_KEY || "admin_secret_key_2024";
+    if (adminKey !== validAdminKey) {
+      console.log("❌ [ADMIN] Invalid admin key for IP block");
+      return res.status(403).json({ error: "잘못된 관리자 키입니다." });
+    }
+
+    // IP 주소 유효성 검사
+    if (!isValidIPAddress(ipAddress)) {
+      return res.status(400).json({ error: "올바르지 않은 IP 주소입니다." });
+    }
+
+    // 자기 자신 차단 방지
+    if (ipAddress === clientIP) {
+      return res.status(400).json({ error: "자신의 IP는 차단할 수 없습니다." });
+    }
+
+    // IP 차단 정보 저장
+    const blockInfo = {
+      reason: reason || '관리자에 의한 수동 차단',
+      blockedAt: new Date().toISOString(),
+      blockedBy: adminUsername
+    };
+    
+    blockedIPs.set(ipAddress, blockInfo);
+
+    console.log(`🚫 [ADMIN] IP ${ipAddress} blocked by ${adminUsername}: ${blockInfo.reason}`);
+
+    res.json({ 
+      success: true, 
+      message: `IP ${ipAddress}가 차단되었습니다.`,
+      blockedIP: {
+        address: ipAddress,
+        ...blockInfo
+      }
+    });
+
+  } catch (error) {
+    console.error("Failed to block IP:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 🛡️ IP 차단 해제 API
+app.post("/api/admin/unblock-ip", async (req, res) => {
+  try {
+    const { ipAddress, adminKey } = req.body;
+    const { username: adminUsername, userUuid: adminUserUuid } = req.query;
+
+    console.log("✅ [ADMIN] Unblock IP request:", { ipAddress, adminUsername });
+
+    // 관리자 권한 확인
+    const adminUser = await UserUuidModel.findOne({ 
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
+    });
+    
+    if (!adminUser || !adminUser.isAdmin) {
+      return res.status(403).json({ error: "관리자 권한이 필요합니다." });
+    }
+
+    // 관리자 키 검증
+    const validAdminKey = process.env.ADMIN_KEY || "admin_secret_key_2024";
+    if (adminKey !== validAdminKey) {
+      return res.status(403).json({ error: "잘못된 관리자 키입니다." });
+    }
+
+    // IP 차단 해제
+    const wasBlocked = blockedIPs.delete(ipAddress);
+
+    if (wasBlocked) {
+      console.log(`✅ [ADMIN] IP ${ipAddress} unblocked by ${adminUsername}`);
+      res.json({ 
+        success: true, 
+        message: `IP ${ipAddress} 차단이 해제되었습니다.` 
+      });
+    } else {
+      res.status(404).json({ error: "차단되지 않은 IP입니다." });
+    }
+
+  } catch (error) {
+    console.error("Failed to unblock IP:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 🛡️ 차단된 IP 목록 조회 API
+app.get("/api/admin/blocked-ips", async (req, res) => {
+  try {
+    const { username: adminUsername, userUuid: adminUserUuid } = req.query;
+
+    // 관리자 권한 확인
+    const adminUser = await UserUuidModel.findOne({ 
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
+    });
+    
+    if (!adminUser || !adminUser.isAdmin) {
+      return res.status(403).json({ error: "관리자 권한이 필요합니다." });
+    }
+
+    // 차단된 IP 목록 반환
+    const blockedList = Array.from(blockedIPs.entries()).map(([ip, data]) => ({
+      address: ip,
+      reason: data.reason,
+      blockedAt: data.blockedAt,
+      blockedBy: data.blockedBy
+    }));
+
+    console.log(`📋 [ADMIN] Blocked IPs list requested by ${adminUsername}: ${blockedList.length} IPs`);
+
+    res.json({ 
+      success: true, 
+      blockedIPs: blockedList.sort((a, b) => new Date(b.blockedAt) - new Date(a.blockedAt))
+    });
+
+  } catch (error) {
+    console.error("Failed to fetch blocked IPs:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post("/api/admin/delete-user-account", async (req, res) => {
   try {
     const { targetUsername, adminKey, confirmationKey } = req.body;
