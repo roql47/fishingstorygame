@@ -2823,23 +2823,34 @@ console.log('🚫 [SECURITY] Initial hacker IP blocked: 54.86.50.139');
 // 🔧 Admin 계정 관리자 권한 강제 부여 (시스템 복구용)
 (async () => {
   try {
-    const adminUser = await UserUuidModel.findOne({ 
-      $or: [{ username: 'Admin' }, { userUuid: '#0001' }] 
-    });
+    // 모든 'Admin' 사용자명을 가진 계정을 찾기 (UUID 무관)
+    const adminUsers = await UserUuidModel.find({ username: 'Admin' });
     
-    if (adminUser) {
-      // isAdmin이 undefined이거나 false인 경우 모두 복구
-      if (adminUser.isAdmin !== true) {
-        await UserUuidModel.updateOne(
-          { _id: adminUser._id },
-          { $set: { isAdmin: true } }
-        );
-        console.log('👑 [SYSTEM] Admin account restored to admin status (was:', adminUser.isAdmin, ')');
-      } else {
-        console.log('👑 [SYSTEM] Admin account already has admin status');
+    if (adminUsers.length > 0) {
+      console.log(`🔍 [SYSTEM] Found ${adminUsers.length} Admin accounts:`);
+      
+      for (const adminUser of adminUsers) {
+        console.log(`   - ${adminUser.username} (${adminUser.userUuid}): isAdmin = ${adminUser.isAdmin}`);
+        
+        // isAdmin이 undefined이거나 false인 경우 모두 복구
+        if (adminUser.isAdmin !== true) {
+          await UserUuidModel.updateOne(
+            { _id: adminUser._id },
+            { $set: { isAdmin: true } }
+          );
+          console.log(`👑 [SYSTEM] Admin account ${adminUser.userUuid} restored to admin status (was: ${adminUser.isAdmin})`);
+        }
       }
+      
+      // 최신 Admin 계정 상태 확인
+      const updatedAdmins = await UserUuidModel.find({ username: 'Admin' });
+      console.log('👑 [SYSTEM] Final Admin accounts status:');
+      updatedAdmins.forEach(admin => {
+        console.log(`   - ${admin.username} (${admin.userUuid}): isAdmin = ${admin.isAdmin}`);
+      });
+      
     } else {
-      console.log('⚠️ [SYSTEM] Admin account not found in database');
+      console.log('⚠️ [SYSTEM] No Admin accounts found in database');
     }
   } catch (error) {
     console.error('❌ [SYSTEM] Failed to restore admin status:', error);
@@ -5453,17 +5464,19 @@ app.get("/api/health", async (req, res) => {
     // 간단한 DB 쿼리 테스트
     const userCount = await UserUuidModel.countDocuments();
     
-    // Admin 계정 상태 확인
+    // Admin 계정 상태 확인 (모든 Admin 계정)
     let adminStatus = null;
     try {
-      const adminUser = await UserUuidModel.findOne({ 
-        $or: [{ username: 'Admin' }, { userUuid: '#0001' }] 
-      });
-      adminStatus = adminUser ? {
-        username: adminUser.username,
-        userUuid: adminUser.userUuid,
-        isAdmin: adminUser.isAdmin
-      } : 'NOT_FOUND';
+      const adminUsers = await UserUuidModel.find({ username: 'Admin' });
+      if (adminUsers.length > 0) {
+        adminStatus = adminUsers.map(admin => ({
+          username: admin.username,
+          userUuid: admin.userUuid,
+          isAdmin: admin.isAdmin
+        }));
+      } else {
+        adminStatus = 'NOT_FOUND';
+      }
     } catch (error) {
       adminStatus = 'ERROR: ' + error.message;
     }
@@ -5628,18 +5641,42 @@ app.post("/api/admin/reset-user-account", async (req, res) => {
     
     console.log("🔑 [ADMIN] Reset user account request:", { targetUsername, adminUsername });
     
-    // 관리자 권한 확인
+    // 관리자 권한 확인 (두 모델 모두 확인 및 동기화)
     console.log("🔍 [DEBUG] Looking for admin user:", { adminUserUuid, adminUsername });
     const adminUser = await UserUuidModel.findOne({ 
       $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
     });
+    
+    // AdminModel에서도 확인
+    const adminRecord = await AdminModel.findOne({
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }]
+    });
+    
     console.log("🔍 [DEBUG] Found admin user:", adminUser ? { 
       userUuid: adminUser.userUuid, 
       username: adminUser.username, 
       isAdmin: adminUser.isAdmin 
     } : null);
+    console.log("🔍 [DEBUG] Found admin record:", adminRecord ? { 
+      userUuid: adminRecord.userUuid, 
+      username: adminRecord.username, 
+      isAdmin: adminRecord.isAdmin 
+    } : null);
     
-    if (!adminUser || !adminUser.isAdmin) {
+    // AdminModel에 권한이 있지만 UserUuidModel에 없는 경우 동기화
+    if (adminRecord?.isAdmin && adminUser && !adminUser.isAdmin) {
+      console.log("🔄 [SYNC] Syncing admin rights for user reset");
+      await UserUuidModel.updateOne(
+        { _id: adminUser._id },
+        { $set: { isAdmin: true } }
+      );
+      adminUser.isAdmin = true;
+    }
+    
+    // 권한 확인 (두 모델 중 하나라도 관리자면 허용)
+    const hasAdminRights = (adminUser?.isAdmin) || (adminRecord?.isAdmin);
+    
+    if (!hasAdminRights) {
       console.log("❌ [ADMIN] Unauthorized admin reset attempt:", adminUsername);
       return res.status(403).json({ error: "관리자 권한이 필요합니다." });
     }
@@ -5712,12 +5749,30 @@ app.post("/api/admin/block-ip", async (req, res) => {
 
     console.log("🛡️ [ADMIN] Block IP request:", { ipAddress, reason, adminUsername });
 
-    // 관리자 권한 확인
+    // 관리자 권한 확인 (두 모델 모두 확인 및 동기화)
     const adminUser = await UserUuidModel.findOne({ 
       $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
     });
     
-    if (!adminUser || !adminUser.isAdmin) {
+    // AdminModel에서도 확인
+    const adminRecord = await AdminModel.findOne({
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }]
+    });
+    
+    // AdminModel에 권한이 있지만 UserUuidModel에 없는 경우 동기화
+    if (adminRecord?.isAdmin && adminUser && !adminUser.isAdmin) {
+      console.log("🔄 [SYNC] Syncing admin rights for IP block");
+      await UserUuidModel.updateOne(
+        { _id: adminUser._id },
+        { $set: { isAdmin: true } }
+      );
+      adminUser.isAdmin = true;
+    }
+    
+    // 권한 확인 (두 모델 중 하나라도 관리자면 허용)
+    const hasAdminRights = (adminUser?.isAdmin) || (adminRecord?.isAdmin);
+    
+    if (!hasAdminRights) {
       console.log("❌ [ADMIN] Unauthorized IP block attempt:", adminUsername);
       return res.status(403).json({ error: "관리자 권한이 필요합니다." });
     }
@@ -5773,12 +5828,30 @@ app.post("/api/admin/unblock-ip", async (req, res) => {
 
     console.log("✅ [ADMIN] Unblock IP request:", { ipAddress, adminUsername });
 
-    // 관리자 권한 확인
+    // 관리자 권한 확인 (두 모델 모두 확인 및 동기화)
     const adminUser = await UserUuidModel.findOne({ 
       $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
     });
     
-    if (!adminUser || !adminUser.isAdmin) {
+    // AdminModel에서도 확인
+    const adminRecord = await AdminModel.findOne({
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }]
+    });
+    
+    // AdminModel에 권한이 있지만 UserUuidModel에 없는 경우 동기화
+    if (adminRecord?.isAdmin && adminUser && !adminUser.isAdmin) {
+      console.log("🔄 [SYNC] Syncing admin rights for IP unblock");
+      await UserUuidModel.updateOne(
+        { _id: adminUser._id },
+        { $set: { isAdmin: true } }
+      );
+      adminUser.isAdmin = true;
+    }
+    
+    // 권한 확인 (두 모델 중 하나라도 관리자면 허용)
+    const hasAdminRights = (adminUser?.isAdmin) || (adminRecord?.isAdmin);
+    
+    if (!hasAdminRights) {
       return res.status(403).json({ error: "관리자 권한이 필요합니다." });
     }
 
@@ -5812,12 +5885,40 @@ app.get("/api/admin/user-ips", async (req, res) => {
   try {
     const { username: adminUsername, userUuid: adminUserUuid } = req.query;
     
-    // 관리자 권한 확인
+    // 관리자 권한 확인 (두 모델 모두 확인 및 동기화)
     const adminUser = await UserUuidModel.findOne({ 
       $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
     });
     
-    if (!adminUser || !adminUser.isAdmin) {
+    // AdminModel에서도 확인
+    const adminRecord = await AdminModel.findOne({
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }]
+    });
+    
+    console.log("🔍 [DEBUG] Admin check for user-ips:", {
+      adminUsername,
+      adminUserUuid,
+      userFound: !!adminUser,
+      userIsAdmin: adminUser?.isAdmin,
+      adminRecordFound: !!adminRecord,
+      adminRecordIsAdmin: adminRecord?.isAdmin
+    });
+    
+    // AdminModel에 권한이 있지만 UserUuidModel에 없는 경우 동기화
+    if (adminRecord?.isAdmin && adminUser && !adminUser.isAdmin) {
+      console.log("🔄 [SYNC] Syncing admin rights from AdminModel to UserUuidModel");
+      await UserUuidModel.updateOne(
+        { _id: adminUser._id },
+        { $set: { isAdmin: true } }
+      );
+      adminUser.isAdmin = true;
+    }
+    
+    // 권한 확인 (두 모델 중 하나라도 관리자면 허용)
+    const hasAdminRights = (adminUser?.isAdmin) || (adminRecord?.isAdmin);
+    
+    if (!hasAdminRights) {
+      console.log("❌ [DEBUG] Admin access denied - no admin rights found");
       return res.status(403).json({ error: "관리자 권한이 필요합니다." });
     }
 
@@ -5873,22 +5974,40 @@ app.get("/api/admin/blocked-ips", async (req, res) => {
     
     console.log("🔍 [DEBUG] Blocked IPs request:", { adminUsername, adminUserUuid });
 
-    // 관리자 권한 확인
+    // 관리자 권한 확인 (두 모델 모두 확인 및 동기화)
     const adminUser = await UserUuidModel.findOne({ 
       $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
     });
     
-    console.log("🔍 [DEBUG] Found admin user:", adminUser ? {
-      userUuid: adminUser.userUuid,
-      username: adminUser.username,
-      isAdmin: adminUser.isAdmin
-    } : null);
+    // AdminModel에서도 확인
+    const adminRecord = await AdminModel.findOne({
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }]
+    });
     
-    if (!adminUser || !adminUser.isAdmin) {
-      console.log("❌ [DEBUG] Admin access denied:", { 
-        userFound: !!adminUser, 
-        isAdmin: adminUser?.isAdmin 
-      });
+    console.log("🔍 [DEBUG] Admin check for blocked-ips:", {
+      adminUsername,
+      adminUserUuid,
+      userFound: !!adminUser,
+      userIsAdmin: adminUser?.isAdmin,
+      adminRecordFound: !!adminRecord,
+      adminRecordIsAdmin: adminRecord?.isAdmin
+    });
+    
+    // AdminModel에 권한이 있지만 UserUuidModel에 없는 경우 동기화
+    if (adminRecord?.isAdmin && adminUser && !adminUser.isAdmin) {
+      console.log("🔄 [SYNC] Syncing admin rights from AdminModel to UserUuidModel for blocked-ips");
+      await UserUuidModel.updateOne(
+        { _id: adminUser._id },
+        { $set: { isAdmin: true } }
+      );
+      adminUser.isAdmin = true;
+    }
+    
+    // 권한 확인 (두 모델 중 하나라도 관리자면 허용)
+    const hasAdminRights = (adminUser?.isAdmin) || (adminRecord?.isAdmin);
+    
+    if (!hasAdminRights) {
+      console.log("❌ [DEBUG] Admin access denied for blocked-ips - no admin rights found");
       return res.status(403).json({ error: "관리자 권한이 필요합니다." });
     }
 
@@ -5920,18 +6039,42 @@ app.post("/api/admin/delete-user-account", async (req, res) => {
     
     console.log("🔑 [ADMIN] Delete user account request:", { targetUsername, adminUsername });
     
-    // 관리자 권한 확인
+    // 관리자 권한 확인 (두 모델 모두 확인 및 동기화)
     console.log("🔍 [DEBUG] Looking for admin user:", { adminUserUuid, adminUsername });
     const adminUser = await UserUuidModel.findOne({ 
       $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
     });
+    
+    // AdminModel에서도 확인
+    const adminRecord = await AdminModel.findOne({
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }]
+    });
+    
     console.log("🔍 [DEBUG] Found admin user:", adminUser ? { 
       userUuid: adminUser.userUuid, 
       username: adminUser.username, 
       isAdmin: adminUser.isAdmin 
     } : null);
+    console.log("🔍 [DEBUG] Found admin record:", adminRecord ? { 
+      userUuid: adminRecord.userUuid, 
+      username: adminRecord.username, 
+      isAdmin: adminRecord.isAdmin 
+    } : null);
     
-    if (!adminUser || !adminUser.isAdmin) {
+    // AdminModel에 권한이 있지만 UserUuidModel에 없는 경우 동기화
+    if (adminRecord?.isAdmin && adminUser && !adminUser.isAdmin) {
+      console.log("🔄 [SYNC] Syncing admin rights for user delete");
+      await UserUuidModel.updateOne(
+        { _id: adminUser._id },
+        { $set: { isAdmin: true } }
+      );
+      adminUser.isAdmin = true;
+    }
+    
+    // 권한 확인 (두 모델 중 하나라도 관리자면 허용)
+    const hasAdminRights = (adminUser?.isAdmin) || (adminRecord?.isAdmin);
+    
+    if (!hasAdminRights) {
       console.log("❌ [ADMIN] Unauthorized admin delete attempt:", adminUsername);
       return res.status(403).json({ error: "관리자 권한이 필요합니다." });
     }
