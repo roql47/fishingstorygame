@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getSocket } from "./lib/socket";
+import { getSocket, notifyUserLogin } from "./lib/socket";
 // Google auth functions are now handled inline
 import axios from "axios";
 // 🔒 난독화된 게임 데이터 임포트
@@ -364,6 +364,11 @@ function App() {
       setUsername(settings.displayName || settings.username || '');
       setUserUuid(settings.userUuid || null);
       setIsDarkMode(settings.darkMode !== undefined ? settings.darkMode : true);
+      
+      // Socket.IO로 사용자 로그인 정보 전송 (IP 수집용)
+      if (settings.userUuid && (settings.displayName || settings.username)) {
+        notifyUserLogin(settings.displayName || settings.username, settings.userUuid);
+      }
       
       // 쿨타임 데이터 설정 (서버에서 계산된 남은 시간)
       console.log('Loading cooldown from settings:', { 
@@ -5671,7 +5676,14 @@ function App() {
                             }`}>
                               <p><strong>IP:</strong> <span className="font-mono">{user.ipAddress}</span></p>
                               <p><strong>UUID:</strong> <span className="font-mono text-xs">{user.userUuid}</span></p>
-                              <p><strong>접속시간:</strong> {new Date(user.connectedAt).toLocaleString('ko-KR')}</p>
+                              <p><strong>접속시간:</strong> {
+                                user.connectedAt ? 
+                                  (isNaN(new Date(user.connectedAt)) ? 
+                                    '알 수 없음' : 
+                                    new Date(user.connectedAt).toLocaleString('ko-KR')
+                                  ) : 
+                                  '알 수 없음'
+                              }</p>
                             </div>
                           </div>
                           

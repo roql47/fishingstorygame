@@ -51,3 +51,12 @@ export function getSocket() {
   }
   return socket;
 }
+
+// 사용자 로그인 정보를 서버로 전송 (IP 수집용)
+export function notifyUserLogin(username, userUuid) {
+  const socket = getSocket();
+  if (socket && username && userUuid) {
+    socket.emit('user-login', { username, userUuid });
+    console.log(`📡 Sent user login info to server: ${username} (${userUuid})`);
+  }
+}

@@ -514,6 +514,50 @@ const io = new Server(server, {
 // Socket.IO 연결 제한 미들웨어 적용
 io.use(socketConnectionLimit);
 
+// 🌐 Socket.IO 연결 핸들러 (IP 수집용)
+global.io = io; // 전역 접근을 위한 설정
+
+io.on('connection', (socket) => {
+  console.log(`🔌 Socket connected: ${socket.id}`);
+  
+  // 사용자 정보 저장 (로그인 시 설정됨)
+  socket.on('user-login', (userData) => {
+    if (userData && userData.username && userData.userUuid) {
+      socket.username = userData.username;
+      socket.userUuid = userData.userUuid;
+      socket.connectedAt = new Date().toISOString();
+      
+      // IP 정보 수집 및 로깅
+      const clientIP = socket.handshake.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
+                      socket.handshake.headers['x-real-ip'] || 
+                      socket.handshake.headers['cf-connecting-ip'] ||
+                      socket.handshake.address ||
+                      socket.conn?.remoteAddress ||
+                      socket.request?.connection?.remoteAddress ||
+                      'Unknown';
+      
+      console.log(`👤 User logged in via socket: ${userData.username} (${userData.userUuid}) from IP: ${clientIP}`);
+      
+      // 디버그: 모든 헤더 정보 로깅
+      console.log(`🔍 [IP-COLLECT] Headers for ${userData.username}:`, {
+        'x-forwarded-for': socket.handshake.headers['x-forwarded-for'],
+        'x-real-ip': socket.handshake.headers['x-real-ip'],
+        'cf-connecting-ip': socket.handshake.headers['cf-connecting-ip'],
+        'address': socket.handshake.address,
+        'remoteAddress': socket.conn?.remoteAddress
+      });
+    }
+  });
+  
+  socket.on('disconnect', (reason) => {
+    if (socket.username) {
+      console.log(`🔌 User disconnected: ${socket.username} (${reason})`);
+    } else {
+      console.log(`🔌 Anonymous socket disconnected: ${socket.id} (${reason})`);
+    }
+  });
+});
+
 // Mongo Models
 const catchSchema = new mongoose.Schema(
   {
@@ -2811,14 +2855,7 @@ app.get("/api/companions/:userId", async (req, res) => {
 // 🛡️ [SECURITY] IP Blocking System (IP 차단 관리 시스템)
 const blockedIPs = new Map(); // IP -> { reason, blockedAt, blockedBy }
 
-// 초기 해커 IP 차단
-blockedIPs.set('54.86.50.139', {
-  reason: '해킹 시도 (관리자 권한 탈취, 계정 초기화 공격)',
-  blockedAt: new Date().toISOString(),
-  blockedBy: 'System'
-});
-
-console.log('🚫 [SECURITY] Initial hacker IP blocked: 54.86.50.139');
+// 초기 차단 IP 없음 (관리자 패널에서 관리)
 
 // 🔧 Admin 계정 관리자 권한 강제 부여 (시스템 복구용)
 (async () => {
@@ -5949,7 +5986,7 @@ app.get("/api/admin/user-ips", async (req, res) => {
             username: socket.username,
             userUuid: socket.userUuid,
             ipAddress: clientIP,
-            connectedAt: socket.connectedAt || socket.handshake.time || new Date().toISOString()
+            connectedAt: socket.connectedAt || new Date().toISOString()
           });
         }
       });
