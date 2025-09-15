@@ -2622,7 +2622,7 @@ app.get("/api/star-pieces/:userId", authenticateJWT, async (req, res) => {
 });
 
 // Add Star Pieces API (별조각 추가)
-app.post("/api/add-star-pieces", async (req, res) => {
+app.post("/api/add-star-pieces", authenticateJWT, async (req, res) => {
   try {
     const { amount } = req.body;
     const { username, userUuid } = req.query;
@@ -2671,10 +2671,11 @@ app.post("/api/add-star-pieces", async (req, res) => {
 
 // Companion APIs (동료 시스템)
 // 동료 뽑기 API
-app.post("/api/recruit-companion", async (req, res) => {
+app.post("/api/recruit-companion", authenticateJWT, async (req, res) => {
   try {
     const { starPieceCost = 1 } = req.body; // 별조각 1개 기본 비용
-    const { username, userUuid } = req.query;
+    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
+    const { userUuid, username } = req.user;
     
     console.log("Recruit companion request:", { starPieceCost, username, userUuid });
     
@@ -3030,9 +3031,10 @@ const calculateFishingCooldownTime = async (userQuery) => {
 };
 
 // 낚시 쿨타임 설정 API (서버에서 쿨타임 계산)
-app.post("/api/set-fishing-cooldown", async (req, res) => {
+app.post("/api/set-fishing-cooldown", authenticateJWT, async (req, res) => {
   try {
-    const { username, userUuid } = req.query;
+    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
+    const { userUuid, username } = req.user;
     
     console.log("Set fishing cooldown request received");
     
@@ -3099,7 +3101,7 @@ app.post("/api/set-fishing-cooldown", async (req, res) => {
 });
 
 // 🛡️ [FIX] 낚시 쿨타임 재계산 API (악세사리 구매 후 호출)
-app.post("/api/recalculate-fishing-cooldown", async (req, res) => {
+app.post("/api/recalculate-fishing-cooldown", authenticateJWT, async (req, res) => {
   try {
     const { username, userUuid } = req.query;
     
@@ -3185,10 +3187,11 @@ app.post("/api/recalculate-fishing-cooldown", async (req, res) => {
 });
 
 // 탐사 쿨타임 설정 API
-app.post("/api/set-exploration-cooldown", async (req, res) => {
+app.post("/api/set-exploration-cooldown", authenticateJWT, async (req, res) => {
   try {
     const { type } = req.body; // 'victory', 'defeat', 'flee' 타입
-    const { username, userUuid } = req.query;
+    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
+    const { userUuid, username } = req.user;
     
     console.log("Set exploration cooldown request received");
     
@@ -4013,10 +4016,11 @@ app.get("/api/daily-quests/:userId", async (req, res) => {
 });
 
 // 퀴스트 진행도 업데이트 API
-app.post("/api/update-quest-progress", async (req, res) => {
+app.post("/api/update-quest-progress", authenticateJWT, async (req, res) => {
   try {
     const { questType, amount = 1 } = req.body;
-    const { username, userUuid } = req.query;
+    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
+    const { userUuid, username } = req.user;
     
     console.log("Quest progress update:", { questType, amount, username, userUuid });
     
@@ -4089,10 +4093,11 @@ app.post("/api/update-quest-progress", async (req, res) => {
 });
 
 // 퀴스트 보상 수령 API
-app.post("/api/claim-quest-reward", async (req, res) => {
+app.post("/api/claim-quest-reward", authenticateJWT, async (req, res) => {
   try {
     const { questId } = req.body;
-    const { username, userUuid } = req.query;
+    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
+    const { userUuid, username } = req.user;
     
     console.log("Quest reward claim:", { questId, username, userUuid });
     
@@ -4169,10 +4174,11 @@ app.post("/api/claim-quest-reward", async (req, res) => {
 });
 
 // Add Amber API (for exploration rewards)
-app.post("/api/add-amber", async (req, res) => {
+app.post("/api/add-amber", authenticateJWT, async (req, res) => {
   try {
     const { amount } = req.body;
-    const { username, userUuid } = req.query;
+    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
+    const { userUuid, username } = req.user;
     
     console.log("Add amber request:", { amount, username, userUuid });
     
@@ -4723,10 +4729,11 @@ app.get("/api/materials/:userId", optionalJWT, async (req, res) => {
 });
 
 // Fish Decomposition API
-app.post("/api/decompose-fish", async (req, res) => {
+app.post("/api/decompose-fish", authenticateJWT, async (req, res) => {
   try {
     const { fishName, quantity, material } = req.body;
-    const { username, userUuid } = req.query;
+    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
+    const { userUuid, username } = req.user;
     console.log("Decompose fish request:", { fishName, quantity, material, username, userUuid });
     
     // UUID 기반 사용자 조회
@@ -4846,9 +4853,10 @@ app.post("/api/decompose-fish", async (req, res) => {
 });
 
 // Material Consumption API (for exploration)
-app.post("/api/consume-material", async (req, res) => {
+app.post("/api/consume-material", authenticateJWT, async (req, res) => {
   const { materialName, quantity } = req.body;
-  const { username, userUuid } = req.query;
+  // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
+  const { userUuid, username } = req.user;
   
   // 중복 요청 방지
   const consumeKey = `${userUuid || username}-${materialName}-${quantity}`;
