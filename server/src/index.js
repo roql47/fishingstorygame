@@ -2827,14 +2827,17 @@ console.log('🚫 [SECURITY] Initial hacker IP blocked: 54.86.50.139');
       $or: [{ username: 'Admin' }, { userUuid: '#0001' }] 
     });
     
-    if (adminUser && !adminUser.isAdmin) {
-      await UserUuidModel.updateOne(
-        { _id: adminUser._id },
-        { isAdmin: true }
-      );
-      console.log('👑 [SYSTEM] Admin account restored to admin status');
-    } else if (adminUser) {
-      console.log('👑 [SYSTEM] Admin account already has admin status');
+    if (adminUser) {
+      // isAdmin이 undefined이거나 false인 경우 모두 복구
+      if (adminUser.isAdmin !== true) {
+        await UserUuidModel.updateOne(
+          { _id: adminUser._id },
+          { $set: { isAdmin: true } }
+        );
+        console.log('👑 [SYSTEM] Admin account restored to admin status (was:', adminUser.isAdmin, ')');
+      } else {
+        console.log('👑 [SYSTEM] Admin account already has admin status');
+      }
     } else {
       console.log('⚠️ [SYSTEM] Admin account not found in database');
     }
@@ -5821,19 +5824,31 @@ app.get("/api/admin/user-ips", async (req, res) => {
     // 현재 접속 중인 사용자들의 IP 정보
     const connectedUsers = [];
     
-    // Socket.IO에서 연결된 사용자 정보 수집
+    // Socket.IO에서 연결된 사용자 정보 수집 (강화된 IP 수집)
     if (global.io) {
       global.io.sockets.sockets.forEach((socket) => {
         if (socket.username && socket.userUuid) {
-          const clientIP = socket.handshake.headers['x-forwarded-for']?.split(',')[0] || 
+          // 더 포괄적인 IP 추출
+          const clientIP = socket.handshake.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
                           socket.handshake.headers['x-real-ip'] || 
-                          socket.handshake.address;
+                          socket.handshake.headers['cf-connecting-ip'] ||
+                          socket.handshake.address ||
+                          socket.conn?.remoteAddress ||
+                          socket.request?.connection?.remoteAddress ||
+                          'Unknown';
+          
+          console.log(`🔍 [IP-DEBUG] Socket ${socket.username}: IP=${clientIP}, Headers=`, {
+            'x-forwarded-for': socket.handshake.headers['x-forwarded-for'],
+            'x-real-ip': socket.handshake.headers['x-real-ip'],
+            'cf-connecting-ip': socket.handshake.headers['cf-connecting-ip'],
+            address: socket.handshake.address
+          });
           
           connectedUsers.push({
             username: socket.username,
             userUuid: socket.userUuid,
             ipAddress: clientIP,
-            connectedAt: socket.connectedAt || new Date().toISOString()
+            connectedAt: socket.connectedAt || socket.handshake.time || new Date().toISOString()
           });
         }
       });
