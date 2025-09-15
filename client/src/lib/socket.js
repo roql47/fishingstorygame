@@ -48,6 +48,11 @@ export function getSocket() {
     socket.on('reconnect', (attemptNumber) => {
       console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
     });
+    
+    // 서버에서 보낸 ping에 응답
+    socket.on('server-ping', () => {
+      socket.emit('client-pong');
+    });
   }
   return socket;
 }

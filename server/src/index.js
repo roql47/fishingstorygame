@@ -445,6 +445,37 @@ app.use((req, res, next) => {
   next();
 });
 
+// 🚫 계정 차단 검증 미들웨어
+app.use((req, res, next) => {
+  // 정적 파일이나 관리자 API는 제외
+  if (req.path.match(/\.(css|js|png|jpg|jpeg|gif|ico|svg)$/) || 
+      req.path.startsWith('/api/admin/') || 
+      req.path === '/api/toggle-admin' ||
+      req.path === '/api/admin-status/') {
+    return next();
+  }
+  
+  // userUuid 파라미터에서 차단 확인
+  const userUuid = req.query.userUuid || req.body?.userUuid;
+  if (userUuid && blockedAccounts.has(userUuid)) {
+    const blockInfo = blockedAccounts.get(userUuid);
+    console.log(`🚫 [BLOCKED-ACCOUNT] Access denied for ${userUuid} - Reason: ${blockInfo.reason}`);
+    return res.status(403).json({
+      error: "계정 차단됨",
+      message: `귀하의 계정이 차단되었습니다.\n\n차단 사유: ${blockInfo.reason}\n차단 일시: ${blockInfo.blockedAt}\n차단자: ${blockInfo.blockedBy}\n\n관리자에게 문의하세요.`,
+      blocked: true,
+      accountBlocked: true,
+      blockInfo: {
+        reason: blockInfo.reason,
+        blockedAt: blockInfo.blockedAt,
+        blockedBy: blockInfo.blockedBy
+      }
+    });
+  }
+  
+  next();
+});
+
 const server = http.createServer(app);
 
 // Socket.IO 연결 제한 및 IP 차단 검증 미들웨어
@@ -534,12 +565,25 @@ global.io = io; // 전역 접근을 위한 설정
 io.on('connection', (socket) => {
   console.log(`🔌 Socket connected: ${socket.id}`);
   
+  // 연결 유지를 위한 heartbeat 설정
+  let heartbeatInterval;
+  
   // 사용자 정보 저장 (로그인 시 설정됨)
   socket.on('user-login', (userData) => {
     if (userData && userData.username && userData.userUuid) {
       socket.username = userData.username;
       socket.userUuid = userData.userUuid;
-      socket.connectedAt = new Date().toISOString();
+      socket.connectedAt = new Date().toLocaleString('ko-KR', { 
+        timeZone: 'Asia/Seoul',
+        year: 'numeric',
+        month: '2-digit', 
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+      socket.isAlive = true;
+      socket.lastActivity = Date.now();
       
       // IP 정보 수집 및 로깅
       const clientIP = socket.handshake.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
@@ -549,6 +593,8 @@ io.on('connection', (socket) => {
                       socket.conn?.remoteAddress ||
                       socket.request?.connection?.remoteAddress ||
                       'Unknown';
+      
+      socket.clientIP = clientIP; // Socket에 IP 저장
       
       console.log(`👤 User logged in via socket: ${userData.username} (${userData.userUuid}) from IP: ${clientIP}`);
       
@@ -560,20 +606,53 @@ io.on('connection', (socket) => {
         'address': socket.handshake.address,
         'remoteAddress': socket.conn?.remoteAddress
       });
+      
+      // 연결 유지를 위한 heartbeat 시작
+      if (heartbeatInterval) clearInterval(heartbeatInterval);
+      heartbeatInterval = setInterval(() => {
+        if (socket.connected) {
+          socket.emit('server-ping');
+          socket.lastActivity = Date.now();
+        }
+      }, 30000); // 30초마다 ping
     }
   });
   
   // 연결 유지 확인 (heartbeat)
   socket.on('ping', () => {
     socket.emit('pong');
+    socket.isAlive = true;
+    socket.lastActivity = Date.now();
+  });
+  
+  // 클라이언트에서 보낸 pong 응답 처리
+  socket.on('client-pong', () => {
+    socket.isAlive = true;
+    socket.lastActivity = Date.now();
+  });
+  
+  // 활동 감지를 위한 이벤트들
+  ['chat:message', 'join:room', 'fishing:start', 'exploration:start'].forEach(event => {
+    socket.on(event, () => {
+      socket.lastActivity = Date.now();
+    });
   });
   
   socket.on('disconnect', (reason) => {
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+    }
+    
     if (socket.username) {
       console.log(`🔌 User disconnected: ${socket.username} (${reason})`);
     } else {
       console.log(`🔌 Anonymous socket disconnected: ${socket.id} (${reason})`);
     }
+  });
+  
+  // 연결 오류 처리
+  socket.on('error', (error) => {
+    console.error(`🚨 Socket error for ${socket.username || socket.id}:`, error);
   });
 });
 
@@ -710,6 +789,20 @@ const blockedIPSchema = new mongoose.Schema(
 );
 
 const BlockedIPModel = mongoose.model("BlockedIP", blockedIPSchema);
+
+// Blocked Account Schema (차단된 계정 관리)
+const blockedAccountSchema = new mongoose.Schema(
+  {
+    userUuid: { type: String, required: true, unique: true },
+    username: { type: String, required: true },
+    reason: { type: String, required: true },
+    blockedAt: { type: String, required: true }, // 한국시간 문자열로 저장
+    blockedBy: { type: String, required: true },
+  },
+  { timestamps: true }
+);
+
+const BlockedAccountModel = mongoose.model("BlockedAccount", blockedAccountSchema);
 
 // Cooldown Schema (쿨타임 관리)
 const cooldownSchema = new mongoose.Schema(
@@ -2886,6 +2979,7 @@ app.get("/api/companions/:userId", async (req, res) => {
 
 // 🛡️ [SECURITY] IP Blocking System (IP 차단 관리 시스템)
 const blockedIPs = new Map(); // IP -> { reason, blockedAt, blockedBy }
+const blockedAccounts = new Map(); // userUuid -> { username, reason, blockedAt, blockedBy }
 
 // 서버 시작 시 데이터베이스에서 차단된 IP 목록 로드
 async function loadBlockedIPs() {
@@ -2904,8 +2998,27 @@ async function loadBlockedIPs() {
   }
 }
 
-// 서버 시작 시 차단된 IP 목록 로드
+// 서버 시작 시 데이터베이스에서 차단된 계정 목록 로드
+async function loadBlockedAccounts() {
+  try {
+    const blockedList = await BlockedAccountModel.find({});
+    for (const blocked of blockedList) {
+      blockedAccounts.set(blocked.userUuid, {
+        username: blocked.username,
+        reason: blocked.reason,
+        blockedAt: blocked.blockedAt,
+        blockedBy: blocked.blockedBy
+      });
+    }
+    console.log(`🛡️ [SECURITY] Loaded ${blockedList.length} blocked accounts from database`);
+  } catch (error) {
+    console.error('❌ [SECURITY] Failed to load blocked accounts:', error);
+  }
+}
+
+// 서버 시작 시 차단 목록들 로드
 loadBlockedIPs();
+loadBlockedAccounts();
 
 // 🔧 Admin 계정 관리자 권한 강제 부여 (시스템 복구용)
 (async () => {
@@ -5994,6 +6107,241 @@ app.post("/api/admin/unblock-ip", async (req, res) => {
   }
 });
 
+// 🚫 계정 차단 API
+app.post("/api/admin/block-account", async (req, res) => {
+  try {
+    const { userUuid, username, reason, adminKey } = req.body;
+    const { username: adminUsername, userUuid: adminUserUuid } = req.query;
+
+    console.log("🚫 [ADMIN] Block account request:", { userUuid, username, reason, adminUsername });
+
+    // 관리자 권한 확인 (두 모델 모두 확인 및 동기화)
+    const adminUser = await UserUuidModel.findOne({ 
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
+    });
+    
+    // AdminModel에서도 확인
+    const adminRecord = await AdminModel.findOne({
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }]
+    });
+    
+    // AdminModel에 권한이 있지만 UserUuidModel에 없는 경우 동기화
+    if (adminRecord?.isAdmin && adminUser && !adminUser.isAdmin) {
+      console.log("🔄 [SYNC] Syncing admin rights for account block");
+      await UserUuidModel.updateOne(
+        { _id: adminUser._id },
+        { $set: { isAdmin: true } }
+      );
+      adminUser.isAdmin = true;
+    }
+    
+    // 권한 확인 (두 모델 중 하나라도 관리자면 허용)
+    const hasAdminRights = (adminUser?.isAdmin) || (adminRecord?.isAdmin);
+    
+    if (!hasAdminRights) {
+      console.log("❌ [ADMIN] Unauthorized account block attempt:", adminUsername);
+      return res.status(403).json({ error: "관리자 권한이 필요합니다." });
+    }
+
+    // 관리자 키 검증
+    const validAdminKey = process.env.ADMIN_KEY || "admin_secret_key_2024";
+    if (adminKey !== validAdminKey) {
+      console.log("❌ [ADMIN] Invalid admin key for account block");
+      return res.status(403).json({ error: "잘못된 관리자 키입니다." });
+    }
+
+    // 대상 사용자 확인
+    if (!userUuid || !username) {
+      return res.status(400).json({ error: "사용자 UUID와 사용자명이 필요합니다." });
+    }
+
+    // 계정 차단 정보 저장 (한국시간)
+    const koreanTime = new Date().toLocaleString('ko-KR', { 
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit', 
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+    const blockInfo = {
+      username: username,
+      reason: reason || '관리자에 의한 수동 차단',
+      blockedAt: koreanTime,
+      blockedBy: adminUsername
+    };
+    
+    // 메모리와 데이터베이스 모두에 저장
+    blockedAccounts.set(userUuid, blockInfo);
+    
+    // 데이터베이스에 저장 (중복 시 업데이트)
+    await BlockedAccountModel.findOneAndUpdate(
+      { userUuid: userUuid },
+      {
+        userUuid: userUuid,
+        username: blockInfo.username,
+        reason: blockInfo.reason,
+        blockedAt: blockInfo.blockedAt,
+        blockedBy: blockInfo.blockedBy
+      },
+      { upsert: true, new: true }
+    );
+
+    console.log(`🚫 [ADMIN] Account ${username} (${userUuid}) blocked by ${adminUsername}: ${blockInfo.reason}`);
+
+    // 해당 계정의 모든 Socket 연결 강제 종료
+    if (global.io) {
+      global.io.sockets.sockets.forEach((socket) => {
+        if (socket.userUuid === userUuid) {
+          console.log(`🚫 [ADMIN] Disconnecting blocked account socket: ${socket.username}`);
+          socket.emit('account-blocked', { 
+            reason: blockInfo.reason,
+            blockedAt: blockInfo.blockedAt,
+            blockedBy: blockInfo.blockedBy
+          });
+          socket.disconnect(true);
+        }
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      message: `계정 ${username}이 차단되었습니다.`,
+      blockedAccount: {
+        userUuid: userUuid,
+        ...blockInfo
+      }
+    });
+
+  } catch (error) {
+    console.error("Failed to block account:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ 계정 차단 해제 API
+app.post("/api/admin/unblock-account", async (req, res) => {
+  try {
+    const { userUuid, adminKey } = req.body;
+    const { username: adminUsername, userUuid: adminUserUuid } = req.query;
+
+    console.log("✅ [ADMIN] Unblock account request:", { userUuid, adminUsername });
+
+    // 관리자 권한 확인 (두 모델 모두 확인 및 동기화)
+    const adminUser = await UserUuidModel.findOne({ 
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
+    });
+    
+    // AdminModel에서도 확인
+    const adminRecord = await AdminModel.findOne({
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }]
+    });
+    
+    // AdminModel에 권한이 있지만 UserUuidModel에 없는 경우 동기화
+    if (adminRecord?.isAdmin && adminUser && !adminUser.isAdmin) {
+      console.log("🔄 [SYNC] Syncing admin rights for account unblock");
+      await UserUuidModel.updateOne(
+        { _id: adminUser._id },
+        { $set: { isAdmin: true } }
+      );
+      adminUser.isAdmin = true;
+    }
+    
+    // 권한 확인 (두 모델 중 하나라도 관리자면 허용)
+    const hasAdminRights = (adminUser?.isAdmin) || (adminRecord?.isAdmin);
+    
+    if (!hasAdminRights) {
+      return res.status(403).json({ error: "관리자 권한이 필요합니다." });
+    }
+
+    // 관리자 키 검증
+    const validAdminKey = process.env.ADMIN_KEY || "admin_secret_key_2024";
+    if (adminKey !== validAdminKey) {
+      return res.status(403).json({ error: "잘못된 관리자 키입니다." });
+    }
+
+    if (!userUuid) {
+      return res.status(400).json({ error: "사용자 UUID가 필요합니다." });
+    }
+
+    // 메모리와 데이터베이스에서 모두 삭제
+    const wasBlocked = blockedAccounts.delete(userUuid);
+    const dbResult = await BlockedAccountModel.deleteOne({ userUuid: userUuid });
+
+    if (wasBlocked || dbResult.deletedCount > 0) {
+      console.log(`✅ [ADMIN] Account ${userUuid} unblocked by ${adminUsername}`);
+      res.json({ 
+        success: true, 
+        message: `계정 차단이 해제되었습니다.` 
+      });
+    } else {
+      res.status(404).json({ error: "차단되지 않은 계정입니다." });
+    }
+
+  } catch (error) {
+    console.error("Failed to unblock account:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 📋 차단된 계정 목록 조회 API
+app.get("/api/admin/blocked-accounts", async (req, res) => {
+  try {
+    const { username: adminUsername, userUuid: adminUserUuid } = req.query;
+    
+    console.log("🔍 [DEBUG] Blocked accounts request:", { adminUsername, adminUserUuid });
+
+    // 관리자 권한 확인 (두 모델 모두 확인 및 동기화)
+    const adminUser = await UserUuidModel.findOne({ 
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
+    });
+    
+    // AdminModel에서도 확인
+    const adminRecord = await AdminModel.findOne({
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }]
+    });
+    
+    // AdminModel에 권한이 있지만 UserUuidModel에 없는 경우 동기화
+    if (adminRecord?.isAdmin && adminUser && !adminUser.isAdmin) {
+      console.log("🔄 [SYNC] Syncing admin rights for blocked accounts list");
+      await UserUuidModel.updateOne(
+        { _id: adminUser._id },
+        { $set: { isAdmin: true } }
+      );
+      adminUser.isAdmin = true;
+    }
+    
+    // 권한 확인 (두 모델 중 하나라도 관리자면 허용)
+    const hasAdminRights = (adminUser?.isAdmin) || (adminRecord?.isAdmin);
+    
+    if (!hasAdminRights) {
+      console.log("❌ [DEBUG] Admin access denied for blocked accounts - no admin rights found");
+      return res.status(403).json({ error: "관리자 권한이 필요합니다." });
+    }
+
+    // 차단된 계정 목록 반환
+    const blockedList = Array.from(blockedAccounts.entries()).map(([userUuid, data]) => ({
+      userUuid: userUuid,
+      username: data.username,
+      reason: data.reason,
+      blockedAt: data.blockedAt,
+      blockedBy: data.blockedBy
+    }));
+
+    console.log(`📋 [ADMIN] Blocked accounts list requested by ${adminUsername}: ${blockedList.length} accounts`);
+
+    res.json({ 
+      success: true, 
+      blockedAccounts: blockedList.sort((a, b) => new Date(b.blockedAt) - new Date(a.blockedAt))
+    });
+
+  } catch (error) {
+    console.error("Failed to fetch blocked accounts:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 🔍 현재 접속자 IP 조회 API (관리자 전용)
 app.get("/api/admin/user-ips", async (req, res) => {
   try {
@@ -6039,12 +6387,13 @@ app.get("/api/admin/user-ips", async (req, res) => {
     // 현재 접속 중인 사용자들의 IP 정보
     const connectedUsers = [];
     
-    // Socket.IO에서 연결된 사용자 정보 수집 (강화된 IP 수집)
+    // Socket.IO에서 연결된 사용자 정보 수집 (개선된 IP 수집)
     if (global.io) {
       global.io.sockets.sockets.forEach((socket) => {
-        if (socket.username && socket.userUuid) {
-          // 더 포괄적인 IP 추출
-          const clientIP = socket.handshake.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
+        if (socket.username && socket.userUuid && socket.connected) {
+          // Socket에 저장된 IP를 우선 사용, 없으면 헤더에서 추출
+          const clientIP = socket.clientIP || 
+                          socket.handshake.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
                           socket.handshake.headers['x-real-ip'] || 
                           socket.handshake.headers['cf-connecting-ip'] ||
                           socket.handshake.address ||
@@ -6052,19 +6401,37 @@ app.get("/api/admin/user-ips", async (req, res) => {
                           socket.request?.connection?.remoteAddress ||
                           'Unknown';
           
-          console.log(`🔍 [IP-DEBUG] Socket ${socket.username}: IP=${clientIP}, Headers=`, {
-            'x-forwarded-for': socket.handshake.headers['x-forwarded-for'],
-            'x-real-ip': socket.handshake.headers['x-real-ip'],
-            'cf-connecting-ip': socket.handshake.headers['cf-connecting-ip'],
-            address: socket.handshake.address
-          });
+          // 연결 상태 확인 (비활성 연결 필터링)
+          const isActiveConnection = socket.connected && 
+                                   (socket.lastActivity ? (Date.now() - socket.lastActivity < 120000) : true); // 2분 이내 활동
           
-          connectedUsers.push({
-            username: socket.username,
-            userUuid: socket.userUuid,
-            ipAddress: clientIP,
-            connectedAt: socket.connectedAt || new Date().toISOString()
-          });
+          if (isActiveConnection) {
+            console.log(`🔍 [IP-DEBUG] Active Socket ${socket.username}: IP=${clientIP}, Connected=${socket.connected}, LastActivity=${socket.lastActivity ? new Date(socket.lastActivity).toLocaleString('ko-KR') : 'Unknown'}`);
+            
+            connectedUsers.push({
+              username: socket.username,
+              userUuid: socket.userUuid,
+              ipAddress: clientIP,
+              connectedAt: socket.connectedAt || new Date().toLocaleString('ko-KR', { 
+                timeZone: 'Asia/Seoul',
+                year: 'numeric',
+                month: '2-digit', 
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+              }),
+              lastActivity: socket.lastActivity ? new Date(socket.lastActivity).toLocaleString('ko-KR', { 
+                timeZone: 'Asia/Seoul',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+              }) : '알 수 없음',
+              isAlive: socket.isAlive || false
+            });
+          } else {
+            console.log(`⚠️ [IP-DEBUG] Inactive Socket ${socket.username}: Skipping (LastActivity: ${socket.lastActivity ? new Date(socket.lastActivity).toLocaleString('ko-KR') : 'None'})`);
+          }
         }
       });
     }
