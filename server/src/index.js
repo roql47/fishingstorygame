@@ -377,8 +377,17 @@ app.set('trust proxy', true);
 // 🚀 DDoS 방어 미들웨어 임시 비활성화 (성능 테스트)
 // app.use(ddosProtection); // 성능 문제로 비활성화
 
-// IP 차단 미들웨어를 모든 요청에 적용
-app.use(blockSuspiciousIP);
+// 관리자 API 예외 처리를 위한 조건부 IP 차단
+app.use((req, res, next) => {
+  // 관리자 API는 IP 차단 예외 (관리자가 차단 해제할 수 있도록)
+  if (req.path.startsWith('/api/admin/')) {
+    console.log(`⚠️ [ADMIN-API] Bypassing IP block for admin API: ${req.path}`);
+    return next();
+  }
+  
+  // 다른 모든 요청은 IP 차단 적용
+  return blockSuspiciousIP(req, res, next);
+});
 
 // 🚀 간소화된 CORS 설정 (성능 최적화)
 if (isProduction) {

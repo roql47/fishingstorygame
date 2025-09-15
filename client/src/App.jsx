@@ -33,7 +33,8 @@ import {
   ThumbsUp,
   Target,
   CheckCircle,
-  Gift
+  Gift,
+  X
 } from "lucide-react";
 import "./App.css";
 
