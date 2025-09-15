@@ -38,6 +38,21 @@ import {
 } from "lucide-react";
 import "./App.css";
 
+// Axios 응답 인터셉터 설정 (차단된 IP 처리)
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 403 && error.response?.data?.blocked) {
+      const blockInfo = error.response.data;
+      alert(`🚫 ${blockInfo.message}`);
+      // 선택적으로 로그아웃 처리
+      // localStorage.clear();
+      // window.location.reload();
+    }
+    return Promise.reject(error);
+  }
+);
+
 function App() {
   // Socket 초기화
   const socket = getSocket();
@@ -866,6 +881,20 @@ function App() {
     
     socket.on("chat:error", onChatError);
     
+    // 소켓 연결 에러 처리 (IP 차단 등)
+    const onConnectError = (error) => {
+      console.error("Socket connection error:", error);
+      if (error.message) {
+        if (error.message.includes('blocked') || error.message.includes('차단')) {
+          alert(`🚫 접속이 차단되었습니다.\n\n사유: ${error.message}\n\n관리자에게 문의하세요.`);
+        } else {
+          alert(`연결 오류: ${error.message}`);
+        }
+      }
+    };
+    
+    socket.on("connect_error", onConnectError);
+    
     console.log("=== CLIENT CHAT:JOIN DEBUG ===");
     
     // 로컬스토리지에서 최신 닉네임 확인 (구글 로그인 후 덮어쓰기 방지)
@@ -902,6 +931,7 @@ function App() {
       socket.off("duplicate_login", onDuplicateLogin);
       socket.off("join:error", onJoinError);
       socket.off("chat:error", onChatError);
+      socket.off("connect_error", onConnectError);
     };
   }, [username, idToken]);
 

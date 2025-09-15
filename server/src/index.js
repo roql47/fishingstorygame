@@ -447,9 +447,23 @@ app.use((req, res, next) => {
 
 const server = http.createServer(app);
 
-// Socket.IO 연결 제한 미들웨어
+// Socket.IO 연결 제한 및 IP 차단 검증 미들웨어
 const socketConnectionLimit = (socket, next) => {
   const clientIP = getClientIP({ headers: socket.handshake.headers, connection: socket.conn });
+  
+  // 🛡️ 1. 관리자 차단 IP 확인
+  if (blockedIPs.has(clientIP)) {
+    const blockInfo = blockedIPs.get(clientIP);
+    console.log(`🚫 [SOCKET-BLOCKED] Blocked IP attempted connection: ${clientIP} - Reason: ${blockInfo.reason}`);
+    return next(new Error(`Connection blocked. Reason: ${blockInfo.reason}`));
+  }
+  
+  // 🛡️ 2. DDoS 차단 IP 확인
+  if (ddosBlockedIPs.has(clientIP)) {
+    console.log(`🚫 [SOCKET-DDOS] DDoS blocked IP attempted connection: ${clientIP}`);
+    return next(new Error('Connection temporarily blocked due to suspicious activity'));
+  }
+  
   const connections = connectionCounts.get(clientIP) || 0;
   
   // IP당 최대 5개 연결 허용
@@ -547,6 +561,11 @@ io.on('connection', (socket) => {
         'remoteAddress': socket.conn?.remoteAddress
       });
     }
+  });
+  
+  // 연결 유지 확인 (heartbeat)
+  socket.on('ping', () => {
+    socket.emit('pong');
   });
   
   socket.on('disconnect', (reason) => {
@@ -2915,10 +2934,14 @@ function blockSuspiciousIP(req, res, next) {
     const blockInfo = blockedIPs.get(clientIP);
     console.log(`🚫 [ADMIN-BLOCKED] Access denied for ${clientIP} - Reason: ${blockInfo.reason}`);
     return res.status(403).json({ 
-      error: "Access denied",
-      message: `Your IP has been blocked. Reason: ${blockInfo.reason}`,
-      blockedAt: blockInfo.blockedAt,
-      blockedBy: blockInfo.blockedBy
+      error: "IP 차단됨",
+      message: `귀하의 IP가 차단되었습니다.\n\n차단 사유: ${blockInfo.reason}\n차단 일시: ${new Date(blockInfo.blockedAt).toLocaleString('ko-KR')}\n차단자: ${blockInfo.blockedBy}\n\n관리자에게 문의하세요.`,
+      blocked: true,
+      blockInfo: {
+        reason: blockInfo.reason,
+        blockedAt: blockInfo.blockedAt,
+        blockedBy: blockInfo.blockedBy
+      }
     });
   }
   
