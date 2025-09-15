@@ -698,6 +698,19 @@ const adminSchema = new mongoose.Schema(
 
 const AdminModel = mongoose.model("Admin", adminSchema);
 
+// Blocked IP Schema (차단된 IP 관리)
+const blockedIPSchema = new mongoose.Schema(
+  {
+    ipAddress: { type: String, required: true, unique: true },
+    reason: { type: String, required: true },
+    blockedAt: { type: String, required: true }, // 한국시간 문자열로 저장
+    blockedBy: { type: String, required: true },
+  },
+  { timestamps: true }
+);
+
+const BlockedIPModel = mongoose.model("BlockedIP", blockedIPSchema);
+
 // Cooldown Schema (쿨타임 관리)
 const cooldownSchema = new mongoose.Schema(
   {
@@ -2874,7 +2887,25 @@ app.get("/api/companions/:userId", async (req, res) => {
 // 🛡️ [SECURITY] IP Blocking System (IP 차단 관리 시스템)
 const blockedIPs = new Map(); // IP -> { reason, blockedAt, blockedBy }
 
-// 초기 차단 IP 없음 (관리자 패널에서 관리)
+// 서버 시작 시 데이터베이스에서 차단된 IP 목록 로드
+async function loadBlockedIPs() {
+  try {
+    const blockedList = await BlockedIPModel.find({});
+    for (const blocked of blockedList) {
+      blockedIPs.set(blocked.ipAddress, {
+        reason: blocked.reason,
+        blockedAt: blocked.blockedAt,
+        blockedBy: blocked.blockedBy
+      });
+    }
+    console.log(`🛡️ [SECURITY] Loaded ${blockedList.length} blocked IPs from database`);
+  } catch (error) {
+    console.error('❌ [SECURITY] Failed to load blocked IPs:', error);
+  }
+}
+
+// 서버 시작 시 차단된 IP 목록 로드
+loadBlockedIPs();
 
 // 🔧 Admin 계정 관리자 권한 강제 부여 (시스템 복구용)
 (async () => {
@@ -2935,7 +2966,7 @@ function blockSuspiciousIP(req, res, next) {
     console.log(`🚫 [ADMIN-BLOCKED] Access denied for ${clientIP} - Reason: ${blockInfo.reason}`);
     return res.status(403).json({ 
       error: "IP 차단됨",
-      message: `귀하의 IP가 차단되었습니다.\n\n차단 사유: ${blockInfo.reason}\n차단 일시: ${new Date(blockInfo.blockedAt).toLocaleString('ko-KR')}\n차단자: ${blockInfo.blockedBy}\n\n관리자에게 문의하세요.`,
+      message: `귀하의 IP가 차단되었습니다.\n\n차단 사유: ${blockInfo.reason}\n차단 일시: ${blockInfo.blockedAt}\n차단자: ${blockInfo.blockedBy}\n\n관리자에게 문의하세요.`,
       blocked: true,
       blockInfo: {
         reason: blockInfo.reason,
@@ -5854,14 +5885,36 @@ app.post("/api/admin/block-ip", async (req, res) => {
       return res.status(400).json({ error: "자신의 IP는 차단할 수 없습니다." });
     }
 
-    // IP 차단 정보 저장
+    // IP 차단 정보 저장 (한국시간)
+    const koreanTime = new Date().toLocaleString('ko-KR', { 
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit', 
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
     const blockInfo = {
       reason: reason || '관리자에 의한 수동 차단',
-      blockedAt: new Date().toISOString(),
+      blockedAt: koreanTime,
       blockedBy: adminUsername
     };
     
+    // 메모리와 데이터베이스 모두에 저장
     blockedIPs.set(ipAddress, blockInfo);
+    
+    // 데이터베이스에 저장 (중복 시 업데이트)
+    await BlockedIPModel.findOneAndUpdate(
+      { ipAddress: ipAddress },
+      {
+        ipAddress: ipAddress,
+        reason: blockInfo.reason,
+        blockedAt: blockInfo.blockedAt,
+        blockedBy: blockInfo.blockedBy
+      },
+      { upsert: true, new: true }
+    );
 
     console.log(`🚫 [ADMIN] IP ${ipAddress} blocked by ${adminUsername}: ${blockInfo.reason}`);
 
@@ -5921,10 +5974,11 @@ app.post("/api/admin/unblock-ip", async (req, res) => {
       return res.status(403).json({ error: "잘못된 관리자 키입니다." });
     }
 
-    // IP 차단 해제
+    // 메모리와 데이터베이스에서 모두 삭제
     const wasBlocked = blockedIPs.delete(ipAddress);
+    const dbResult = await BlockedIPModel.deleteOne({ ipAddress: ipAddress });
 
-    if (wasBlocked) {
+    if (wasBlocked || dbResult.deletedCount > 0) {
       console.log(`✅ [ADMIN] IP ${ipAddress} unblocked by ${adminUsername}`);
       res.json({ 
         success: true, 
