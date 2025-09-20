@@ -1268,10 +1268,10 @@ function App() {
       // 🛡️ 3. 처리 중 상태 설정
       setIsProcessingFishing(true);
       
-      // 서버에 낚시 쿨타임 설정 (서버에서 쿨타임 계산)
+      // 서버에 낚시 쿨타임 설정 (서버에서 쿨타임 계산) - JWT 인증 사용
       try {
         const params = { username, userUuid };
-        const response = await axios.post(`${serverUrl}/api/set-fishing-cooldown`, {}, { params });
+        const response = await authenticatedRequest.post(`${serverUrl}/api/set-fishing-cooldown`, {}, { params });
         
         // 🚀 서버에서 계산된 쿨타임으로 클라이언트 설정 (중복 저장 제거)
         const serverCooldownTime = response.data.remainingTime || 0;
@@ -2028,11 +2028,11 @@ function App() {
     }
   };
   
-  // 퀘스트 진행도 업데이트
+  // 퀘스트 진행도 업데이트 - JWT 인증 사용
   const updateQuestProgress = async (questType, amount = 1) => {
     try {
       const params = { username, userUuid };
-      await axios.post(`${serverUrl}/api/update-quest-progress`, {
+      await authenticatedRequest.post(`${serverUrl}/api/update-quest-progress`, {
         questType,
         amount
       }, { params });
@@ -2044,11 +2044,11 @@ function App() {
     }
   };
   
-  // 퀘스트 보상 수령
+  // 퀘스트 보상 수령 - JWT 인증 사용
   const claimQuestReward = async (questId) => {
     try {
       const params = { username, userUuid };
-      const response = await axios.post(`${serverUrl}/api/claim-quest-reward`, {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/claim-quest-reward`, {
         questId
       }, { params });
       
@@ -2507,10 +2507,10 @@ function App() {
       return;
     }
 
-    // 서버에 탐사 시작 쿨타임 설정 요청
+    // 서버에 탐사 시작 쿨타임 설정 요청 - JWT 인증 사용
     try {
       const params = { username, userUuid };
-      const response = await axios.post(`${serverUrl}/api/set-exploration-cooldown`, {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/set-exploration-cooldown`, {
         type: 'start'
       }, { params });
       
@@ -2597,9 +2597,9 @@ function App() {
         }
       }
       
-      // 서버에 도망 쿨타임 설정 요청
+      // 서버에 도망 쿨타임 설정 요청 - JWT 인증 사용
       const params = { username, userUuid };
-      const response = await axios.post(`${serverUrl}/api/set-exploration-cooldown`, {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/set-exploration-cooldown`, {
         type: 'flee'
       }, { params });
       
@@ -2661,10 +2661,10 @@ function App() {
           // [퀘스트] 탐사 승리 퀘스트 진행도 업데이트
           updateQuestProgress('exploration_win', 1);
           setTimeout(async () => {
-            // 서버에 승리 쿨타임 설정 요청
+            // 서버에 승리 쿨타임 설정 요청 - JWT 인증 사용
             try {
               const params = { username, userUuid };
-              const response = await axios.post(`${serverUrl}/api/set-exploration-cooldown`, {
+              const response = await authenticatedRequest.post(`${serverUrl}/api/set-exploration-cooldown`, {
                 type: 'victory'
               }, { params });
               
@@ -2734,10 +2734,10 @@ function App() {
         newLog.push(`패배했습니다... 재료를 잃었습니다.`);
         
         setTimeout(async () => {
-          // 서버에 패배 쿨타임 설정 요청
+          // 서버에 패배 쿨타임 설정 요청 - JWT 인증 사용
           try {
             const params = { username, userUuid };
-            const response = await axios.post(`${serverUrl}/api/set-exploration-cooldown`, {
+            const response = await authenticatedRequest.post(`${serverUrl}/api/set-exploration-cooldown`, {
               type: 'defeat'
             }, { params });
             
