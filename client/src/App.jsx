@@ -258,6 +258,12 @@ function App() {
   const [blockReason, setBlockReason] = useState('');
   const [showIPManager, setShowIPManager] = useState(false);
   
+  // 계정 차단 관리 상태
+  const [blockedAccounts, setBlockedAccounts] = useState([]);
+  const [connectedUsersList, setConnectedUsersList] = useState([]);
+  const [newAccountTarget, setNewAccountTarget] = useState('');
+  const [accountBlockReason, setAccountBlockReason] = useState('');
+  
   // 최초 로그인 관련 상태
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -277,6 +283,7 @@ function App() {
   // 쿨타임 관련 상태 (서버에서 로드)
   const [fishingCooldown, setFishingCooldown] = useState(0);
   const [explorationCooldown, setExplorationCooldown] = useState(0);
+  const [isProcessingFishing, setIsProcessingFishing] = useState(false); // 🛡️ 낚시 처리 중 상태
 
   const serverUrl = useMemo(() => {
     // 프로덕션 환경에서는 현재 도메인 사용
@@ -1246,10 +1253,21 @@ function App() {
     
     // 낚시하기 명령어 체크 및 쿨타임 적용
     if (text === "낚시하기") {
+      // 🛡️ 1. 처리 중 상태 확인 (중복 방지)
+      if (isProcessingFishing) {
+        console.log("이미 낚시 처리 중입니다.");
+        return;
+      }
+      
+      // 🛡️ 2. 쿨타임 확인
       if (fishingCooldown > 0) {
         alert(`낚시하기 쿨타임이 ${formatCooldown(fishingCooldown)} 남았습니다!`);
         return;
       }
+      
+      // 🛡️ 3. 처리 중 상태 설정
+      setIsProcessingFishing(true);
+      
       // 서버에 낚시 쿨타임 설정 (서버에서 쿨타임 계산)
       try {
         const params = { username, userUuid };
@@ -1267,6 +1285,11 @@ function App() {
         // 서버 설정 실패 시 기본 쿨타임 설정 (5분)
         const fallbackCooldownTime = 5 * 60 * 1000; // 5분
         setFishingCooldown(fallbackCooldownTime);
+      } finally {
+        // 🛡️ 4. 처리 완료 후 상태 해제 (1초 후)
+        setTimeout(() => {
+          setIsProcessingFishing(false);
+        }, 1000);
       }
     }
     
@@ -1405,6 +1428,149 @@ function App() {
     } catch (error) {
       console.error('Failed to reset account:', error);
       alert('계정 초기화에 실패했습니다: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  // 🚫 계정 차단 함수
+  const blockAccount = async (targetUserUuid, targetUsername) => {
+    if (!isAdmin) {
+      alert('관리자 권한이 필요합니다.');
+      return;
+    }
+
+    const reason = prompt(`${targetUsername} 계정을 차단하는 사유를 입력하세요:`, '부적절한 행동');
+    if (!reason) return;
+
+    const adminKey = prompt('관리자 키를 입력하세요:');
+    if (!adminKey) return;
+
+    try {
+      const params = { username, userUuid };
+      const response = await axios.post(`${serverUrl}/api/admin/block-account`, {
+        userUuid: targetUserUuid,
+        username: targetUsername,
+        reason: reason,
+        adminKey: adminKey
+      }, { params });
+
+      if (response.data.success) {
+        alert(`${targetUsername} 계정이 차단되었습니다.`);
+        // 현재 접속자 목록 새로고침
+        fetchConnectedUserIPs();
+        // 차단된 계정 목록 새로고침
+        fetchBlockedAccounts();
+      }
+    } catch (error) {
+      console.error('Failed to block account:', error);
+      alert('계정 차단에 실패했습니다: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  // 수동 계정 차단 함수 (사용자명 또는 UUID로)
+  const blockAccountManually = async () => {
+    if (!isAdmin) {
+      alert('관리자 권한이 필요합니다.');
+      return;
+    }
+
+    if (!newAccountTarget.trim()) {
+      alert('사용자명 또는 UUID를 입력하세요.');
+      return;
+    }
+
+    if (!accountBlockReason.trim()) {
+      alert('차단 사유를 입력하세요.');
+      return;
+    }
+
+    const adminKey = prompt('관리자 키를 입력하세요:');
+    if (!adminKey) return;
+
+    try {
+      const params = { username, userUuid };
+      
+      // 입력된 값이 UUID인지 사용자명인지 판단
+      let targetUserUuid, targetUsername;
+      
+      if (newAccountTarget.startsWith('#')) {
+        // UUID로 입력된 경우
+        targetUserUuid = newAccountTarget;
+        targetUsername = newAccountTarget; // 서버에서 실제 사용자명을 찾을 것임
+      } else {
+        // 사용자명으로 입력된 경우
+        targetUsername = newAccountTarget;
+        targetUserUuid = newAccountTarget; // 서버에서 실제 UUID를 찾을 것임
+      }
+
+      const response = await axios.post(`${serverUrl}/api/admin/block-account`, {
+        userUuid: targetUserUuid,
+        username: targetUsername,
+        reason: accountBlockReason.trim(),
+        adminKey: adminKey
+      }, { params });
+
+      if (response.data.success) {
+        alert(`${newAccountTarget} 계정이 차단되었습니다.`);
+        // 폼 초기화
+        setNewAccountTarget('');
+        setAccountBlockReason('');
+        // 목록 새로고침
+        fetchConnectedUserIPs();
+        fetchBlockedAccounts();
+      }
+    } catch (error) {
+      console.error('Failed to block account manually:', error);
+      const errorMsg = error.response?.data?.error || error.message;
+      if (errorMsg.includes('not found') || errorMsg.includes('찾을 수 없습니다')) {
+        alert(`사용자를 찾을 수 없습니다: ${newAccountTarget}\n\n정확한 사용자명 또는 UUID를 입력해주세요.`);
+      } else {
+        alert('계정 차단에 실패했습니다: ' + errorMsg);
+      }
+    }
+  };
+
+  // 계정 차단 해제 함수
+  const unblockAccount = async (targetUserUuid) => {
+    if (!isAdmin) {
+      alert('관리자 권한이 필요합니다.');
+      return;
+    }
+
+    const adminKey = prompt('관리자 키를 입력하세요:');
+    if (!adminKey) return;
+
+    try {
+      const params = { username, userUuid };
+      const response = await axios.post(`${serverUrl}/api/admin/unblock-account`, {
+        userUuid: targetUserUuid,
+        adminKey: adminKey
+      }, { params });
+
+      if (response.data.success) {
+        alert('계정 차단이 해제되었습니다.');
+        // 차단된 계정 목록 새로고침
+        fetchBlockedAccounts();
+      }
+    } catch (error) {
+      console.error('Failed to unblock account:', error);
+      alert('계정 차단 해제에 실패했습니다: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+
+  // 차단된 계정 목록 조회 함수
+  const fetchBlockedAccounts = async () => {
+    if (!isAdmin) return;
+
+    try {
+      const params = { username, userUuid };
+      const response = await axios.get(`${serverUrl}/api/admin/blocked-accounts`, { params });
+      
+      if (response.data.success) {
+        setBlockedAccounts(response.data.blockedAccounts || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch blocked accounts:', error);
     }
   };
 
@@ -2164,7 +2330,7 @@ function App() {
       const response = await axios.get(`${serverUrl}/api/admin/user-ips`, { params });
       
       if (response.data.success) {
-        setConnectedUsers(response.data.connectedUsers || []);
+        setConnectedUsersList(response.data.connectedUsers || []);
       }
     } catch (error) {
       console.error('Failed to fetch user IPs:', error);
@@ -2231,6 +2397,7 @@ function App() {
     setShowIPManager(true);
     fetchBlockedIPs();
     fetchConnectedUserIPs();
+    fetchBlockedAccounts();
   };
 
   // 🔑 관리자 권한: 다른 사용자 계정 삭제
@@ -3523,6 +3690,19 @@ function App() {
                       <Trash2 className="w-4 h-4" />
                     </button>
                     
+                    {/* 관리자 버튼 (관리자만 보임) */}
+                    {isAdmin && (
+                      <button
+                        className={`p-2 rounded-lg hover:glow-effect transition-all duration-300 text-orange-400 ${
+                          isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+                        }`}
+                        onClick={openIPManager}
+                        title="IP 차단 관리"
+                      >
+                        🛡️
+                      </button>
+                    )}
+                    
                     {/* 로그아웃 버튼 */}
                     <button
                       className={`p-2 rounded-lg hover:glow-effect transition-all duration-300 text-red-400 ${
@@ -3718,16 +3898,19 @@ function App() {
                       isDarkMode 
                         ? "glass-input text-white placeholder-gray-400" 
                         : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-gray-800 placeholder-gray-500"
-                    } ${input.length > 450 ? 'border-red-400' : ''}`}
-                    placeholder={fishingCooldown > 0 
-                      ? `낚시하기 쿨타임: ${formatCooldown(fishingCooldown)}` 
-                      : "메시지를 입력하세요... (낚시하기)"
+                    } ${input.length > 450 ? 'border-red-400' : ''} ${isProcessingFishing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    placeholder={isProcessingFishing 
+                      ? "낚시 처리 중..." 
+                      : fishingCooldown > 0 
+                        ? `낚시하기 쿨타임: ${formatCooldown(fishingCooldown)}` 
+                        : "메시지를 입력하세요... (낚시하기)"
                     }
                     value={input}
                     maxLength={500}
+                    disabled={isProcessingFishing}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") handleSend();
+                      if (e.key === "Enter" && !isProcessingFishing) handleSend();
                     }}
                   />
                   <button
@@ -3735,8 +3918,9 @@ function App() {
                       isDarkMode 
                         ? "glass-input text-blue-400" 
                         : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-blue-600"
-                    }`}
-                    onClick={handleSend}
+                    } ${isProcessingFishing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    onClick={isProcessingFishing ? undefined : handleSend}
+                    disabled={isProcessingFishing}
                   >
                     <Send className="w-4 h-4" />
                     <span className="hidden sm:inline font-medium">전송</span>
@@ -3758,7 +3942,12 @@ function App() {
                   <p className={`text-xs flex items-center justify-center gap-2 ${
                     isDarkMode ? "text-gray-400" : "text-gray-600"
                   }`}>
-                    {fishingCooldown > 0 ? (
+                    {isProcessingFishing ? (
+                      <>
+                        <span className="animate-spin">⚙️</span>
+                        낚시 처리 중...
+                      </>
+                    ) : fishingCooldown > 0 ? (
                       <>
                         <span>⏰</span>
                         낚시하기 쿨타임: {formatCooldown(fishingCooldown)}
@@ -5678,15 +5867,71 @@ function App() {
                 </button>
               </div>
 
+              {/* 계정 차단 추가 폼 */}
+              <div className={`p-4 rounded-lg mb-6 ${
+                isDarkMode ? "bg-orange-900/20" : "bg-orange-50"
+              }`}>
+                <h3 className={`text-lg font-semibold mb-4 ${
+                  isDarkMode ? "text-orange-300" : "text-orange-800"
+                }`}>🔒 새 계정 차단</h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${
+                      isDarkMode ? "text-orange-300" : "text-orange-700"
+                    }`}>사용자명 또는 UUID</label>
+                    <input
+                      type="text"
+                      value={newAccountTarget}
+                      onChange={(e) => setNewAccountTarget(e.target.value)}
+                      placeholder="예: 사용자명 또는 #0001"
+                      className={`w-full px-3 py-2 rounded-lg border transition-colors ${
+                        isDarkMode
+                          ? "bg-gray-600 border-gray-500 text-white placeholder-gray-400 focus:border-orange-400"
+                          : "bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-orange-500"
+                      } focus:outline-none focus:ring-2 focus:ring-orange-500/20`}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${
+                      isDarkMode ? "text-orange-300" : "text-orange-700"
+                    }`}>차단 사유</label>
+                    <input
+                      type="text"
+                      value={accountBlockReason}
+                      onChange={(e) => setAccountBlockReason(e.target.value)}
+                      placeholder="예: 부적절한 행동, 해킹 시도 등"
+                      className={`w-full px-3 py-2 rounded-lg border transition-colors ${
+                        isDarkMode
+                          ? "bg-gray-600 border-gray-500 text-white placeholder-gray-400 focus:border-orange-400"
+                          : "bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-orange-500"
+                      } focus:outline-none focus:ring-2 focus:ring-orange-500/20`}
+                    />
+                  </div>
+                </div>
+                
+                <button
+                  onClick={blockAccountManually}
+                  className={`mt-4 px-4 py-2 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                    isDarkMode
+                      ? "bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 border border-orange-400/30"
+                      : "bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 border border-orange-500/30"
+                  }`}
+                >
+                  🔒 계정 차단
+                </button>
+              </div>
+
               {/* 현재 접속자 IP 목록 */}
               <div className={`p-4 rounded-lg mb-6 ${
                 isDarkMode ? "bg-blue-900/20" : "bg-blue-50"
               }`}>
                 <h3 className={`text-lg font-semibold mb-4 ${
                   isDarkMode ? "text-blue-300" : "text-blue-800"
-                }`}>🌐 현재 접속자 IP ({connectedUsers.length}명)</h3>
+                }`}>🌐 현재 접속자 IP ({connectedUsersList.length}명)</h3>
                 
-                {connectedUsers.length === 0 ? (
+                {connectedUsersList.length === 0 ? (
                   <div className={`text-center py-4 ${
                     isDarkMode ? "text-blue-400" : "text-blue-600"
                   }`}>
@@ -5694,7 +5939,7 @@ function App() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {connectedUsers.map((user, index) => (
+                    {connectedUsersList.map((user, index) => (
                       <div
                         key={`${user.userUuid}-${index}`}
                         className={`p-3 rounded-lg border ${
@@ -5732,20 +5977,34 @@ function App() {
                             </div>
                           </div>
                           
-                          <button
-                            onClick={() => {
-                              setNewIPAddress(user.ipAddress);
-                              setBlockReason(`${user.username} 사용자 차단`);
-                            }}
-                            className={`px-3 py-2 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
-                              isDarkMode
-                                ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-400/30"
-                                : "bg-red-500/10 text-red-600 hover:bg-red-500/20 border border-red-500/30"
-                            }`}
-                            title="이 IP를 차단 목록에 추가"
-                          >
-                            🚫 차단 준비
-                          </button>
+                          <div className="flex flex-col gap-2">
+                            <button
+                              onClick={() => {
+                                setNewIPAddress(user.ipAddress);
+                                setBlockReason(`${user.username} 사용자 차단`);
+                              }}
+                              className={`px-3 py-2 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                                isDarkMode
+                                  ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-400/30"
+                                  : "bg-red-500/10 text-red-600 hover:bg-red-500/20 border border-red-500/30"
+                              }`}
+                              title="이 IP를 차단 목록에 추가"
+                            >
+                              🚫 IP 차단
+                            </button>
+                            
+                            <button
+                              onClick={() => blockAccount(user.userUuid, user.username)}
+                              className={`px-3 py-2 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                                isDarkMode
+                                  ? "bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 border border-orange-400/30"
+                                  : "bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 border border-orange-500/30"
+                              }`}
+                              title="이 계정을 영구 차단"
+                            >
+                              🔒 계정 차단
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -5808,6 +6067,82 @@ function App() {
                             title="차단 해제"
                           >
                             ✅ 해제
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 차단된 계정 목록 */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className={`text-lg font-semibold ${
+                    isDarkMode ? "text-white" : "text-gray-800"
+                  }`}>🔒 차단된 계정 목록 ({blockedAccounts.length}개)</h3>
+                  <button
+                    onClick={fetchBlockedAccounts}
+                    className={`px-3 py-2 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                      isDarkMode
+                        ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-400/30"
+                        : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border border-blue-500/30"
+                    }`}
+                  >
+                    🔄 새로고침
+                  </button>
+                </div>
+                
+                {blockedAccounts.length === 0 ? (
+                  <div className={`text-center py-8 ${
+                    isDarkMode ? "text-gray-400" : "text-gray-600"
+                  }`}>
+                    차단된 계정이 없습니다.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {blockedAccounts.map((account, index) => (
+                      <div
+                        key={`${account.userUuid}-${index}`}
+                        className={`p-4 rounded-lg border ${
+                          isDarkMode
+                            ? "bg-gray-700/50 border-gray-600"
+                            : "bg-gray-50 border-gray-200"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className={`font-bold text-lg ${
+                                isDarkMode ? "text-orange-400" : "text-orange-600"
+                              }`}>🔒 {account.username}</span>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                isDarkMode
+                                  ? "bg-orange-500/20 text-orange-400"
+                                  : "bg-orange-500/10 text-orange-600"
+                              }`}>계정 차단됨</span>
+                            </div>
+                            
+                            <div className={`text-sm space-y-1 ${
+                              isDarkMode ? "text-gray-300" : "text-gray-600"
+                            }`}>
+                              <p><strong>UUID:</strong> <span className="font-mono text-xs">{account.userUuid}</span></p>
+                              <p><strong>차단 사유:</strong> {account.reason}</p>
+                              <p><strong>차단 일시:</strong> {account.blockedAt}</p>
+                              <p><strong>차단자:</strong> {account.blockedBy}</p>
+                            </div>
+                          </div>
+                          
+                          <button
+                            onClick={() => unblockAccount(account.userUuid)}
+                            className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                              isDarkMode
+                                ? "bg-green-500/20 text-green-400 hover:bg-green-500/30 border border-green-400/30"
+                                : "bg-green-500/10 text-green-600 hover:bg-green-500/20 border border-green-500/30"
+                            }`}
+                            title="계정 차단 해제"
+                          >
+                            ✅ 차단 해제
                           </button>
                         </div>
                       </div>

@@ -1351,6 +1351,7 @@ const processingJoins = new Set(); // 중복 join 요청 방지
 const recentJoins = new Map(); // 최근 입장 메시지 추적 (userUuid -> timestamp)
 const processingMaterialConsumption = new Set(); // 중복 재료 소모 요청 방지
 const processingFishing = new Set(); // 🚀 중복 낚시 요청 방지
+const lastFishingTime = new Map(); // 🛡️ 사용자별 마지막 낚시 시간 추적
 
 // 스팸 방지 및 Rate Limiting
 const userMessageHistory = new Map(); // userUuid -> 메시지 기록
@@ -1969,12 +1970,23 @@ io.on("connection", (socket) => {
     if (trimmed === "낚시하기") {
       // 🚀 중복 요청 방지 (가장 중요!)
       const userKey = socket.data.userUuid || socket.data.username || socket.data.userId || socket.id;
+      const currentTime = Date.now();
+      
+      // 1. 현재 처리 중인 요청 확인
       if (processingFishing.has(userKey)) {
         debugLog(`[DUPLICATE FISHING] Ignoring duplicate fishing request for ${userKey}`);
         return; // 조용히 무시
       }
       
+      // 2. 타임스탬프 기반 중복 방지 (1초 내 중복 요청 차단)
+      const lastTime = lastFishingTime.get(userKey);
+      if (lastTime && (currentTime - lastTime) < 1000) {
+        debugLog(`[RAPID FISHING] Blocking rapid fishing attempt by ${userKey} (${currentTime - lastTime}ms gap)`);
+        return; // 조용히 무시
+      }
+      
       processingFishing.add(userKey);
+      lastFishingTime.set(userKey, currentTime);
       
       try {
         debugLog("=== Fishing Request ===");
@@ -2003,6 +2015,23 @@ io.on("connection", (socket) => {
         }
         
         debugLog("Fishing skill query:", query);
+        
+        // 🛡️ 서버 쿨타임 검증 (중요! 클라이언트 우회 방지)
+        const cooldownRecord = await CooldownModel.findOne(query);
+        const now = new Date();
+        
+        if (cooldownRecord && cooldownRecord.fishingCooldownEnd && cooldownRecord.fishingCooldownEnd > now) {
+          const remainingTime = cooldownRecord.fishingCooldownEnd.getTime() - now.getTime();
+          const remainingMinutes = Math.ceil(remainingTime / (60 * 1000));
+          
+          debugLog(`[COOLDOWN BLOCK] User ${userKey} still has ${remainingMinutes} minutes cooldown`);
+          
+          socket.emit("error", { 
+            message: `아직 낚시 쿨타임이 ${remainingMinutes}분 남았습니다.`,
+            cooldownRemaining: remainingTime
+          });
+          return; // 쿨타임이 남아있으면 낚시 중단
+        }
         
         // 🚀 캐시된 낚시 스킬 사용 (성능 최적화)
         const userKey = socket.data.userUuid || socket.data.username || socket.data.userId;
@@ -2079,6 +2108,34 @@ io.on("connection", (socket) => {
           content: `${catchData.displayName} 님이 ${fish}를 낚았습니다!`,
           timestamp,
         });
+        
+        // 🚀 낚시 성공 후 쿨타임 설정 (서버에서 계산)
+        const cooldownDuration = await calculateFishingCooldownTime(query);
+        const cooldownEnd = new Date(now.getTime() + cooldownDuration);
+        
+        const cooldownUpdateData = {
+          userId: query.userId || 'user',
+          username: query.username || socket.data.username,
+          userUuid: query.userUuid || socket.data.userUuid,
+          fishingCooldownEnd: cooldownEnd
+        };
+        
+        // 쿨타임 설정 (병렬 처리)
+        await CooldownModel.findOneAndUpdate(query, cooldownUpdateData, { upsert: true, new: true });
+        
+        // UUID 사용자의 경우 UserUuidModel에도 쿨타임 업데이트
+        if (query.userUuid) {
+          await UserUuidModel.updateOne(
+            { userUuid: query.userUuid },
+            { fishingCooldownEnd: cooldownEnd }
+          );
+          
+          // WebSocket으로 쿨타임 브로드캐스트
+          broadcastUserDataUpdate(query.userUuid, socket.data.username, 'cooldown', {
+            fishingCooldown: cooldownDuration,
+            explorationCooldown: 0
+          });
+        }
         
         // 🚀 낚시 성공 후 클라이언트 인벤토리 업데이트 (비동기 처리)
         if (socket.data.userUuid) {
@@ -6150,9 +6207,51 @@ app.post("/api/admin/block-account", async (req, res) => {
       return res.status(403).json({ error: "잘못된 관리자 키입니다." });
     }
 
-    // 대상 사용자 확인
+    // 대상 사용자 확인 및 조회 (사용자명 또는 UUID로)
     if (!userUuid || !username) {
       return res.status(400).json({ error: "사용자 UUID와 사용자명이 필요합니다." });
+    }
+
+    // 실제 사용자 정보 조회 (사용자명이나 UUID 중 하나만 있어도 됨)
+    let targetUser = null;
+    let finalUserUuid = userUuid;
+    let finalUsername = username;
+
+    try {
+      // UUID가 #으로 시작하는 경우 UUID로 검색
+      if (userUuid.startsWith('#')) {
+        targetUser = await UserUuidModel.findOne({ userUuid: userUuid });
+        if (targetUser) {
+          finalUsername = targetUser.displayName || targetUser.username;
+        }
+      } 
+      // 그렇지 않으면 사용자명으로 검색
+      else {
+        targetUser = await UserUuidModel.findOne({ 
+          $or: [
+            { username: username },
+            { displayName: username }
+          ]
+        });
+        if (targetUser) {
+          finalUserUuid = targetUser.userUuid;
+          finalUsername = targetUser.displayName || targetUser.username;
+        }
+      }
+
+      // 사용자를 찾지 못한 경우
+      if (!targetUser) {
+        console.log(`❌ [ADMIN] Target user not found: ${userUuid} / ${username}`);
+        return res.status(404).json({ 
+          error: `사용자를 찾을 수 없습니다: ${userUuid.startsWith('#') ? userUuid : username}` 
+        });
+      }
+
+      console.log(`🎯 [ADMIN] Target user found: ${finalUsername} (${finalUserUuid})`);
+
+    } catch (searchError) {
+      console.error("❌ [ADMIN] Error searching for target user:", searchError);
+      return res.status(500).json({ error: "사용자 조회 중 오류가 발생했습니다." });
     }
 
     // 계정 차단 정보 저장 (한국시간)
@@ -6166,20 +6265,20 @@ app.post("/api/admin/block-account", async (req, res) => {
       second: '2-digit'
     });
     const blockInfo = {
-      username: username,
+      username: finalUsername,
       reason: reason || '관리자에 의한 수동 차단',
       blockedAt: koreanTime,
       blockedBy: adminUsername
     };
     
-    // 메모리와 데이터베이스 모두에 저장
-    blockedAccounts.set(userUuid, blockInfo);
+    // 메모리와 데이터베이스 모두에 저장 (최종 정보 사용)
+    blockedAccounts.set(finalUserUuid, blockInfo);
     
     // 데이터베이스에 저장 (중복 시 업데이트)
     await BlockedAccountModel.findOneAndUpdate(
-      { userUuid: userUuid },
+      { userUuid: finalUserUuid },
       {
-        userUuid: userUuid,
+        userUuid: finalUserUuid,
         username: blockInfo.username,
         reason: blockInfo.reason,
         blockedAt: blockInfo.blockedAt,
@@ -6188,12 +6287,12 @@ app.post("/api/admin/block-account", async (req, res) => {
       { upsert: true, new: true }
     );
 
-    console.log(`🚫 [ADMIN] Account ${username} (${userUuid}) blocked by ${adminUsername}: ${blockInfo.reason}`);
+    console.log(`🚫 [ADMIN] Account ${finalUsername} (${finalUserUuid}) blocked by ${adminUsername}: ${blockInfo.reason}`);
 
     // 해당 계정의 모든 Socket 연결 강제 종료
     if (global.io) {
       global.io.sockets.sockets.forEach((socket) => {
-        if (socket.userUuid === userUuid) {
+        if (socket.userUuid === finalUserUuid) {
           console.log(`🚫 [ADMIN] Disconnecting blocked account socket: ${socket.username}`);
           socket.emit('account-blocked', { 
             reason: blockInfo.reason,
@@ -6207,9 +6306,10 @@ app.post("/api/admin/block-account", async (req, res) => {
 
     res.json({ 
       success: true, 
-      message: `계정 ${username}이 차단되었습니다.`,
+      message: `계정 ${finalUsername}이 차단되었습니다.`,
       blockedAccount: {
-        userUuid: userUuid,
+        userUuid: finalUserUuid,
+        username: finalUsername,
         ...blockInfo
       }
     });
