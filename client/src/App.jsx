@@ -1274,10 +1274,10 @@ function App() {
       // 🛡️ 3. 처리 중 상태 설정
       setIsProcessingFishing(true);
       
-      // 서버에 낚시 쿨타임 설정 (서버에서 쿨타임 계산) - JWT 인증 사용
+      // 서버에 낚시 쿨타임 설정 (서버에서 쿨타임 계산) - 모든 사용자 접근 가능
       try {
         const params = { username, userUuid };
-        const response = await authenticatedRequest.post(`${serverUrl}/api/set-fishing-cooldown`, {}, { params });
+        const response = await axios.post(`${serverUrl}/api/set-fishing-cooldown`, {}, { params });
         
         // 🚀 서버에서 계산된 쿨타임으로 클라이언트 설정 (중복 저장 제거)
         const serverCooldownTime = response.data.remainingTime || 0;
@@ -1391,7 +1391,7 @@ function App() {
       
       try {
         console.log("🛡️ Trying secure reset-account API...");
-        response = await axios.post(`${serverUrl}/api/reset-account`, securePayload, { params });
+        response = await authenticatedRequest.post(`${serverUrl}/api/reset-account`, securePayload);
         console.log("✅ Secure Reset API success");
       } catch (resetError) {
         if (resetError.response?.status === 404) {
@@ -2034,11 +2034,11 @@ function App() {
     }
   };
   
-  // 퀘스트 진행도 업데이트 - JWT 인증 사용
+  // 퀘스트 진행도 업데이트 - 모든 사용자 접근 가능
   const updateQuestProgress = async (questType, amount = 1) => {
     try {
       const params = { username, userUuid };
-      await authenticatedRequest.post(`${serverUrl}/api/update-quest-progress`, {
+      await axios.post(`${serverUrl}/api/update-quest-progress`, {
         questType,
         amount
       }, { params });
@@ -2050,11 +2050,11 @@ function App() {
     }
   };
   
-  // 퀘스트 보상 수령 - JWT 인증 사용
+  // 퀘스트 보상 수령 - 모든 사용자 접근 가능
   const claimQuestReward = async (questId) => {
     try {
       const params = { username, userUuid };
-      const response = await authenticatedRequest.post(`${serverUrl}/api/claim-quest-reward`, {
+      const response = await axios.post(`${serverUrl}/api/claim-quest-reward`, {
         questId
       }, { params });
       
@@ -2081,10 +2081,8 @@ function App() {
   const addAmber = async (amount) => {
     try {
       console.log('Adding amber reward');
-      const response = await axios.post(`${serverUrl}/api/add-amber`, {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/add-amber`, {
         amount
-      }, {
-        params: { username, userUuid }
       });
       
       console.log('Add amber response:', response.data);
@@ -2120,9 +2118,9 @@ function App() {
       const params = { username, userUuid };
       console.log('Recruiting companion with params:', params);
       
-      const response = await axios.post(`${serverUrl}/api/recruit-companion`, {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/recruit-companion`, {
         starPieceCost
-      }, { params });
+      });
       
       console.log('Recruit response:', response.data);
       
@@ -2203,6 +2201,14 @@ function App() {
       
       if (response.data.success) {
         setIsAdmin(response.data.isAdmin);
+        
+        // 🔐 새 JWT 토큰 저장 (관리자 권한 포함)
+        if (response.data.jwtToken) {
+          localStorage.setItem("jwtToken", response.data.jwtToken);
+          setJwtToken(response.data.jwtToken);
+          console.log("🔐 New admin JWT token saved");
+        }
+        
         setMessages(prev => [...prev, {
           system: true,
           username: "system",
@@ -2476,14 +2482,9 @@ function App() {
   // 재료 소모 함수
   const consumeMaterial = async (materialName, quantity = 1) => {
     try {
-      const response = await axios.post(`${serverUrl}/api/consume-material`, {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/consume-material`, {
         materialName,
         quantity
-      }, {
-        params: {
-          username,
-          userUuid
-        }
       });
       
       if (response.data.success) {
@@ -2515,10 +2516,9 @@ function App() {
 
     // 서버에 탐사 시작 쿨타임 설정 요청 - JWT 인증 사용
     try {
-      const params = { username, userUuid };
       const response = await authenticatedRequest.post(`${serverUrl}/api/set-exploration-cooldown`, {
         type: 'start'
-      }, { params });
+      });
       
       const serverCooldownTime = response.data.remainingTime || (10 * 60 * 1000);
       setExplorationCooldown(serverCooldownTime);
@@ -2604,10 +2604,9 @@ function App() {
       }
       
       // 서버에 도망 쿨타임 설정 요청 - JWT 인증 사용
-      const params = { username, userUuid };
       const response = await authenticatedRequest.post(`${serverUrl}/api/set-exploration-cooldown`, {
         type: 'flee'
-      }, { params });
+      });
       
       const serverCooldownTime = response.data.remainingTime || (5 * 60 * 1000);
       setExplorationCooldown(serverCooldownTime);
@@ -2669,10 +2668,9 @@ function App() {
           setTimeout(async () => {
             // 서버에 승리 쿨타임 설정 요청 - JWT 인증 사용
             try {
-              const params = { username, userUuid };
               const response = await authenticatedRequest.post(`${serverUrl}/api/set-exploration-cooldown`, {
                 type: 'victory'
-              }, { params });
+              });
               
               const serverCooldownTime = response.data.remainingTime || (10 * 60 * 1000);
               setExplorationCooldown(serverCooldownTime);
@@ -2742,10 +2740,9 @@ function App() {
         setTimeout(async () => {
           // 서버에 패배 쿨타임 설정 요청 - JWT 인증 사용
           try {
-            const params = { username, userUuid };
             const response = await authenticatedRequest.post(`${serverUrl}/api/set-exploration-cooldown`, {
               type: 'defeat'
-            }, { params });
+            });
             
             const serverCooldownTime = response.data.remainingTime || (10 * 60 * 1000);
             setExplorationCooldown(serverCooldownTime);
@@ -2959,12 +2956,11 @@ function App() {
     }
 
     try {
-      const params = { username, userUuid };
-      const response = await axios.post(`${serverUrl}/api/decompose-fish`, {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/decompose-fish`, {
         fishName,
         quantity,
         material
-      }, { params });
+      });
 
       if (response.data.success) {
         // 스타피쉬 분해 시 별조각 획득 처리
@@ -3026,8 +3022,8 @@ function App() {
           try {
             const userId = idToken ? 'user' : 'null';
             const [inventoryRes, materialsRes] = await Promise.all([
-              axios.get(`${serverUrl}/api/inventory/${userId}`, { params }),
-              axios.get(`${serverUrl}/api/materials/${userId}`, { params })
+              authenticatedRequest.get(`${serverUrl}/api/inventory/${userId}`),
+              authenticatedRequest.get(`${serverUrl}/api/materials/${userId}`)
             ]);
             
             const safeInventory = Array.isArray(inventoryRes.data) ? inventoryRes.data : [];
@@ -3141,8 +3137,7 @@ function App() {
           setUserEquipment(prev => ({ ...prev, accessory: itemName }));
           // 🛡️ [FIX] 악세사리 구매 시 서버에서 쿨타임 재계산 요청
           try {
-            const params = { username, userUuid };
-            const response = await axios.post(`${serverUrl}/api/recalculate-fishing-cooldown`, {}, { params });
+            const response = await authenticatedRequest.post(`${serverUrl}/api/recalculate-fishing-cooldown`, {});
             
             if (response.data.success) {
               const newCooldownTime = response.data.remainingTime || 0;

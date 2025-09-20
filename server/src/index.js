@@ -201,7 +201,7 @@ function getCachedData(cacheKey, userKey) {
 function setCachedData(cacheKey, userKey, data) {
   const key = `${cacheKey}:${userKey}`;
   dataCache.set(key, { data, timestamp: Date.now() });
-  debugLog(`💾 캐시 저장: ${key}`);
+  // 캐시 저장 로그 제거 (성능 최적화)
   
   // 캐시 크기 제한 (메모리 관리)
   if (dataCache.size > 1000) {
@@ -1976,44 +1976,9 @@ io.on("connection", (socket) => {
     }
     
     if (trimmed === "낚시하기") {
-      // 🚀 중복 요청 방지 (가장 중요!)
-      const userKey = socket.data.userUuid || socket.data.username || socket.data.userId || socket.id;
-      const currentTime = Date.now();
-      
-      // 1. 현재 처리 중인 요청 확인
-      if (processingFishing.has(userKey)) {
-        debugLog(`[DUPLICATE FISHING] Ignoring duplicate fishing request for ${userKey}`);
-        return; // 조용히 무시
-      }
-      
-      // 2. 타임스탬프 기반 중복 방지 (1초 내 중복 요청 차단)
-      const lastTime = lastFishingTime.get(userKey);
-      if (lastTime && (currentTime - lastTime) < 1000) {
-        debugLog(`[RAPID FISHING] Blocking rapid fishing attempt by ${userKey} (${currentTime - lastTime}ms gap)`);
-        return; // 조용히 무시
-      }
-      
-      processingFishing.add(userKey);
-      lastFishingTime.set(userKey, currentTime);
-      
       try {
-        debugLog("=== Fishing Request ===");
-        debugLog("Socket data:", {
-          userUuid: socket.data.userUuid,
-          username: socket.data.username,
-          userId: socket.data.userId,
-          displayName: socket.data.displayName
-        });
-        
-        // 사용자 식별 확인
-        if (!socket.data.userUuid && !socket.data.username && !socket.data.userId) {
-          errorLog("No user identification found");
-          socket.emit("error", { message: "사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요." });
-          return;
-        }
-        
-        // UUID 기반 사용자의 낚시실력 가져오기 (fallback 포함)
-        let query = {};
+        // 사용자 쿼리 생성
+        let query;
         if (socket.data.userUuid) {
           query = { userUuid: socket.data.userUuid };
         } else if (socket.data.username) {
@@ -2022,91 +1987,40 @@ io.on("connection", (socket) => {
           query = { userId: socket.data.userId || 'user' };
         }
         
-        debugLog("Fishing skill query:", query);
+        // 낚시 스킬 조회
+        const fishingSkill = await FishingSkillModel.findOne(query);
+        const userSkill = fishingSkill ? fishingSkill.skill : 0;
         
-        // 🛡️ 서버 쿨타임 검증 (중요! 클라이언트 우회 방지)
-        const cooldownRecord = await CooldownModel.findOne(query);
-        const now = new Date();
-        
-        if (cooldownRecord && cooldownRecord.fishingCooldownEnd && cooldownRecord.fishingCooldownEnd > now) {
-          const remainingTime = cooldownRecord.fishingCooldownEnd.getTime() - now.getTime();
-          const remainingMinutes = Math.ceil(remainingTime / (60 * 1000));
-          
-          debugLog(`[COOLDOWN BLOCK] User ${userKey} still has ${remainingMinutes} minutes cooldown`);
-          
-          socket.emit("error", { 
-            message: `아직 낚시 쿨타임이 ${remainingMinutes}분 남았습니다.`,
-            cooldownRemaining: remainingTime
-          });
-          return; // 쿨타임이 남아있으면 낚시 중단
-        }
-        
-        // 🚀 캐시된 낚시 스킬 사용 (성능 최적화)
-        const userKey = socket.data.userUuid || socket.data.username || socket.data.userId;
-        let userSkill = getCachedFishingSkill(userKey);
-        
-        if (userSkill === null) {
-          // 캐시 미스 시 DB에서 조회
-          const fishingSkill = await FishingSkillModel.findOne(query);
-          userSkill = fishingSkill ? fishingSkill.skill : 0;
-          setCachedFishingSkill(userKey, userSkill);
-          debugLog(`Fishing skill loaded from DB: ${userSkill}`);
-        } else {
-          debugLog(`Fishing skill from cache: ${userSkill}`);
-        }
-        
-        // 사용자 낚시 실력 정보는 보안상 로그에 기록하지 않음
+        // 물고기 선택
         const { fish } = randomFish(userSkill);
-        debugLog("Random fish result:", fish);
         
-        // 물고기 저장 데이터 준비 (UUID 기반)
+        // 물고기 저장 데이터 준비
         const catchData = {
           fish,
-          weight: 0, // 무게는 0으로 설정 (기존 스키마 호환성)
+          weight: 0,
         };
         
-        // 사용자 식별 정보 추가 (우선순위: userUuid > username > userId)
-        debugLog("Socket data for catch:", {
-          userUuid: socket.data.userUuid,
-          username: socket.data.username,
-          userId: socket.data.userId,
-          displayName: socket.data.displayName
-        });
-        
+        // 사용자 식별 정보 추가
         if (socket.data.userUuid) {
           catchData.userUuid = socket.data.userUuid;
           catchData.username = socket.data.username || "사용자";
           catchData.displayName = socket.data.displayName || socket.data.username || "사용자";
-          console.log("Using userUuid for catch:", socket.data.userUuid);
         } else if (socket.data.username) {
           catchData.username = socket.data.username;
           catchData.displayName = socket.data.displayName || socket.data.username;
-          if (socket.data.userId) catchData.userId = socket.data.userId;
-          console.log("Using username for catch:", socket.data.username);
         } else {
           catchData.userId = socket.data.userId || 'user';
           catchData.username = socket.data.username || "사용자";
           catchData.displayName = socket.data.displayName || socket.data.username || "사용자";
-          console.log("Using userId for catch:", socket.data.userId);
         }
         
-        debugLog("Saving fish catch:", catchData);
-        
         // 물고기 저장
-        const savedCatch = await CatchModel.create(catchData);
-        debugLog("Fish saved successfully:", {
-          _id: savedCatch._id,
-          userUuid: savedCatch.userUuid,
-          username: savedCatch.username,
-          fish: savedCatch.fish
-        });
+        await CatchModel.create(catchData);
 
-        // 사용자의 총 물고기 카운트 증가 (배치 처리로 성능 최적화)
+        // 사용자의 총 물고기 카운트 증가
         if (socket.data.userUuid) {
-          // 배치 업데이트에 추가 (즉시 DB 쿼리 없음)
           const currentCount = batchUpdates.fishCount.get(socket.data.userUuid) || 0;
           batchUpdates.fishCount.set(socket.data.userUuid, currentCount + 1);
-          debugLog(`📊 배치 업데이트 추가: ${socket.data.userUuid} 물고기 +1 (총 대기: ${currentCount + 1})`);
         }
         
         // 성공 메시지
@@ -2117,8 +2031,9 @@ io.on("connection", (socket) => {
           timestamp,
         });
         
-        // 🚀 낚시 성공 후 쿨타임 설정 (서버에서 계산)
+        // 쿨타임 설정
         const cooldownDuration = await calculateFishingCooldownTime(query);
+        const now = new Date();
         const cooldownEnd = new Date(now.getTime() + cooldownDuration);
         
         const cooldownUpdateData = {
@@ -2128,7 +2043,7 @@ io.on("connection", (socket) => {
           fishingCooldownEnd: cooldownEnd
         };
         
-        // 쿨타임 설정 (병렬 처리)
+        // 쿨타임 설정
         await CooldownModel.findOneAndUpdate(query, cooldownUpdateData, { upsert: true, new: true });
         
         // UUID 사용자의 경우 UserUuidModel에도 쿨타임 업데이트
@@ -2145,38 +2060,27 @@ io.on("connection", (socket) => {
           });
         }
         
-        // 🚀 낚시 성공 후 클라이언트 인벤토리 업데이트 (비동기 처리)
+        // 인벤토리 업데이트
         if (socket.data.userUuid) {
-          // 백그라운드에서 비동기로 처리하여 응답 속도 향상
           getInventoryData(socket.data.userUuid)
-            .then(updatedInventory => {
-              socket.emit('data:inventory', JSON.parse(JSON.stringify(updatedInventory || [])));
-              debugLog(`📦 Inventory update sent to ${socket.data.username}`);
+            .then(inventory => {
+              socket.emit("inventory:update", inventory);
             })
-            .catch(inventoryError => {
-              console.error("Failed to send inventory update:", inventoryError);
+            .catch(error => {
+              console.error("Failed to update inventory:", error);
             });
         }
         
-        debugLog("=== Fishing SUCCESS ===");
-        
       } catch (error) {
-        console.error("=== Fishing FAILED ===");
-        console.error("Error details:", error);
-        console.error("Stack:", error.stack);
-        
+        console.error("Fishing error:", error);
         socket.emit("error", { message: "낚시에 실패했습니다. 다시 시도해주세요." });
         
-        // 기본 메시지라도 전송
         io.emit("chat:message", {
           system: true,
           username: "system",
           content: `낚시 중 오류가 발생했습니다.`,
           timestamp,
         });
-      } finally {
-        // 🚀 처리 완료 후 즉시 제거 (성능 최적화)
-        processingFishing.delete(userKey);
       }
     } else {
       io.emit("chat:message", { ...msg, timestamp });
@@ -2283,7 +2187,6 @@ io.on("connection", (socket) => {
 // WebSocket 데이터 조회 함수들
 async function sendUserDataUpdate(socket, userUuid, username) {
   try {
-    console.log(`🚀 Sending data update to ${username}`);
     const [inventory, materials, money, amber, starPieces, cooldown, totalCatches, companions, adminStatus, equipment] = await Promise.all([
       getInventoryData(userUuid),
       getMaterialsData(userUuid),
@@ -2296,41 +2199,80 @@ async function sendUserDataUpdate(socket, userUuid, username) {
       getAdminStatusData(userUuid),
       getEquipmentData(userUuid)
     ]);
-
-    console.log(`📊 Data being sent to ${username}:`, {
-      inventory: inventory?.length || 0,
-      materials: materials?.length || 0,
-      money: money?.money || 0,
-      companions: companions?.companions?.length || 0,
-      adminStatus: adminStatus?.isAdmin || false,
-      equipment: equipment?.fishingRod || 'none'
-    });
     
-    // 순환 참조 방지를 위한 데이터 직렬화
-    const safeData = {
-      inventory: inventory ? inventory.map(item => ({
-        fish: item.fish,
-        count: item.count,
-        _id: item._id
-      })) : [],
-      materials: materials ? materials.map(item => ({
-        material: item.material,
-        count: item.count,
-        _id: item._id
-      })) : [],
-      money: money ? { money: money.money } : { money: 0 },
-      amber: JSON.parse(JSON.stringify(amber || { amber: 0 })),
-      starPieces: JSON.parse(JSON.stringify(starPieces || { starPieces: 0 })),
-      cooldown: JSON.parse(JSON.stringify(cooldown || { fishingCooldown: 0, explorationCooldown: 0 })),
-      totalCatches: JSON.parse(JSON.stringify(totalCatches || { totalFishCaught: 0 })),
-      companions: JSON.parse(JSON.stringify(companions || { companions: [] })),
-      adminStatus: JSON.parse(JSON.stringify(adminStatus || { isAdmin: false })),
-      equipment: JSON.parse(JSON.stringify(equipment || { fishingRod: null, accessory: null }))
+    // 완전히 안전한 데이터 직렬화 (순환 참조 완전 제거)
+    const createSafeData = () => {
+      try {
+        return {
+          inventory: Array.isArray(inventory) ? inventory.map(item => ({
+            fish: String(item?.fish || ''),
+            count: Number(item?.count || 0),
+            _id: String(item?._id || '')
+          })) : [],
+          materials: Array.isArray(materials) ? materials.map(item => ({
+            material: String(item?.material || ''),
+            count: Number(item?.count || 0),
+            _id: String(item?._id || '')
+          })) : [],
+          money: { money: Number(money?.money || 0) },
+          amber: { amber: Number(amber?.amber || 0) },
+          starPieces: { starPieces: Number(starPieces?.starPieces || 0) },
+          cooldown: { 
+            fishingCooldown: Number(cooldown?.fishingCooldown || 0), 
+            explorationCooldown: Number(cooldown?.explorationCooldown || 0) 
+          },
+          totalCatches: { totalFishCaught: Number(totalCatches?.totalFishCaught || 0) },
+          companions: { companions: Array.isArray(companions?.companions) ? companions.companions.map(c => String(c)) : [] },
+          adminStatus: { isAdmin: Boolean(adminStatus?.isAdmin) },
+          equipment: { 
+            fishingRod: equipment?.fishingRod ? String(equipment.fishingRod) : null, 
+            accessory: equipment?.accessory ? String(equipment.accessory) : null 
+          }
+        };
+      } catch (error) {
+        console.error("Error creating safe data:", error);
+        return {
+          inventory: [],
+          materials: [],
+          money: { money: 0 },
+          amber: { amber: 0 },
+          starPieces: { starPieces: 0 },
+          cooldown: { fishingCooldown: 0, explorationCooldown: 0 },
+          totalCatches: { totalFishCaught: 0 },
+          companions: { companions: [] },
+          adminStatus: { isAdmin: false },
+          equipment: { fishingRod: null, accessory: null }
+        };
+      }
     };
 
-    socket.emit('data:update', safeData);
+    const safeData = createSafeData();
+    
+    try {
+      socket.emit('data:update', safeData);
+    } catch (emitError) {
+      console.error(`Socket emit failed for ${username}:`, emitError.message);
+      // 최후의 수단: 기본 데이터만 전송
+      try {
+        socket.emit('data:update', {
+          inventory: [],
+          materials: [],
+          money: { money: 0 },
+          amber: { amber: 0 },
+          starPieces: { starPieces: 0 },
+          cooldown: { fishingCooldown: 0, explorationCooldown: 0 },
+          totalCatches: { totalFishCaught: 0 },
+          companions: { companions: [] },
+          adminStatus: { isAdmin: false },
+          equipment: { fishingRod: null, accessory: null }
+        });
+      } catch (finalError) {
+        console.error(`Final fallback emit also failed for ${username}:`, finalError.message);
+      }
+    }
   } catch (error) {
     console.error(`Error sending data update for ${username}:`, error);
+    console.error("Error stack:", error.stack);
   }
 }
 
@@ -2484,11 +2426,46 @@ async function getEquipmentData(userUuid) {
 // 데이터 변경 시 모든 해당 사용자에게 업데이트 전송
 function broadcastUserDataUpdate(userUuid, username, dataType, data) {
   let broadcastCount = 0;
+  
+  // 안전한 데이터 변환
+  const createSafeBroadcastData = (inputData) => {
+    if (!inputData || typeof inputData !== 'object') {
+      return {};
+    }
+    
+    const safeData = {};
+    for (const [key, value] of Object.entries(inputData)) {
+      if (value === null || value === undefined) {
+        safeData[key] = value;
+      } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        safeData[key] = value;
+      } else if (Array.isArray(value)) {
+        safeData[key] = value.map(item => 
+          (typeof item === 'object' && item !== null) ? String(item) : item
+        );
+      } else {
+        safeData[key] = String(value);
+      }
+    }
+    return safeData;
+  };
+  
+  const safeData = createSafeBroadcastData(data);
+  
   io.sockets.sockets.forEach((socket) => {
-    // 🔧 좀비 소켓 방지: 연결 상태와 사용자 정보 확인
-    if (socket.userUuid === userUuid && socket.connected) {
-      socket.emit(`data:${dataType}`, JSON.parse(JSON.stringify(data || {})));
-      broadcastCount++;
+    if (socket.data?.userUuid === userUuid && socket.connected) {
+      try {
+        socket.emit(`data:${dataType}`, safeData);
+        broadcastCount++;
+      } catch (emitError) {
+        console.error(`Error broadcasting to socket ${socket.id}:`, emitError.message);
+        // 최후의 수단: 빈 객체 전송
+        try {
+          socket.emit(`data:${dataType}`, {});
+        } catch (finalError) {
+          console.error(`Final fallback broadcast failed for socket ${socket.id}:`, finalError.message);
+        }
+      }
     }
   });
   
@@ -3246,15 +3223,30 @@ app.post("/api/toggle-admin", async (req, res) => {
       adminRecord = new AdminModel(createData);
       await adminRecord.save();
       
+      // 🔐 관리자 권한 부여 시 새 JWT 토큰 생성
+      const newJwtToken = generateJWT({
+        userUuid: query.userUuid || userUuid,
+        username: query.username || username,
+        isAdmin: true
+      });
+      
       console.log(`🔑 [ADMIN] Admin rights granted to: ${username} from IP: ${clientIP}`);
       res.json({
         success: true,
         isAdmin: true,
-        message: "관리자 권한이 부여되었습니다."
+        message: "관리자 권한이 부여되었습니다.",
+        jwtToken: newJwtToken // 🔐 새 JWT 토큰 포함
       });
     } else {
       adminRecord.isAdmin = !adminRecord.isAdmin;
       await adminRecord.save();
+      
+      // 🔐 관리자 권한 변경 시 새 JWT 토큰 생성
+      const newJwtToken = generateJWT({
+        userUuid: query.userUuid || userUuid,
+        username: query.username || username,
+        isAdmin: adminRecord.isAdmin
+      });
       
       const statusMessage = adminRecord.isAdmin ? "관리자 권한이 부여되었습니다." : "관리자 권한이 해제되었습니다.";
       console.log(`🔑 [ADMIN] Admin rights ${adminRecord.isAdmin ? 'granted' : 'revoked'} for: ${username} from IP: ${clientIP}`);
@@ -3262,7 +3254,8 @@ app.post("/api/toggle-admin", async (req, res) => {
       res.json({
         success: true,
         isAdmin: adminRecord.isAdmin,
-        message: statusMessage
+        message: statusMessage,
+        jwtToken: newJwtToken // 🔐 새 JWT 토큰 포함
       });
     }
   } catch (error) {
@@ -3360,6 +3353,7 @@ const COOLDOWN_CACHE_TTL = process.env.NODE_ENV === 'production'
   ? 5 * 60 * 1000  // 프로덕션: 5분 캐시 (더 오래)
   : 3 * 60 * 1000; // 개발: 3분 캐시
 
+
 const calculateFishingCooldownTime = async (userQuery) => {
   const cacheKey = userQuery.userUuid || userQuery.username;
   const cached = cooldownCache.get(cacheKey);
@@ -3400,11 +3394,11 @@ const calculateFishingCooldownTime = async (userQuery) => {
   }
 };
 
-// 낚시 쿨타임 설정 API (서버에서 쿨타임 계산)
-app.post("/api/set-fishing-cooldown", authenticateJWT, async (req, res) => {
+// 낚시 쿨타임 설정 API (서버에서 쿨타임 계산) - 모든 사용자 접근 가능
+app.post("/api/set-fishing-cooldown", async (req, res) => {
   try {
-    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
-    const { userUuid, username } = req.user;
+    // 쿼리 파라미터에서 사용자 정보 추출 (JWT 불필요)
+    const { username, userUuid } = req.query;
     
     console.log("Set fishing cooldown request received");
     
@@ -4385,12 +4379,12 @@ app.get("/api/daily-quests/:userId", async (req, res) => {
   }
 });
 
-// 퀴스트 진행도 업데이트 API
-app.post("/api/update-quest-progress", authenticateJWT, async (req, res) => {
+// 퀴스트 진행도 업데이트 API - 모든 사용자 접근 가능
+app.post("/api/update-quest-progress", async (req, res) => {
   try {
     const { questType, amount = 1 } = req.body;
-    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
-    const { userUuid, username } = req.user;
+    // 쿼리 파라미터에서 사용자 정보 추출 (JWT 불필요)
+    const { username, userUuid } = req.query;
     
     console.log("Quest progress update:", { questType, amount, username, userUuid });
     
@@ -4462,12 +4456,12 @@ app.post("/api/update-quest-progress", authenticateJWT, async (req, res) => {
   }
 });
 
-// 퀴스트 보상 수령 API
-app.post("/api/claim-quest-reward", authenticateJWT, async (req, res) => {
+// 퀴스트 보상 수령 API - 모든 사용자 접근 가능
+app.post("/api/claim-quest-reward", async (req, res) => {
   try {
     const { questId } = req.body;
-    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
-    const { userUuid, username } = req.user;
+    // 쿼리 파라미터에서 사용자 정보 추출 (JWT 불필요)
+    const { username, userUuid } = req.query;
     
     console.log("Quest reward claim:", { questId, username, userUuid });
     
