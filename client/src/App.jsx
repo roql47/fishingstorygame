@@ -286,9 +286,15 @@ function App() {
   const [battleState, setBattleState] = useState(null); // { enemy, playerHp, enemyHp, turn, log }
   const [showBattleModal, setShowBattleModal] = useState(false);
   
-  // 쿨타임 관련 상태 (서버에서 로드)
-  const [fishingCooldown, setFishingCooldown] = useState(0);
-  const [explorationCooldown, setExplorationCooldown] = useState(0);
+  // 쿨타임 관련 상태 (서버에서 로드, localStorage 백업)
+  const [fishingCooldown, setFishingCooldown] = useState(() => {
+    const saved = localStorage.getItem('fishingCooldown');
+    return saved ? parseInt(saved) : 0;
+  });
+  const [explorationCooldown, setExplorationCooldown] = useState(() => {
+    const saved = localStorage.getItem('explorationCooldown');
+    return saved ? parseInt(saved) : 0;
+  });
   const [isProcessingFishing, setIsProcessingFishing] = useState(false); // 🛡️ 낚시 처리 중 상태
   const [jwtToken, setJwtToken] = useState(null); // 🔐 JWT 토큰 상태
 
@@ -405,8 +411,15 @@ function App() {
         fishingCooldown: settings.fishingCooldown, 
         explorationCooldown: settings.explorationCooldown 
       });
-      setFishingCooldown(Math.max(0, settings.fishingCooldown || 0));
-      setExplorationCooldown(Math.max(0, settings.explorationCooldown || 0));
+      const newFishingCooldown = Math.max(0, settings.fishingCooldown || 0);
+      const newExplorationCooldown = Math.max(0, settings.explorationCooldown || 0);
+      
+      setFishingCooldown(newFishingCooldown);
+      setExplorationCooldown(newExplorationCooldown);
+      
+      // localStorage에 쿨타임 백업 저장
+      localStorage.setItem('fishingCooldown', newFishingCooldown.toString());
+      localStorage.setItem('explorationCooldown', newExplorationCooldown.toString());
       
       // 초기 재료 데이터 로드 (모든 로그인 방식에 적용)
       if (settings.userUuid) {
@@ -454,13 +467,21 @@ function App() {
     
     if (fishingCooldown > 0) {
       fishingTimer = setInterval(() => {
-        setFishingCooldown(prev => Math.max(0, prev - 1000));
+        setFishingCooldown(prev => {
+          const newValue = Math.max(0, prev - 1000);
+          localStorage.setItem('fishingCooldown', newValue.toString());
+          return newValue;
+        });
       }, 1000);
     }
     
     if (explorationCooldown > 0) {
       explorationTimer = setInterval(() => {
-        setExplorationCooldown(prev => Math.max(0, prev - 1000));
+        setExplorationCooldown(prev => {
+          const newValue = Math.max(0, prev - 1000);
+          localStorage.setItem('explorationCooldown', newValue.toString());
+          return newValue;
+        });
       }, 1000);
     }
     
@@ -1008,8 +1029,15 @@ function App() {
       if (data.amber) setUserAmber(data.amber.amber);
       if (data.starPieces) setUserStarPieces(data.starPieces.starPieces);
       if (data.cooldown) {
-        setFishingCooldown(data.cooldown.fishingCooldown);
-        setExplorationCooldown(data.cooldown.explorationCooldown);
+        const newFishingCooldown = data.cooldown.fishingCooldown;
+        const newExplorationCooldown = data.cooldown.explorationCooldown;
+        
+        setFishingCooldown(newFishingCooldown);
+        setExplorationCooldown(newExplorationCooldown);
+        
+        // localStorage에 쿨타임 백업 저장
+        localStorage.setItem('fishingCooldown', newFishingCooldown.toString());
+        localStorage.setItem('explorationCooldown', newExplorationCooldown.toString());
       }
       if (data.totalCatches) setMyCatches(data.totalCatches.totalCatches);
       if (data.companions) setCompanions(data.companions.companions);
@@ -1678,11 +1706,9 @@ function App() {
         localStorage.removeItem("googleId");
         localStorage.removeItem("termsAccepted");
         localStorage.removeItem("darkMode");
-        // 🛡️ [FIX] 쿨타임은 서버에서 관리하므로 localStorage 정리 불필요
-        // localStorage.removeItem("fishingCooldown"); // 제거됨
-        // localStorage.removeItem("fishingCooldownTime"); // 제거됨
-        // localStorage.removeItem("explorationCooldown"); // 제거됨  
-        // localStorage.removeItem("explorationCooldownTime"); // 제거됨
+        // 🛡️ 쿨타임 localStorage 백업도 정리
+        localStorage.removeItem("fishingCooldown");
+        localStorage.removeItem("explorationCooldown");
         
         // 페이지 새로고침으로 완전 초기화
         window.location.reload();
