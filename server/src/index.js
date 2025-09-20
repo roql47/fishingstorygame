@@ -1856,6 +1856,14 @@ io.on("connection", (socket) => {
         isAdmin: false // 기본값, 관리자 권한은 별도 처리
       });
       
+      // 🔐 JWT 토큰을 클라이언트에 전송
+      if (jwtToken) {
+        socket.emit("auth:token", { 
+          token: jwtToken,
+          expiresIn: JWT_EXPIRES_IN
+        });
+      }
+      
       socket.emit("user:uuid", { 
         userUuid: user.userUuid, 
         username: user.username,

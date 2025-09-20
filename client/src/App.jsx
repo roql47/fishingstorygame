@@ -73,14 +73,20 @@ function App() {
   const [dailyQuests, setDailyQuests] = useState({ quests: [], lastResetDate: '' });
   const [isGuest, setIsGuest] = useState(false); // 게스트 여부 추적
 
-  // 페이지 로드 시 저장된 Google 토큰 및 게스트 상태 복원
+  // 페이지 로드 시 저장된 토큰들 및 게스트 상태 복원
   useEffect(() => {
     const storedIdToken = localStorage.getItem("idToken");
     const storedIsGuest = localStorage.getItem("isGuest");
+    const storedJwtToken = localStorage.getItem("jwtToken"); // 🔐 JWT 토큰 복원
     
     if (storedIdToken && !idToken) {
       console.log("Restoring Google token from localStorage:", storedIdToken);
       setIdToken(storedIdToken);
+    }
+    
+    if (storedJwtToken) {
+      console.log("🔐 Restoring JWT token from localStorage");
+      setJwtToken(storedJwtToken);
     }
     
     if (storedIsGuest === "true") {
@@ -284,6 +290,7 @@ function App() {
   const [fishingCooldown, setFishingCooldown] = useState(0);
   const [explorationCooldown, setExplorationCooldown] = useState(0);
   const [isProcessingFishing, setIsProcessingFishing] = useState(false); // 🛡️ 낚시 처리 중 상태
+  const [jwtToken, setJwtToken] = useState(null); // 🔐 JWT 토큰 상태
 
   const serverUrl = useMemo(() => {
     // 프로덕션 환경에서는 현재 도메인 사용
@@ -296,9 +303,10 @@ function App() {
 
   // 🔐 JWT 인증 헤더를 포함한 axios 요청 함수
   const authenticatedRequest = useMemo(() => {
+    const token = jwtToken || localStorage.getItem("jwtToken");
+    
     return {
       get: (url, config = {}) => {
-        const token = localStorage.getItem("jwtToken");
         return axios.get(url, {
           ...config,
           headers: {
@@ -308,7 +316,6 @@ function App() {
         });
       },
       post: (url, data, config = {}) => {
-        const token = localStorage.getItem("jwtToken");
         return axios.post(url, data, {
           ...config,
           headers: {
@@ -318,7 +325,6 @@ function App() {
         });
       },
       put: (url, data, config = {}) => {
-        const token = localStorage.getItem("jwtToken");
         return axios.put(url, data, {
           ...config,
           headers: {
@@ -328,7 +334,6 @@ function App() {
         });
       },
       delete: (url, config = {}) => {
-        const token = localStorage.getItem("jwtToken");
         return axios.delete(url, {
           ...config,
           headers: {
@@ -338,7 +343,7 @@ function App() {
         });
       }
     };
-  }, []);
+  }, [jwtToken]);
 
   // 🔒 닉네임 검증 함수 (재사용 가능) - v2024.12.19
   const validateNickname = (nickname) => {
@@ -848,6 +853,7 @@ function App() {
       if (data.token) {
         localStorage.setItem("jwtToken", data.token);
         localStorage.setItem("jwtExpiresIn", data.expiresIn);
+        setJwtToken(data.token); // 🔐 상태 업데이트로 authenticatedRequest 재생성
         console.log(`🔐 JWT token stored, expires in: ${data.expiresIn}`);
       }
     });
