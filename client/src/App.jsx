@@ -297,16 +297,7 @@ function App() {
     }
     return 0;
   });
-  const [explorationCooldown, setExplorationCooldown] = useState(() => {
-    const savedEndTime = localStorage.getItem('explorationCooldownEnd');
-    if (savedEndTime) {
-      const endTime = new Date(savedEndTime);
-      const now = new Date();
-      const remaining = Math.max(0, endTime.getTime() - now.getTime());
-      return remaining;
-    }
-    return 0;
-  });
+  // 탐사 쿨타임 제거됨
   const [isProcessingFishing, setIsProcessingFishing] = useState(false); // 🛡️ 낚시 처리 중 상태
   const [jwtToken, setJwtToken] = useState(null); // 🔐 JWT 토큰 상태
 
@@ -420,14 +411,11 @@ function App() {
       
       // 쿨타임 데이터 설정 (서버에서 계산된 남은 시간)
       console.log('Loading cooldown from settings:', { 
-        fishingCooldown: settings.fishingCooldown, 
-        explorationCooldown: settings.explorationCooldown 
+        fishingCooldown: settings.fishingCooldown
       });
       const newFishingCooldown = Math.max(0, settings.fishingCooldown || 0);
-      const newExplorationCooldown = Math.max(0, settings.explorationCooldown || 0);
       
       setFishingCooldown(newFishingCooldown);
-      setExplorationCooldown(newExplorationCooldown);
       
       // localStorage에 쿨타임 종료 시간 저장
       if (newFishingCooldown > 0) {
@@ -435,13 +423,6 @@ function App() {
         localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
       } else {
         localStorage.removeItem('fishingCooldownEnd');
-      }
-      
-      if (newExplorationCooldown > 0) {
-        const explorationEndTime = new Date(Date.now() + newExplorationCooldown);
-        localStorage.setItem('explorationCooldownEnd', explorationEndTime.toISOString());
-      } else {
-        localStorage.removeItem('explorationCooldownEnd');
       }
       
       // 초기 재료 데이터 로드 (모든 로그인 방식에 적용)
@@ -501,24 +482,11 @@ function App() {
       }, 1000);
     }
     
-    if (explorationCooldown > 0) {
-      explorationTimer = setInterval(() => {
-        setExplorationCooldown(prev => {
-          const newValue = Math.max(0, prev - 1000);
-          // 쿨타임이 끝나면 localStorage에서 제거
-          if (newValue <= 0) {
-            localStorage.removeItem('explorationCooldownEnd');
-          }
-          return newValue;
-        });
-      }, 1000);
-    }
     
     return () => {
       if (fishingTimer) clearInterval(fishingTimer);
-      if (explorationTimer) clearInterval(explorationTimer);
     };
-  }, [fishingCooldown, explorationCooldown]);
+  }, [fishingCooldown]);
 
   // 구글 로그인 토큰 처리 함수
   const handleCredentialResponse = async (token) => {
@@ -1059,10 +1027,8 @@ function App() {
       if (data.starPieces) setUserStarPieces(data.starPieces.starPieces);
       if (data.cooldown) {
         const newFishingCooldown = data.cooldown.fishingCooldown || 0;
-        const newExplorationCooldown = data.cooldown.explorationCooldown || 0;
         
         setFishingCooldown(newFishingCooldown);
-        setExplorationCooldown(newExplorationCooldown);
         
         // localStorage에 쿨타임 종료 시간 저장
         if (newFishingCooldown > 0) {
@@ -1070,13 +1036,6 @@ function App() {
           localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
         } else {
           localStorage.removeItem('fishingCooldownEnd');
-        }
-        
-        if (newExplorationCooldown > 0) {
-          const explorationEndTime = new Date(Date.now() + newExplorationCooldown);
-          localStorage.setItem('explorationCooldownEnd', explorationEndTime.toISOString());
-        } else {
-          localStorage.removeItem('explorationCooldownEnd');
         }
       }
       if (data.totalCatches) setMyCatches(data.totalCatches.totalCatches);
@@ -2583,21 +2542,7 @@ function App() {
     }
 
     // 서버에 탐사 시작 쿨타임 설정 요청 - JWT 인증 사용
-    try {
-      const response = await authenticatedRequest.post(`${serverUrl}/api/set-exploration-cooldown`, {
-        type: 'start'
-      });
-      
-      const serverCooldownTime = response.data.remainingTime || (10 * 60 * 1000);
-      setExplorationCooldown(serverCooldownTime);
-      
-      // 서버에서 이미 저장했으므로 중복 저장 제거
-    } catch (error) {
-      console.error('Failed to set exploration start cooldown:', error);
-      // 실패 시 기본값 설정
-      const fallbackCooldownTime = 10 * 60 * 1000;
-      setExplorationCooldown(fallbackCooldownTime);
-    }
+    // 탐사 쿨타임 제거됨
 
     console.log(`Starting exploration with ${material.material}, current count: ${material.count}`);
 
@@ -2671,18 +2616,10 @@ function App() {
         }
       }
       
-      // 서버에 도망 쿨타임 설정 요청 - JWT 인증 사용
-      const response = await authenticatedRequest.post(`${serverUrl}/api/set-exploration-cooldown`, {
-        type: 'flee'
-      });
-      
-      const serverCooldownTime = response.data.remainingTime || (5 * 60 * 1000);
-      setExplorationCooldown(serverCooldownTime);
-      
-      // 서버에서 이미 저장했으므로 중복 저장 제거
+      // 탐사 쿨타임 제거됨
       
       // 도망 메시지 추가
-      const fleeLog = [...battleState.log, `${battleState.enemy}에게서 도망쳤습니다!`, `탐사 쿨타임이 절반으로 감소했습니다. (5분)`];
+      const fleeLog = [...battleState.log, `${battleState.enemy}에게서 도망쳤습니다!`];
       
       setBattleState(prev => prev ? {
         ...prev,
@@ -2735,22 +2672,7 @@ function App() {
           updateQuestProgress('exploration_win', 1);
           setTimeout(async () => {
             // 서버에 승리 쿨타임 설정 요청 - JWT 인증 사용
-            try {
-              const response = await authenticatedRequest.post(`${serverUrl}/api/set-exploration-cooldown`, {
-                type: 'victory'
-              });
-              
-              const serverCooldownTime = response.data.remainingTime || (10 * 60 * 1000);
-              setExplorationCooldown(serverCooldownTime);
-              
-              // 서버에 쿨타임 저장
-              await saveUserSettings({ explorationCooldown: serverCooldownTime });
-            } catch (error) {
-              console.error('Failed to set victory cooldown:', error);
-              // 실패 시 기본값 설정
-              const fallbackCooldownTime = 10 * 60 * 1000;
-              setExplorationCooldown(fallbackCooldownTime);
-            }
+            // 탐사 쿨타임 제거됨
           
             setShowBattleModal(false);
             setBattleState(null);
@@ -2807,22 +2729,7 @@ function App() {
         
         setTimeout(async () => {
           // 서버에 패배 쿨타임 설정 요청 - JWT 인증 사용
-          try {
-            const response = await authenticatedRequest.post(`${serverUrl}/api/set-exploration-cooldown`, {
-              type: 'defeat'
-            });
-            
-            const serverCooldownTime = response.data.remainingTime || (10 * 60 * 1000);
-            setExplorationCooldown(serverCooldownTime);
-            
-            // 서버에 쿨타임 저장
-            await saveUserSettings({ explorationCooldown: serverCooldownTime });
-          } catch (error) {
-            console.error('Failed to set defeat cooldown:', error);
-            // 실패 시 기본값 설정
-            const fallbackCooldownTime = 10 * 60 * 1000;
-            setExplorationCooldown(fallbackCooldownTime);
-          }
+          // 탐사 쿨타임 제거됨
           
           setShowBattleModal(false);
           setBattleState(null);
@@ -5111,15 +5018,11 @@ function App() {
                 
                 <button
                   onClick={() => {
-                    if (explorationCooldown > 0) {
-                      alert(`탐사하기 쿨타임이 ${formatCooldown(explorationCooldown)} 남았습니다!`);
-                      return;
-                    }
                     setShowExplorationModal(true);
                   }}
-                  disabled={materials.length === 0 || explorationCooldown > 0}
+                  disabled={materials.length === 0}
                   className={`px-6 py-3 rounded-lg font-bold text-lg transition-all duration-300 ${
-                    materials.length > 0 && explorationCooldown === 0
+                    materials.length > 0
                       ? isDarkMode
                         ? "bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 hover:scale-105 glow-effect"
                         : "bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 hover:scale-105"
@@ -5128,10 +5031,8 @@ function App() {
                         : "bg-gray-300/30 text-gray-400 cursor-not-allowed"
                   }`}
                 >
-                  {explorationCooldown > 0 
-                    ? `쿨타임 ${formatCooldown(explorationCooldown)}`
-                    : materials.length > 0 
-                      ? "탐사하기" 
+                  {materials.length > 0 
+                    ? "탐사하기" 
                       : "재료가 필요합니다"
                   }
                 </button>
