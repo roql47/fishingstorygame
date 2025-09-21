@@ -298,16 +298,8 @@ function App() {
   const [showBattleModal, setShowBattleModal] = useState(false);
   
   // 쿨타임 관련 상태 (서버에서 로드, localStorage 백업)
-  const [fishingCooldown, setFishingCooldown] = useState(() => {
-    const savedEndTime = localStorage.getItem('fishingCooldownEnd');
-    if (savedEndTime) {
-      const endTime = new Date(savedEndTime);
-      const now = new Date();
-      const remaining = Math.max(0, endTime.getTime() - now.getTime());
-      return remaining;
-    }
-    return 0;
-  });
+  const [fishingCooldown, setFishingCooldown] = useState(0); // 초기값은 0으로 설정
+  const [cooldownLoaded, setCooldownLoaded] = useState(false); // 쿨타임 로드 완료 여부
   // 탐사 쿨타임 제거됨
   const [isProcessingFishing, setIsProcessingFishing] = useState(false); // 🛡️ 낚시 처리 중 상태
   const [jwtToken, setJwtToken] = useState(null); // 🔐 JWT 토큰 상태
@@ -401,6 +393,36 @@ function App() {
     localStorage.setItem("isGuest", "true");
   };
 
+  // 쿨타임 상태를 서버에서 가져오는 함수
+  const fetchCooldownStatus = async (tempUsername = '', tempUserUuid = '') => {
+    try {
+      const userId = idToken ? 'user' : 'null';
+      const params = { username: tempUsername, userUuid: tempUserUuid };
+      const response = await axios.get(`${serverUrl}/api/cooldown/${userId}`, { params });
+      const cooldownData = response.data;
+      
+      console.log("Cooldown status loaded from server:", cooldownData);
+      
+      const newFishingCooldown = Math.max(0, cooldownData.fishingCooldown || 0);
+      setFishingCooldown(newFishingCooldown);
+      setCooldownLoaded(true);
+      
+      // localStorage에 쿨타임 종료 시간 저장
+      if (newFishingCooldown > 0) {
+        const fishingEndTime = new Date(Date.now() + newFishingCooldown);
+        localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
+      } else {
+        localStorage.removeItem('fishingCooldownEnd');
+      }
+      
+      return newFishingCooldown;
+    } catch (error) {
+      console.error('Failed to fetch cooldown status:', error);
+      setCooldownLoaded(true);
+      return 0;
+    }
+  };
+
   // 사용자 설정 관리 함수들
   const loadUserSettings = async (userId = 'null', tempUsername = '', tempUserUuid = '', googleId = '') => {
     try {
@@ -420,21 +442,10 @@ function App() {
         notifyUserLogin(settings.displayName || settings.username, settings.userUuid);
       }
       
-      // 쿨타임 데이터 설정 (서버에서 계산된 남은 시간)
-      console.log('Loading cooldown from settings:', { 
-        fishingCooldown: settings.fishingCooldown
-      });
-      const newFishingCooldown = Math.max(0, settings.fishingCooldown || 0);
-      
-      setFishingCooldown(newFishingCooldown);
-      
-      // localStorage에 쿨타임 종료 시간 저장
-      if (newFishingCooldown > 0) {
-        const fishingEndTime = new Date(Date.now() + newFishingCooldown);
-        localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
-      } else {
-        localStorage.removeItem('fishingCooldownEnd');
-      }
+      // 쿨타임은 별도 함수로 가져옴 (loadUserSettings와 분리)
+      setTimeout(() => {
+        fetchCooldownStatus(settings.displayName || settings.username, settings.userUuid);
+      }, 100); // 사용자 설정 로드 후 쿨타임 가져오기
       
       // 초기 재료 데이터 로드 (모든 로그인 방식에 적용)
       if (settings.userUuid) {
@@ -476,11 +487,12 @@ function App() {
     }
   };
 
-  // 쿨타임 타이머 useEffect
+  // 쿨타임 타이머 useEffect - 쿨타임이 로드된 후에만 실행
   useEffect(() => {
-    let fishingTimer, explorationTimer;
+    let fishingTimer;
     
-    if (fishingCooldown > 0) {
+    // 쿨타임이 로드되고 0보다 클 때만 타이머 시작
+    if (cooldownLoaded && fishingCooldown > 0) {
       fishingTimer = setInterval(() => {
         setFishingCooldown(prev => {
           const newValue = Math.max(0, prev - 1000);
@@ -493,11 +505,10 @@ function App() {
       }, 1000);
     }
     
-    
     return () => {
       if (fishingTimer) clearInterval(fishingTimer);
     };
-  }, [fishingCooldown]);
+  }, [fishingCooldown, cooldownLoaded]);
 
   // 구글 로그인 토큰 처리 함수
   const handleCredentialResponse = async (token) => {
@@ -1065,6 +1076,7 @@ function App() {
         const newFishingCooldown = data.cooldown.fishingCooldown || 0;
         
         setFishingCooldown(newFishingCooldown);
+        setCooldownLoaded(true); // 실시간 업데이트 시에도 로드 완료 상태 설정
         
         // localStorage에 쿨타임 종료 시간 저장
         if (newFishingCooldown > 0) {
@@ -2610,7 +2622,7 @@ function App() {
     try {
       const userId = idToken ? 'user' : 'null';
       const params = { username, userUuid }; // username과 userUuid 모두 전달
-      const price = getFishPrice(fishName);
+      const price = getFishPrice(fishName, userEquipment); // userEquipment 추가
       const totalPrice = price * quantity;
       
       // 🔐 JWT 인증을 사용한 API 호출
@@ -3462,6 +3474,8 @@ function App() {
               setShowProfile={setShowProfile}
               secureToggleAdminRights={secureToggleAdminRights}
               toggleAdminRights={toggleAdminRights}
+              cooldownLoaded={cooldownLoaded}
+              setCooldownLoaded={setCooldownLoaded}
             />
           )}
 

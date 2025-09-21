@@ -37,7 +37,9 @@ const ChatTab = ({
   setSelectedUserProfile,
   setShowProfile,
   secureToggleAdminRights,
-  toggleAdminRights
+  toggleAdminRights,
+  cooldownLoaded,
+  setCooldownLoaded
 }) => {
   const messagesEndRef = useRef(null);
 
@@ -78,7 +80,12 @@ const ChatTab = ({
         return;
       }
       
-      // 🛡️ 2. 쿨타임 확인
+      // 🛡️ 2. 쿨타임 확인 (쿨타임이 로드되지 않았으면 대기)
+      if (!cooldownLoaded) {
+        alert("쿨타임 정보를 로딩 중입니다. 잠시 후 다시 시도해주세요.");
+        return;
+      }
+      
       if (fishingCooldown > 0) {
         alert(`낚시하기 쿨타임이 ${formatCooldown(fishingCooldown)} 남았습니다!`);
         return;
@@ -92,11 +99,18 @@ const ChatTab = ({
         const params = { username, userUuid };
         const response = await axios.post(`${serverUrl}/api/set-fishing-cooldown`, {}, { params });
         
-        // 🚀 서버에서 계산된 쿨타임으로 클라이언트 설정 (중복 저장 제거)
+        // 🚀 서버에서 계산된 쿨타임으로 클라이언트 설정
         const serverCooldownTime = response.data.remainingTime || 0;
         setFishingCooldown(serverCooldownTime);
+        setCooldownLoaded(true); // 쿨타임 로드 완료 상태 설정
         
-        // 서버에서 이미 저장했으므로 중복 저장 제거
+        // localStorage에 쿨타임 종료 시간 저장
+        if (serverCooldownTime > 0) {
+          const fishingEndTime = new Date(Date.now() + serverCooldownTime);
+          localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
+        } else {
+          localStorage.removeItem('fishingCooldownEnd');
+        }
         
         console.log(`Fishing cooldown set: ${serverCooldownTime}ms`);
       } catch (error) {
@@ -104,6 +118,11 @@ const ChatTab = ({
         // 서버 설정 실패 시 기본 쿨타임 설정 (5분)
         const fallbackCooldownTime = 5 * 60 * 1000; // 5분
         setFishingCooldown(fallbackCooldownTime);
+        setCooldownLoaded(true); // 에러 시에도 로드 완료 상태 설정
+        
+        // localStorage에 쿨타임 종료 시간 저장
+        const fishingEndTime = new Date(Date.now() + fallbackCooldownTime);
+        localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
       } finally {
         // 🛡️ 4. 처리 완료 후 상태 해제 (1초 후)
         setTimeout(() => {
@@ -226,9 +245,8 @@ const ChatTab = ({
                     setActiveTab("chat");
                     setUserUuid(null);
                     setIsGuest(false); // 게스트 상태 초기화
-                    // 🛡️ [FIX] 쿨타임은 서버에서 관리하므로 클라이언트에서 초기화하지 않음
-                    // setFishingCooldown(0); // 제거됨
-                    // setExplorationCooldown(0); // 제거됨
+                    setFishingCooldown(0); // 쿨타임 초기화
+                    setCooldownLoaded(false); // 쿨타임 로드 상태 초기화
                   }
                 }}
                 title="로그아웃"
@@ -398,9 +416,11 @@ const ChatTab = ({
               } ${input.length > 450 ? 'border-red-400' : ''} ${isProcessingFishing ? 'opacity-50 cursor-not-allowed' : ''}`}
               placeholder={isProcessingFishing 
                 ? "낚시 처리 중..." 
-                : fishingCooldown > 0 
-                  ? `낚시하기 쿨타임: ${formatCooldown(fishingCooldown)}` 
-                  : "메시지를 입력하세요... (낚시하기)"
+                : !cooldownLoaded
+                  ? "쿨타임 로딩 중..."
+                  : fishingCooldown > 0 
+                    ? `낚시하기 쿨타임: ${formatCooldown(fishingCooldown)}` 
+                    : "메시지를 입력하세요... (낚시하기)"
               }
               value={input}
               maxLength={500}
@@ -439,22 +459,27 @@ const ChatTab = ({
             <p className={`text-xs flex items-center justify-center gap-2 ${
               isDarkMode ? "text-gray-400" : "text-gray-600"
             }`}>
-              {isProcessingFishing ? (
-                <>
-                  <span className="animate-spin">⚙️</span>
-                  낚시 처리 중...
-                </>
-              ) : fishingCooldown > 0 ? (
-                <>
-                  <span>⏰</span>
-                  낚시하기 쿨타임: {formatCooldown(fishingCooldown)}
-                </>
-              ) : (
-                <>
-                  <span className="animate-pulse">🎣</span>
-                  "낚시하기" 입력으로 물고기를 낚아보세요!
-                </>
-              )}
+            {isProcessingFishing ? (
+              <>
+                <span className="animate-spin">⚙️</span>
+                낚시 처리 중...
+              </>
+            ) : !cooldownLoaded ? (
+              <>
+                <span className="animate-spin">⏳</span>
+                쿨타임 로딩 중...
+              </>
+            ) : fishingCooldown > 0 ? (
+              <>
+                <span>⏰</span>
+                낚시하기 쿨타임: {formatCooldown(fishingCooldown)}
+              </>
+            ) : (
+              <>
+                <span className="animate-pulse">🎣</span>
+                "낚시하기" 입력으로 물고기를 낚아보세요!
+              </>
+            )}
             </p>
           </div>
         </div>
