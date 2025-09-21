@@ -913,19 +913,19 @@ function App() {
       
       // 우선순위: 서버의 displayName > 로컬스토리지 닉네임 > 서버 username
       const finalNickname = (() => {
-        if (serverDisplayName && serverDisplayName !== data.username) {
-          // 서버에 저장된 displayName이 있고 기본 username과 다른 경우 (사용자가 변경한 경우)
-          console.log("Using server displayName:", serverDisplayName);
+      if (serverDisplayName && serverDisplayName !== data.username) {
+        // 서버에 저장된 displayName이 있고 기본 username과 다른 경우 (사용자가 변경한 경우)
+        console.log("Using server displayName:", serverDisplayName);
           return serverDisplayName;
-        } else if (currentStoredNickname) {
-          // 로컬스토리지에 저장된 닉네임이 있는 경우
-          console.log("Using stored nickname:", currentStoredNickname);
+      } else if (currentStoredNickname) {
+        // 로컬스토리지에 저장된 닉네임이 있는 경우
+        console.log("Using stored nickname:", currentStoredNickname);
           return currentStoredNickname;
-        } else {
-          // 기본값으로 서버 username 사용
-          console.log("Using server username:", data.username);
+      } else {
+        // 기본값으로 서버 username 사용
+        console.log("Using server username:", data.username);
           return data.username;
-        }
+      }
       })();
       
       setUsername(finalNickname);
@@ -2684,7 +2684,7 @@ function App() {
         turnOrder.push(`companion_${combatant.name}`);
       }
     });
-
+    
     // 전투 상태 먼저 초기화 (재료 소모 전에)
     const newBattleState = {
       enemy: enemyFish,
@@ -4188,8 +4188,8 @@ function App() {
                     isDarkMode ? "text-purple-400" : "text-purple-600"
                   }`}>
                     <div className="flex items-center gap-2">
-                      <Gem className="w-5 h-5" />
-                      <h3 className="font-semibold">재료 ({materials.length}종)</h3>
+                    <Gem className="w-5 h-5" />
+                    <h3 className="font-semibold">재료 ({materials.length}종)</h3>
                     </div>
                     <button
                       onClick={fetchMaterials}
@@ -6268,12 +6268,12 @@ function App() {
             }`}>
               <h3 className={`text-lg font-semibold ${
                 isDarkMode ? "text-white" : "text-gray-800"
-              }`}>전투: vs <span className={battleState.prefix ? getPrefixColor(battleState.prefix.name, isDarkMode) : ''}>{battleState.enemy}</span></h3>
+              }`}>전투: vs <span className={battleState && battleState.prefix ? getPrefixColor(battleState.prefix.name, isDarkMode) : ''}>{battleState && battleState.enemy}</span></h3>
               <div className="flex items-center gap-2">
                 <p className={`text-sm ${
                   isDarkMode ? "text-gray-400" : "text-gray-600"
-                }`}>재료: {battleState.material}</p>
-                {battleState.materialConsumed ? (
+                }`}>재료: {battleState && battleState.material}</p>
+                {battleState && battleState.materialConsumed ? (
                   <span className={`text-xs px-2 py-1 rounded-full ${
                     isDarkMode ? "bg-green-500/20 text-green-400" : "bg-green-500/10 text-green-600"
                   }`}>소모됨</span>
@@ -6296,14 +6296,14 @@ function App() {
                     <div className="flex items-center gap-2">
                       <span className={`text-sm ${
                         isDarkMode ? "text-white" : "text-gray-800"
-                      }`}>{battleState.playerHp}/{battleState.playerMaxHp}</span>
+                      }`}>{battleState ? battleState.playerHp : 0}/{battleState ? battleState.playerMaxHp : 0}</span>
                       <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                        (battleState.playerHp / battleState.playerMaxHp) >= 0.8 
+                        battleState && (battleState.playerHp / battleState.playerMaxHp) >= 0.8 
                           ? isDarkMode ? "bg-green-500/20 text-green-400" : "bg-green-500/10 text-green-600"
-                          : (battleState.playerHp / battleState.playerMaxHp) >= 0.5 
+                          : battleState && (battleState.playerHp / battleState.playerMaxHp) >= 0.5 
                           ? isDarkMode ? "bg-yellow-500/20 text-yellow-400" : "bg-yellow-500/10 text-yellow-600"
                           : isDarkMode ? "bg-red-500/20 text-red-400" : "bg-red-500/10 text-red-600"
-                      }`}>{Math.round((battleState.playerHp / battleState.playerMaxHp) * 100)}%</span>
+                      }`}>{battleState ? Math.round((battleState.playerHp / battleState.playerMaxHp) * 100) : 0}%</span>
                     </div>
                   </div>
                   <div className={`w-full h-4 rounded-full ${
@@ -6311,12 +6311,12 @@ function App() {
                   }`}>
                     <div 
                       className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full transition-all duration-500"
-                      style={{ width: `${(battleState.playerHp / battleState.playerMaxHp) * 100}%` }}
+                      style={{ width: `${battleState ? (battleState.playerHp / battleState.playerMaxHp) * 100 : 0}%` }}
                     ></div>
                   </div>
                   
                   {/* 동료 정보 */}
-                  {battleState.companions && battleState.companions.length > 0 && (
+                  {battleState && battleState.companions && battleState.companions.length > 0 && (
                     <div className="mt-3">
                       <div className={`text-xs mb-2 ${
                         isDarkMode ? "text-gray-400" : "text-gray-600"
@@ -6390,19 +6390,19 @@ function App() {
                 <div>
                   <div className="flex justify-between items-center mb-2">
                     <span className={`text-sm font-medium ${
-                      battleState.prefix ? getPrefixColor(battleState.prefix.name, isDarkMode) : (isDarkMode ? "text-red-400" : "text-red-600")
-                    }`}>{battleState.enemy}</span>
+                      battleState && battleState.prefix ? getPrefixColor(battleState.prefix.name, isDarkMode) : (isDarkMode ? "text-red-400" : "text-red-600")
+                    }`}>{battleState ? battleState.enemy : ''}</span>
                     <div className="flex items-center gap-2">
                       <span className={`text-sm ${
                         isDarkMode ? "text-white" : "text-gray-800"
-                      }`}>{battleState.enemyHp}/{battleState.enemyMaxHp}</span>
+                      }`}>{battleState ? battleState.enemyHp : 0}/{battleState ? battleState.enemyMaxHp : 0}</span>
                       <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                        (battleState.enemyHp / battleState.enemyMaxHp) >= 0.8 
+                        battleState && (battleState.enemyHp / battleState.enemyMaxHp) >= 0.8 
                           ? isDarkMode ? "bg-green-500/20 text-green-400" : "bg-green-500/10 text-green-600"
-                          : (battleState.enemyHp / battleState.enemyMaxHp) >= 0.5 
+                          : battleState && (battleState.enemyHp / battleState.enemyMaxHp) >= 0.5 
                           ? isDarkMode ? "bg-yellow-500/20 text-yellow-400" : "bg-yellow-500/10 text-yellow-600"
                           : isDarkMode ? "bg-red-500/20 text-red-400" : "bg-red-500/10 text-red-600"
-                      }`}>{Math.round((battleState.enemyHp / battleState.enemyMaxHp) * 100)}%</span>
+                      }`}>{battleState ? Math.round((battleState.enemyHp / battleState.enemyMaxHp) * 100) : 0}%</span>
                     </div>
                   </div>
                   <div className={`w-full h-4 rounded-full ${
@@ -6410,7 +6410,7 @@ function App() {
                   }`}>
                     <div 
                       className="h-full bg-gradient-to-r from-red-500 to-red-400 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.max(0, (battleState.enemyHp / battleState.enemyMaxHp) * 100)}%` }}
+                      style={{ width: `${battleState ? Math.max(0, (battleState.enemyHp / battleState.enemyMaxHp) * 100) : 0}%` }}
                     ></div>
                   </div>
                 </div>
@@ -6420,22 +6420,22 @@ function App() {
               <div 
                 ref={battleLogRef}
                 className={`p-4 rounded-lg max-h-[200px] overflow-y-auto ${
-                  isDarkMode ? "bg-gray-800/50 border border-gray-700/30" : "bg-gray-100/80 border border-gray-300/30"
+                isDarkMode ? "bg-gray-800/50 border border-gray-700/30" : "bg-gray-100/80 border border-gray-300/30"
                 }`}
               >
                 <div className="space-y-1">
-                  {battleState.log.map((message, index) => (
+                  {battleState && battleState.log ? battleState.log.map((message, index) => (
                     <p key={index} className={`text-sm ${
                       isDarkMode ? "text-gray-300" : "text-gray-700"
                     }`}>
                       {message}
                     </p>
-                  ))}
+                  )) : null}
                 </div>
               </div>
 
               {/* 자동 모드 상태 표시 */}
-              {battleState.autoMode && (battleState.turn === 'player' || battleState.turn === 'enemy') && (
+              {battleState && battleState.autoMode && (battleState.turn === 'player' || battleState.turn === 'enemy') && (
                 <div className={`text-center mb-4 ${
                   isDarkMode ? "text-yellow-400" : "text-yellow-600"
                 }`}>
@@ -6448,7 +6448,7 @@ function App() {
 
               {/* 액션 버튼 */}
               <div className="flex gap-4">
-                {battleState.turn === 'player' && !battleState.autoMode && (
+                {battleState && battleState.turn === 'player' && !battleState.autoMode && (
                   <div className="flex gap-3 w-full">
                   <button
                     onClick={playerAttack}
@@ -6460,7 +6460,7 @@ function App() {
                   >
                     공격하기
                     </button>
-                    {battleState.canFlee && (
+                    {battleState && battleState.canFlee && (
                       <button
                         onClick={fleeFromBattle}
                         className={`flex-1 py-3 px-6 rounded-lg font-bold text-lg transition-all duration-300 hover:scale-105 ${
@@ -6475,7 +6475,7 @@ function App() {
                   </div>
                 )}
 
-                {battleState.turn === 'player' && battleState.autoMode && (
+                {battleState && battleState.turn === 'player' && battleState.autoMode && (
                   <div className="flex gap-2 w-full">
                     <div className={`flex-1 py-3 px-6 rounded-lg text-center font-medium ${
                       isDarkMode ? "bg-yellow-500/20 text-yellow-400" : "bg-yellow-500/10 text-yellow-600"
@@ -6497,14 +6497,14 @@ function App() {
                   </div>
                 )}
                 
-                {battleState.turn === 'enemy' && (
+                {battleState && battleState.turn === 'enemy' && (
                   <div className="flex gap-2 w-full">
                   <div className={`flex-1 py-3 px-6 rounded-lg text-center font-medium ${
                     isDarkMode ? "bg-gray-500/20 text-gray-400" : "bg-gray-300/30 text-gray-600"
                   }`}>
                     적의 턴...
                     </div>
-                    {battleState.autoMode && (
+                    {battleState && battleState.autoMode && (
                       <button
                         onClick={() => {
                           setBattleState(prev => prev ? { ...prev, autoMode: false } : null);
@@ -6521,7 +6521,7 @@ function App() {
                   </div>
                 )}
                 
-                {(battleState.turn === 'victory' || battleState.turn === 'defeat' || battleState.turn === 'fled') && (
+                {battleState && (battleState.turn === 'victory' || battleState.turn === 'defeat' || battleState.turn === 'fled') && (
                   <button
                     onClick={() => {
                       setShowBattleModal(false);
@@ -6541,7 +6541,7 @@ function App() {
                           : "bg-gray-300/30 text-gray-600 hover:bg-gray-300/50"
                     }`}
                   >
-                    {battleState.turn === 'victory' ? '승리!' : battleState.turn === 'fled' ? '도망 성공!' : '패배...'}
+                    {battleState && battleState.turn === 'victory' ? '승리!' : battleState && battleState.turn === 'fled' ? '도망 성공!' : '패배...'}
                   </button>
                 )}
               </div>
