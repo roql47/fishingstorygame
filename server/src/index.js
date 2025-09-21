@@ -2165,6 +2165,29 @@ io.on("connection", (socket) => {
           const totalCatches = await getTotalCatchesData(userUuid);
           socket.emit('data:totalCatches', JSON.parse(JSON.stringify(totalCatches || { totalFishCaught: 0 })));
           break;
+        case 'all':
+          // 🚀 병렬 처리로 모든 데이터 한 번에 조회 (성능 최적화)
+          const [allInventory, allMaterials, allMoney, allAmber, allStarPieces, allCooldown, allTotalCatches] = await Promise.all([
+            getInventoryData(userUuid),
+            getMaterialsData(userUuid),
+            getMoneyData(userUuid),
+            getAmberData(userUuid),
+            getStarPiecesData(userUuid),
+            getCooldownData(userUuid),
+            getTotalCatchesData(userUuid)
+          ]);
+          
+          // 각 데이터를 개별 이벤트로 전송
+          socket.emit('data:inventory', JSON.parse(JSON.stringify(allInventory || [])));
+          socket.emit('data:materials', JSON.parse(JSON.stringify(allMaterials || [])));
+          socket.emit('data:money', JSON.parse(JSON.stringify(allMoney || { money: 0 })));
+          socket.emit('data:amber', JSON.parse(JSON.stringify(allAmber || { amber: 0 })));
+          socket.emit('data:starPieces', JSON.parse(JSON.stringify(allStarPieces || { starPieces: 0 })));
+          socket.emit('data:cooldown', JSON.parse(JSON.stringify(allCooldown || { fishingCooldown: 0 })));
+          socket.emit('data:totalCatches', JSON.parse(JSON.stringify(allTotalCatches || { totalFishCaught: 0 })));
+          
+          console.log(`🚀 Parallel data fetch completed for ${username} (${userUuid})`);
+          break;
       }
     } catch (error) {
       console.error(`Error fetching ${type} for ${username}:`, error);
@@ -2907,15 +2930,20 @@ app.post("/api/recruit-companion", authenticateJWT, async (req, res) => {
       console.log("Using fallback query for recruit:", query);
     }
     
-    const userStarPieces = await StarPieceModel.findOne(query);
+    // 🚀 별조각과 동료 정보를 병렬로 조회 (성능 최적화)
+    const [userStarPieces, userCompanions] = await Promise.all([
+      StarPieceModel.findOne(query),
+      CompanionModel.findOne(query)
+    ]);
+    
     if (!userStarPieces || userStarPieces.starPieces < starPieceCost) {
       console.log(`Not enough star pieces: has ${userStarPieces?.starPieces || 0}, needs ${starPieceCost}`);
       return res.status(400).json({ error: "별조각이 부족합니다." });
     }
     
     // 보유 동료 확인
-    let userCompanions = await CompanionModel.findOne(query);
-    if (!userCompanions) {
+    let companionsData = userCompanions;
+    if (!companionsData) {
       const createData = {
         userId: query.userId || 'user',
         username: query.username || username,
@@ -2923,12 +2951,12 @@ app.post("/api/recruit-companion", authenticateJWT, async (req, res) => {
         companions: []
       };
       console.log("Creating new companion record:", createData);
-      userCompanions = new CompanionModel(createData);
+      companionsData = new CompanionModel(createData);
     }
     
     // 미보유 동료 목록
     const availableCompanions = COMPANION_LIST.filter(
-      companion => !userCompanions.companions.includes(companion)
+      companion => !companionsData.companions.includes(companion)
     );
     
     console.log("Available companions:", availableCompanions);
@@ -2952,8 +2980,8 @@ app.post("/api/recruit-companion", authenticateJWT, async (req, res) => {
         Math.floor(Math.random() * availableCompanions.length)
       ];
       
-      userCompanions.companions.push(randomCompanion);
-      await userCompanions.save();
+      companionsData.companions.push(randomCompanion);
+      await companionsData.save();
       
       console.log(`Successfully recruited: ${randomCompanion}`);
       
@@ -2962,7 +2990,7 @@ app.post("/api/recruit-companion", authenticateJWT, async (req, res) => {
         recruited: true,
         companion: randomCompanion,
         remainingStarPieces: userStarPieces.starPieces,
-        totalCompanions: userCompanions.companions.length
+        totalCompanions: companionsData.companions.length
       });
     } else {
       console.log("Recruitment failed");
@@ -3655,9 +3683,11 @@ app.post("/api/start-battle", async (req, res) => {
     const queryResult = await getUserQuery('user', username, userUuid);
     let query = queryResult.userUuid ? { userUuid: queryResult.userUuid } : queryResult;
     
-    // 사용자 장비 및 스킬 정보 가져오기
-    const userEquipment = await UserEquipmentModel.findOne(query);
-    const fishingSkillData = await FishingSkillModel.findOne(query);
+    // 🚀 사용자 장비 및 스킬 정보 병렬로 가져오기 (성능 최적화)
+    const [userEquipment, fishingSkillData] = await Promise.all([
+      UserEquipmentModel.findOne(query),
+      FishingSkillModel.findOne(query)
+    ]);
     const fishingSkill = fishingSkillData ? fishingSkillData.skill : 0;
     
     // 서버에서 전투 상태 계산

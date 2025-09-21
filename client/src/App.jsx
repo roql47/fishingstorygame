@@ -2,14 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getSocket, notifyUserLogin } from "./lib/socket";
 // Google auth functions are now handled inline
 import axios from "axios";
-// 🔒 난독화된 게임 데이터 임포트
-import { 
-  getFishData, 
-  getFishHealthData, 
-  getProbabilityData, 
-  getPrefixData, 
-  getShopData 
-} from "./data/gameData";
+// 🚀 게임 데이터 훅 임포트 (변수 초기화 문제 해결)
+import { useGameData } from "./hooks/useGameData";
 import { 
   Fish, 
   MessageCircle, 
@@ -57,6 +51,23 @@ axios.interceptors.response.use(
 );
 
 function App() {
+  // 🚀 게임 데이터 훅 사용 (변수 초기화 문제 해결)
+  const {
+    isLoading: gameDataLoading,
+    probabilityTemplate,
+    allFishTypes,
+    fishHealthMap,
+    fishPrefixes,
+    shopData,
+    getAvailableFish,
+    getFishPrice,
+    getFishMaterial,
+    getMaterialToFish,
+    selectFishPrefix,
+    getAllShopItems,
+    getAvailableShopItem
+  } = useGameData();
+
   // Socket 초기화
   const socket = getSocket();
   
@@ -994,7 +1005,7 @@ function App() {
     }
   }, [activeTab, messages.length]);
 
-  // 재료 가져오기 함수 (전역에서 사용 가능)
+  // 🚀 재료 가져오기 함수 (전역에서 사용 가능) - useCallback으로 최적화
   const fetchMaterials = useCallback(async () => {
     if (!username) return;
     try {
@@ -1007,12 +1018,49 @@ function App() {
     }
   }, [serverUrl, username, userUuid, idToken]);
 
+  // 🚀 Socket을 통한 병렬 데이터 요청 함수 (성능 최적화)
+  const requestAllDataParallel = useCallback(() => {
+    if (!username || !userUuid || !socket) return;
+    
+    console.log('🚀 Requesting all data in parallel via Socket...');
+    socket.emit('data:request', { type: 'all', userUuid, username });
+  }, [username, userUuid, socket]);
+
+  // 🚀 자주 사용되는 계산들을 useMemo로 최적화
+  const memoizedInventoryCount = useMemo(() => {
+    return inventory.reduce((total, item) => total + item.count, 0);
+  }, [inventory]);
+
+  const memoizedMaterialsCount = useMemo(() => {
+    return materials.reduce((total, item) => total + item.count, 0);
+  }, [materials]);
+
+  const memoizedTotalValue = useMemo(() => {
+    return inventory.reduce((total, item) => {
+      const fishPrice = getFishPrice(item.fish, userEquipment);
+      return total + (fishPrice * item.count);
+    }, 0);
+  }, [inventory, getFishPrice, userEquipment]);
+
+  // 🚀 현재 사용 가능한 물고기 배열을 useMemo로 최적화
+  const fishTypes = useMemo(() => {
+    if (!allFishTypes.length || !probabilityTemplate.length) {
+      return []; // 🔧 데이터가 로드되지 않았으면 빈 배열 반환
+    }
+    return getAvailableFish(fishingSkill);
+  }, [fishingSkill, allFishTypes, probabilityTemplate]);
+
   // WebSocket을 통한 실시간 데이터 동기화
   useEffect(() => {
     if (!username || !userUuid || !socket) return;
 
     // 데이터 구독
     socket.emit('data:subscribe', { userUuid, username });
+    
+    // 🚀 초기 데이터를 병렬로 요청 (성능 최적화)
+    setTimeout(() => {
+      requestAllDataParallel();
+    }, 1000); // 연결 안정화 후 요청
 
     // 실시간 데이터 업데이트 리스너
     const handleDataUpdate = (data) => {
@@ -1075,38 +1123,31 @@ function App() {
 
   // 사용자 호박석, 별조각은 WebSocket으로 실시간 업데이트됨 (위에서 처리)
 
-  // 사용자 동료 정보 가져오기 (초기 로드만, 자주 변경되지 않음)
+  // 🚀 사용자 동료 정보와 관리자 상태를 병렬로 가져오기 (성능 최적화)
   useEffect(() => {
     if (!username) return;
-    const fetchCompanions = async () => {
+    
+    const fetchUserData = async () => {
       try {
         const userId = idToken ? 'user' : 'null';
         const params = { username, userUuid };
-        const res = await axios.get(`${serverUrl}/api/companions/${userId}`, { params });
-        setCompanions(res.data.companions || []);
+        
+        // 병렬 처리로 동료 정보와 관리자 상태 동시 조회
+        const [companionsRes, adminStatusRes] = await Promise.all([
+          axios.get(`${serverUrl}/api/companions/${userId}`, { params }),
+          axios.get(`${serverUrl}/api/admin-status/${userId}`, { params })
+        ]);
+        
+        setCompanions(companionsRes.data.companions || []);
+        setIsAdmin(adminStatusRes.data.isAdmin || false);
       } catch (e) {
-        console.error('Failed to fetch companions:', e);
+        console.error('Failed to fetch user data:', e);
         setCompanions([]);
-      }
-    };
-    fetchCompanions();
-  }, [serverUrl, username, userUuid, idToken]);
-
-  // 사용자 관리자 상태 가져오기 (초기 로드만, 자주 변경되지 않음)
-  useEffect(() => {
-    if (!username) return;
-    const fetchAdminStatus = async () => {
-      try {
-        const userId = idToken ? 'user' : 'null';
-        const params = { username, userUuid };
-        const res = await axios.get(`${serverUrl}/api/admin-status/${userId}`, { params });
-        setIsAdmin(res.data.isAdmin || false);
-      } catch (e) {
-        console.error('Failed to fetch admin status:', e);
         setIsAdmin(false);
       }
     };
-    fetchAdminStatus();
+    
+    fetchUserData();
   }, [serverUrl, username, userUuid, idToken]);
 
   // 채팅 메시지의 사용자들 관리자 상태 확인
@@ -1222,39 +1263,32 @@ function App() {
     return () => clearInterval(id);
   }, [serverUrl]);
 
-  // 사용자 장비 정보 가져오기
+  // 🚀 사용자 장비 정보와 낚시실력을 병렬로 가져오기 (성능 최적화)
   useEffect(() => {
     if (!username) return;
-    const fetchUserEquipment = async () => {
-      try {
-        const userId = idToken ? 'user' : 'null';
-        const params = { username, userUuid }; // username과 userUuid 모두 전달
-        const res = await axios.get(`${serverUrl}/api/user-equipment/${userId}`, { params });
-        setUserEquipment(res.data || { fishingRod: null, accessory: null });
-      } catch (e) {
-        console.error('Failed to fetch user equipment:', e);
-        setUserEquipment({ fishingRod: null, accessory: null });
-      }
-    };
-    fetchUserEquipment();
-  }, [serverUrl, username, idToken]);
-
-  // 사용자 낚시실력 가져오기
-  useEffect(() => {
-    if (!username) return;
-    const fetchFishingSkill = async () => {
+    
+    const fetchUserGameData = async () => {
       try {
         const userId = idToken ? 'user' : 'null';
         const params = { username, userUuid };
-        const res = await axios.get(`${serverUrl}/api/fishing-skill/${userId}`, { params });
-        setFishingSkill(res.data.skill || 0);
+        
+        // 병렬 처리로 장비와 낚시실력 동시 조회
+        const [equipmentRes, skillRes] = await Promise.all([
+          axios.get(`${serverUrl}/api/user-equipment/${userId}`, { params }),
+          axios.get(`${serverUrl}/api/fishing-skill/${userId}`, { params })
+        ]);
+        
+        setUserEquipment(equipmentRes.data || { fishingRod: null, accessory: null });
+        setFishingSkill(skillRes.data.skill || 0);
       } catch (e) {
-        console.error('Failed to fetch fishing skill:', e);
+        console.error('Failed to fetch user game data:', e);
+        setUserEquipment({ fishingRod: null, accessory: null });
         setFishingSkill(0);
       }
     };
-    fetchFishingSkill();
-  }, [serverUrl, username, idToken]);
+    
+    fetchUserGameData();
+  }, [serverUrl, username, userUuid, idToken]);
 
   const handleSend = async () => {
     const text = input.trim();
@@ -1730,107 +1764,18 @@ function App() {
     }
   };
 
-  // 확률 배열은 고정, 낚시실력에 따라 물고기만 변경
-  // 🔒 서버에서 게임 데이터 로드 (상태 관리)
-  const [gameData, setGameData] = useState({
-    probabilityTemplate: [40, 24, 15, 8, 5, 3, 2, 1, 0.7, 0.3],
-    allFishTypes: [],
-    fishHealthMap: {},
-    fishPrefixes: [],
-    shopData: { fishing_rod: [], accessories: [] }
-  });
-  
-  // 게임 데이터 로드
-  useEffect(() => {
-    const loadGameData = async () => {
-      try {
-        const [fishData, fishHealthData, probabilityData, prefixData, shopData] = await Promise.all([
-          getFishData(),
-          getFishHealthData(),
-          getProbabilityData(),
-          getPrefixData(),
-          getShopData()
-        ]);
-        
-        setGameData({
-          probabilityTemplate: probabilityData,
-          allFishTypes: fishData,
-          fishHealthMap: fishHealthData,
-          fishPrefixes: prefixData,
-          shopData: shopData
-        });
-      } catch (error) {
-        console.error("Failed to load game data:", error);
-        // 기본값 유지
-      }
-    };
-    
-    loadGameData();
-  }, []);
+  // 🔧 게임 데이터는 useGameData 훅에서 관리됨
 
-  // 편의를 위한 변수들
-  const probabilityTemplate = gameData.probabilityTemplate;
-  const allFishTypes = gameData.allFishTypes;
+  // 🔧 게임 데이터 변수들은 useGameData 훅에서 제공됨
 
-  // 낚시실력에 따른 물고기 배열 반환 (확률 배열 고정)
-  const getAvailableFish = (skill) => {
-    // 스타피쉬 제외한 일반 물고기들
-    const normalFish = allFishTypes.filter(f => f.name !== "스타피쉬");
-    
-    // 낚시실력에 따라 시작 인덱스만 1씩 증가 (최소 10개 유지)
-    const startIndex = Math.min(skill, Math.max(0, normalFish.length - 10));
-    const selectedFish = normalFish.slice(startIndex, startIndex + 10);
-    
-    // 고정된 확률 배열을 선택된 물고기에 적용
-    const availableFish = selectedFish.map((fish, index) => ({
-      ...fish,
-      probability: probabilityTemplate[index] || 0.1 // 기본값 0.1%
-    }));
-    
-    // 스타피쉬는 항상 포함 (특별한 물고기)
-    const starFish = allFishTypes.find(f => f.name === "스타피쉬");
-    if (starFish) {
-      availableFish.push({
-        ...starFish,
-        probability: 1 // 스타피쉬는 항상 1%
-      });
-    }
-    
-    return availableFish;
-  };
+  // 🔧 getAvailableFish 함수는 useGameData 훅에서 제공됨
 
-  // 현재 사용 가능한 물고기 배열
-  const fishTypes = getAvailableFish(fishingSkill);
+  // 🚀 현재 사용 가능한 물고기 배열은 위에서 useMemo로 최적화됨
 
-  // 물고기 판매 가격 정의 (악세사리 효과 적용)
-  const getFishPrice = (fishName) => {
-    const fishData = allFishTypes.find(fish => fish.name === fishName);
-    if (!fishData) return 0;
-    
-    let basePrice = fishData.price;
-    
-    // 악세사리 효과: 각 악세사리마다 8% 증가
-    if (userEquipment.accessory) {
-      const accessoryItems = getAllShopItems().accessories || [];
-      const equippedAccessory = accessoryItems.find(item => item.name === userEquipment.accessory);
-      if (equippedAccessory) {
-        // 악세사리 레벨에 따른 가격 증가 (레벨당 8%)
-        const bonusMultiplier = 1 + (equippedAccessory.requiredSkill + 1) * 0.08;
-        basePrice = Math.floor(basePrice * bonusMultiplier);
-      }
-    }
-    
-    return basePrice;
-  };
+  // 🔧 getFishPrice, getFishMaterial 함수들은 useGameData 훅에서 제공됨
 
-  // 물고기 분해 시 얻는 재료
-  const getFishMaterial = (fishName) => {
-    const fishData = allFishTypes.find(fish => fish.name === fishName);
-    return fishData ? fishData.material : null;
-  };
-
-  // 다른 사용자 프로필 데이터 가져오기 - v2024.12.19 (Fallback 지원)
-  const fetchOtherUserProfile = async (username) => {
+  // 🚀 다른 사용자 프로필 데이터 가져오기 - useCallback으로 최적화
+  const fetchOtherUserProfile = useCallback(async (username) => {
     try {
       console.log("🔥 CLIENT VERSION: v2024.12.19 - FALLBACK API");
       console.log("Fetching profile for:", username);
@@ -1871,7 +1816,7 @@ function App() {
       alert(errorMessage);
       setOtherUserData(null);
     }
-  };
+  }, [serverUrl]);
 
   // 최초 닉네임 설정 함수
   const setInitialNicknameFunc = async () => {
@@ -1933,24 +1878,7 @@ function App() {
     }
   };
 
-  // 🔒 서버에서 로드된 게임 데이터 사용
-  const fishHealthMap = gameData.fishHealthMap;
-  const fishPrefixes = gameData.fishPrefixes;
-
-  // 접두어 선택 함수
-  const selectFishPrefix = () => {
-    const random = Math.random() * 100;
-    let cumulative = 0;
-    
-    for (const prefix of fishPrefixes) {
-      cumulative += prefix.probability;
-      if (random <= cumulative) {
-        return prefix;
-      }
-    }
-    
-    return fishPrefixes[0]; // 기본값 (거대한)
-  };
+  // 🔧 fishHealthMap, fishPrefixes, selectFishPrefix는 useGameData 훅에서 제공됨
 
   // 접두어에 따른 색상 반환
   const getPrefixColor = (prefixName, isDark) => {
@@ -1968,11 +1896,7 @@ function App() {
     }
   };
 
-  // 재료와 물고기 매핑 (분해 시 얻는 재료 -> 해당 물고기)
-  const getMaterialToFish = (materialName) => {
-    const fishData = allFishTypes.find(fish => fish.material === materialName);
-    return fishData ? fishData.name : null;
-  };
+  // 🔧 getMaterialToFish는 useGameData 훅에서 제공됨
 
   // 낚시실력 기반 공격력 계산 (3차방정식)
   const calculatePlayerAttack = (skill) => {
@@ -2765,34 +2689,9 @@ function App() {
     });
   };
 
-  // 🔒 서버에서 로드된 상점 데이터 사용
-  const getAllShopItems = () => {
-    return gameData.shopData;
-  };
+  // 🔧 getAllShopItems, getAvailableShopItem는 useGameData 훅에서 제공됨
 
-  // 현재 구매 가능한 아이템 (낚시실력에 따라)
-  const getAvailableShopItem = (category) => {
-    const allItems = getAllShopItems()[category] || [];
-    
-    // 현재 장착된 아이템의 레벨 확인
-    let currentItemLevel = -1;
-    if (category === 'fishing_rod' && userEquipment.fishingRod) {
-      const currentItem = allItems.find(item => item.name === userEquipment.fishingRod);
-      if (currentItem) {
-        currentItemLevel = currentItem.requiredSkill;
-      }
-    } else if (category === 'accessories' && userEquipment.accessory) {
-      const currentItem = allItems.find(item => item.name === userEquipment.accessory);
-      if (currentItem) {
-        currentItemLevel = currentItem.requiredSkill;
-      }
-    }
-    
-    // 다음 레벨 아이템 찾기
-    const nextItem = allItems.find(item => item.requiredSkill === currentItemLevel + 1);
-    
-    return nextItem || null;
-  };
+  // 🔧 상점 아이템 조회는 useGameData 훅의 getAvailableShopItem 사용
 
   // 수량 모달 열기
   const openQuantityModal = (type, fishName, maxQuantity) => {
@@ -2868,7 +2767,7 @@ function App() {
         // 판매 메시지 채팅에 추가
         setMessages(prev => [...prev, {
           system: true,
-          content: `${fishName} ${quantity}마리를 ${totalPrice.toLocaleString()}골드에 판매했습니다!`,
+          content: `${fishName} ${quantity}마리를 ${(totalPrice || 0).toLocaleString()}골드에 판매했습니다!`,
           timestamp: new Date().toISOString()
         }]);
       }
@@ -2909,7 +2808,7 @@ function App() {
       
       setMessages(prev => [...prev, {
         system: true,
-        content: `모든 물고기를 판매하여 총 ${totalEarned.toLocaleString()}골드를 획득했습니다!`,
+        content: `모든 물고기를 판매하여 총 ${(totalEarned || 0).toLocaleString()}골드를 획득했습니다!`,
         timestamp: new Date().toISOString()
       }]);
     } catch (error) {
@@ -3146,7 +3045,7 @@ function App() {
         const skillMessage = category === 'fishing_rod' ? ' (낚시실력 +1)' : '';
         setMessages(prev => [...prev, {
           system: true,
-          content: `${itemName}을(를) ${price.toLocaleString()}골드에 구매하고 장착했습니다!${skillMessage}`,
+          content: `${itemName}을(를) ${(price || 0).toLocaleString()}골드에 구매하고 장착했습니다!${skillMessage}`,
           timestamp: new Date().toISOString()
         }]);
       }
@@ -3157,6 +3056,18 @@ function App() {
   };
 
   // "낚시하기" 버튼은 제거하고 채팅 명령으로만 사용합니다
+
+  // 🔧 게임 데이터 로딩 중일 때 로딩 화면 표시
+  if (gameDataLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-800 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-white text-lg">게임 데이터 로딩 중...</p>
+        </div>
+      </div>
+    );
+  }
 
   // 로그인 화면 표시 조건: username이 없고, idToken도 없고, 이용약관 모달도 표시되지 않는 경우
   if (!username && !idToken && !showTermsModal) {
@@ -3975,7 +3886,7 @@ function App() {
                     }`} />
                     <span className={`text-sm font-bold ${
                       isDarkMode ? "text-yellow-400" : "text-yellow-600"
-                    }`}>{userMoney.toLocaleString()}</span>
+                    }`}>{(userMoney || 0).toLocaleString()}</span>
                     <span className={`text-xs ${
                       isDarkMode ? "text-gray-400" : "text-gray-600"
                     }`}>골드</span>
@@ -3988,7 +3899,7 @@ function App() {
                     }`} />
                     <span className={`text-sm font-bold ${
                       isDarkMode ? "text-orange-400" : "text-orange-600"
-                    }`}>{userAmber.toLocaleString()}</span>
+                    }`}>{(userAmber || 0).toLocaleString()}</span>
                     <span className={`text-xs ${
                       isDarkMode ? "text-gray-400" : "text-gray-600"
                     }`}>호박석</span>
@@ -4001,7 +3912,7 @@ function App() {
                     }`} />
                     <span className={`text-sm font-bold ${
                       isDarkMode ? "text-blue-400" : "text-blue-600"
-                    }`}>{userStarPieces.toLocaleString()}</span>
+                    }`}>{(userStarPieces || 0).toLocaleString()}</span>
                     <span className={`text-xs ${
                       isDarkMode ? "text-gray-400" : "text-gray-600"
                     }`}>별조각</span>
@@ -4108,7 +4019,7 @@ function App() {
                             }`} />
                             <span className={`text-xs font-bold ${
                               isDarkMode ? "text-yellow-400" : "text-yellow-600"
-                            }`}>{getFishPrice(item.fish).toLocaleString()}</span>
+                            }`}>{(getFishPrice(item.fish, userEquipment) || 0).toLocaleString()}</span>
                           </div>
                           <button
                             onClick={() => openQuantityModal('sell', item.fish, item.count)}
@@ -4213,7 +4124,7 @@ function App() {
                     }`} />
                     <span className={`text-sm font-bold ${
                       isDarkMode ? "text-yellow-400" : "text-yellow-600"
-                    }`}>{userMoney.toLocaleString()}</span>
+                    }`}>{(userMoney || 0).toLocaleString()}</span>
                     <span className={`text-xs ${
                       isDarkMode ? "text-gray-400" : "text-gray-600"
                     }`}>골드</span>
@@ -4226,7 +4137,7 @@ function App() {
                     }`} />
                     <span className={`text-sm font-bold ${
                       isDarkMode ? "text-orange-400" : "text-orange-600"
-                    }`}>{userAmber.toLocaleString()}</span>
+                    }`}>{(userAmber || 0).toLocaleString()}</span>
                     <span className={`text-xs ${
                       isDarkMode ? "text-gray-400" : "text-gray-600"
                     }`}>호박석</span>
@@ -4239,7 +4150,7 @@ function App() {
                     }`} />
                     <span className={`text-sm font-bold ${
                       isDarkMode ? "text-blue-400" : "text-blue-600"
-                    }`}>{userStarPieces.toLocaleString()}</span>
+                    }`}>{(userStarPieces || 0).toLocaleString()}</span>
                     <span className={`text-xs ${
                       isDarkMode ? "text-gray-400" : "text-gray-600"
                     }`}>별조각</span>
@@ -4285,7 +4196,7 @@ function App() {
             {/* 상점 목록 */}
             <div className="flex-1 p-4">
               {(() => {
-                const availableItem = getAvailableShopItem(shopCategory);
+                const availableItem = getAvailableShopItem(shopCategory, fishingSkill, userEquipment);
                 
                 if (!availableItem) {
                   return (
@@ -4345,7 +4256,7 @@ function App() {
                               }`} />
                               <span className={`font-bold text-lg ${
                                 isDarkMode ? "text-orange-400" : "text-orange-600"
-                              }`}>{availableItem.price.toLocaleString()}</span>
+                              }`}>{(availableItem.price || 0).toLocaleString()}</span>
                               <span className={`text-sm ${
                                 isDarkMode ? "text-gray-400" : "text-gray-600"
                               }`}>호박석</span>
@@ -4357,7 +4268,7 @@ function App() {
                               }`} />
                               <span className={`font-bold text-lg ${
                                 isDarkMode ? "text-yellow-400" : "text-yellow-600"
-                              }`}>{availableItem.price.toLocaleString()}</span>
+                              }`}>{(availableItem.price || 0).toLocaleString()}</span>
                               <span className={`text-sm ${
                                 isDarkMode ? "text-gray-400" : "text-gray-600"
                               }`}>골드</span>
@@ -4472,7 +4383,7 @@ function App() {
                     }`} />
                     <span className={`text-sm font-bold ${
                       isDarkMode ? "text-blue-400" : "text-blue-600"
-                    }`}>{userStarPieces.toLocaleString()}</span>
+                    }`}>{(userStarPieces || 0).toLocaleString()}</span>
                     <span className={`text-xs ${
                       isDarkMode ? "text-gray-400" : "text-gray-600"
                     }`}>별조각</span>
@@ -4775,7 +4686,7 @@ function App() {
                             }`}>{fish.name}</p>
                             <p className={`text-xs ${
                               isDarkMode ? "text-gray-500" : "text-gray-600"
-                            }`}>{fish.rank}Rank • {fish.price.toLocaleString()}골드</p>
+                            }`}>{fish.rank}Rank • {(fish.price || 0).toLocaleString()}골드</p>
                           </div>
                         </div>
                         <div className="flex flex-col items-end gap-1">
@@ -5344,7 +5255,7 @@ function App() {
                     <div className={`font-bold text-lg ${
                       isDarkMode ? "text-yellow-400" : "text-yellow-600"
                     }`}>
-                      {selectedUserProfile ? (otherUserData?.money || 0).toLocaleString() : userMoney.toLocaleString()}
+                      {selectedUserProfile ? (otherUserData?.money || 0).toLocaleString() : (userMoney || 0).toLocaleString()}
                     </div>
                     <div className={`text-xs ${
                       isDarkMode ? "text-gray-500" : "text-gray-600"
@@ -5354,7 +5265,7 @@ function App() {
                     <div className={`font-bold text-lg ${
                       isDarkMode ? "text-orange-400" : "text-orange-600"
                     }`}>
-                      {selectedUserProfile ? (otherUserData?.amber || 0).toLocaleString() : userAmber.toLocaleString()}
+                      {selectedUserProfile ? (otherUserData?.amber || 0).toLocaleString() : (userAmber || 0).toLocaleString()}
                     </div>
                     <div className={`text-xs ${
                       isDarkMode ? "text-gray-500" : "text-gray-600"
@@ -5704,7 +5615,7 @@ function App() {
                       <span className={`font-bold ${
                         isDarkMode ? "text-emerald-400" : "text-emerald-600"
                       }`}>
-                        {(getFishPrice(quantityModalData.fishName) * inputQuantity).toLocaleString()}골드
+                        {((getFishPrice(quantityModalData.fishName, userEquipment) || 0) * inputQuantity).toLocaleString()}골드
                       </span>
                     </div>
                   </div>
@@ -6187,8 +6098,8 @@ function App() {
                     isDarkMode ? "text-gray-400" : "text-gray-600"
                   }`}>
                     <div>• 모든 보유 물고기 ({myCatches}마리)</div>
-                    <div>• 골드 ({userMoney.toLocaleString()}골드)</div>
-                    <div>• 호박석 ({userAmber.toLocaleString()}개)</div>
+                    <div>• 골드 ({(userMoney || 0).toLocaleString()}골드)</div>
+                    <div>• 호박석 ({(userAmber || 0).toLocaleString()}개)</div>
                     <div>• 장착된 장비 ({userEquipment.fishingRod || '없음'})</div>
                     <div>• 낚시실력 (레벨 {fishingSkill})</div>
                     <div>• 모든 재료 ({materials.length}종류)</div>
