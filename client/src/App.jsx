@@ -5,6 +5,7 @@ import axios from "axios";
 // 🚀 게임 데이터 훅 임포트 (변수 초기화 문제 해결)
 import { useGameData } from "./hooks/useGameData";
 import ChatTab from "./components/ChatTab";
+import { CompanionTab } from './components/companions';
 import { 
   Fish, 
   MessageCircle, 
@@ -103,6 +104,26 @@ function App() {
     if (storedIsGuest === "true") {
       setIsGuest(true);
       console.log("User is a guest");
+    }
+
+    // 🚀 페이지 로드 시 localStorage에서 쿨타임 복원
+    const storedFishingCooldownEnd = localStorage.getItem('fishingCooldownEnd');
+    if (storedFishingCooldownEnd) {
+      const cooldownEndTime = new Date(storedFishingCooldownEnd);
+      const now = new Date();
+      const remainingTime = Math.max(0, cooldownEndTime.getTime() - now.getTime());
+      
+      if (remainingTime > 0) {
+        console.log("Restoring fishing cooldown from localStorage:", remainingTime);
+        setFishingCooldown(remainingTime);
+        setCooldownLoaded(true);
+      } else {
+        // 쿠타임이 이미 만료된 경우 localStorage에서 제거
+        localStorage.removeItem('fishingCooldownEnd');
+        setCooldownLoaded(true);
+      }
+    } else {
+      setCooldownLoaded(true);
     }
   }, []);
 
@@ -247,6 +268,7 @@ function App() {
   const [userAmber, setUserAmber] = useState(0);
   const [userStarPieces, setUserStarPieces] = useState(0);
   const [companions, setCompanions] = useState([]);
+  const [battleCompanions, setBattleCompanions] = useState([]); // 전투 참여 동료 (최대 3명)
   const [showCompanionModal, setShowCompanionModal] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [userAdminStatus, setUserAdminStatus] = useState({}); // 다른 사용자들의 관리자 상태
@@ -396,6 +418,19 @@ function App() {
   // 쿨타임 상태를 서버에서 가져오는 함수
   const fetchCooldownStatus = async (tempUsername = '', tempUserUuid = '') => {
     try {
+      // 🚀 이미 localStorage에서 쿨타임이 복원되었고 아직 유효하면 서버 요청 생략
+      const storedFishingCooldownEnd = localStorage.getItem('fishingCooldownEnd');
+      if (storedFishingCooldownEnd && cooldownLoaded) {
+        const cooldownEndTime = new Date(storedFishingCooldownEnd);
+        const now = new Date();
+        const remainingTime = Math.max(0, cooldownEndTime.getTime() - now.getTime());
+        
+        if (remainingTime > 0) {
+          console.log("Using localStorage cooldown, skipping server fetch:", remainingTime);
+          return remainingTime;
+        }
+      }
+
       const userId = idToken ? 'user' : 'null';
       const params = { username: tempUsername, userUuid: tempUserUuid };
       const response = await axios.get(`${serverUrl}/api/cooldown/${userId}`, { params });
@@ -2006,6 +2041,25 @@ function App() {
     }
   };
 
+  // 전투 참여 동료 토글 함수
+  const toggleBattleCompanion = (companionName) => {
+    setBattleCompanions(prev => {
+      const isCurrentlyInBattle = prev.includes(companionName);
+      
+      if (isCurrentlyInBattle) {
+        // 전투에서 제외
+        return prev.filter(name => name !== companionName);
+      } else {
+        // 전투에 추가 (최대 3명까지)
+        if (prev.length >= 3) {
+          alert('전투 참여는 최대 3명까지 가능합니다!');
+          return prev;
+        }
+        return [...prev, companionName];
+      }
+    });
+  };
+
   // 다른 사용자의 관리자 상태 확인 함수
   const checkUserAdminStatus = async (username) => {
     try {
@@ -2391,12 +2445,20 @@ function App() {
       enemyHp: enemyMaxHp,
       enemyMaxHp: enemyMaxHp,
       turn: 'player',
-      log: [`${material.material}을(를) 사용하여 ${enemyFish}(HP: ${enemyMaxHp})와의 전투가 시작되었습니다!`, `전투를 시작하거나 도망갈 수 있습니다.`],
+      log: [
+        `${material.material}을(를) 사용하여 ${enemyFish}(HP: ${enemyMaxHp})와의 전투가 시작되었습니다!`,
+        ...(battleCompanions.length > 0 
+          ? [`동료 ${battleCompanions.join(', ')}가 함께 전투에 참여합니다!`]
+          : []
+        ),
+        `전투를 시작하거나 도망갈 수 있습니다.`
+      ],
       material: material.material,
       round: 1,
       materialConsumed: false, // 재료 소모 여부 추적
       autoMode: false, // 자동 전투 모드
-      canFlee: true // 도망 가능 여부 (첫 턴에만 가능)
+      canFlee: true, // 도망 가능 여부 (첫 턴에만 가능)
+      companions: [...battleCompanions] // 전투 참여 동료 목록
     };
 
     setBattleState(newBattleState);
@@ -2470,9 +2532,21 @@ function App() {
       if (!prevState || prevState.turn !== 'player') return prevState;
 
       const damage = calculatePlayerAttack(fishingSkill); // 낚시실력 기반 공격력
-      const newEnemyHp = Math.max(0, prevState.enemyHp - damage);
+      let totalDamage = damage;
+      let newLog = [...prevState.log, `플레이어가 ${damage} 데미지를 입혔습니다!`];
       
-      const newLog = [...prevState.log, `플레이어가 ${damage} 데미지를 입혔습니다! (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`];
+      // 동료 공격 추가
+      if (prevState.companions && prevState.companions.length > 0) {
+        prevState.companions.forEach(companion => {
+          // 동료별 공격력 (플레이어 공격력의 30-50%)
+          const companionDamage = Math.floor(damage * (0.3 + Math.random() * 0.2));
+          totalDamage += companionDamage;
+          newLog.push(`${companion}이(가) ${companionDamage} 데미지를 입혔습니다!`);
+        });
+      }
+      
+      const newEnemyHp = Math.max(0, prevState.enemyHp - totalDamage);
+      newLog.push(`총 ${totalDamage} 데미지! (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`);
 
       // 첫 공격 후 자동 모드 활성화
       const newAutoMode = !prevState.autoMode || prevState.autoMode;
@@ -3976,135 +4050,17 @@ function App() {
 
           {/* 동료모집 탭 */}
           {activeTab === "companions" && (
-          <div className={`rounded-2xl board-shadow min-h-full flex flex-col ${
-            isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
-          }`}>
-            {/* 동료모집 헤더 */}
-            <div className={`border-b p-4 ${
-              isDarkMode ? "border-white/10" : "border-gray-300/20"
-            }`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 border ${
-                    isDarkMode ? "border-white/10" : "border-purple-300/30"
-                  }`}>
-                    <Users className={`w-4 h-4 ${
-                      isDarkMode ? "text-purple-400" : "text-purple-600"
-                    }`} />
-                  </div>
-                  <div>
-                    <h2 className={`text-lg font-semibold ${
-                      isDarkMode ? "text-white" : "text-gray-800"
-                    }`}>동료모집</h2>
-                    <p className={`text-xs ${
-                      isDarkMode ? "text-gray-400" : "text-gray-600"
-                    }`}>별조각 1개로 15% 확률 가챠</p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <div className={`flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-blue-500/20 to-purple-500/20 border ${
-                    isDarkMode ? "border-blue-400/20" : "border-blue-500/30"
-                  }`}>
-                    <Star className={`w-4 h-4 ${
-                      isDarkMode ? "text-blue-400" : "text-blue-600"
-                    }`} />
-                    <span className={`text-sm font-bold ${
-                      isDarkMode ? "text-blue-400" : "text-blue-600"
-                    }`}>{(userStarPieces || 0).toLocaleString()}</span>
-                    <span className={`text-xs ${
-                      isDarkMode ? "text-gray-400" : "text-gray-600"
-                    }`}>별조각</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            {/* 동료 모집 버튼 */}
-            <div className="p-6">
-              <div className="text-center mb-6">
-                <button
-                  onClick={recruitCompanion}
-                  disabled={userStarPieces < 1 || companions.length >= 6}
-                  className={`px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 ${
-                    userStarPieces >= 1 && companions.length < 6
-                      ? isDarkMode
-                        ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 hover:scale-105 glow-effect border border-purple-400/30"
-                        : "bg-purple-500/10 text-purple-600 hover:bg-purple-500/20 hover:scale-105 border border-purple-500/30"
-                      : isDarkMode
-                        ? "bg-gray-500/20 text-gray-500 cursor-not-allowed border border-gray-500/20"
-                        : "bg-gray-300/30 text-gray-400 cursor-not-allowed border border-gray-300/30"
-                  }`}
-                >
-                  {companions.length >= 6
-                    ? "모든 동료 보유 완료"
-                    : userStarPieces < 1
-                      ? `별조각 부족 (${userStarPieces}/1)`
-                      : "동료 모집 (별조각 1개)"
-                  }
-                </button>
-                <div className={`text-xs mt-2 ${
-                  isDarkMode ? "text-gray-400" : "text-gray-600"
-                }`}>
-                  성공 확률: 15% | 남은 동료: {6 - companions.length}명
-                </div>
-              </div>
+            <CompanionTab
+              // 상태
+              isDarkMode={isDarkMode}
+              userStarPieces={userStarPieces}
+              companions={companions}
+              battleCompanions={battleCompanions}
               
-              {/* 보유 동료 목록 */}
-              <div className={`p-4 rounded-xl ${
-                isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
-              }`}>
-                <h3 className={`font-medium mb-3 ${
-                  isDarkMode ? "text-white" : "text-gray-800"
-                }`}>보유 동료 ({companions.length}/6)</h3>
-                
-                {companions.length > 0 ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {companions.map((companion, index) => (
-                      <div key={index} className={`p-3 rounded-lg text-center ${
-                        isDarkMode ? "bg-purple-500/10 border border-purple-400/20" : "bg-purple-500/5 border border-purple-300/30"
-                      }`}>
-                        <div className={`font-medium ${
-                          isDarkMode ? "text-purple-400" : "text-purple-600"
-                        }`}>{companion}</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className={`text-center py-8 ${
-                    isDarkMode ? "text-gray-500" : "text-gray-600"
-                  }`}>
-                    아직 동료가 없습니다.
-                    <br />
-                    별조각 10개로 동료를 모집해보세요!
-                  </div>
-                )}
-              </div>
-              
-              {/* 동료 소개 */}
-              <div className={`mt-4 p-4 rounded-xl ${
-                isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
-              }`}>
-                <h3 className={`font-medium mb-3 ${
-                  isDarkMode ? "text-white" : "text-gray-800"
-                }`}>동료 소개</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
-                  {["실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라"].map((name, index) => (
-                    <div key={index} className={`p-2 rounded text-center ${
-                      companions.includes(name)
-                        ? isDarkMode
-                          ? "bg-green-500/20 text-green-400 border border-green-400/30"
-                          : "bg-green-500/10 text-green-600 border border-green-500/30"
-                        : isDarkMode
-                          ? "bg-gray-500/10 text-gray-500 border border-gray-500/20"
-                          : "bg-gray-300/20 text-gray-600 border border-gray-300/30"
-                    }`}>
-                      {name} {companions.includes(name) ? "✓" : ""}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+              // 함수
+              recruitCompanion={recruitCompanion}
+              toggleBattleCompanion={toggleBattleCompanion}
+            />
           )}
 
           {/* 내정보 탭 */}
@@ -5912,6 +5868,24 @@ function App() {
                       style={{ width: `${(battleState.playerHp / battleState.playerMaxHp) * 100}%` }}
                     ></div>
                   </div>
+                  
+                  {/* 동료 정보 */}
+                  {battleState.companions && battleState.companions.length > 0 && (
+                    <div className="mt-3">
+                      <div className={`text-xs mb-1 ${
+                        isDarkMode ? "text-gray-400" : "text-gray-600"
+                      }`}>함께 싸우는 동료:</div>
+                      <div className="flex flex-wrap gap-1">
+                        {battleState.companions.map((companion, index) => (
+                          <span key={index} className={`text-xs px-2 py-1 rounded-full font-medium ${
+                            isDarkMode ? "bg-green-500/20 text-green-400 border border-green-400/30" : "bg-green-500/10 text-green-600 border border-green-500/30"
+                          }`}>
+                            ⚔️ {companion}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 
                 <div>

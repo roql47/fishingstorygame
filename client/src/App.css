@@ -1,1 +1,9 @@
 /* Tailwind 기반 커스텀 유틸이 필요한 경우만 작성 */
+
+.glow-effect {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+}
+
+.glow-effect-green {
+  box-shadow: 0 0 15px rgba(34, 197, 94, 0.4);
+}
