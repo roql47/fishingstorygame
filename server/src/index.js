@@ -811,7 +811,6 @@ const cooldownSchema = new mongoose.Schema(
     username: { type: String, required: true },
     userUuid: { type: String, index: true },
     fishingCooldownEnd: { type: Date, default: null }, // 낚시 쿨타임 종료 시간
-    explorationCooldownEnd: { type: Date, default: null }, // 탐사 쿨타임 종료 시간
   },
   { timestamps: true }
 );
@@ -839,7 +838,6 @@ const userUuidSchema = new mongoose.Schema(
     
     // 쿨타임 정보
     fishingCooldownEnd: { type: Date, default: null }, // 낚시 쿨타임 종료 시간
-    explorationCooldownEnd: { type: Date, default: null }, // 탐사 쿨타임 종료 시간
     
     // 물고기 카운터
     totalFishCaught: { type: Number, default: 0 }, // 총 낚은 물고기 수
@@ -2055,8 +2053,7 @@ io.on("connection", (socket) => {
           
           // WebSocket으로 쿨타임 브로드캐스트
           broadcastUserDataUpdate(query.userUuid, socket.data.username, 'cooldown', {
-            fishingCooldown: cooldownDuration,
-            explorationCooldown: 0
+            fishingCooldown: cooldownDuration
           });
         }
         
@@ -2162,7 +2159,7 @@ io.on("connection", (socket) => {
           break;
         case 'cooldown':
           const cooldown = await getCooldownData(userUuid);
-          socket.emit('data:cooldown', JSON.parse(JSON.stringify(cooldown || { fishingCooldown: 0, explorationCooldown: 0 })));
+          socket.emit('data:cooldown', JSON.parse(JSON.stringify(cooldown || { fishingCooldown: 0 })));
           break;
         case 'totalCatches':
           const totalCatches = await getTotalCatchesData(userUuid);
@@ -2218,8 +2215,7 @@ async function sendUserDataUpdate(socket, userUuid, username) {
           amber: { amber: Number(amber?.amber || 0) },
           starPieces: { starPieces: Number(starPieces?.starPieces || 0) },
           cooldown: { 
-            fishingCooldown: Number(cooldown?.fishingCooldown || 0), 
-            explorationCooldown: Number(cooldown?.explorationCooldown || 0) 
+            fishingCooldown: Number(cooldown?.fishingCooldown || 0)
           },
           totalCatches: { totalFishCaught: Number(totalCatches?.totalFishCaught || 0) },
           companions: { companions: Array.isArray(companions?.companions) ? companions.companions.map(c => String(c)) : [] },
@@ -2237,7 +2233,7 @@ async function sendUserDataUpdate(socket, userUuid, username) {
           money: { money: 0 },
           amber: { amber: 0 },
           starPieces: { starPieces: 0 },
-          cooldown: { fishingCooldown: 0, explorationCooldown: 0 },
+          cooldown: { fishingCooldown: 0 },
           totalCatches: { totalFishCaught: 0 },
           companions: { companions: [] },
           adminStatus: { isAdmin: false },
@@ -2260,7 +2256,7 @@ async function sendUserDataUpdate(socket, userUuid, username) {
           money: { money: 0 },
           amber: { amber: 0 },
           starPieces: { starPieces: 0 },
-          cooldown: { fishingCooldown: 0, explorationCooldown: 0 },
+          cooldown: { fishingCooldown: 0 },
           totalCatches: { totalFishCaught: 0 },
           companions: { companions: [] },
           adminStatus: { isAdmin: false },
@@ -2392,10 +2388,8 @@ async function getCooldownData(userUuid) {
   const now = new Date();
   const fishingCooldown = user?.fishingCooldownEnd && user.fishingCooldownEnd > now 
     ? Math.ceil((user.fishingCooldownEnd - now) / 1000) : 0;
-  const explorationCooldown = user?.explorationCooldownEnd && user.explorationCooldownEnd > now 
-    ? Math.ceil((user.explorationCooldownEnd - now) / 1000) : 0;
   
-  return { fishingCooldown, explorationCooldown };
+  return { fishingCooldown };
 }
 
 async function getTotalCatchesData(userUuid) {
@@ -3320,25 +3314,18 @@ app.get("/api/cooldown/:userId", async (req, res) => {
     const now = new Date();
     
     let fishingCooldown = 0;
-    let explorationCooldown = 0;
     
     if (cooldownRecord) {
       // 낚시 쿨타임 계산
       if (cooldownRecord.fishingCooldownEnd && cooldownRecord.fishingCooldownEnd > now) {
         fishingCooldown = cooldownRecord.fishingCooldownEnd.getTime() - now.getTime();
       }
-      
-      // 탐사 쿨타임 계산
-      if (cooldownRecord.explorationCooldownEnd && cooldownRecord.explorationCooldownEnd > now) {
-        explorationCooldown = cooldownRecord.explorationCooldownEnd.getTime() - now.getTime();
-      }
     }
     
     // 쿨다운 데이터는 보안상 로그에 기록하지 않음
     
     res.json({ 
-      fishingCooldown: Math.max(0, fishingCooldown),
-      explorationCooldown: Math.max(0, explorationCooldown)
+      fishingCooldown: Math.max(0, fishingCooldown)
     });
   } catch (error) {
     console.error("Failed to fetch cooldown status:", error);
@@ -3445,8 +3432,7 @@ app.post("/api/set-fishing-cooldown", async (req, res) => {
     if (query.userUuid) {
       setImmediate(() => {
         broadcastUserDataUpdate(query.userUuid, query.username, 'cooldown', {
-          fishingCooldown: cooldownDuration,
-          explorationCooldown: 0 // 현재 탐사 쿨타임 유지
+          fishingCooldown: cooldownDuration
         });
       });
     }
@@ -3531,8 +3517,7 @@ app.post("/api/recalculate-fishing-cooldown", authenticateJWT, async (req, res) 
       
       // WebSocket으로 실시간 업데이트
       broadcastUserDataUpdate(query.userUuid, query.username, 'cooldown', {
-        fishingCooldown: newRemainingTime,
-        explorationCooldown: 0
+        fishingCooldown: newRemainingTime
       });
     }
     
@@ -3550,88 +3535,7 @@ app.post("/api/recalculate-fishing-cooldown", authenticateJWT, async (req, res) 
   }
 });
 
-// 탐사 쿨타임 설정 API
-app.post("/api/set-exploration-cooldown", authenticateJWT, async (req, res) => {
-  try {
-    const { type } = req.body; // 'victory', 'defeat', 'flee' 타입
-    // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
-    const { userUuid, username } = req.user;
-    
-    console.log("Set exploration cooldown request received");
-    
-    const queryResult = await getUserQuery('user', username, userUuid);
-    let query;
-    if (queryResult.userUuid) {
-      query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for exploration cooldown:", query);
-    } else {
-      query = queryResult;
-      console.log("Using fallback query for exploration cooldown:", query);
-    }
-    
-    // 서버에서 탐사 쿨타임 계산
-    let cooldownDuration;
-    switch(type) {
-      case 'victory':
-      case 'defeat':
-      case 'start':
-        cooldownDuration = 10 * 60 * 1000; // 10분
-        break;
-      case 'flee':
-        cooldownDuration = 5 * 60 * 1000; // 5분 (절반)
-        break;
-      default:
-        cooldownDuration = 10 * 60 * 1000; // 기본 10분
-    }
-    
-    const now = new Date();
-    const cooldownEnd = new Date(now.getTime() + cooldownDuration);
-    
-    const updateData = {
-      userId: query.userId || 'user',
-      username: query.username || username,
-      userUuid: query.userUuid || userUuid,
-      explorationCooldownEnd: cooldownEnd
-    };
-    
-    // 🚀 병렬 업데이트로 성능 향상
-    const updatePromises = [
-      CooldownModel.findOneAndUpdate(query, updateData, { upsert: true, new: true })
-    ];
-    
-    if (query.userUuid) {
-      updatePromises.push(
-        UserUuidModel.updateOne(
-          { userUuid: query.userUuid },
-          { explorationCooldownEnd: cooldownEnd }
-        )
-      );
-    }
-    
-    await Promise.all(updatePromises);
-    
-    // WebSocket 브로드캐스트 (비동기로 처리하여 응답 속도 향상)
-    if (query.userUuid) {
-      setImmediate(() => {
-        broadcastUserDataUpdate(query.userUuid, query.username, 'cooldown', {
-          fishingCooldown: 0, // 현재 낚시 쿨타임 유지
-          explorationCooldown: cooldownDuration
-        });
-      });
-    }
-    
-    // 탐사 쿨다운 설정 완료 (보안상 상세 정보는 로그에 기록하지 않음)
-    
-    res.json({ 
-      success: true,
-      cooldownEnd: cooldownEnd.toISOString(),
-      remainingTime: cooldownDuration
-    });
-  } catch (error) {
-    console.error("Failed to set exploration cooldown:", error);
-    res.status(500).json({ error: "탐사 쿨타임 설정에 실패했습니다." });
-  }
-});
+// 탐사 쿨타임 제거됨 - 더 이상 사용하지 않음
 
 // 접속자 목록 API (보안 강화)
 app.get("/api/connected-users", async (req, res) => {
@@ -4039,9 +3943,6 @@ app.get("/api/user-settings/:userId", async (req, res) => {
     const fishingCooldown = user.fishingCooldownEnd && user.fishingCooldownEnd > now 
       ? Math.max(0, user.fishingCooldownEnd.getTime() - now.getTime()) 
       : 0;
-    const explorationCooldown = user.explorationCooldownEnd && user.explorationCooldownEnd > now 
-      ? Math.max(0, user.explorationCooldownEnd.getTime() - now.getTime()) 
-      : 0;
     
     const settings = {
       userUuid: user.userUuid,
@@ -4050,7 +3951,6 @@ app.get("/api/user-settings/:userId", async (req, res) => {
       termsAccepted: user.termsAccepted || false,
       darkMode: user.darkMode !== undefined ? user.darkMode : true,
       fishingCooldown,
-      explorationCooldown,
       originalGoogleId: user.originalGoogleId,
       originalKakaoId: user.originalKakaoId
     };
@@ -4128,7 +4028,7 @@ app.post("/api/user-settings/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
     const { username, userUuid, googleId } = req.query;
-    const { termsAccepted, darkMode, fishingCooldown, explorationCooldown } = req.body;
+    const { termsAccepted, darkMode, fishingCooldown } = req.body;
     
     console.log("=== UPDATE USER SETTINGS API ===");
     console.log("Request params:", { userId, username, userUuid, googleId });
@@ -4164,11 +4064,6 @@ app.post("/api/user-settings/:userId", async (req, res) => {
     if (fishingCooldown !== undefined) {
       updates.fishingCooldownEnd = fishingCooldown > 0 
         ? new Date(Date.now() + fishingCooldown) 
-        : null;
-    }
-    if (explorationCooldown !== undefined) {
-      updates.explorationCooldownEnd = explorationCooldown > 0 
-        ? new Date(Date.now() + explorationCooldown) 
         : null;
     }
     
@@ -4313,10 +4208,17 @@ app.get("/api/daily-quests/:userId", async (req, res) => {
     
     // 퀴스트 데이터가 없거나 날짜가 다른 경우 새로 생성/리셋
     if (!dailyQuest || dailyQuest.lastResetDate !== today) {
+      // userUuid 필수 필드 검증
+      const finalUserUuid = query.userUuid || userUuid;
+      if (!finalUserUuid) {
+        console.error("❌ Daily Quest Error: userUuid is required but not provided", { query, userUuid });
+        return res.status(400).json({ error: "User UUID is required for daily quests" });
+      }
+      
       const createData = {
         userId: query.userId || 'user',
-        username: query.username || username,
-        userUuid: query.userUuid || userUuid,
+        username: query.username || username || 'Unknown',
+        userUuid: finalUserUuid,
         fishCaught: 0,
         explorationWins: 0,
         fishSold: 0,
@@ -4400,11 +4302,18 @@ app.post("/api/update-quest-progress", async (req, res) => {
     
     let dailyQuest = await DailyQuestModel.findOne(query);
     if (!dailyQuest || dailyQuest.lastResetDate !== today) {
+      // userUuid 필수 필드 검증
+      const finalUserUuid = query.userUuid || userUuid;
+      if (!finalUserUuid) {
+        console.error("❌ Quest Progress Error: userUuid is required but not provided", { query, userUuid });
+        return res.status(400).json({ error: "User UUID is required for quest progress" });
+      }
+      
       // 퀴스트 데이터가 없거나 오래된 경우 새로 생성
       const createData = {
         userId: query.userId || 'user',
-        username: query.username || username,
-        userUuid: query.userUuid || userUuid,
+        username: query.username || username || 'Unknown',
+        userUuid: finalUserUuid,
         fishCaught: 0,
         explorationWins: 0,
         fishSold: 0,

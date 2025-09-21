@@ -288,12 +288,24 @@ function App() {
   
   // 쿨타임 관련 상태 (서버에서 로드, localStorage 백업)
   const [fishingCooldown, setFishingCooldown] = useState(() => {
-    const saved = localStorage.getItem('fishingCooldown');
-    return saved ? parseInt(saved) : 0;
+    const savedEndTime = localStorage.getItem('fishingCooldownEnd');
+    if (savedEndTime) {
+      const endTime = new Date(savedEndTime);
+      const now = new Date();
+      const remaining = Math.max(0, endTime.getTime() - now.getTime());
+      return remaining;
+    }
+    return 0;
   });
   const [explorationCooldown, setExplorationCooldown] = useState(() => {
-    const saved = localStorage.getItem('explorationCooldown');
-    return saved ? parseInt(saved) : 0;
+    const savedEndTime = localStorage.getItem('explorationCooldownEnd');
+    if (savedEndTime) {
+      const endTime = new Date(savedEndTime);
+      const now = new Date();
+      const remaining = Math.max(0, endTime.getTime() - now.getTime());
+      return remaining;
+    }
+    return 0;
   });
   const [isProcessingFishing, setIsProcessingFishing] = useState(false); // 🛡️ 낚시 처리 중 상태
   const [jwtToken, setJwtToken] = useState(null); // 🔐 JWT 토큰 상태
@@ -417,9 +429,20 @@ function App() {
       setFishingCooldown(newFishingCooldown);
       setExplorationCooldown(newExplorationCooldown);
       
-      // localStorage에 쿨타임 백업 저장
-      localStorage.setItem('fishingCooldown', newFishingCooldown.toString());
-      localStorage.setItem('explorationCooldown', newExplorationCooldown.toString());
+      // localStorage에 쿨타임 종료 시간 저장
+      if (newFishingCooldown > 0) {
+        const fishingEndTime = new Date(Date.now() + newFishingCooldown);
+        localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
+      } else {
+        localStorage.removeItem('fishingCooldownEnd');
+      }
+      
+      if (newExplorationCooldown > 0) {
+        const explorationEndTime = new Date(Date.now() + newExplorationCooldown);
+        localStorage.setItem('explorationCooldownEnd', explorationEndTime.toISOString());
+      } else {
+        localStorage.removeItem('explorationCooldownEnd');
+      }
       
       // 초기 재료 데이터 로드 (모든 로그인 방식에 적용)
       if (settings.userUuid) {
@@ -469,7 +492,10 @@ function App() {
       fishingTimer = setInterval(() => {
         setFishingCooldown(prev => {
           const newValue = Math.max(0, prev - 1000);
-          localStorage.setItem('fishingCooldown', newValue.toString());
+          // 쿨타임이 끝나면 localStorage에서 제거
+          if (newValue <= 0) {
+            localStorage.removeItem('fishingCooldownEnd');
+          }
           return newValue;
         });
       }, 1000);
@@ -479,7 +505,10 @@ function App() {
       explorationTimer = setInterval(() => {
         setExplorationCooldown(prev => {
           const newValue = Math.max(0, prev - 1000);
-          localStorage.setItem('explorationCooldown', newValue.toString());
+          // 쿨타임이 끝나면 localStorage에서 제거
+          if (newValue <= 0) {
+            localStorage.removeItem('explorationCooldownEnd');
+          }
           return newValue;
         });
       }, 1000);
@@ -1029,15 +1058,26 @@ function App() {
       if (data.amber) setUserAmber(data.amber.amber);
       if (data.starPieces) setUserStarPieces(data.starPieces.starPieces);
       if (data.cooldown) {
-        const newFishingCooldown = data.cooldown.fishingCooldown;
-        const newExplorationCooldown = data.cooldown.explorationCooldown;
+        const newFishingCooldown = data.cooldown.fishingCooldown || 0;
+        const newExplorationCooldown = data.cooldown.explorationCooldown || 0;
         
         setFishingCooldown(newFishingCooldown);
         setExplorationCooldown(newExplorationCooldown);
         
-        // localStorage에 쿨타임 백업 저장
-        localStorage.setItem('fishingCooldown', newFishingCooldown.toString());
-        localStorage.setItem('explorationCooldown', newExplorationCooldown.toString());
+        // localStorage에 쿨타임 종료 시간 저장
+        if (newFishingCooldown > 0) {
+          const fishingEndTime = new Date(Date.now() + newFishingCooldown);
+          localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
+        } else {
+          localStorage.removeItem('fishingCooldownEnd');
+        }
+        
+        if (newExplorationCooldown > 0) {
+          const explorationEndTime = new Date(Date.now() + newExplorationCooldown);
+          localStorage.setItem('explorationCooldownEnd', explorationEndTime.toISOString());
+        } else {
+          localStorage.removeItem('explorationCooldownEnd');
+        }
       }
       if (data.totalCatches) setMyCatches(data.totalCatches.totalCatches);
       if (data.companions) setCompanions(data.companions.companions);
@@ -1709,6 +1749,8 @@ function App() {
         // 🛡️ 쿨타임 localStorage 백업도 정리
         localStorage.removeItem("fishingCooldown");
         localStorage.removeItem("explorationCooldown");
+        localStorage.removeItem("fishingCooldownEnd");
+        localStorage.removeItem("explorationCooldownEnd");
         
         // 페이지 새로고침으로 완전 초기화
         window.location.reload();
