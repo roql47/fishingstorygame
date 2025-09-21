@@ -434,14 +434,16 @@ function App() {
       
       // localStorage 쿨타임 확인
       const storedFishingCooldownEnd = localStorage.getItem('fishingCooldownEnd');
-      let localRemainingTime = 0;
-      
-      if (storedFishingCooldownEnd) {
-        const cooldownEndTime = new Date(storedFishingCooldownEnd);
-        const now = new Date();
-        localRemainingTime = Math.max(0, cooldownEndTime.getTime() - now.getTime());
-        console.log('📱 localStorage cooldown:', localRemainingTime);
-      }
+      const localRemainingTime = (() => {
+        if (storedFishingCooldownEnd) {
+          const cooldownEndTime = new Date(storedFishingCooldownEnd);
+          const now = new Date();
+          const remaining = Math.max(0, cooldownEndTime.getTime() - now.getTime());
+          console.log('📱 localStorage cooldown:', remaining);
+          return remaining;
+        }
+        return 0;
+      })();
 
       const userId = idToken ? 'user' : 'null';
       const params = { username: tempUsername, userUuid: tempUserUuid };
@@ -454,15 +456,15 @@ function App() {
       console.log('📡 Server cooldown:', serverCooldown);
       
       // localStorage와 서버 쿨타임 중 더 긴 것 사용
-      const finalCooldown = Math.max(localRemainingTime, serverCooldown);
-      console.log('⏰ Final cooldown (max of local/server):', finalCooldown);
+      const maxCooldown = Math.max(localRemainingTime, serverCooldown);
+      console.log('⏰ Final cooldown (max of local/server):', maxCooldown);
       
-      setFishingCooldown(finalCooldown);
+      setFishingCooldown(maxCooldown);
       setCooldownLoaded(true);
       
       // localStorage에 최종 쿨타임 종료 시간 저장
-      if (finalCooldown > 0) {
-        const fishingEndTime = new Date(Date.now() + finalCooldown);
+      if (maxCooldown > 0) {
+        const fishingEndTime = new Date(Date.now() + maxCooldown);
         localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
         console.log('💾 Updated localStorage with final cooldown:', fishingEndTime.toISOString());
       } else {
@@ -470,7 +472,7 @@ function App() {
         console.log('🗑️ Removed expired cooldown from localStorage');
       }
       
-      return finalCooldown;
+      return maxCooldown;
     } catch (error) {
       console.error('Failed to fetch cooldown status:', error);
       setCooldownLoaded(true);
@@ -561,11 +563,11 @@ function App() {
 
   // 쿨타임 타이머 useEffect - 쿨타임이 로드된 후에만 실행
   useEffect(() => {
-    let fishingTimer;
+    const timerRef = { current: null };
     
     // 쿨타임이 로드되고 0보다 클 때만 타이머 시작
     if (cooldownLoaded && fishingCooldown > 0) {
-      fishingTimer = setInterval(() => {
+      timerRef.current = setInterval(() => {
         setFishingCooldown(prev => {
           const newValue = Math.max(0, prev - 1000);
           // 쿨타임이 끝나면 localStorage에서 제거
@@ -578,7 +580,7 @@ function App() {
     }
     
     return () => {
-      if (fishingTimer) clearInterval(fishingTimer);
+      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [fishingCooldown, cooldownLoaded]);
 
@@ -910,20 +912,21 @@ function App() {
       localStorage.setItem("userUuid", data.userUuid);
       
       // 우선순위: 서버의 displayName > 로컬스토리지 닉네임 > 서버 username
-      let finalNickname;
-      if (serverDisplayName && serverDisplayName !== data.username) {
-        // 서버에 저장된 displayName이 있고 기본 username과 다른 경우 (사용자가 변경한 경우)
-        finalNickname = serverDisplayName;
-        console.log("Using server displayName:", serverDisplayName);
-      } else if (currentStoredNickname) {
-        // 로컬스토리지에 저장된 닉네임이 있는 경우
-        finalNickname = currentStoredNickname;
-        console.log("Using stored nickname:", currentStoredNickname);
-      } else {
-        // 기본값으로 서버 username 사용
-        finalNickname = data.username;
-        console.log("Using server username:", data.username);
-      }
+      const finalNickname = (() => {
+        if (serverDisplayName && serverDisplayName !== data.username) {
+          // 서버에 저장된 displayName이 있고 기본 username과 다른 경우 (사용자가 변경한 경우)
+          console.log("Using server displayName:", serverDisplayName);
+          return serverDisplayName;
+        } else if (currentStoredNickname) {
+          // 로컬스토리지에 저장된 닉네임이 있는 경우
+          console.log("Using stored nickname:", currentStoredNickname);
+          return currentStoredNickname;
+        } else {
+          // 기본값으로 서버 username 사용
+          console.log("Using server username:", data.username);
+          return data.username;
+        }
+      })();
       
       setUsername(finalNickname);
       localStorage.setItem("nickname", finalNickname);
@@ -1180,28 +1183,30 @@ function App() {
         
         // localStorage 쿨타임과 비교해서 더 긴 쿨타임 사용
         const storedFishingCooldownEnd = localStorage.getItem('fishingCooldownEnd');
-        let finalCooldown = newFishingCooldown;
-        
-        if (storedFishingCooldownEnd) {
-          const cooldownEndTime = new Date(storedFishingCooldownEnd);
-          const now = new Date();
-          const localRemainingTime = Math.max(0, cooldownEndTime.getTime() - now.getTime());
-          
-          // localStorage의 쿨타임이 더 길면 그것을 사용
-          if (localRemainingTime > newFishingCooldown) {
-            finalCooldown = localRemainingTime;
-            console.log('📱 Using localStorage cooldown (longer):', localRemainingTime);
-          } else {
-            console.log('📡 Using server cooldown:', newFishingCooldown);
+        const calculatedCooldown = (() => {
+          if (storedFishingCooldownEnd) {
+            const cooldownEndTime = new Date(storedFishingCooldownEnd);
+            const now = new Date();
+            const localRemainingTime = Math.max(0, cooldownEndTime.getTime() - now.getTime());
+            
+            // localStorage의 쿨타임이 더 길면 그것을 사용
+            if (localRemainingTime > newFishingCooldown) {
+              console.log('📱 Using localStorage cooldown (longer):', localRemainingTime);
+              return localRemainingTime;
+            } else {
+              console.log('📡 Using server cooldown:', newFishingCooldown);
+              return newFishingCooldown;
+            }
           }
-        }
+          return newFishingCooldown;
+        })();
         
-        setFishingCooldown(finalCooldown);
+        setFishingCooldown(calculatedCooldown);
         setCooldownLoaded(true);
         
         // localStorage에 최종 쿨타임 종료 시간 저장
-        if (finalCooldown > 0) {
-          const fishingEndTime = new Date(Date.now() + finalCooldown);
+        if (calculatedCooldown > 0) {
+          const fishingEndTime = new Date(Date.now() + calculatedCooldown);
           localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
           console.log('💾 Saved cooldown to localStorage:', fishingEndTime.toISOString());
         } else {
