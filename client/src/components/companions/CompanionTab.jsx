@@ -357,17 +357,17 @@ const CompanionTab = ({
                         </div>
                         <div className="flex justify-between">
                           <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>희귀도</span>
-                          <span className={`font-medium ${getRarityColor(baseData.rarity, isDarkMode)}`}>
+                          <span className={"font-medium " + getRarityColor(baseData.rarity, isDarkMode)}>
                             {baseData.rarity}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>전투 상태</span>
-                          <span className={`font-medium ${
-                            isInBattle 
+                          <span className={
+                            "font-medium " + (isInBattle 
                               ? isDarkMode ? "text-green-400" : "text-green-600"
-                              : isDarkMode ? "text-gray-400" : "text-gray-600"
-                          }`}>
+                              : isDarkMode ? "text-gray-400" : "text-gray-600")
+                          }>
                             {isInBattle ? "참여 중" : "대기 중"}
                           </span>
                         </div>
@@ -392,7 +392,7 @@ const CompanionTab = ({
                             <div className={`font-semibold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
                               {companionData?.hp || baseData.baseHp}
                             </div>
-                            <div className={`text-xs ${isDarkMode ? "text-gray-500" : "text-gray-500"}`}>
+                            <div className="text-xs text-gray-500">
                               기본 {baseData.baseHp} (+{baseData.growthHp}/Lv)
                             </div>
                           </div>
@@ -408,7 +408,7 @@ const CompanionTab = ({
                             <div className={`font-semibold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
                               {companionData?.attack || baseData.baseAttack}
                             </div>
-                            <div className={`text-xs ${isDarkMode ? "text-gray-500" : "text-gray-500"}`}>
+                            <div className="text-xs text-gray-500">
                               기본 {baseData.baseAttack} (+{baseData.growthAttack}/Lv)
                             </div>
                           </div>
@@ -424,7 +424,7 @@ const CompanionTab = ({
                             <div className={`font-semibold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
                               {companionData?.speed || baseData.baseSpeed}
                             </div>
-                            <div className={`text-xs ${isDarkMode ? "text-gray-500" : "text-gray-500"}`}>
+                            <div className="text-xs text-gray-500">
                               기본 {baseData.baseSpeed} (+{baseData.growthSpeed}/Lv)
                             </div>
                           </div>
@@ -489,8 +489,8 @@ const CompanionTab = ({
                               <div className="flex items-center gap-1">
                                 <Sword className="w-3 h-3 text-orange-400" />
                                 <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>데미지:</span>
-                                <span className={`font-semibold ${isDarkMode ? "text-orange-400" : "text-orange-600"}`}>
-                                  {Math.floor((baseData.skill.damageMultiplier || 1) * 100)}%
+                                <span className={isDarkMode ? "font-semibold text-orange-400" : "font-semibold text-orange-600"}>
+                                  {Math.floor((baseData.skill?.damageMultiplier || 1) * 100)}%
                                 </span>
                               </div>
                             </div>
