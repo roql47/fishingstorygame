@@ -1,5 +1,5 @@
-import React from 'react';
-import { Users, Sword, Shield, Heart, Star, Zap } from 'lucide-react';
+import React, { useState } from 'react';
+import { Users, Sword, Shield, Heart, Star, Zap, X, Info } from 'lucide-react';
 import { COMPANION_DATA, calculateCompanionStats, getRarityColor } from '../../data/companionData';
 
 const CompanionTab = ({
@@ -14,6 +14,22 @@ const CompanionTab = ({
   recruitCompanion,
   toggleBattleCompanion
 }) => {
+  // 동료 상세 모달 상태
+  const [selectedCompanion, setSelectedCompanion] = useState(null);
+  const [showCompanionModal, setShowCompanionModal] = useState(false);
+  
+  // 동료 클릭 핸들러
+  const handleCompanionClick = (companionName) => {
+    setSelectedCompanion(companionName);
+    setShowCompanionModal(true);
+  };
+  
+  // 모달 닫기
+  const closeCompanionModal = () => {
+    setShowCompanionModal(false);
+    setSelectedCompanion(null);
+  };
+
   const allCompanions = ["실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라"];
   const maxBattleCompanions = 3;
 
@@ -252,21 +268,271 @@ const CompanionTab = ({
           }`}>동료 소개</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
             {allCompanions.map((name, index) => (
-              <div key={index} className={`p-2 rounded text-center ${
-                companions.includes(name)
-                  ? isDarkMode
-                    ? "bg-green-500/20 text-green-400 border border-green-400/30"
-                    : "bg-green-500/10 text-green-600 border border-green-500/30"
-                  : isDarkMode
-                    ? "bg-gray-500/10 text-gray-500 border border-gray-500/20"
-                    : "bg-gray-300/20 text-gray-600 border border-gray-300/30"
-              }`}>
+              <div 
+                key={index} 
+                className={`p-2 rounded text-center cursor-pointer transition-all duration-200 hover:scale-105 ${
+                  companions.includes(name)
+                    ? isDarkMode
+                      ? "bg-green-500/20 text-green-400 border border-green-400/30 hover:bg-green-500/30"
+                      : "bg-green-500/10 text-green-600 border border-green-500/30 hover:bg-green-500/20"
+                    : isDarkMode
+                      ? "bg-gray-500/10 text-gray-500 border border-gray-500/20 hover:bg-gray-500/20"
+                      : "bg-gray-300/20 text-gray-600 border border-gray-300/30 hover:bg-gray-300/40"
+                }`}
+                onClick={() => companions.includes(name) && handleCompanionClick(name)}
+              >
                 {name} {companions.includes(name) ? "✓" : ""}
+                {companions.includes(name) && (
+                  <div className="text-xs mt-1 opacity-70">클릭하여 상세보기</div>
+                )}
               </div>
             ))}
           </div>
         </div>
       </div>
+
+      {/* 동료 상세 모달 */}
+      {showCompanionModal && selectedCompanion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className={`relative w-full max-w-md mx-4 rounded-2xl border shadow-2xl ${
+            isDarkMode 
+              ? "bg-gray-800/95 border-gray-700/50 backdrop-blur-md" 
+              : "bg-white/95 border-gray-300/50 backdrop-blur-md"
+          }`}>
+            {/* 모달 헤더 */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-300/20">
+              <div className="flex items-center gap-3">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                  isDarkMode ? "bg-blue-500/20 text-blue-400" : "bg-blue-500/10 text-blue-600"
+                }`}>
+                  <Users className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className={`text-xl font-bold ${
+                    isDarkMode ? "text-white" : "text-gray-800"
+                  }`}>{selectedCompanion}</h2>
+                  <div className={`text-sm ${
+                    isDarkMode ? "text-gray-400" : "text-gray-600"
+                  }`}>동료 상세 정보</div>
+                </div>
+              </div>
+              <button
+                onClick={closeCompanionModal}
+                className={`p-2 rounded-full transition-colors ${
+                  isDarkMode 
+                    ? "hover:bg-gray-700/50 text-gray-400 hover:text-white" 
+                    : "hover:bg-gray-200/50 text-gray-600 hover:text-gray-800"
+                }`}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* 모달 내용 */}
+            <div className="p-6 max-h-96 overflow-y-auto">
+              {(() => {
+                const baseData = COMPANION_DATA[selectedCompanion];
+                const companionStat = companionStats[selectedCompanion];
+                const level = companionStat?.level || 1;
+                const exp = companionStat?.exp || 0;
+                const expToNext = companionStat?.expToNext || 100;
+                const companionData = calculateCompanionStats(selectedCompanion, level);
+                const isInBattle = battleCompanions.includes(selectedCompanion);
+
+                if (!baseData) return <div>동료 정보를 불러올 수 없습니다.</div>;
+
+                return (
+                  <div className="space-y-6">
+                    {/* 기본 정보 */}
+                    <div className={`p-4 rounded-lg ${
+                      isDarkMode ? "bg-gray-700/30" : "bg-gray-100/50"
+                    }`}>
+                      <h3 className={`font-semibold mb-3 ${
+                        isDarkMode ? "text-white" : "text-gray-800"
+                      }`}>기본 정보</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>레벨</span>
+                          <span className={isDarkMode ? "text-white" : "text-gray-800"}>Lv.{level}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>희귀도</span>
+                          <span className={`font-medium ${getRarityColor(baseData.rarity, isDarkMode)}`}>
+                            {baseData.rarity}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>전투 상태</span>
+                          <span className={`font-medium ${
+                            isInBattle 
+                              ? isDarkMode ? "text-green-400" : "text-green-600"
+                              : isDarkMode ? "text-gray-400" : "text-gray-600"
+                          }`}>
+                            {isInBattle ? "참여 중" : "대기 중"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 능력치 */}
+                    <div className={`p-4 rounded-lg ${
+                      isDarkMode ? "bg-gray-700/30" : "bg-gray-100/50"
+                    }`}>
+                      <h3 className={`font-semibold mb-3 ${
+                        isDarkMode ? "text-white" : "text-gray-800"
+                      }`}>능력치</h3>
+                      <div className="space-y-3">
+                        {/* 체력 */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Heart className="w-4 h-4 text-red-400" />
+                            <span className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>체력</span>
+                          </div>
+                          <div className="text-right">
+                            <div className={`font-semibold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
+                              {companionData?.hp || baseData.baseHp}
+                            </div>
+                            <div className={`text-xs ${isDarkMode ? "text-gray-500" : "text-gray-500"}`}>
+                              기본 {baseData.baseHp} (+{baseData.growthHp}/Lv)
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 공격력 */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Sword className="w-4 h-4 text-orange-400" />
+                            <span className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>공격력</span>
+                          </div>
+                          <div className="text-right">
+                            <div className={`font-semibold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
+                              {companionData?.attack || baseData.baseAttack}
+                            </div>
+                            <div className={`text-xs ${isDarkMode ? "text-gray-500" : "text-gray-500"}`}>
+                              기본 {baseData.baseAttack} (+{baseData.growthAttack}/Lv)
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 속도 */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Zap className="w-4 h-4 text-blue-400" />
+                            <span className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>속도</span>
+                          </div>
+                          <div className="text-right">
+                            <div className={`font-semibold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
+                              {companionData?.speed || baseData.baseSpeed}
+                            </div>
+                            <div className={`text-xs ${isDarkMode ? "text-gray-500" : "text-gray-500"}`}>
+                              기본 {baseData.baseSpeed} (+{baseData.growthSpeed}/Lv)
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 경험치 */}
+                    <div className={`p-4 rounded-lg ${
+                      isDarkMode ? "bg-gray-700/30" : "bg-gray-100/50"
+                    }`}>
+                      <h3 className={`font-semibold mb-3 ${
+                        isDarkMode ? "text-white" : "text-gray-800"
+                      }`}>경험치</h3>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>현재 EXP</span>
+                          <span className={isDarkMode ? "text-white" : "text-gray-800"}>{exp} / {expToNext}</span>
+                        </div>
+                        <div className={`w-full h-2 rounded-full ${
+                          isDarkMode ? "bg-gray-600" : "bg-gray-300"
+                        }`}>
+                          <div 
+                            className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                            style={{ width: `${Math.min(100, (exp / expToNext) * 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 스킬 정보 */}
+                    {baseData.skill && (
+                      <div className={`p-4 rounded-lg ${
+                        isDarkMode ? "bg-purple-500/10 border border-purple-500/20" : "bg-purple-500/5 border border-purple-500/20"
+                      }`}>
+                        <h3 className={`font-semibold mb-3 flex items-center gap-2 ${
+                          isDarkMode ? "text-purple-400" : "text-purple-600"
+                        }`}>
+                          <Star className="w-4 h-4" />
+                          보유 스킬
+                        </h3>
+                        <div className="space-y-3">
+                          <div className={`p-3 rounded-lg ${
+                            isDarkMode ? "bg-purple-500/10" : "bg-purple-500/5"
+                          }`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className={`font-medium ${
+                                isDarkMode ? "text-purple-400" : "text-purple-600"
+                              }`}>{baseData.skill.name}</h4>
+                              <div className={`text-xs px-2 py-1 rounded-full ${
+                                isDarkMode ? "bg-yellow-500/20 text-yellow-400" : "bg-yellow-500/10 text-yellow-600"
+                              }`}>
+                                사기 {baseData.skill.moraleRequired} 필요
+                              </div>
+                            </div>
+                            <p className={`text-sm mb-2 ${
+                              isDarkMode ? "text-gray-300" : "text-gray-700"
+                            }`}>
+                              {baseData.skill.description}
+                            </p>
+                            <div className="flex items-center gap-4 text-sm">
+                              <div className="flex items-center gap-1">
+                                <Sword className="w-3 h-3 text-orange-400" />
+                                <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>데미지:</span>
+                                <span className={`font-semibold ${isDarkMode ? "text-orange-400" : "text-orange-600"}`}>
+                                  {Math.floor((baseData.skill.damageMultiplier || 1) * 100)}%
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 설명 */}
+                    <div className={`p-4 rounded-lg ${
+                      isDarkMode ? "bg-gray-700/30" : "bg-gray-100/50"
+                    }`}>
+                      <h3 className={`font-semibold mb-2 ${
+                        isDarkMode ? "text-white" : "text-gray-800"
+                      }`}>설명</h3>
+                      <p className={`text-sm ${
+                        isDarkMode ? "text-gray-300" : "text-gray-700"
+                      }`}>
+                        {baseData.description}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* 모달 푸터 */}
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-300/20">
+              <button
+                onClick={closeCompanionModal}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  isDarkMode 
+                    ? "bg-gray-700/50 text-gray-300 hover:bg-gray-700" 
+                    : "bg-gray-200/50 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

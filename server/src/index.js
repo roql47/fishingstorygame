@@ -2239,7 +2239,7 @@ async function sendUserDataUpdate(socket, userUuid, username) {
           amber: { amber: Number(amber?.amber || 0) },
           starPieces: { starPieces: Number(starPieces?.starPieces || 0) },
           cooldown: { 
-            fishingCooldown: Number(cooldown?.fishingCooldown || 0)
+            fishingCooldown: Math.max(0, Number(cooldown?.fishingCooldown || 0))
           },
           totalCatches: { totalFishCaught: Number(totalCatches?.totalFishCaught || 0) },
           companions: { companions: Array.isArray(companions?.companions) ? companions.companions.map(c => String(c)) : [] },
@@ -2411,7 +2411,9 @@ async function getCooldownData(userUuid) {
   const user = await UserUuidModel.findOne({ userUuid });
   const now = new Date();
   const fishingCooldown = user?.fishingCooldownEnd && user.fishingCooldownEnd > now 
-    ? Math.ceil((user.fishingCooldownEnd - now) / 1000) : 0;
+    ? Math.max(0, user.fishingCooldownEnd - now) : 0; // 밀리초 단위로 반환
+  
+  console.log(`🕒 getCooldownData for ${userUuid}: ${fishingCooldown}ms (${Math.floor(fishingCooldown/1000)}s)`);
   
   return { fishingCooldown };
 }

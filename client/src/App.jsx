@@ -129,6 +129,14 @@ function App() {
     }
   }, []);
 
+  // 전투 로그 자동 스크롤
+  useEffect(() => {
+    if (battleState?.log && battleLogRef.current) {
+      // 로그가 업데이트될 때마다 스크롤을 맨 아래로 이동
+      battleLogRef.current.scrollTop = battleLogRef.current.scrollHeight;
+    }
+  }, [battleState?.log]);
+
   // 카카오 SDK 초기화
   useEffect(() => {
     const initKakaoSDK = () => {
@@ -321,6 +329,7 @@ function App() {
   const [selectedMaterial, setSelectedMaterial] = useState(null);
   const [battleState, setBattleState] = useState(null); // { enemy, playerHp, enemyHp, turn, log }
   const [showBattleModal, setShowBattleModal] = useState(false);
+  const battleLogRef = useRef(null); // 전투 로그 자동 스크롤을 위한 ref
   
   // 쿨타임 관련 상태 (서버에서 로드, localStorage 백업)
   const [fishingCooldown, setFishingCooldown] = useState(0); // 초기값은 0으로 설정
@@ -421,17 +430,17 @@ function App() {
   // 쿨타임 상태를 서버에서 가져오는 함수
   const fetchCooldownStatus = async (tempUsername = '', tempUserUuid = '') => {
     try {
-      // 🚀 이미 localStorage에서 쿨타임이 복원되었고 아직 유효하면 서버 요청 생략
+      console.log('🔄 Fetching cooldown status from server...');
+      
+      // localStorage 쿨타임 확인
       const storedFishingCooldownEnd = localStorage.getItem('fishingCooldownEnd');
-      if (storedFishingCooldownEnd && cooldownLoaded) {
+      let localRemainingTime = 0;
+      
+      if (storedFishingCooldownEnd) {
         const cooldownEndTime = new Date(storedFishingCooldownEnd);
         const now = new Date();
-        const remainingTime = Math.max(0, cooldownEndTime.getTime() - now.getTime());
-        
-        if (remainingTime > 0) {
-          console.log("Using localStorage cooldown, skipping server fetch:", remainingTime);
-          return remainingTime;
-        }
+        localRemainingTime = Math.max(0, cooldownEndTime.getTime() - now.getTime());
+        console.log('📱 localStorage cooldown:', localRemainingTime);
       }
 
       const userId = idToken ? 'user' : 'null';
@@ -441,19 +450,27 @@ function App() {
       
       console.log("Cooldown status loaded from server:", cooldownData);
       
-      const newFishingCooldown = Math.max(0, cooldownData.fishingCooldown || 0);
-      setFishingCooldown(newFishingCooldown);
+      const serverCooldown = Math.max(0, cooldownData.fishingCooldown || 0);
+      console.log('📡 Server cooldown:', serverCooldown);
+      
+      // localStorage와 서버 쿨타임 중 더 긴 것 사용
+      const finalCooldown = Math.max(localRemainingTime, serverCooldown);
+      console.log('⏰ Final cooldown (max of local/server):', finalCooldown);
+      
+      setFishingCooldown(finalCooldown);
       setCooldownLoaded(true);
       
-      // localStorage에 쿨타임 종료 시간 저장
-      if (newFishingCooldown > 0) {
-        const fishingEndTime = new Date(Date.now() + newFishingCooldown);
+      // localStorage에 최종 쿨타임 종료 시간 저장
+      if (finalCooldown > 0) {
+        const fishingEndTime = new Date(Date.now() + finalCooldown);
         localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
+        console.log('💾 Updated localStorage with final cooldown:', fishingEndTime.toISOString());
       } else {
         localStorage.removeItem('fishingCooldownEnd');
+        console.log('🗑️ Removed expired cooldown from localStorage');
       }
       
-      return newFishingCooldown;
+      return finalCooldown;
     } catch (error) {
       console.error('Failed to fetch cooldown status:', error);
       setCooldownLoaded(true);
@@ -1159,15 +1176,37 @@ function App() {
       if (data.cooldown) {
         const newFishingCooldown = data.cooldown.fishingCooldown || 0;
         
-        setFishingCooldown(newFishingCooldown);
-        setCooldownLoaded(true); // 실시간 업데이트 시에도 로드 완료 상태 설정
+        console.log('📡 Received cooldown update from server:', newFishingCooldown);
         
-        // localStorage에 쿨타임 종료 시간 저장
-        if (newFishingCooldown > 0) {
-          const fishingEndTime = new Date(Date.now() + newFishingCooldown);
+        // localStorage 쿨타임과 비교해서 더 긴 쿨타임 사용
+        const storedFishingCooldownEnd = localStorage.getItem('fishingCooldownEnd');
+        let finalCooldown = newFishingCooldown;
+        
+        if (storedFishingCooldownEnd) {
+          const cooldownEndTime = new Date(storedFishingCooldownEnd);
+          const now = new Date();
+          const localRemainingTime = Math.max(0, cooldownEndTime.getTime() - now.getTime());
+          
+          // localStorage의 쿨타임이 더 길면 그것을 사용
+          if (localRemainingTime > newFishingCooldown) {
+            finalCooldown = localRemainingTime;
+            console.log('📱 Using localStorage cooldown (longer):', localRemainingTime);
+          } else {
+            console.log('📡 Using server cooldown:', newFishingCooldown);
+          }
+        }
+        
+        setFishingCooldown(finalCooldown);
+        setCooldownLoaded(true);
+        
+        // localStorage에 최종 쿨타임 종료 시간 저장
+        if (finalCooldown > 0) {
+          const fishingEndTime = new Date(Date.now() + finalCooldown);
           localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
+          console.log('💾 Saved cooldown to localStorage:', fishingEndTime.toISOString());
         } else {
           localStorage.removeItem('fishingCooldownEnd');
+          console.log('🗑️ Removed cooldown from localStorage (expired)');
         }
       }
       if (data.totalCatches) setMyCatches(data.totalCatches.totalCatches);
@@ -6373,9 +6412,12 @@ function App() {
               </div>
 
               {/* 전투 로그 */}
-              <div className={`p-4 rounded-lg max-h-[200px] overflow-y-auto ${
-                isDarkMode ? "bg-gray-800/50 border border-gray-700/30" : "bg-gray-100/80 border border-gray-300/30"
-              }`}>
+              <div 
+                ref={battleLogRef}
+                className={`p-4 rounded-lg max-h-[200px] overflow-y-auto ${
+                  isDarkMode ? "bg-gray-800/50 border border-gray-700/30" : "bg-gray-100/80 border border-gray-300/30"
+                }`}
+              >
                 <div className="space-y-1">
                   {battleState.log.map((message, index) => (
                     <p key={index} className={`text-sm ${

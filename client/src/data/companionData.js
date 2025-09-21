@@ -9,7 +9,6 @@ export const COMPANION_DATA = {
     growthAttack: 1,   // 5 / 4 = 1.25 → 1
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "민첩한 검사",
-    element: "바람",
     rarity: "일반"
   },
   "피에나": {
@@ -21,7 +20,6 @@ export const COMPANION_DATA = {
     growthAttack: 1,   // 4 / 4 = 1
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "강인한 방패병",
-    element: "땅",
     rarity: "일반",
     skill: {
       name: "폭격",
@@ -39,7 +37,6 @@ export const COMPANION_DATA = {
     growthAttack: 2,   // 6 / 4 = 1.5 → 2
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "화염 마법사",
-    element: "불",
     rarity: "희귀"
   },
   "림스&베리": {
@@ -51,7 +48,6 @@ export const COMPANION_DATA = {
     growthAttack: 1,   // 5 / 4 = 1.25 → 1
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "쌍둥이 궁수",
-    element: "바람",
     rarity: "희귀"
   },
   "클로에": {
@@ -63,7 +59,6 @@ export const COMPANION_DATA = {
     growthAttack: 2,   // 7 / 4 = 1.75 → 2
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "암살자",
-    element: "어둠",
     rarity: "전설"
   },
   "나하트라": {
@@ -75,7 +70,6 @@ export const COMPANION_DATA = {
     growthAttack: 2,   // 6 / 4 = 1.5 → 2
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "용족 전사",
-    element: "불",
     rarity: "전설"
   }
 };
@@ -113,20 +107,3 @@ export const getRarityColor = (rarity, isDark = true) => {
   }
 };
 
-// 원소별 색상
-export const getElementColor = (element, isDark = true) => {
-  switch (element) {
-    case "불":
-      return isDark ? "text-red-400" : "text-red-600";
-    case "물":
-      return isDark ? "text-blue-400" : "text-blue-600";
-    case "바람":
-      return isDark ? "text-green-400" : "text-green-600";
-    case "땅":
-      return isDark ? "text-yellow-400" : "text-yellow-600";
-    case "어둠":
-      return isDark ? "text-purple-400" : "text-purple-600";
-    default:
-      return isDark ? "text-gray-400" : "text-gray-600";
-  }
-};
