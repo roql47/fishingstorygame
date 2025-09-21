@@ -129,13 +129,14 @@ function App() {
     }
   }, []);
 
-  // 전투 로그 자동 스크롤
-  useEffect(() => {
-    if (battleState && battleState.log && battleLogRef.current) {
-      // 로그가 업데이트될 때마다 스크롤을 맨 아래로 이동
-      battleLogRef.current.scrollTop = battleLogRef.current.scrollHeight;
+  // 전투 로그 자동 스크롤 함수
+  const scrollBattleLogToBottom = useCallback(() => {
+    if (battleLogRef.current) {
+      setTimeout(() => {
+        battleLogRef.current.scrollTop = battleLogRef.current.scrollHeight;
+      }, 0);
     }
-  }, [battleState]);
+  }, []);
 
   // 카카오 SDK 초기화
   useEffect(() => {
@@ -2995,6 +2996,9 @@ function App() {
         });
       }
     });
+    
+    // 전투 로그 스크롤
+    setTimeout(() => scrollBattleLogToBottom(), 100);
   };
 
   // 적 공격
@@ -3090,6 +3094,9 @@ function App() {
         });
       }
     });
+    
+    // 전투 로그 스크롤
+    setTimeout(() => scrollBattleLogToBottom(), 100);
   };
 
   // 🔧 getAllShopItems, getAvailableShopItem는 useGameData 훅에서 제공됨
