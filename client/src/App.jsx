@@ -494,6 +494,23 @@ function App() {
           });
           setMaterials(materialsResponse.data || []);
           console.log('Initial materials loaded:', materialsResponse.data?.length || 0, 'types');
+          
+          // 추가로 인벤토리도 로드
+          try {
+            console.log('Loading initial inventory data for userUuid:', settings.userUuid);
+            const inventoryResponse = await axios.get(`${serverUrl}/api/inventory/${userId}`, { 
+              params: { username: settings.displayName || settings.username, userUuid: settings.userUuid } 
+            });
+            const safeInventory = Array.isArray(inventoryResponse.data) ? inventoryResponse.data : [];
+            setInventory(safeInventory);
+            const totalCount = safeInventory.reduce((sum, item) => sum + item.count, 0);
+            setMyCatches(totalCount);
+            console.log('Initial inventory loaded:', safeInventory.length, 'types, total:', totalCount);
+          } catch (inventoryError) {
+            console.error("Failed to load initial inventory:", inventoryError);
+            setInventory([]);
+          }
+          
         } catch (materialsError) {
           console.error("Failed to load initial materials:", materialsError);
           setMaterials([]); // 실패 시 빈 배열
@@ -1104,6 +1121,28 @@ function App() {
     // 🚀 초기 데이터를 병렬로 요청 (성능 최적화)
     setTimeout(() => {
       requestAllDataParallel();
+      
+      // 추가로 재료와 인벤토리 직접 요청 (확실한 로딩을 위해)
+      console.log('🔄 Requesting materials and inventory directly...');
+      fetchMaterials();
+      
+      // 인벤토리도 직접 요청
+      const fetchInventoryDirect = async () => {
+        try {
+          const userId = idToken ? 'user' : 'null';
+          const params = { username, userUuid };
+          const res = await axios.get(`${serverUrl}/api/inventory/${userId}`, { params });
+          const safeInventory = Array.isArray(res.data) ? res.data : [];
+          setInventory(safeInventory);
+          const totalCount = safeInventory.reduce((sum, item) => sum + item.count, 0);
+          setMyCatches(totalCount);
+          console.log('✅ Direct inventory loaded:', safeInventory.length, 'types, total:', totalCount);
+        } catch (e) {
+          console.error("❌ Failed to fetch inventory directly:", e);
+        }
+      };
+      fetchInventoryDirect();
+      
     }, 1000); // 연결 안정화 후 요청
 
     // 실시간 데이터 업데이트 리스너
@@ -2716,8 +2755,10 @@ function App() {
       } else if (nextTurnType.startsWith('companion_')) {
         const companionName = nextTurnType.replace('companion_', '');
         companionAttack(companionName, newState);
+      } else if (nextTurnType === 'player' && newState.autoMode) {
+        // 자동모드일 때 플레이어 자동 공격
+        playerAttack();
       }
-      // player 턴이면 자동 실행하지 않음 (사용자가 직접 공격 버튼 클릭)
     }, 1000);
     
     return newState;
@@ -2847,11 +2888,12 @@ function App() {
           canFlee: false
         };
       } else {
-        // 다음 턴으로 넘어가기
+        // 다음 턴으로 넘어가기 (첫 공격 후 자동모드 활성화)
         return nextTurn({
           ...prevState,
           enemyHp: newEnemyHp,
           log: newLog,
+          autoMode: true, // 첫 공격 후 자동 모드 활성화
           canFlee: false // 공격 후에는 도망 불가능
         });
       }
@@ -2866,31 +2908,41 @@ function App() {
       // 물고기 단계 기반 공격력 계산
       const fishData = allFishTypes.find(fish => fish.name === prevState.baseFish);
       const fishRank = fishData ? fishData.rank : 1;
-      const baseDamage = calculateEnemyAttack(fishRank);
+      const damage = calculateEnemyAttack(fishRank);
       
-      // 플레이어와 동료들에게 데미지 분산
-      const totalTargets = 1 + (prevState.companions?.length || 0); // 플레이어 + 동료들
-      const playerDamage = Math.floor(baseDamage * 0.7); // 플레이어가 70% 받음
-      const companionDamage = Math.floor(baseDamage * 0.3 / Math.max(1, prevState.companions?.length || 0)); // 동료들이 30% 분산
-      
-      const newPlayerHp = Math.max(0, prevState.playerHp - playerDamage);
-      let newLog = [...currentLog, `${prevState.enemy}가 공격했습니다!`];
-      newLog.push(`플레이어가 ${playerDamage} 데미지를 받았습니다! (${newPlayerHp}/${prevState.playerMaxHp})`);
-      
-      // 동료들에게 데미지 적용
-      const newCompanionHp = { ...prevState.companionHp };
+      // 공격 대상 선택 (플레이어와 살아있는 동료들 중 랜덤)
+      const aliveTargets = ['player'];
       if (prevState.companions && prevState.companions.length > 0) {
         prevState.companions.forEach(companion => {
-          if (newCompanionHp[companion]) {
-            const oldHp = newCompanionHp[companion].hp;
-            const newHp = Math.max(0, oldHp - companionDamage);
-            newCompanionHp[companion] = {
-              ...newCompanionHp[companion],
-              hp: newHp
-            };
-            newLog.push(`${companion}이(가) ${companionDamage} 데미지를 받았습니다! (${newHp}/${newCompanionHp[companion].maxHp})`);
+          if (prevState.companionHp?.[companion]?.hp > 0) {
+            aliveTargets.push(companion);
           }
         });
+      }
+      
+      // 랜덤으로 하나의 대상 선택
+      const targetIndex = Math.floor(Math.random() * aliveTargets.length);
+      const target = aliveTargets[targetIndex];
+      
+      let newPlayerHp = prevState.playerHp;
+      const newCompanionHp = { ...prevState.companionHp };
+      let newLog = [...currentLog, `${prevState.enemy}가 공격했습니다!`];
+      
+      if (target === 'player') {
+        // 플레이어 공격
+        newPlayerHp = Math.max(0, prevState.playerHp - damage);
+        newLog.push(`플레이어가 ${damage} 데미지를 받았습니다! (${newPlayerHp}/${prevState.playerMaxHp})`);
+      } else {
+        // 동료 공격
+        if (newCompanionHp[target]) {
+          const oldHp = newCompanionHp[target].hp;
+          const newHp = Math.max(0, oldHp - damage);
+          newCompanionHp[target] = {
+            ...newCompanionHp[target],
+            hp: newHp
+          };
+          newLog.push(`${target}이(가) ${damage} 데미지를 받았습니다! (${newHp}/${newCompanionHp[target].maxHp})`);
+        }
       }
 
       // 패배 조건 체크 (플레이어 또는 모든 동료가 쓰러짐)

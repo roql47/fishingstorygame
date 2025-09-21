@@ -2,11 +2,11 @@
 export const COMPANION_DATA = {
   "실": {
     name: "실",
-    baseHp: 80,
-    baseAttack: 25,
+    baseHp: 27,        // 80 / 3 = 26.67 → 27
+    baseAttack: 6,     // 25 / 4 = 6.25 → 6
     baseSpeed: 45,     // 기본 속도
-    growthHp: 15,      // 레벨당 HP 증가량
-    growthAttack: 5,   // 레벨당 공격력 증가량
+    growthHp: 5,       // 15 / 3 = 5
+    growthAttack: 1,   // 5 / 4 = 1.25 → 1
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "민첩한 검사",
     element: "바람",
@@ -14,11 +14,11 @@ export const COMPANION_DATA = {
   },
   "피에나": {
     name: "피에나",
-    baseHp: 100,
-    baseAttack: 20,
+    baseHp: 33,        // 100 / 3 = 33.33 → 33
+    baseAttack: 5,     // 20 / 4 = 5
     baseSpeed: 25,     // 기본 속도
-    growthHp: 18,
-    growthAttack: 4,
+    growthHp: 6,       // 18 / 3 = 6
+    growthAttack: 1,   // 4 / 4 = 1
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "강인한 방패병",
     element: "땅",
@@ -26,11 +26,11 @@ export const COMPANION_DATA = {
   },
   "애비게일": {
     name: "애비게일",
-    baseHp: 70,
-    baseAttack: 30,
+    baseHp: 23,        // 70 / 3 = 23.33 → 23
+    baseAttack: 8,     // 30 / 4 = 7.5 → 8
     baseSpeed: 40,     // 기본 속도
-    growthHp: 12,
-    growthAttack: 6,
+    growthHp: 4,       // 12 / 3 = 4
+    growthAttack: 2,   // 6 / 4 = 1.5 → 2
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "화염 마법사",
     element: "불",
@@ -38,11 +38,11 @@ export const COMPANION_DATA = {
   },
   "림스&베리": {
     name: "림스&베리",
-    baseHp: 90,
-    baseAttack: 22,
+    baseHp: 30,        // 90 / 3 = 30
+    baseAttack: 6,     // 22 / 4 = 5.5 → 6
     baseSpeed: 50,     // 기본 속도
-    growthHp: 16,
-    growthAttack: 5,
+    growthHp: 5,       // 16 / 3 = 5.33 → 5
+    growthAttack: 1,   // 5 / 4 = 1.25 → 1
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "쌍둥이 궁수",
     element: "바람",
@@ -50,11 +50,11 @@ export const COMPANION_DATA = {
   },
   "클로에": {
     name: "클로에",
-    baseHp: 60,
-    baseAttack: 35,
+    baseHp: 20,        // 60 / 3 = 20
+    baseAttack: 9,     // 35 / 4 = 8.75 → 9
     baseSpeed: 65,     // 기본 속도 (암살자는 빠름)
-    growthHp: 10,
-    growthAttack: 7,
+    growthHp: 3,       // 10 / 3 = 3.33 → 3
+    growthAttack: 2,   // 7 / 4 = 1.75 → 2
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "암살자",
     element: "어둠",
@@ -62,11 +62,11 @@ export const COMPANION_DATA = {
   },
   "나하트라": {
     name: "나하트라",
-    baseHp: 120,
-    baseAttack: 28,
+    baseHp: 40,        // 120 / 3 = 40
+    baseAttack: 7,     // 28 / 4 = 7
     baseSpeed: 30,     // 기본 속도 (용족은 느림)
-    growthHp: 20,
-    growthAttack: 6,
+    growthHp: 7,       // 20 / 3 = 6.67 → 7
+    growthAttack: 2,   // 6 / 4 = 1.5 → 2
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "용족 전사",
     element: "불",
