@@ -131,11 +131,11 @@ function App() {
 
   // 전투 로그 자동 스크롤
   useEffect(() => {
-    if (battleState?.log && battleLogRef.current) {
+    if (battleState && battleState.log && battleLogRef.current) {
       // 로그가 업데이트될 때마다 스크롤을 맨 아래로 이동
       battleLogRef.current.scrollTop = battleLogRef.current.scrollHeight;
     }
-  }, [battleState?.log]);
+  }, [battleState]);
 
   // 카카오 SDK 초기화
   useEffect(() => {
