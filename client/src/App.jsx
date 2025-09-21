@@ -2592,8 +2592,9 @@ function App() {
     const accessoryLevel = getAccessoryLevel(userEquipment.accessory);
     const playerMaxHp = calculatePlayerMaxHp(accessoryLevel);
     
-    // 전투 참여 동료들의 체력 초기화
+    // 전투 참여 동료들의 체력 및 사기 초기화
     const companionHpData = {};
+    const companionMoraleData = {};
     battleCompanions.forEach(companion => {
       const companionStat = companionStats[companion];
       const companionLevel = companionStat?.level || 1;
@@ -2604,6 +2605,12 @@ function App() {
         hp: maxHp,
         maxHp: maxHp,
         level: companionLevel
+      };
+      
+      // 사기 초기화 (기본 50)
+      companionMoraleData[companion] = {
+        morale: 50,
+        maxMorale: 100
       };
     });
 
@@ -2667,7 +2674,8 @@ function App() {
       autoMode: false, // 자동 전투 모드
       canFlee: true, // 도망 가능 여부 (첫 턴에만 가능)
       companions: [...battleCompanions], // 전투 참여 동료 목록
-      companionHp: companionHpData // 동료별 체력 정보
+      companionHp: companionHpData, // 동료별 체력 정보
+      companionMorale: companionMoraleData // 동료별 사기 정보
     };
 
     setBattleState(newBattleState);
@@ -2772,6 +2780,7 @@ function App() {
       const companionStat = companionStats[companionName];
       const companionLevel = companionStat?.level || 1;
       const companionData = calculateCompanionStats(companionName, companionLevel);
+      const companionBaseData = COMPANION_DATA[companionName];
       
       // 동료가 쓰러져 있으면 턴 넘김
       if (prevState.companionHp?.[companionName]?.hp <= 0) {
@@ -2779,12 +2788,45 @@ function App() {
         return nextTurn({ ...prevState, log: newLog });
       }
       
+      // 사기 증가 (턴마다 +15)
+      const newCompanionMorale = { ...prevState.companionMorale };
+      if (newCompanionMorale[companionName]) {
+        newCompanionMorale[companionName] = {
+          ...newCompanionMorale[companionName],
+          morale: Math.min(100, newCompanionMorale[companionName].morale + 15)
+        };
+      }
+      
+      // 스킬 사용 가능 여부 체크
+      const currentMorale = newCompanionMorale[companionName]?.morale || 0;
+      const hasSkill = companionBaseData?.skill;
+      const canUseSkill = hasSkill && currentMorale >= (companionBaseData.skill.moraleRequired || 100);
+      
       // 동료 공격력 계산
       const baseAttack = companionData?.attack || 25;
-      const damage = Math.floor(baseAttack * (0.8 + Math.random() * 0.4)); // ±20% 랜덤
+      let damage, attackType;
+      
+      if (canUseSkill) {
+        // 스킬 공격
+        damage = Math.floor(baseAttack * companionBaseData.skill.damageMultiplier * (0.9 + Math.random() * 0.2)); // ±10% 랜덤
+        attackType = 'skill';
+        // 스킬 사용 후 사기 초기화
+        newCompanionMorale[companionName].morale = 0;
+      } else {
+        // 일반 공격
+        damage = Math.floor(baseAttack * (0.8 + Math.random() * 0.4)); // ±20% 랜덤
+        attackType = 'normal';
+      }
       
       const newEnemyHp = Math.max(0, prevState.enemyHp - damage);
-      let newLog = [...prevState.log, `${companionName}(Lv.${companionLevel})이(가) ${damage} 데미지를 입혔습니다! (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`];
+      let newLog = [...prevState.log];
+      
+      if (attackType === 'skill') {
+        newLog.push(`${companionName}(Lv.${companionLevel})이(가) 스킬 '${companionBaseData.skill.name}'을(를) 사용했습니다!`);
+        newLog.push(`💥 ${damage} 데미지! (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`);
+      } else {
+        newLog.push(`${companionName}(Lv.${companionLevel})이(가) ${damage} 데미지를 입혔습니다! (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`);
+      }
       
       if (newEnemyHp <= 0) {
         // 승리 처리
@@ -2797,6 +2839,15 @@ function App() {
         
         newLog.push(`${prevState.enemy}를 물리쳤습니다! 호박석 ${amberReward}개를 획득했습니다!${prefixBonus}`);
         
+        // 승리 시 모든 동료에게 사기 +25
+        const finalCompanionMorale = { ...newCompanionMorale };
+        Object.keys(finalCompanionMorale).forEach(companion => {
+          finalCompanionMorale[companion] = {
+            ...finalCompanionMorale[companion],
+            morale: Math.min(100, finalCompanionMorale[companion].morale + 25)
+          };
+        });
+
         setTimeout(async () => {
           await addAmber(amberReward);
           updateQuestProgress('exploration_win', 1);
@@ -2821,14 +2872,16 @@ function App() {
           enemyHp: 0,
           log: newLog,
           turn: 'victory',
-          amberReward: amberReward
+          amberReward: amberReward,
+          companionMorale: finalCompanionMorale
         };
       } else {
         // 다음 턴으로
         return nextTurn({
           ...prevState,
           enemyHp: newEnemyHp,
-          log: newLog
+          log: newLog,
+          companionMorale: newCompanionMorale
         });
       }
     });
@@ -2926,6 +2979,7 @@ function App() {
       
       let newPlayerHp = prevState.playerHp;
       const newCompanionHp = { ...prevState.companionHp };
+      const newCompanionMorale = { ...prevState.companionMorale };
       let newLog = [...currentLog, `${prevState.enemy}가 공격했습니다!`];
       
       if (target === 'player') {
@@ -2942,6 +2996,14 @@ function App() {
             hp: newHp
           };
           newLog.push(`${target}이(가) ${damage} 데미지를 받았습니다! (${newHp}/${newCompanionHp[target].maxHp})`);
+          
+          // 공격받은 동료의 사기 +25
+          if (newCompanionMorale[target]) {
+            newCompanionMorale[target] = {
+              ...newCompanionMorale[target],
+              morale: Math.min(100, newCompanionMorale[target].morale + 25)
+            };
+          }
         }
       }
 
@@ -2968,6 +3030,7 @@ function App() {
           enemyHp: currentEnemyHp, // 적 체력 유지
           playerHp: newPlayerHp,
           companionHp: newCompanionHp,
+          companionMorale: newCompanionMorale,
           log: newLog,
           turn: 'defeat'
         };
@@ -2978,6 +3041,7 @@ function App() {
           enemyHp: currentEnemyHp, // 적 체력 유지
           playerHp: newPlayerHp,
           companionHp: newCompanionHp,
+          companionMorale: newCompanionMorale,
           log: newLog
         });
       }
@@ -6216,34 +6280,60 @@ function App() {
                       <div className="space-y-2">
                         {battleState.companions.map((companion, index) => {
                           const companionHp = battleState.companionHp?.[companion];
+                          const companionMorale = battleState.companionMorale?.[companion];
                           const hpPercentage = companionHp ? (companionHp.hp / companionHp.maxHp) * 100 : 100;
+                          const moralePercentage = companionMorale ? (companionMorale.morale / companionMorale.maxMorale) * 100 : 50;
                           const isDown = companionHp?.hp <= 0;
+                          const canUseSkill = companionMorale?.morale >= 100;
                           
                           return (
                             <div key={index} className="flex items-center gap-2">
                               <span className={`text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1 ${
                                 isDown 
                                   ? isDarkMode ? "bg-red-500/20 text-red-400 border border-red-400/30" : "bg-red-500/10 text-red-600 border border-red-500/30"
+                                  : canUseSkill
+                                  ? isDarkMode ? "bg-purple-500/20 text-purple-400 border border-purple-400/30" : "bg-purple-500/10 text-purple-600 border border-purple-500/30"
                                   : isDarkMode ? "bg-green-500/20 text-green-400 border border-green-400/30" : "bg-green-500/10 text-green-600 border border-green-500/30"
                               }`}>
-                                {isDown ? "💀" : "⚔️"} {companion} Lv.{companionHp?.level || 1}
+                                {isDown ? "💀" : canUseSkill ? "✨" : "⚔️"} {companion} Lv.{companionHp?.level || 1}
                               </span>
-                              <div className="flex-1 flex items-center gap-1">
-                                <div className={`flex-1 h-2 rounded-full ${
-                                  isDarkMode ? "bg-gray-700" : "bg-gray-200"
-                                }`}>
-                                  <div 
-                                    className={`h-full rounded-full transition-all duration-500 ${
-                                      isDown ? "bg-red-500" : hpPercentage >= 70 ? "bg-green-500" : hpPercentage >= 30 ? "bg-yellow-500" : "bg-red-500"
-                                    }`}
-                                    style={{ width: `${Math.max(0, hpPercentage)}%` }}
-                                  ></div>
+                              <div className="flex-1 flex flex-col gap-1">
+                                {/* 체력바 */}
+                                <div className="flex items-center gap-1">
+                                  <div className={`flex-1 h-2 rounded-full ${
+                                    isDarkMode ? "bg-gray-700" : "bg-gray-200"
+                                  }`}>
+                                    <div 
+                                      className={`h-full rounded-full transition-all duration-500 ${
+                                        isDown ? "bg-red-500" : hpPercentage >= 70 ? "bg-green-500" : hpPercentage >= 30 ? "bg-yellow-500" : "bg-red-500"
+                                      }`}
+                                      style={{ width: `${Math.max(0, hpPercentage)}%` }}
+                                    ></div>
+                                  </div>
+                                  <span className={`text-xs font-medium ${
+                                    isDarkMode ? "text-gray-300" : "text-gray-700"
+                                  }`}>
+                                    {companionHp?.hp || 0}/{companionHp?.maxHp || 100}
+                                  </span>
                                 </div>
-                                <span className={`text-xs font-medium ${
-                                  isDarkMode ? "text-gray-300" : "text-gray-700"
-                                }`}>
-                                  {companionHp?.hp || 0}/{companionHp?.maxHp || 100}
-                                </span>
+                                {/* 사기바 */}
+                                <div className="flex items-center gap-1">
+                                  <div className={`flex-1 h-1 rounded-full ${
+                                    isDarkMode ? "bg-gray-700" : "bg-gray-200"
+                                  }`}>
+                                    <div 
+                                      className={`h-full rounded-full transition-all duration-500 ${
+                                        canUseSkill ? "bg-yellow-400" : "bg-yellow-600"
+                                      }`}
+                                      style={{ width: `${Math.max(0, moralePercentage)}%` }}
+                                    ></div>
+                                  </div>
+                                  <span className={`text-xs font-medium ${
+                                    isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                                  }`}>
+                                    {companionMorale?.morale || 50}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                           );

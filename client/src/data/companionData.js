@@ -22,7 +22,13 @@ export const COMPANION_DATA = {
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "강인한 방패병",
     element: "땅",
-    rarity: "일반"
+    rarity: "일반",
+    skill: {
+      name: "폭격",
+      description: "강력한 폭격으로 적에게 큰 피해를 입힙니다",
+      damageMultiplier: 1.5, // 기본 공격력의 150%
+      moraleRequired: 100
+    }
   },
   "애비게일": {
     name: "애비게일",
