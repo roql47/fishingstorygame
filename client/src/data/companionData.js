@@ -4,8 +4,10 @@ export const COMPANION_DATA = {
     name: "실",
     baseHp: 80,
     baseAttack: 25,
+    baseSpeed: 45,     // 기본 속도
     growthHp: 15,      // 레벨당 HP 증가량
     growthAttack: 5,   // 레벨당 공격력 증가량
+    growthSpeed: 5,    // 레벨당 속도 증가량
     description: "민첩한 검사",
     element: "바람",
     rarity: "일반"
@@ -14,8 +16,10 @@ export const COMPANION_DATA = {
     name: "피에나",
     baseHp: 100,
     baseAttack: 20,
+    baseSpeed: 25,     // 기본 속도
     growthHp: 18,
     growthAttack: 4,
+    growthSpeed: 5,    // 레벨당 속도 증가량
     description: "강인한 방패병",
     element: "땅",
     rarity: "일반"
@@ -24,8 +28,10 @@ export const COMPANION_DATA = {
     name: "애비게일",
     baseHp: 70,
     baseAttack: 30,
+    baseSpeed: 40,     // 기본 속도
     growthHp: 12,
     growthAttack: 6,
+    growthSpeed: 5,    // 레벨당 속도 증가량
     description: "화염 마법사",
     element: "불",
     rarity: "희귀"
@@ -34,8 +40,10 @@ export const COMPANION_DATA = {
     name: "림스&베리",
     baseHp: 90,
     baseAttack: 22,
+    baseSpeed: 50,     // 기본 속도
     growthHp: 16,
     growthAttack: 5,
+    growthSpeed: 5,    // 레벨당 속도 증가량
     description: "쌍둥이 궁수",
     element: "바람",
     rarity: "희귀"
@@ -44,8 +52,10 @@ export const COMPANION_DATA = {
     name: "클로에",
     baseHp: 60,
     baseAttack: 35,
+    baseSpeed: 65,     // 기본 속도 (암살자는 빠름)
     growthHp: 10,
     growthAttack: 7,
+    growthSpeed: 5,    // 레벨당 속도 증가량
     description: "암살자",
     element: "어둠",
     rarity: "전설"
@@ -54,8 +64,10 @@ export const COMPANION_DATA = {
     name: "나하트라",
     baseHp: 120,
     baseAttack: 28,
+    baseSpeed: 30,     // 기본 속도 (용족은 느림)
     growthHp: 20,
     growthAttack: 6,
+    growthSpeed: 5,    // 레벨당 속도 증가량
     description: "용족 전사",
     element: "불",
     rarity: "전설"
@@ -69,12 +81,14 @@ export const calculateCompanionStats = (companionName, level = 1) => {
 
   const hp = baseData.baseHp + (baseData.growthHp * (level - 1));
   const attack = baseData.baseAttack + (baseData.growthAttack * (level - 1));
+  const speed = baseData.baseSpeed + (baseData.growthSpeed * (level - 1));
 
   return {
     ...baseData,
     level,
     hp,
     attack,
+    speed,
     maxHp: hp
   };
 };

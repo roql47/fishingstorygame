@@ -7,6 +7,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   getFishData, 
   getFishHealthData, 
+  getFishSpeedData,
   getProbabilityData, 
   getPrefixData, 
   getShopData 
@@ -18,6 +19,7 @@ export const useGameData = () => {
     probabilityTemplate: [40, 24, 15, 8, 5, 3, 2, 1, 0.7, 0.3],
     allFishTypes: [],
     fishHealthMap: {},
+    fishSpeedMap: {},
     fishPrefixes: [],
     shopData: { fishing_rod: [], accessories: [] }
   });
@@ -33,9 +35,10 @@ export const useGameData = () => {
         setIsLoading(true);
         setError(null);
         
-        const [fishData, fishHealthData, probabilityData, prefixData, shopData] = await Promise.all([
+        const [fishData, fishHealthData, fishSpeedData, probabilityData, prefixData, shopData] = await Promise.all([
           getFishData(),
           getFishHealthData(),
+          getFishSpeedData(),
           getProbabilityData(),
           getPrefixData(),
           getShopData()
@@ -45,6 +48,7 @@ export const useGameData = () => {
           probabilityTemplate: probabilityData || [40, 24, 15, 8, 5, 3, 2, 1, 0.7, 0.3],
           allFishTypes: fishData || [],
           fishHealthMap: fishHealthData || {},
+          fishSpeedMap: fishSpeedData || {},
           fishPrefixes: prefixData || [],
           shopData: shopData || { fishing_rod: [], accessories: [] }
         });
@@ -223,11 +227,12 @@ export const useGameData = () => {
     error,
     
     // 기본 데이터
-    probabilityTemplate,
-    allFishTypes,
-    fishHealthMap,
-    fishPrefixes,
-    shopData,
+    probabilityTemplate: gameData.probabilityTemplate,
+    allFishTypes: gameData.allFishTypes,
+    fishHealthMap: gameData.fishHealthMap,
+    fishSpeedMap: gameData.fishSpeedMap,
+    fishPrefixes: gameData.fishPrefixes,
+    shopData: gameData.shopData,
     
     // 유틸리티 함수들
     getAvailableFish,

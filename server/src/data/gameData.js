@@ -79,6 +79,45 @@ const FISH_HEALTH_DATA = {
   "크레인터틀": 5480
 };
 
+// 물고기 속도 데이터 (랭크 기반)
+const FISH_SPEED_DATA = {
+  "타코문어": 20,      // rank 1
+  "풀고등어": 25,      // rank 2
+  "경단붕어": 30,      // rank 3
+  "버터오징어": 35,    // rank 4
+  "간장새우": 40,      // rank 5
+  "물수수": 45,        // rank 6
+  "정어리파이": 50,    // rank 7
+  "얼음상어": 55,      // rank 8
+  "스퀄스퀴드": 60,    // rank 9
+  "백년송거북": 15,    // rank 10 (거북이는 느림)
+  "고스피쉬": 70,      // rank 11
+  "유령치": 80,        // rank 12 (유령은 빠름)
+  "바이트독": 65,      // rank 13
+  "호박고래": 25,      // rank 14 (고래는 느림)
+  "바이킹조개": 30,    // rank 15
+  "천사해파리": 85,    // rank 16 (해파리는 빠름)
+  "악마복어": 75,      // rank 17
+  "칠성장어": 90,      // rank 18 (장어는 빠름)
+  "닥터블랙": 95,      // rank 19
+  "해룡": 100,         // rank 20 (용은 매우 빠름)
+  "메카핫킹크랩": 45,  // rank 21 (기계 게는 보통)
+  "램프리": 110,       // rank 22
+  "마지막잎새": 120,   // rank 23
+  "아이스브리더": 130, // rank 24
+  "해신": 140,         // rank 25
+  "핑키피쉬": 150,     // rank 26
+  "콘토퍼스": 160,     // rank 27
+  "딥원": 170,         // rank 28
+  "큐틀루": 180,       // rank 29
+  "꽃술나리": 190,     // rank 30
+  "다무스": 200,       // rank 31
+  "수호자": 210,       // rank 32
+  "태양가사리": 220,   // rank 33
+  "빅파더펭귄": 40,    // rank 34 (펭귄은 느림)
+  "크레인터틀": 20     // rank 35 (거북이는 매우 느림)
+};
+
 // 확률 템플릿 데이터
 const PROBABILITY_DATA = [40, 24, 15, 8, 5, 3, 2, 1, 0.7, 0.3];
 
@@ -138,6 +177,7 @@ const SHOP_DATA = {
 // 데이터 접근 함수들
 const getFishData = () => FISH_DATA;
 const getFishHealthData = () => FISH_HEALTH_DATA;
+const getFishSpeedData = () => FISH_SPEED_DATA;
 const getProbabilityData = () => PROBABILITY_DATA;
 const getPrefixData = () => PREFIX_DATA;
 const getShopData = () => SHOP_DATA;
@@ -179,6 +219,7 @@ const getShopItemsByCategory = (category) => {
 module.exports = {
   getFishData,
   getFishHealthData,
+  getFishSpeedData,
   getProbabilityData,
   getPrefixData,
   getShopData,

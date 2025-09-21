@@ -41,6 +41,10 @@ export const getFishHealthData = async () => {
   return await fetchGameData('fish-health');
 };
 
+export const getFishSpeedData = async () => {
+  return await fetchGameData('fish-speed');
+};
+
 export const getProbabilityData = async () => {
   return await fetchGameData('probability');
 };

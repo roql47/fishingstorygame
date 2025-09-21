@@ -60,6 +60,7 @@ function App() {
     probabilityTemplate,
     allFishTypes,
     fishHealthMap,
+    fishSpeedMap,
     fishPrefixes,
     shopData,
     getAvailableFish,
@@ -1047,10 +1048,17 @@ function App() {
     try {
       const userId = idToken ? 'user' : 'null';
       const params = { username, userUuid }; // username과 userUuid 모두 전달
+      console.log('🔄 Fetching materials...', { userId, params });
       const res = await axios.get(`${serverUrl}/api/materials/${userId}`, { params });
+      console.log('✅ Materials response:', res.data);
       setMaterials(res.data || []);
     } catch (e) {
-      console.error("Failed to fetch materials:", e);
+      console.error("❌ Failed to fetch materials:", e);
+      console.error("Materials error details:", {
+        status: e.response?.status,
+        data: e.response?.data,
+        message: e.message
+      });
     }
   }, [serverUrl, username, userUuid, idToken]);
 
@@ -1170,13 +1178,30 @@ function App() {
         const params = { username, userUuid };
         
         // 병렬 처리로 동료 정보와 관리자 상태 동시 조회
+        console.log('🔄 Fetching companions and admin status...', { userId, params });
         const [companionsRes, adminStatusRes] = await Promise.all([
           axios.get(`${serverUrl}/api/companions/${userId}`, { params }),
           axios.get(`${serverUrl}/api/admin-status/${userId}`, { params })
         ]);
         
+        console.log('✅ Companions response:', companionsRes.data);
+        console.log('✅ Admin status response:', adminStatusRes.data);
+        
         setCompanions(companionsRes.data.companions || []);
         setIsAdmin(adminStatusRes.data.isAdmin || false);
+        
+        // 동료 능력치 localStorage에서 복원
+        const savedStats = localStorage.getItem(`companionStats_${userUuid || username}`);
+        if (savedStats) {
+          try {
+            const parsedStats = JSON.parse(savedStats);
+            console.log('✅ Restored companion stats from localStorage:', parsedStats);
+            setCompanionStats(parsedStats);
+          } catch (e) {
+            console.error('❌ Failed to parse companion stats from localStorage:', e);
+          }
+        }
+        
       } catch (e) {
         console.error('Failed to fetch user data:', e);
         setCompanions([]);
@@ -2048,16 +2073,36 @@ function App() {
   // 동료 능력치 초기화 함수
   const initializeCompanionStats = (companionName) => {
     if (!companionStats[companionName]) {
-      setCompanionStats(prev => ({
-        ...prev,
-        [companionName]: {
-          level: 1,
-          exp: 0,
-          expToNext: 100,
-          hp: calculateCompanionStats(companionName, 1)?.hp || 100,
-          maxHp: calculateCompanionStats(companionName, 1)?.hp || 100
+      // localStorage에서 저장된 능력치 확인
+      const savedStats = localStorage.getItem(`companionStats_${userUuid || username}`);
+      let allStats = {};
+      
+      if (savedStats) {
+        try {
+          allStats = JSON.parse(savedStats);
+        } catch (e) {
+          console.error('Failed to parse companion stats from localStorage:', e);
         }
-      }));
+      }
+      
+      const newStats = allStats[companionName] || {
+        level: 1,
+        exp: 0,
+        expToNext: 100,
+        hp: calculateCompanionStats(companionName, 1)?.hp || 100,
+        maxHp: calculateCompanionStats(companionName, 1)?.hp || 100
+      };
+      
+      setCompanionStats(prev => {
+        const updated = {
+          ...prev,
+          [companionName]: newStats
+        };
+        
+        // localStorage에 저장
+        localStorage.setItem(`companionStats_${userUuid || username}`, JSON.stringify(updated));
+        return updated;
+      });
     }
   };
 
@@ -2086,7 +2131,7 @@ function App() {
       // 레벨업 시 능력치 재계산
       const newStats = calculateCompanionStats(companionName, newLevel);
       
-      return {
+      const updated = {
         ...prev,
         [companionName]: {
           level: newLevel,
@@ -2096,14 +2141,19 @@ function App() {
           maxHp: newStats?.hp || current.maxHp
         }
       };
+      
+      // localStorage에 저장
+      localStorage.setItem(`companionStats_${userUuid || username}`, JSON.stringify(updated));
+      
+      // 레벨업 알림
+      if (newLevel > current.level) {
+        setTimeout(() => {
+          alert(`${companionName}이(가) 레벨 ${newLevel}로 레벨업했습니다!`);
+        }, 500);
+      }
+      
+      return updated;
     });
-    
-    // 레벨업 알림
-    if (companionStats[companionName] && newLevel > companionStats[companionName].level) {
-      setTimeout(() => {
-        alert(`${companionName}이(가) 레벨 ${newLevel}로 레벨업했습니다!`);
-      }, 500);
-    }
   };
 
   // 전투 참여 동료 토글 함수
@@ -2503,6 +2553,48 @@ function App() {
     const accessoryLevel = getAccessoryLevel(userEquipment.accessory);
     const playerMaxHp = calculatePlayerMaxHp(accessoryLevel);
     
+    // 전투 참여 동료들의 체력 초기화
+    const companionHpData = {};
+    battleCompanions.forEach(companion => {
+      const companionStat = companionStats[companion];
+      const companionLevel = companionStat?.level || 1;
+      const companionData = calculateCompanionStats(companion, companionLevel);
+      const maxHp = companionData?.hp || 100;
+      
+      companionHpData[companion] = {
+        hp: maxHp,
+        maxHp: maxHp,
+        level: companionLevel
+      };
+    });
+
+    // 턴 순서 계산 (속도 기반)
+    const enemySpeed = fishSpeedMap?.[baseFish] || 50;
+    const turnOrder = ['player']; // 플레이어는 항상 첫 번째
+    
+    // 동료들과 적의 속도 비교하여 턴 순서 결정
+    const combatants = [
+      { type: 'enemy', speed: enemySpeed },
+      ...battleCompanions.map(companion => {
+        const companionStat = companionStats[companion];
+        const companionLevel = companionStat?.level || 1;
+        const companionData = calculateCompanionStats(companion, companionLevel);
+        return { type: 'companion', name: companion, speed: companionData?.speed || 30 };
+      })
+    ];
+    
+    // 속도 순으로 정렬 (높은 속도가 먼저)
+    combatants.sort((a, b) => b.speed - a.speed);
+    
+    // 플레이어 다음 턴 순서 배치
+    combatants.forEach(combatant => {
+      if (combatant.type === 'enemy') {
+        turnOrder.push('enemy');
+      } else if (combatant.type === 'companion') {
+        turnOrder.push(`companion_${combatant.name}`);
+      }
+    });
+
     // 전투 상태 먼저 초기화 (재료 소모 전에)
     const newBattleState = {
       enemy: enemyFish,
@@ -2512,13 +2604,22 @@ function App() {
       playerMaxHp: playerMaxHp,
       enemyHp: enemyMaxHp,
       enemyMaxHp: enemyMaxHp,
+      enemySpeed: enemySpeed,
       turn: 'player',
+      turnOrder: turnOrder, // 턴 순서 배열
+      currentTurnIndex: 0, // 현재 턴 인덱스
       log: [
-        `${material.material}을(를) 사용하여 ${enemyFish}(HP: ${enemyMaxHp})와의 전투가 시작되었습니다!`,
+        `${material.material}을(를) 사용하여 ${enemyFish}(HP: ${enemyMaxHp}, 속도: ${enemySpeed})와의 전투가 시작되었습니다!`,
         ...(battleCompanions.length > 0 
           ? [`동료 ${battleCompanions.join(', ')}가 함께 전투에 참여합니다!`]
           : []
         ),
+        `턴 순서: ${turnOrder.map(turn => {
+          if (turn === 'player') return '플레이어';
+          if (turn === 'enemy') return '적';
+          if (turn.startsWith('companion_')) return turn.replace('companion_', '');
+          return turn;
+        }).join(' → ')}`,
         `전투를 시작하거나 도망갈 수 있습니다.`
       ],
       material: material.material,
@@ -2526,7 +2627,8 @@ function App() {
       materialConsumed: false, // 재료 소모 여부 추적
       autoMode: false, // 자동 전투 모드
       canFlee: true, // 도망 가능 여부 (첫 턴에만 가능)
-      companions: [...battleCompanions] // 전투 참여 동료 목록
+      companions: [...battleCompanions], // 전투 참여 동료 목록
+      companionHp: companionHpData // 동료별 체력 정보
     };
 
     setBattleState(newBattleState);
@@ -2594,41 +2696,111 @@ function App() {
     }
   };
 
+  // 다음 턴으로 넘어가는 함수
+  const nextTurn = (currentBattleState) => {
+    if (!currentBattleState?.turnOrder) return currentBattleState;
+    
+    const nextTurnIndex = (currentBattleState.currentTurnIndex + 1) % currentBattleState.turnOrder.length;
+    const nextTurnType = currentBattleState.turnOrder[nextTurnIndex];
+    
+    const newState = {
+      ...currentBattleState,
+      currentTurnIndex: nextTurnIndex,
+      turn: nextTurnType
+    };
+    
+    // 자동으로 다음 턴 실행
+    setTimeout(() => {
+      if (nextTurnType === 'enemy') {
+        enemyAttack(newState.enemyHp, newState.log);
+      } else if (nextTurnType.startsWith('companion_')) {
+        const companionName = nextTurnType.replace('companion_', '');
+        companionAttack(companionName, newState);
+      }
+      // player 턴이면 자동 실행하지 않음 (사용자가 직접 공격 버튼 클릭)
+    }, 1000);
+    
+    return newState;
+  };
+
+  // 동료 공격 함수
+  const companionAttack = (companionName, currentState) => {
+    setBattleState(prevState => {
+      if (!prevState || prevState.enemyHp <= 0) return prevState;
+      
+      const companionStat = companionStats[companionName];
+      const companionLevel = companionStat?.level || 1;
+      const companionData = calculateCompanionStats(companionName, companionLevel);
+      
+      // 동료가 쓰러져 있으면 턴 넘김
+      if (prevState.companionHp?.[companionName]?.hp <= 0) {
+        let newLog = [...prevState.log, `${companionName}이(가) 쓰러져서 공격할 수 없습니다.`];
+        return nextTurn({ ...prevState, log: newLog });
+      }
+      
+      // 동료 공격력 계산
+      const baseAttack = companionData?.attack || 25;
+      const damage = Math.floor(baseAttack * (0.8 + Math.random() * 0.4)); // ±20% 랜덤
+      
+      const newEnemyHp = Math.max(0, prevState.enemyHp - damage);
+      let newLog = [...prevState.log, `${companionName}(Lv.${companionLevel})이(가) ${damage} 데미지를 입혔습니다! (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`];
+      
+      if (newEnemyHp <= 0) {
+        // 승리 처리
+        const baseReward = Math.floor(prevState.enemyMaxHp / 10) + Math.floor(Math.random() * 5) + 1;
+        const amberReward = Math.floor(baseReward * (prevState.prefix?.amberMultiplier || 1));
+        
+        const prefixBonus = prevState.prefix?.amberMultiplier > 1 
+          ? ` (${prevState.prefix.name} 보너스 x${prevState.prefix.amberMultiplier})` 
+          : '';
+        
+        newLog.push(`${prevState.enemy}를 물리쳤습니다! 호박석 ${amberReward}개를 획득했습니다!${prefixBonus}`);
+        
+        setTimeout(async () => {
+          await addAmber(amberReward);
+          updateQuestProgress('exploration_win', 1);
+          
+          // 동료들에게 경험치 지급
+          if (prevState.companions && prevState.companions.length > 0) {
+            const expReward = Math.floor(prevState.enemyMaxHp / 5) + 10;
+            prevState.companions.forEach(companion => {
+              addCompanionExp(companion, expReward);
+            });
+          }
+          
+          setTimeout(() => {
+            setShowBattleModal(false);
+            setBattleState(null);
+            alert(`승리! 호박석 ${amberReward}개를 획득했습니다!${prefixBonus}`);
+          }, 1000);
+        }, 1000);
+
+        return {
+          ...prevState,
+          enemyHp: 0,
+          log: newLog,
+          turn: 'victory',
+          amberReward: amberReward
+        };
+      } else {
+        // 다음 턴으로
+        return nextTurn({
+          ...prevState,
+          enemyHp: newEnemyHp,
+          log: newLog
+        });
+      }
+    });
+  };
+
   // 플레이어 공격
   const playerAttack = () => {
     setBattleState(prevState => {
       if (!prevState || prevState.turn !== 'player') return prevState;
 
       const damage = calculatePlayerAttack(fishingSkill); // 낚시실력 기반 공격력
-      let totalDamage = damage;
-      let newLog = [...prevState.log, `플레이어가 ${damage} 데미지를 입혔습니다!`];
-      
-      // 동료 공격 추가
-      console.log('Battle companions in attack:', prevState.companions);
-      if (prevState.companions && prevState.companions.length > 0) {
-        console.log('Companions attacking:', prevState.companions);
-        prevState.companions.forEach(companion => {
-          // 동료 능력치 가져오기
-          const companionStat = companionStats[companion];
-          const companionLevel = companionStat?.level || 1;
-          const companionData = calculateCompanionStats(companion, companionLevel);
-          
-          // 동료별 공격력 계산 (기본 공격력 + 랜덤 요소)
-          const baseAttack = companionData?.attack || 25;
-          const companionDamage = Math.floor(baseAttack * (0.8 + Math.random() * 0.4)); // ±20% 랜덤
-          
-          totalDamage += companionDamage;
-          newLog.push(`${companion}(Lv.${companionLevel})이(가) ${companionDamage} 데미지를 입혔습니다!`);
-        });
-      } else {
-        console.log('No companions found in battle state');
-      }
-      
-      const newEnemyHp = Math.max(0, prevState.enemyHp - totalDamage);
-      newLog.push(`총 ${totalDamage} 데미지! (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`);
-
-      // 첫 공격 후 자동 모드 활성화
-      const newAutoMode = !prevState.autoMode || prevState.autoMode;
+      const newEnemyHp = Math.max(0, prevState.enemyHp - damage);
+      let newLog = [...prevState.log, `플레이어가 ${damage} 데미지를 입혔습니다! (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`];
 
       if (newEnemyHp <= 0) {
         // 승리 - 호박석 보상 계산 (접두어 배율 적용)
@@ -2675,22 +2847,13 @@ function App() {
           canFlee: false
         };
       } else {
-        // 적 턴으로 변경
-        const newState = {
+        // 다음 턴으로 넘어가기
+        return nextTurn({
           ...prevState,
           enemyHp: newEnemyHp,
           log: newLog,
-          turn: 'enemy',
-          autoMode: true, // 자동 모드 활성화
           canFlee: false // 공격 후에는 도망 불가능
-        };
-
-        // 적 공격 (1초 후)
-        setTimeout(() => {
-          enemyAttack(newEnemyHp, newLog);
-        }, 1000);
-
-        return newState;
+        });
       }
     });
   };
@@ -2703,12 +2866,39 @@ function App() {
       // 물고기 단계 기반 공격력 계산
       const fishData = allFishTypes.find(fish => fish.name === prevState.baseFish);
       const fishRank = fishData ? fishData.rank : 1;
-      const damage = calculateEnemyAttack(fishRank);
-      const newPlayerHp = Math.max(0, prevState.playerHp - damage);
+      const baseDamage = calculateEnemyAttack(fishRank);
       
-      const newLog = [...currentLog, `${prevState.enemy}가 ${damage} 데미지를 입혔습니다! (플레이어: ${newPlayerHp}/${prevState.playerMaxHp})`];
+      // 플레이어와 동료들에게 데미지 분산
+      const totalTargets = 1 + (prevState.companions?.length || 0); // 플레이어 + 동료들
+      const playerDamage = Math.floor(baseDamage * 0.7); // 플레이어가 70% 받음
+      const companionDamage = Math.floor(baseDamage * 0.3 / Math.max(1, prevState.companions?.length || 0)); // 동료들이 30% 분산
+      
+      const newPlayerHp = Math.max(0, prevState.playerHp - playerDamage);
+      let newLog = [...currentLog, `${prevState.enemy}가 공격했습니다!`];
+      newLog.push(`플레이어가 ${playerDamage} 데미지를 받았습니다! (${newPlayerHp}/${prevState.playerMaxHp})`);
+      
+      // 동료들에게 데미지 적용
+      const newCompanionHp = { ...prevState.companionHp };
+      if (prevState.companions && prevState.companions.length > 0) {
+        prevState.companions.forEach(companion => {
+          if (newCompanionHp[companion]) {
+            const oldHp = newCompanionHp[companion].hp;
+            const newHp = Math.max(0, oldHp - companionDamage);
+            newCompanionHp[companion] = {
+              ...newCompanionHp[companion],
+              hp: newHp
+            };
+            newLog.push(`${companion}이(가) ${companionDamage} 데미지를 받았습니다! (${newHp}/${newCompanionHp[companion].maxHp})`);
+          }
+        });
+      }
 
-      if (newPlayerHp <= 0) {
+      // 패배 조건 체크 (플레이어 또는 모든 동료가 쓰러짐)
+      const allCompanionsDown = prevState.companions?.every(companion => 
+        newCompanionHp[companion]?.hp <= 0
+      ) ?? true;
+      
+      if (newPlayerHp <= 0 && allCompanionsDown) {
         // 패배
         newLog.push(`패배했습니다... 재료를 잃었습니다.`);
         
@@ -2724,28 +2914,20 @@ function App() {
         return {
           ...prevState,
           enemyHp: currentEnemyHp, // 적 체력 유지
-          playerHp: 0,
+          playerHp: newPlayerHp,
+          companionHp: newCompanionHp,
           log: newLog,
           turn: 'defeat'
         };
       } else {
-        // 플레이어 턴으로 변경
-        const newState = {
+        // 다음 턴으로 넘어가기
+        return nextTurn({
           ...prevState,
           enemyHp: currentEnemyHp, // 적 체력 유지
           playerHp: newPlayerHp,
-          log: newLog,
-          turn: 'player'
-        };
-
-        // 자동 모드일 때 플레이어 공격 자동 실행 (1.5초 후)
-        if (prevState.autoMode) {
-          setTimeout(() => {
-            playerAttack();
-          }, 1500);
-        }
-
-        return newState;
+          companionHp: newCompanionHp,
+          log: newLog
+        });
       }
     });
   };
@@ -3842,11 +4024,26 @@ function App() {
               {/* 재료 섹션 */}
               {materials.length > 0 && (
                 <div className="mt-6">
-                  <div className={`flex items-center gap-2 mb-4 px-2 ${
+                  <div className={`flex items-center justify-between mb-4 px-2 ${
                     isDarkMode ? "text-purple-400" : "text-purple-600"
                   }`}>
-                    <Gem className="w-5 h-5" />
-                    <h3 className="font-semibold">재료 ({materials.length}종)</h3>
+                    <div className="flex items-center gap-2">
+                      <Gem className="w-5 h-5" />
+                      <h3 className="font-semibold">재료 ({materials.length}종)</h3>
+                    </div>
+                    <button
+                      onClick={fetchMaterials}
+                      className={`p-2 rounded-lg hover:scale-110 transition-all duration-300 ${
+                        isDarkMode 
+                          ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30" 
+                          : "bg-purple-500/10 text-purple-600 hover:bg-purple-500/20"
+                      }`}
+                      title="재료 새로고침"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </button>
                   </div>
                   <div className="space-y-3">
                     {materials.map((item, index) => (
@@ -5961,17 +6158,44 @@ function App() {
                   {/* 동료 정보 */}
                   {battleState.companions && battleState.companions.length > 0 && (
                     <div className="mt-3">
-                      <div className={`text-xs mb-1 ${
+                      <div className={`text-xs mb-2 ${
                         isDarkMode ? "text-gray-400" : "text-gray-600"
                       }`}>함께 싸우는 동료:</div>
-                      <div className="flex flex-wrap gap-1">
-                        {battleState.companions.map((companion, index) => (
-                          <span key={index} className={`text-xs px-2 py-1 rounded-full font-medium ${
-                            isDarkMode ? "bg-green-500/20 text-green-400 border border-green-400/30" : "bg-green-500/10 text-green-600 border border-green-500/30"
-                          }`}>
-                            ⚔️ {companion}
-                          </span>
-                        ))}
+                      <div className="space-y-2">
+                        {battleState.companions.map((companion, index) => {
+                          const companionHp = battleState.companionHp?.[companion];
+                          const hpPercentage = companionHp ? (companionHp.hp / companionHp.maxHp) * 100 : 100;
+                          const isDown = companionHp?.hp <= 0;
+                          
+                          return (
+                            <div key={index} className="flex items-center gap-2">
+                              <span className={`text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1 ${
+                                isDown 
+                                  ? isDarkMode ? "bg-red-500/20 text-red-400 border border-red-400/30" : "bg-red-500/10 text-red-600 border border-red-500/30"
+                                  : isDarkMode ? "bg-green-500/20 text-green-400 border border-green-400/30" : "bg-green-500/10 text-green-600 border border-green-500/30"
+                              }`}>
+                                {isDown ? "💀" : "⚔️"} {companion} Lv.{companionHp?.level || 1}
+                              </span>
+                              <div className="flex-1 flex items-center gap-1">
+                                <div className={`flex-1 h-2 rounded-full ${
+                                  isDarkMode ? "bg-gray-700" : "bg-gray-200"
+                                }`}>
+                                  <div 
+                                    className={`h-full rounded-full transition-all duration-500 ${
+                                      isDown ? "bg-red-500" : hpPercentage >= 70 ? "bg-green-500" : hpPercentage >= 30 ? "bg-yellow-500" : "bg-red-500"
+                                    }`}
+                                    style={{ width: `${Math.max(0, hpPercentage)}%` }}
+                                  ></div>
+                                </div>
+                                <span className={`text-xs font-medium ${
+                                  isDarkMode ? "text-gray-300" : "text-gray-700"
+                                }`}>
+                                  {companionHp?.hp || 0}/{companionHp?.maxHp || 100}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

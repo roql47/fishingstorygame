@@ -229,6 +229,7 @@ function setCachedFishingSkill(userKey, skill) {
 const {
   getFishData,
   getFishHealthData,
+  getFishSpeedData,
   getProbabilityData,
   getPrefixData,
   getShopData,
@@ -2563,6 +2564,16 @@ app.get("/api/game-data/fish-health", (req, res) => {
   } catch (error) {
     console.error("Failed to get fish health data:", error);
     res.status(500).json({ success: false, error: "Failed to load fish health data" });
+  }
+});
+
+app.get("/api/game-data/fish-speed", (req, res) => {
+  try {
+    const fishSpeedData = getFishSpeedData();
+    res.json({ success: true, data: fishSpeedData });
+  } catch (error) {
+    console.error("Failed to get fish speed data:", error);
+    res.status(500).json({ success: false, error: "Failed to load fish speed data" });
   }
 });
 
