@@ -6,6 +6,7 @@ import axios from "axios";
 import { useGameData } from "./hooks/useGameData";
 import ChatTab from "./components/ChatTab";
 import { CompanionTab } from './components/companions';
+import { COMPANION_DATA, calculateCompanionStats } from './data/companionData';
 import { 
   Fish, 
   MessageCircle, 
@@ -269,6 +270,7 @@ function App() {
   const [userStarPieces, setUserStarPieces] = useState(0);
   const [companions, setCompanions] = useState([]);
   const [battleCompanions, setBattleCompanions] = useState([]); // 전투 참여 동료 (최대 3명)
+  const [companionStats, setCompanionStats] = useState({}); // 동료별 레벨/경험치 관리
   const [showCompanionModal, setShowCompanionModal] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [userAdminStatus, setUserAdminStatus] = useState({}); // 다른 사용자들의 관리자 상태
@@ -2014,6 +2016,8 @@ function App() {
         
         if (response.data.recruited) {
           setCompanions(prev => [...prev, response.data.companion]);
+          // 새 동료 능력치 초기화
+          initializeCompanionStats(response.data.companion);
           setMessages(prev => [...prev, {
             system: true,
             username: "system",
@@ -2041,8 +2045,72 @@ function App() {
     }
   };
 
+  // 동료 능력치 초기화 함수
+  const initializeCompanionStats = (companionName) => {
+    if (!companionStats[companionName]) {
+      setCompanionStats(prev => ({
+        ...prev,
+        [companionName]: {
+          level: 1,
+          exp: 0,
+          expToNext: 100,
+          hp: calculateCompanionStats(companionName, 1)?.hp || 100,
+          maxHp: calculateCompanionStats(companionName, 1)?.hp || 100
+        }
+      }));
+    }
+  };
+
+  // 동료 경험치 추가 함수
+  const addCompanionExp = (companionName, expAmount) => {
+    setCompanionStats(prev => {
+      const current = prev[companionName] || {
+        level: 1,
+        exp: 0,
+        expToNext: 100,
+        hp: calculateCompanionStats(companionName, 1)?.hp || 100,
+        maxHp: calculateCompanionStats(companionName, 1)?.hp || 100
+      };
+      
+      let newExp = current.exp + expAmount;
+      let newLevel = current.level;
+      let newExpToNext = current.expToNext;
+      
+      // 레벨업 체크
+      while (newExp >= newExpToNext) {
+        newExp -= newExpToNext;
+        newLevel++;
+        newExpToNext = newLevel * 50 + 50; // 레벨당 필요 경험치 증가
+      }
+      
+      // 레벨업 시 능력치 재계산
+      const newStats = calculateCompanionStats(companionName, newLevel);
+      
+      return {
+        ...prev,
+        [companionName]: {
+          level: newLevel,
+          exp: newExp,
+          expToNext: newExpToNext,
+          hp: newStats?.hp || current.hp,
+          maxHp: newStats?.hp || current.maxHp
+        }
+      };
+    });
+    
+    // 레벨업 알림
+    if (companionStats[companionName] && newLevel > companionStats[companionName].level) {
+      setTimeout(() => {
+        alert(`${companionName}이(가) 레벨 ${newLevel}로 레벨업했습니다!`);
+      }, 500);
+    }
+  };
+
   // 전투 참여 동료 토글 함수
   const toggleBattleCompanion = (companionName) => {
+    // 동료 능력치 초기화
+    initializeCompanionStats(companionName);
+    
     setBattleCompanions(prev => {
       const isCurrentlyInBattle = prev.includes(companionName);
       
@@ -2536,13 +2604,24 @@ function App() {
       let newLog = [...prevState.log, `플레이어가 ${damage} 데미지를 입혔습니다!`];
       
       // 동료 공격 추가
+      console.log('Battle companions in attack:', prevState.companions);
       if (prevState.companions && prevState.companions.length > 0) {
+        console.log('Companions attacking:', prevState.companions);
         prevState.companions.forEach(companion => {
-          // 동료별 공격력 (플레이어 공격력의 30-50%)
-          const companionDamage = Math.floor(damage * (0.3 + Math.random() * 0.2));
+          // 동료 능력치 가져오기
+          const companionStat = companionStats[companion];
+          const companionLevel = companionStat?.level || 1;
+          const companionData = calculateCompanionStats(companion, companionLevel);
+          
+          // 동료별 공격력 계산 (기본 공격력 + 랜덤 요소)
+          const baseAttack = companionData?.attack || 25;
+          const companionDamage = Math.floor(baseAttack * (0.8 + Math.random() * 0.4)); // ±20% 랜덤
+          
           totalDamage += companionDamage;
-          newLog.push(`${companion}이(가) ${companionDamage} 데미지를 입혔습니다!`);
+          newLog.push(`${companion}(Lv.${companionLevel})이(가) ${companionDamage} 데미지를 입혔습니다!`);
         });
+      } else {
+        console.log('No companions found in battle state');
       }
       
       const newEnemyHp = Math.max(0, prevState.enemyHp - totalDamage);
@@ -2567,6 +2646,15 @@ function App() {
           await addAmber(amberReward);
           // [퀘스트] 탐사 승리 퀘스트 진행도 업데이트
           updateQuestProgress('exploration_win', 1);
+          
+          // 동료들에게 경험치 지급
+          if (prevState.companions && prevState.companions.length > 0) {
+            const expReward = Math.floor(prevState.enemyMaxHp / 5) + 10; // 적 체력 기반 경험치
+            prevState.companions.forEach(companion => {
+              addCompanionExp(companion, expReward);
+            });
+          }
+          
           setTimeout(async () => {
             // 서버에 승리 쿨타임 설정 요청 - JWT 인증 사용
             // 탐사 쿨타임 제거됨
@@ -4056,6 +4144,7 @@ function App() {
               userStarPieces={userStarPieces}
               companions={companions}
               battleCompanions={battleCompanions}
+              companionStats={companionStats}
               
               // 함수
               recruitCompanion={recruitCompanion}

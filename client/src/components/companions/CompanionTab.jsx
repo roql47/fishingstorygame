@@ -1,5 +1,6 @@
 import React from 'react';
-import { Users, Sword, Shield, Heart } from 'lucide-react';
+import { Users, Sword, Shield, Heart, Star, Zap } from 'lucide-react';
+import { COMPANION_DATA, calculateCompanionStats, getRarityColor, getElementColor } from '../../data/companionData';
 
 const CompanionTab = ({
   // 상태
@@ -7,6 +8,7 @@ const CompanionTab = ({
   userStarPieces,
   companions,
   battleCompanions,
+  companionStats,
   
   // 함수
   recruitCompanion,
@@ -96,9 +98,12 @@ const CompanionTab = ({
               {companions.map((companion, index) => {
                 const isInBattle = battleCompanions.includes(companion);
                 const canAddToBattle = battleCompanions.length < maxBattleCompanions;
+                const companionStat = companionStats[companion] || { level: 1, exp: 0, expToNext: 100 };
+                const companionData = calculateCompanionStats(companion, companionStat.level);
+                const baseData = COMPANION_DATA[companion];
                 
                 return (
-                  <div key={index} className={`p-3 rounded-lg flex items-center justify-between transition-all duration-200 ${
+                  <div key={index} className={`p-4 rounded-lg transition-all duration-200 ${
                     isInBattle
                       ? isDarkMode 
                         ? "bg-green-500/20 border-2 border-green-400/40 glow-effect-green" 
@@ -107,46 +112,80 @@ const CompanionTab = ({
                         ? "bg-purple-500/10 border border-purple-400/20 hover:bg-purple-500/15" 
                         : "bg-purple-500/5 border border-purple-300/30 hover:bg-purple-500/10"
                   }`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                        isInBattle
-                          ? isDarkMode ? "bg-green-500/30 text-green-400" : "bg-green-500/20 text-green-600"
-                          : isDarkMode ? "bg-purple-500/30 text-purple-400" : "bg-purple-500/20 text-purple-600"
-                      }`}>
-                        {isInBattle ? <Sword className="w-4 h-4" /> : <Heart className="w-4 h-4" />}
-                      </div>
-                      <div>
-                        <div className={`font-medium text-sm ${
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
                           isInBattle
-                            ? isDarkMode ? "text-green-400" : "text-green-600"
-                            : isDarkMode ? "text-purple-400" : "text-purple-600"
-                        }`}>{companion}</div>
-                        <div className={`text-xs ${
-                          isDarkMode ? "text-gray-400" : "text-gray-600"
+                            ? isDarkMode ? "bg-green-500/30 text-green-400" : "bg-green-500/20 text-green-600"
+                            : isDarkMode ? "bg-purple-500/30 text-purple-400" : "bg-purple-500/20 text-purple-600"
                         }`}>
-                          {isInBattle ? "전투 참여 중" : "대기 중"}
+                          {isInBattle ? <Sword className="w-5 h-5" /> : <Heart className="w-5 h-5" />}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className={`font-medium ${
+                              isInBattle
+                                ? isDarkMode ? "text-green-400" : "text-green-600"
+                                : isDarkMode ? "text-purple-400" : "text-purple-600"
+                            }`}>{companion}</div>
+                            <div className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                              isDarkMode ? "bg-yellow-500/20 text-yellow-400" : "bg-yellow-500/10 text-yellow-600"
+                            }`}>
+                              Lv.{companionStat.level}
+                            </div>
+                            <div className={`text-xs px-1.5 py-0.5 rounded font-medium ${getRarityColor(baseData?.rarity, isDarkMode)} ${
+                              isDarkMode ? "bg-gray-700/30" : "bg-gray-200/50"
+                            }`}>
+                              {baseData?.rarity}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4 text-xs">
+                            <div className="flex items-center gap-1">
+                              <Heart className="w-3 h-3 text-red-400" />
+                              <span className={isDarkMode ? "text-gray-300" : "text-gray-700"}>
+                                {companionData?.hp || 100}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Sword className="w-3 h-3 text-orange-400" />
+                              <span className={isDarkMode ? "text-gray-300" : "text-gray-700"}>
+                                {companionData?.attack || 25}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Zap className={`w-3 h-3 ${getElementColor(baseData?.element, isDarkMode)}`} />
+                              <span className={`${getElementColor(baseData?.element, isDarkMode)}`}>
+                                {baseData?.element}
+                              </span>
+                            </div>
+                          </div>
+                          <div className={`text-xs mt-1 ${
+                            isDarkMode ? "text-gray-400" : "text-gray-600"
+                          }`}>
+                            {isInBattle ? "전투 참여 중" : "대기 중"} • EXP: {companionStat.exp}/{companionStat.expToNext}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <button
-                      onClick={() => toggleBattleCompanion(companion)}
-                      disabled={!isInBattle && !canAddToBattle}
-                      className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 ${
-                        isInBattle
-                          ? isDarkMode
-                            ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-400/30"
-                            : "bg-red-500/10 text-red-600 hover:bg-red-500/20 border border-red-500/30"
-                          : canAddToBattle
+                      <button
+                        onClick={() => toggleBattleCompanion(companion)}
+                        disabled={!isInBattle && !canAddToBattle}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:scale-105 ${
+                          isInBattle
                             ? isDarkMode
-                              ? "bg-green-500/20 text-green-400 hover:bg-green-500/30 border border-green-400/30"
-                              : "bg-green-500/10 text-green-600 hover:bg-green-500/20 border border-green-500/30"
-                            : isDarkMode
-                              ? "bg-gray-500/20 text-gray-500 cursor-not-allowed border border-gray-500/20"
-                              : "bg-gray-300/30 text-gray-400 cursor-not-allowed border border-gray-300/30"
-                      }`}
-                    >
-                      {isInBattle ? "해제" : canAddToBattle ? "참여" : "만원"}
-                    </button>
+                              ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-400/30"
+                              : "bg-red-500/10 text-red-600 hover:bg-red-500/20 border border-red-500/30"
+                            : canAddToBattle
+                              ? isDarkMode
+                                ? "bg-green-500/20 text-green-400 hover:bg-green-500/30 border border-green-400/30"
+                                : "bg-green-500/10 text-green-600 hover:bg-green-500/20 border border-green-500/30"
+                              : isDarkMode
+                                ? "bg-gray-500/20 text-gray-500 cursor-not-allowed border border-gray-500/20"
+                                : "bg-gray-300/30 text-gray-400 cursor-not-allowed border border-gray-300/30"
+                        }`}
+                      >
+                        {isInBattle ? "해제" : canAddToBattle ? "참여" : "만원"}
+                      </button>
+                    </div>
                   </div>
                 );
               })}
