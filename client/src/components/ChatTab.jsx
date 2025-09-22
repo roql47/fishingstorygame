@@ -674,7 +674,6 @@ const ChatTab = ({
                   </h5>
                   <div className="space-y-2 text-sm">
                     <div>🎯 상대: {selectedBattleData.enemy}</div>
-                    <div>🔄 최종 턴: {selectedBattleData.round}턴</div>
                     <div>❤️ 플레이어 체력: {selectedBattleData.playerHp}/{selectedBattleData.playerMaxHp}</div>
                   </div>
                 </div>

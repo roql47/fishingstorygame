@@ -6,6 +6,7 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const { OAuth2Client } = require("google-auth-library");
 const jwt = require("jsonwebtoken"); // 🔐 JWT 라이브러리 추가
+const bcrypt = require('bcrypt'); // 🔐 비밀번호 암호화
 
 // 🚀 성능 최적화: 프로덕션 환경에서 로깅 축소
 const isProduction = process.env.NODE_ENV === 'production';
@@ -849,6 +850,10 @@ const userUuidSchema = new mongoose.Schema(
     originalKakaoId: { type: String }, // 카카오 로그인 ID (변경 불가)
     isGuest: { type: Boolean, default: false }, // 게스트 여부
     
+    // 🔐 보안 강화: 비밀번호 암호화 저장
+    passwordHash: { type: String }, // bcrypt로 암호화된 비밀번호 (게스트나 소셜 로그인은 null)
+    salt: { type: String }, // 추가 보안을 위한 솔트
+    
     // 사용자 설정 (로컬스토리지 대체)
     termsAccepted: { type: Boolean, default: false }, // 이용약관 동의 여부
     darkMode: { type: Boolean, default: true }, // 다크모드 설정 (기본값: true)
@@ -858,6 +863,12 @@ const userUuidSchema = new mongoose.Schema(
     
     // 물고기 카운터
     totalFishCaught: { type: Number, default: 0 }, // 총 낚은 물고기 수
+    
+    // 🔐 보안 로그
+    lastLoginAt: { type: Date }, // 마지막 로그인 시간
+    lastLoginIP: { type: String }, // 마지막 로그인 IP
+    loginAttempts: { type: Number, default: 0 }, // 로그인 시도 횟수
+    lockedUntil: { type: Date }, // 계정 잠금 해제 시간
     
     createdAt: { type: Date, default: Date.now }
   },
@@ -3688,51 +3699,32 @@ app.post("/api/recalculate-fishing-cooldown", authenticateJWT, async (req, res) 
 
 // 탐사 쿨타임 제거됨 - 더 이상 사용하지 않음
 
-// 접속자 목록 API (보안 강화)
-app.get("/api/connected-users", async (req, res) => {
+// 🔐 접속자 목록 API (관리자 전용, 보안 강화)
+app.get("/api/connected-users", authenticateJWT, async (req, res) => {
   try {
-    console.log("Connected users request");
+    // 🛡️ 관리자 권한 확인
+    const { userUuid, username, isAdmin } = req.user;
+    
+    if (!isAdmin) {
+      console.log(`🚨 [SECURITY] Unauthorized connected-users access attempt by ${username} (${userUuid})`);
+      return res.status(403).json({ error: "관리자만 접속자 목록을 조회할 수 있습니다." });
+    }
+    
+    console.log(`🔐 [ADMIN] Connected users request by admin: ${username}`);
     
     // 현재 연결된 사용자 목록을 메모리에서 가져오기 (정리된 목록)
     const cleanedUsers = cleanupConnectedUsers();
     
-    // 데이터베이스에서 최신 사용자 정보 검증
-    const users = await Promise.all(cleanedUsers.map(async (user) => {
-      try {
-        // 데이터베이스에서 최신 사용자 정보 가져오기
-        const dbUser = await UserUuidModel.findOne({ userUuid: user.userUuid });
-        
-        return {
-      userUuid: user.userUuid,
-          username: dbUser?.displayName || user.displayName || user.username, // DB에서 최신 displayName 사용
-          displayName: dbUser?.displayName || user.displayName || user.username,
-          userId: user.userId,
-          hasIdToken: user.hasIdToken || false,
-          loginType: user.loginType || 'Guest',
-          // 서버에서만 관리되는 추가 검증 데이터
-          isOnline: true,
-          lastSeen: new Date().toISOString(),
-          // 클라이언트 조작 방지를 위한 체크섬
-          checksum: generateUserChecksum(user.userUuid, dbUser?.displayName || user.username)
-        };
-      } catch (error) {
-        console.error(`Failed to verify user ${user.userUuid}:`, error);
-        // DB 조회 실패 시 메모리 데이터 사용 (fallback)
-        return {
-          userUuid: user.userUuid,
-          username: user.displayName || user.username,
+    // 🔐 보안: 민감한 정보 제거 (관리자용 최소 정보만 제공)
+    const users = cleanedUsers.map(user => ({
       displayName: user.displayName || user.username,
-          userId: user.userId,
-          hasIdToken: user.hasIdToken || false,
-          loginType: user.loginType || 'Guest',
-          isOnline: true,
-          lastSeen: new Date().toISOString(),
-          checksum: generateUserChecksum(user.userUuid, user.displayName || user.username)
-        };
-      }
+      loginType: user.loginType || 'Guest',
+      isOnline: true,
+      lastSeen: new Date().toISOString()
+      // userUuid, userId 등 민감한 정보 제거
     }));
     
-    console.log("Sending verified connected users:", users.length);
+    console.log(`🔐 [ADMIN] Sending ${users.length} connected users to admin: ${username}`);
     
     res.json({ 
       users,
@@ -5694,25 +5686,22 @@ app.get("/api/user-profile/:username", async (req, res) => {
   }
 });
 
-// 다른 사용자 프로필 조회 API (특수문자 지원)
-app.get("/api/user-profile", getUserProfileHandler);
+// 🔐 사용자 프로필 조회 API (인증 필요, 보안 강화)
+app.get("/api/user-profile", authenticateJWT, getUserProfileHandler);
 
 async function getUserProfileHandler(req, res) {
   try {
-    console.log("🔥 getUserProfileHandler called - v2024.12.19");
-    console.log("Request method:", req.method);
-    console.log("Request path:", req.path);
-    console.log("Request query:", req.query);
-    console.log("Request params:", req.params);
+    console.log("🔐 getUserProfileHandler called - v2024.12.19");
     
     const { username } = req.query;
+    const { userUuid: requesterUuid, username: requesterUsername, isAdmin } = req.user;
     
     if (!username) {
       console.log("❌ Username missing from query");
       return res.status(400).json({ error: "Username is required" });
     }
     
-    console.log("✅ Fetching profile for username:", username);
+    console.log(`🔐 Profile request: ${requesterUsername} requesting ${username}`);
     
     // 사용자 기본 정보 조회
     const user = await UserUuidModel.findOne({ username });
@@ -5720,7 +5709,26 @@ async function getUserProfileHandler(req, res) {
       return res.status(404).json({ error: "User not found" });
     }
     
-    // 사용자의 모든 정보 병렬로 조회
+    // 🛡️ 보안 검증: 본인 프로필이거나 관리자만 상세 정보 조회 가능
+    const isOwnProfile = user.userUuid === requesterUuid;
+    const canViewDetails = isOwnProfile || isAdmin;
+    
+    if (!canViewDetails) {
+      // 🔐 다른 사용자의 프로필은 공개 정보만 제공
+      console.log(`🔐 Returning public profile for ${username} to ${requesterUsername}`);
+      return res.json({
+        username: user.username,
+        displayName: user.displayName,
+        isGuest: user.isGuest,
+        totalFishCaught: user.totalFishCaught || 0,
+        createdAt: user.createdAt
+        // 돈, 호박석, 장비 등 민감한 정보 제외
+      });
+    }
+    
+    // 🔐 본인 프로필이거나 관리자인 경우 상세 정보 제공
+    console.log(`🔐 Returning detailed profile for ${username} to ${requesterUsername} (${isOwnProfile ? 'own' : 'admin'})`);
+    
     const [userMoney, userAmber, userEquipment, fishingSkill, totalCatches] = await Promise.all([
       UserMoneyModel.findOne({ userUuid: user.userUuid }),
       UserAmberModel.findOne({ userUuid: user.userUuid }),
@@ -5730,7 +5738,8 @@ async function getUserProfileHandler(req, res) {
     ]);
     
     const profileData = {
-      userUuid: user.userUuid,
+      // userUuid는 관리자에게만 제공
+      ...(isAdmin && { userUuid: user.userUuid }),
       username: user.username,
       displayName: user.displayName,
       isGuest: user.isGuest,
@@ -5742,11 +5751,11 @@ async function getUserProfileHandler(req, res) {
       },
       fishingSkill: fishingSkill?.skill || 0,
       totalCatches: totalCatches || 0,
-      totalFishCaught: user.totalFishCaught || 0, // 새로운 총 물고기 카운트
+      totalFishCaught: user.totalFishCaught || 0,
       createdAt: user.createdAt
     };
     
-    console.log("Profile data fetched:", profileData);
+    console.log(`🔐 Profile data sent for ${username}`);
     res.json(profileData);
   } catch (error) {
     console.error("Failed to fetch user profile:", error);
@@ -6787,6 +6796,158 @@ const PORT = Number(process.env.PORT || 4000);
 // 🔐 JWT 설정
 const JWT_SECRET = process.env.JWT_SECRET || "fishing_game_jwt_secret_key_2024";
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
+
+// 🔐 비밀번호 암호화 유틸리티 함수들
+const SALT_ROUNDS = 12; // bcrypt 솔트 라운드 (보안성과 성능의 균형)
+
+async function hashPassword(password) {
+  try {
+    const salt = await bcrypt.genSalt(SALT_ROUNDS);
+    const hash = await bcrypt.hash(password, salt);
+    return { hash, salt };
+  } catch (error) {
+    console.error("🚨 Password hashing failed:", error);
+    throw new Error("비밀번호 암호화에 실패했습니다.");
+  }
+}
+
+async function verifyPassword(password, hash) {
+  try {
+    return await bcrypt.compare(password, hash);
+  } catch (error) {
+    console.error("🚨 Password verification failed:", error);
+    return false;
+  }
+}
+
+// 🔐 계정 잠금 관련 함수들
+const MAX_LOGIN_ATTEMPTS = 5; // 최대 로그인 시도 횟수
+const LOCK_TIME = 30 * 60 * 1000; // 30분 잠금
+
+async function isAccountLocked(user) {
+  return user.lockedUntil && user.lockedUntil > Date.now();
+}
+
+async function incrementLoginAttempts(userUuid) {
+  const user = await UserUuidModel.findOne({ userUuid });
+  if (!user) return;
+  
+  const updates = { $inc: { loginAttempts: 1 } };
+  
+  // 최대 시도 횟수 도달 시 계정 잠금
+  if (user.loginAttempts + 1 >= MAX_LOGIN_ATTEMPTS && !user.lockedUntil) {
+    updates.$set = { lockedUntil: Date.now() + LOCK_TIME };
+    console.log(`🚨 Account locked due to failed login attempts: ${user.username}`);
+  }
+  
+  await UserUuidModel.updateOne({ userUuid }, updates);
+}
+
+async function resetLoginAttempts(userUuid, clientIP) {
+  await UserUuidModel.updateOne(
+    { userUuid }, 
+    { 
+      $unset: { loginAttempts: 1, lockedUntil: 1 },
+      $set: { lastLoginAt: new Date(), lastLoginIP: clientIP }
+    }
+  );
+}
+
+// 🔐 낚시하기 API (서버 사이드 쿨타임 검증 강화)
+app.post("/api/fishing", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid, username } = req.user;
+    const clientIP = getClientIP(req);
+    
+    console.log(`🎣 Fishing request from ${username} (${userUuid}) - IP: ${clientIP}`);
+    
+    // 🛡️ 1단계: 사용자 존재 확인
+    const user = await UserUuidModel.findOne({ userUuid });
+    if (!user) {
+      return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+    }
+    
+    // 🛡️ 2단계: 계정 잠금 확인
+    if (await isAccountLocked(user)) {
+      return res.status(423).json({ 
+        error: "계정이 일시적으로 잠겨있습니다. 나중에 다시 시도해주세요.",
+        lockedUntil: user.lockedUntil 
+      });
+    }
+    
+    // 🛡️ 3단계: 서버에서 쿨타임 검증 (클라이언트 조작 방지)
+    const now = new Date();
+    if (user.fishingCooldownEnd && user.fishingCooldownEnd > now) {
+      const remainingTime = user.fishingCooldownEnd.getTime() - now.getTime();
+      console.log(`🚨 [SECURITY] Cooldown bypass attempt by ${username} - Remaining: ${remainingTime}ms`);
+      return res.status(429).json({ 
+        error: "낚시 쿨타임이 남아있습니다.",
+        remainingTime,
+        cooldownEnd: user.fishingCooldownEnd.toISOString()
+      });
+    }
+    
+    // 🛡️ 4단계: 레이트 리미팅 (DDoS 방지)
+    const userKey = `fishing_${userUuid}`;
+    const lastFishingTime = fishingRateLimit.get(userKey);
+    if (lastFishingTime && (Date.now() - lastFishingTime) < 1000) { // 1초 제한
+      return res.status(429).json({ error: "너무 빠르게 요청하고 있습니다." });
+    }
+    fishingRateLimit.set(userKey, Date.now());
+    
+    // 🎣 낚시 로직 실행
+    const fishingResult = await performFishing(user);
+    
+    // 🛡️ 5단계: 서버에서 쿨타임 설정 (클라이언트 신뢰하지 않음)
+    const cooldownDuration = await calculateFishingCooldownTime({ userUuid });
+    const cooldownEnd = new Date(now.getTime() + cooldownDuration);
+    
+    await UserUuidModel.updateOne(
+      { userUuid },
+      { 
+        fishingCooldownEnd: cooldownEnd,
+        $inc: { totalFishCaught: fishingResult.success ? 1 : 0 }
+      }
+    );
+    
+    console.log(`🎣 Fishing completed for ${username}: ${fishingResult.success ? 'SUCCESS' : 'FAIL'}`);
+    
+    res.json({
+      success: true,
+      fishingResult,
+      cooldownEnd: cooldownEnd.toISOString(),
+      remainingTime: cooldownDuration
+    });
+    
+  } catch (error) {
+    console.error("Fishing API error:", error);
+    res.status(500).json({ error: "낚시 중 오류가 발생했습니다." });
+  }
+});
+
+// 🛡️ 레이트 리미팅을 위한 메모리 캐시
+const fishingRateLimit = new Map();
+
+// 🎣 낚시 로직 함수
+async function performFishing(user) {
+  // 실제 낚시 로직 구현
+  // 이 부분은 기존 클라이언트 로직을 서버로 이동
+  const success = Math.random() > 0.3; // 70% 성공률 (예시)
+  
+  if (success) {
+    // 물고기 선택, 인벤토리 업데이트 등
+    return {
+      success: true,
+      fish: "참치", // 예시
+      message: "낚시에 성공했습니다!"
+    };
+  } else {
+    return {
+      success: false,
+      message: "물고기가 도망갔습니다."
+    };
+  }
+}
 
 // 🔐 JWT 유틸리티 함수들
 function generateJWT(user) {

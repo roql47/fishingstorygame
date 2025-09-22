@@ -2862,39 +2862,54 @@ function App() {
     const nextTurnIndex = (currentBattleState.currentTurnIndex + 1) % currentBattleState.turnOrder.length;
     const nextTurnType = currentBattleState.turnOrder[nextTurnIndex];
     
-    // 버프 지속시간 감소 (새로운 턴 시작 시)
+    // 버프 지속시간 감소 (라운드 완료 시에만 - 즉, 다시 플레이어 턴이 될 때)
     const updatedBuffs = { ...currentBattleState.companionBuffs };
     const expiredBuffs = {}; // 만료된 버프 정보 저장
     
-    Object.keys(updatedBuffs).forEach(companionName => {
-      Object.keys(updatedBuffs[companionName]).forEach(buffType => {
-        if (updatedBuffs[companionName][buffType].turnsLeft > 0) {
-          updatedBuffs[companionName][buffType] = {
-            ...updatedBuffs[companionName][buffType],
-            turnsLeft: updatedBuffs[companionName][buffType].turnsLeft - 1
-          };
-          
-          // 버프 만료 시 스킬 이름 저장 후 제거
-          if (updatedBuffs[companionName][buffType].turnsLeft <= 0) {
-            const companionData = COMPANION_DATA[companionName];
-            if (companionData?.skill?.name) {
-              if (!expiredBuffs[companionName]) {
-                expiredBuffs[companionName] = [];
+    // 한 라운드가 완료되었을 때만 버프 지속시간 감소 (nextTurnIndex가 0이 될 때)
+    if (nextTurnIndex === 0) {
+      Object.keys(updatedBuffs).forEach(companionName => {
+        Object.keys(updatedBuffs[companionName]).forEach(buffType => {
+          if (updatedBuffs[companionName][buffType].turnsLeft > 0) {
+            updatedBuffs[companionName][buffType] = {
+              ...updatedBuffs[companionName][buffType],
+              turnsLeft: updatedBuffs[companionName][buffType].turnsLeft - 1
+            };
+            
+            // 버프 만료 시 스킬 이름 저장 후 제거
+            if (updatedBuffs[companionName][buffType].turnsLeft <= 0) {
+              const companionData = COMPANION_DATA[companionName];
+              if (companionData?.skill?.name) {
+                if (!expiredBuffs[companionName]) {
+                  expiredBuffs[companionName] = [];
+                }
+                expiredBuffs[companionName].push(companionData.skill.name);
               }
-              expiredBuffs[companionName].push(companionData.skill.name);
+              delete updatedBuffs[companionName][buffType];
             }
-            delete updatedBuffs[companionName][buffType];
           }
-        }
+        });
       });
-    });
+    }
+    
+    // 버프 만료 메시지 추가
+    let newLog = [...currentBattleState.log];
+    if (Object.keys(expiredBuffs).length > 0) {
+      Object.keys(expiredBuffs).forEach(companionName => {
+        expiredBuffs[companionName].forEach(skillName => {
+          newLog.push(`⏰ ${companionName}의 '${skillName}' 효과가 만료되었습니다.`);
+        });
+      });
+    }
     
     const newState = {
       ...currentBattleState,
       currentTurnIndex: nextTurnIndex,
       turn: nextTurnType,
       companionBuffs: updatedBuffs,
-      expiredBuffs: expiredBuffs
+      expiredBuffs: expiredBuffs,
+      round: nextTurnIndex === 0 ? (currentBattleState.round || 1) + 1 : currentBattleState.round || 1,
+      log: newLog
     };
     
     // 자동으로 다음 턴 실행
@@ -5297,7 +5312,17 @@ function App() {
 
       {/* 프로필 모달 */}
       {showProfile && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={(e) => {
+            // 배경 클릭 시 모달 닫기 (모달 내용 클릭 시에는 닫히지 않음)
+            if (e.target === e.currentTarget) {
+              setShowProfile(false);
+              setSelectedUserProfile(null);
+              setOtherUserData(null);
+            }
+          }}
+        >
           <div className={`w-full max-w-md rounded-2xl board-shadow ${
             isDarkMode ? "glass-card" : "bg-white/90 backdrop-blur-md border border-gray-300/30"
           }`}>
