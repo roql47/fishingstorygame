@@ -37,7 +37,16 @@ export const COMPANION_DATA = {
     growthAttack: 2,   // 6 / 4 = 1.5 → 2
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "화염 마법사",
-    rarity: "희귀"
+    rarity: "희귀",
+    skill: {
+      name: "무의태세",
+      description: "3턴 동안 공격력이 25% 상승합니다",
+      damageMultiplier: 1.0, // 즉시 데미지는 없음
+      moraleRequired: 100,
+      buffType: "attack",
+      buffMultiplier: 1.25,
+      buffDuration: 3
+    }
   },
   "림스&베리": {
     name: "림스&베리",

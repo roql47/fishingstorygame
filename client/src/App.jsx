@@ -1988,6 +1988,16 @@ function App() {
     return Math.floor(Math.pow(fishRank, 1.65) + fishRank * 1.3 + 10 + Math.random() * 5);
   };
 
+  // 크리티컬 히트 계산 함수
+  const calculateCriticalHit = (baseDamage, criticalChance = 0.05) => {
+    const isCritical = Math.random() < criticalChance; // 5% 기본 확률
+    if (isCritical) {
+      const criticalDamage = Math.floor(baseDamage * 1.5); // 50% 추가 데미지
+      return { damage: criticalDamage, isCritical: true };
+    }
+    return { damage: baseDamage, isCritical: false };
+  };
+
   // 악세사리에 따른 낚시 쿨타임 계산 (낚시실력은 쿨타임에 영향 없음)
   const getFishingCooldownTime = () => {
     const baseTime = 5 * 60 * 1000; // 5분 (밀리초)
@@ -2686,6 +2696,12 @@ function App() {
       }
     });
     
+    // 동료 버프 초기화
+    const companionBuffs = {};
+    battleCompanions.forEach(companion => {
+      companionBuffs[companion] = {};
+    });
+
     // 전투 상태 먼저 초기화 (재료 소모 전에)
     const newBattleState = {
       enemy: enemyFish,
@@ -2720,7 +2736,8 @@ function App() {
       canFlee: true, // 도망 가능 여부 (첫 턴에만 가능)
       companions: [...battleCompanions], // 전투 참여 동료 목록
       companionHp: companionHpData, // 동료별 체력 정보
-      companionMorale: companionMoraleData // 동료별 사기 정보
+      companionMorale: companionMoraleData, // 동료별 사기 정보
+      companionBuffs: companionBuffs // 동료별 버프 정보
     };
 
     setBattleState(newBattleState);
@@ -2795,10 +2812,39 @@ function App() {
     const nextTurnIndex = (currentBattleState.currentTurnIndex + 1) % currentBattleState.turnOrder.length;
     const nextTurnType = currentBattleState.turnOrder[nextTurnIndex];
     
+    // 버프 지속시간 감소 (새로운 턴 시작 시)
+    const updatedBuffs = { ...currentBattleState.companionBuffs };
+    const expiredBuffs = {}; // 만료된 버프 정보 저장
+    
+    Object.keys(updatedBuffs).forEach(companionName => {
+      Object.keys(updatedBuffs[companionName]).forEach(buffType => {
+        if (updatedBuffs[companionName][buffType].turnsLeft > 0) {
+          updatedBuffs[companionName][buffType] = {
+            ...updatedBuffs[companionName][buffType],
+            turnsLeft: updatedBuffs[companionName][buffType].turnsLeft - 1
+          };
+          
+          // 버프 만료 시 스킬 이름 저장 후 제거
+          if (updatedBuffs[companionName][buffType].turnsLeft <= 0) {
+            const companionData = COMPANION_DATA[companionName];
+            if (companionData?.skill?.name) {
+              if (!expiredBuffs[companionName]) {
+                expiredBuffs[companionName] = [];
+              }
+              expiredBuffs[companionName].push(companionData.skill.name);
+            }
+            delete updatedBuffs[companionName][buffType];
+          }
+        }
+      });
+    });
+    
     const newState = {
       ...currentBattleState,
       currentTurnIndex: nextTurnIndex,
-      turn: nextTurnType
+      turn: nextTurnType,
+      companionBuffs: updatedBuffs,
+      expiredBuffs: expiredBuffs
     };
     
     // 자동으로 다음 턴 실행
@@ -2810,7 +2856,7 @@ function App() {
         companionAttack(companionName, newState);
       } else if (nextTurnType === 'player' && newState.autoMode) {
         // 자동모드일 때 플레이어 자동 공격
-        playerAttack();
+        setTimeout(() => playerAttack(), 100); // 추가 딜레이로 상태 안정화
       }
     }, 1000);
     
@@ -2851,26 +2897,81 @@ function App() {
       const baseAttack = companionData?.attack || 25;
       let damage, attackType;
       
+      let newCompanionBuffs = { ...prevState.companionBuffs };
+      
+      let isCritical = false;
+      
       if (canUseSkill) {
-        // 스킬 공격
-        damage = Math.floor(baseAttack * companionBaseData.skill.damageMultiplier * (0.9 + Math.random() * 0.2)); // ±10% 랜덤
-        attackType = 'skill';
-        // 스킬 사용 후 사기 초기화
-        newCompanionMorale[companionName].morale = 0;
+        const skill = companionBaseData.skill;
+        
+        if (skill.buffType) {
+          // 버프 스킬 (애비게일의 무의태세)
+          const baseDamage = Math.floor(baseAttack * (skill.damageMultiplier || 1.0) * (0.9 + Math.random() * 0.2));
+          const criticalResult = calculateCriticalHit(baseDamage);
+          damage = criticalResult.damage;
+          isCritical = criticalResult.isCritical;
+          attackType = 'buff_skill';
+          
+          // 버프 적용
+          if (!newCompanionBuffs[companionName]) {
+            newCompanionBuffs[companionName] = {};
+          }
+          newCompanionBuffs[companionName][skill.buffType] = {
+            multiplier: skill.buffMultiplier,
+            duration: skill.buffDuration,
+            turnsLeft: skill.buffDuration
+          };
+          
+          // 스킬 사용 후 사기 초기화
+          newCompanionMorale[companionName].morale = 0;
+        } else {
+          // 데미지 스킬 (피에나의 폭격)
+          const baseDamage = Math.floor(baseAttack * companionBaseData.skill.damageMultiplier * (0.9 + Math.random() * 0.2));
+          const criticalResult = calculateCriticalHit(baseDamage);
+          damage = criticalResult.damage;
+          isCritical = criticalResult.isCritical;
+          attackType = 'damage_skill';
+          // 스킬 사용 후 사기 초기화
+          newCompanionMorale[companionName].morale = 0;
+        }
       } else {
-        // 일반 공격
-        damage = Math.floor(baseAttack * (0.8 + Math.random() * 0.4)); // ±20% 랜덤
+        // 일반 공격 (버프가 적용된 공격력 사용)
+        let effectiveAttack = baseAttack;
+        if (newCompanionBuffs[companionName]?.attack) {
+          effectiveAttack = Math.floor(baseAttack * newCompanionBuffs[companionName].attack.multiplier);
+        }
+        const baseDamage = Math.floor(effectiveAttack * (0.8 + Math.random() * 0.4)); // ±20% 랜덤
+        const criticalResult = calculateCriticalHit(baseDamage);
+        damage = criticalResult.damage;
+        isCritical = criticalResult.isCritical;
         attackType = 'normal';
       }
       
       const newEnemyHp = Math.max(0, prevState.enemyHp - damage);
       let newLog = [...prevState.log];
       
-      if (attackType === 'skill') {
-        newLog.push(`${companionName}(Lv.${companionLevel})이(가) 스킬 '${companionBaseData.skill.name}'을(를) 사용했습니다!`);
+      if (attackType === 'buff_skill') {
+        const skillMessage = isCritical ? `💥 크리티컬! ${companionName}(Lv.${companionLevel})이(가) 스킬 '${companionBaseData.skill.name}'을(를) 사용했습니다!` : `${companionName}(Lv.${companionLevel})이(가) 스킬 '${companionBaseData.skill.name}'을(를) 사용했습니다!`;
+        newLog.push(skillMessage);
+        newLog.push(`🔥 3턴 동안 공격력이 25% 상승합니다!`);
+        if (damage > 0) {
+          newLog.push(`💥 ${damage} 데미지! (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`);
+        }
+      } else if (attackType === 'damage_skill') {
+        const skillMessage = isCritical ? `💥 크리티컬! ${companionName}(Lv.${companionLevel})이(가) 스킬 '${companionBaseData.skill.name}'을(를) 사용했습니다!` : `${companionName}(Lv.${companionLevel})이(가) 스킬 '${companionBaseData.skill.name}'을(를) 사용했습니다!`;
+        newLog.push(skillMessage);
         newLog.push(`💥 ${damage} 데미지! (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`);
       } else {
-        newLog.push(`${companionName}(Lv.${companionLevel})이(가) ${damage} 데미지를 입혔습니다! (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`);
+        let buffText = "";
+        if (newCompanionBuffs[companionName]?.attack) {
+          buffText = " (공격력 강화!)";
+        } else if (prevState.expiredBuffs && prevState.expiredBuffs[companionName]) {
+          const expiredSkillNames = prevState.expiredBuffs[companionName];
+          buffText = ` (${expiredSkillNames.join(', ')} 종료)`;
+        }
+        
+        const criticalText = isCritical ? "💥 크리티컬! " : "";
+        newLog.push(`${criticalText}${companionName}(Lv.${companionLevel})이(가) ${damage} 데미지를 입혔습니다!${buffText} (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`);
       }
       
       if (newEnemyHp <= 0) {
@@ -2918,15 +3019,18 @@ function App() {
           log: newLog,
           turn: 'victory',
           amberReward: amberReward,
-          companionMorale: finalCompanionMorale
+          companionMorale: finalCompanionMorale,
+          companionBuffs: newCompanionBuffs
         };
       } else {
-        // 다음 턴으로
+        // 다음 턴으로 (expiredBuffs 초기화)
         return nextTurn({
           ...prevState,
           enemyHp: newEnemyHp,
           log: newLog,
-          companionMorale: newCompanionMorale
+          companionMorale: newCompanionMorale,
+          companionBuffs: newCompanionBuffs,
+          expiredBuffs: {} // 만료 정보 초기화
         });
       }
     });
@@ -2937,9 +3041,16 @@ function App() {
     setBattleState(prevState => {
       if (!prevState || prevState.turn !== 'player') return prevState;
 
-      const damage = calculatePlayerAttack(fishingSkill); // 낚시실력 기반 공격력
+      const baseDamage = calculatePlayerAttack(fishingSkill); // 낚시실력 기반 공격력
+      const { damage, isCritical } = calculateCriticalHit(baseDamage); // 크리티컬 계산
       const newEnemyHp = Math.max(0, prevState.enemyHp - damage);
-      let newLog = [...prevState.log, `플레이어가 ${damage} 데미지를 입혔습니다! (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`];
+      
+      let attackMessage = `플레이어가 ${damage} 데미지를 입혔습니다!`;
+      if (isCritical) {
+        attackMessage = `💥 크리티컬! 플레이어가 ${damage} 데미지를 입혔습니다!`;
+      }
+      
+      let newLog = [...prevState.log, `${attackMessage} (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`];
 
       if (newEnemyHp <= 0) {
         // 승리 - 호박석 보상 계산 (접두어 배율 적용)
@@ -2998,7 +3109,7 @@ function App() {
     });
     
     // 전투 로그 스크롤
-    setTimeout(() => scrollBattleLogToBottom(), 100);
+    setTimeout(() => scrollBattleLogToBottom(), 200);
   };
 
   // 적 공격
@@ -3009,7 +3120,8 @@ function App() {
       // 물고기 단계 기반 공격력 계산
       const fishData = allFishTypes.find(fish => fish.name === prevState.baseFish);
       const fishRank = fishData ? fishData.rank : 1;
-      const damage = calculateEnemyAttack(fishRank);
+      const baseDamage = calculateEnemyAttack(fishRank);
+      const { damage, isCritical } = calculateCriticalHit(baseDamage);
       
       // 공격 대상 선택 (플레이어와 살아있는 동료들 중 랜덤)
       const aliveTargets = ['player'];
@@ -3028,7 +3140,9 @@ function App() {
       let newPlayerHp = prevState.playerHp;
       const newCompanionHp = { ...prevState.companionHp };
       const newCompanionMorale = { ...prevState.companionMorale };
-      let newLog = [...currentLog, `${prevState.enemy}가 공격했습니다!`];
+      
+      const attackMessage = isCritical ? `💥 크리티컬! ${prevState.enemy}가 공격했습니다!` : `${prevState.enemy}가 공격했습니다!`;
+      let newLog = [...currentLog, attackMessage];
       
       if (target === 'player') {
         // 플레이어 공격
@@ -3096,7 +3210,7 @@ function App() {
     });
     
     // 전투 로그 스크롤
-    setTimeout(() => scrollBattleLogToBottom(), 100);
+    setTimeout(() => scrollBattleLogToBottom(), 200);
   };
 
   // 🔧 getAllShopItems, getAvailableShopItem는 useGameData 훅에서 제공됨
@@ -6442,7 +6556,7 @@ function App() {
               </div>
 
               {/* 자동 모드 상태 표시 */}
-              {battleState && battleState.autoMode && (battleState.turn === 'player' || battleState.turn === 'enemy') && (
+              {battleState && battleState.autoMode && battleState.turn !== 'victory' && battleState.turn !== 'defeat' && battleState.turn !== 'fled' && (
                 <div className={`text-center mb-4 ${
                   isDarkMode ? "text-yellow-400" : "text-yellow-600"
                 }`}>
@@ -6484,10 +6598,11 @@ function App() {
 
                 {battleState && battleState.turn === 'player' && battleState.autoMode && (
                   <div className="flex gap-2 w-full">
-                    <div className={`flex-1 py-3 px-6 rounded-lg text-center font-medium ${
+                    <div className={`flex-1 py-3 px-6 rounded-lg text-center font-medium flex items-center justify-center gap-2 ${
                       isDarkMode ? "bg-yellow-500/20 text-yellow-400" : "bg-yellow-500/10 text-yellow-600"
                     }`}>
-                      자동 공격 중...
+                      <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></div>
+                      <span>자동 공격 중...</span>
                     </div>
                     <button
                       onClick={() => {
