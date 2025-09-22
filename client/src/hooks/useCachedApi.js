@@ -247,22 +247,24 @@ export const useRanking = (options = {}) => {
   );
 };
 
-// 👥 접속자 데이터 훅
-export const useConnectedUsers = (options = {}) => {
+// 👥 접속자 데이터 훅 (관리자만)
+export const useConnectedUsers = (token, options = {}) => {
   const apiClient = getApiClient();
   
   const fetchConnectedUsers = useCallback(async () => {
-    const result = await apiClient.getConnectedUsers();
+    if (!token) return { users: [] }; // 토큰이 없으면 빈 배열 반환
+    const result = await apiClient.getConnectedUsers(token);
     return result.data;
-  }, [apiClient]);
+  }, [apiClient, token]);
   
   return useCachedData(
     'connected_users',
     fetchConnectedUsers,
     {
       cacheType: 'connectedUsers',
-      dependencies: [],
+      dependencies: [token],
       refreshInterval: 15000, // 15초마다 새로고침
+      enabled: !!token, // 토큰이 있을 때만 활성화
       ...options
     }
   );

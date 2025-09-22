@@ -333,11 +333,12 @@ class GameApiClient extends CachedApiClient {
     });
   }
   
-  // 👥 접속자 조회
-  async getConnectedUsers() {
+  // 👥 접속자 조회 (관리자만)
+  async getConnectedUsers(token) {
     return this.cachedGet('/api/connected-users', {
       cacheType: 'connectedUsers',
-      cacheKey: 'connected_users'
+      cacheKey: 'connected_users',
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {}
     });
   }
   

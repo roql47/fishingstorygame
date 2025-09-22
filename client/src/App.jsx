@@ -1342,18 +1342,27 @@ function App() {
     });
   }, [messages, username, serverUrl]);
 
-  // 접속자 목록 가져오기 (보안 강화)
+  // 접속자 목록 가져오기 (관리자만)
   useEffect(() => {
     const fetchConnectedUsers = async () => {
+      // 관리자가 아니면 접속자 목록을 가져오지 않음
+      if (!isAdmin) {
+        return;
+      }
+      
       // 브라우저 탭이 비활성화되었거나 사용자가 없으면 요청 중단
-      if (document.hidden || !username || !userUuid) {
+      if (document.hidden || !username || !userUuid || !jwtToken) {
         console.log('Skipping API call - tab inactive or user not available');
         return;
       }
       
       try {
-        console.log('Fetching connected users');
-        const res = await axios.get(`${serverUrl}/api/connected-users`);
+        console.log('Fetching connected users (admin only)');
+        const res = await axios.get(`${serverUrl}/api/connected-users`, {
+          headers: {
+            'Authorization': `Bearer ${jwtToken}`
+          }
+        });
         console.log('Connected users response:', res.data);
         
         // 서버 응답 검증
@@ -1408,12 +1417,12 @@ function App() {
       }
     };
     
-    if (username) {
+    if (username && isAdmin) {
       fetchConnectedUsers();
       const id = setInterval(fetchConnectedUsers, 15000); // 15초마다 새로고침 (최적화)
       return () => clearInterval(id);
     }
-  }, [serverUrl, username]);
+  }, [serverUrl, username, isAdmin, jwtToken]);
 
   // 쿨타임과 총 낚은 수는 WebSocket으로 실시간 업데이트됨 (위에서 처리)
 
