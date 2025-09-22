@@ -42,6 +42,16 @@ const ChatTab = ({
   setCooldownLoaded
 }) => {
   const messagesEndRef = useRef(null);
+  
+  // 전투로그 팝업 상태
+  const [showBattleDetails, setShowBattleDetails] = useState(false);
+  const [selectedBattleData, setSelectedBattleData] = useState(null);
+
+  // 전투로그 클릭 핸들러
+  const handleBattleLogClick = (battleDetails) => {
+    setSelectedBattleData(battleDetails);
+    setShowBattleDetails(true);
+  };
 
   // 채팅 메시지 전송 함수
   const handleSend = async () => {
@@ -257,6 +267,31 @@ const ChatTab = ({
           </div>
         </div>
         
+        {/* 쿠폰 안내 메시지 */}
+        {input === "여우와 함께 하는 낚시게임" && (
+          <div className={`mx-4 mt-4 p-3 rounded-lg border-2 border-dashed ${
+            isDarkMode 
+              ? "border-yellow-400/50 bg-yellow-400/10" 
+              : "border-yellow-500/50 bg-yellow-500/10"
+          }`}>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">🎁</span>
+              <div>
+                <p className={`text-sm font-semibold ${
+                  isDarkMode ? "text-yellow-300" : "text-yellow-700"
+                }`}>
+                  쿠폰 코드가 감지되었습니다!
+                </p>
+                <p className={`text-xs ${
+                  isDarkMode ? "text-yellow-400/80" : "text-yellow-600/80"
+                }`}>
+                  전송하면 별조각 3개를 받을 수 있습니다. (소셜 로그인 필요, 계정당 1회)
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 채팅 메시지 영역 */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[50vh]">
           {messages.map((m, i) => (
@@ -282,6 +317,64 @@ const ChatTab = ({
                         minute: '2-digit'
                       })}
                     </span>
+                  </div>
+                </div>
+              ) : m.isBattleLog ? (
+                // 전투 로그 특별 스타일링 (클릭 가능, 작은 크기)
+                <div className="my-2">
+                  <div 
+                    className={`p-3 rounded-lg border cursor-pointer transition-all duration-300 hover:scale-[1.01] hover:shadow-md ${
+                      isDarkMode 
+                        ? "bg-gradient-to-r from-purple-900/20 to-blue-900/20 border-purple-500/20 hover:border-purple-400/40" 
+                        : "bg-gradient-to-r from-purple-50/60 to-blue-50/60 border-purple-300/40 hover:border-purple-400/60"
+                    } backdrop-blur-sm`}
+                    onClick={() => handleBattleLogClick(m.battleDetails)}
+                    title="클릭하여 상세 정보 보기"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${
+                        isDarkMode ? "bg-purple-500/15" : "bg-purple-500/8"
+                      }`}>
+                        <span className="text-sm">⚔️</span>
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`font-medium text-sm ${
+                            isDarkMode ? "text-purple-300" : "text-purple-700"
+                          }`}>
+                            {m.username}
+                          </span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                            isDarkMode 
+                              ? "bg-purple-500/15 text-purple-400" 
+                              : "bg-purple-500/8 text-purple-600"
+                          }`}>
+                            전투 결과
+                          </span>
+                          <span className={`text-[10px] ${
+                            isDarkMode ? "text-gray-500" : "text-gray-500"
+                          }`}>
+                            {m.timestamp ? new Date(m.timestamp).toLocaleTimeString('ko-KR', {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            }) : new Date().toLocaleTimeString('ko-KR', {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                        </div>
+                        <div className={`text-sm mt-1 ${
+                          isDarkMode ? "text-gray-300" : "text-gray-700"
+                        }`}>
+                          {m.content}
+                        </div>
+                        <div className={`text-xs mt-1 ${
+                          isDarkMode ? "text-purple-400/70" : "text-purple-600/70"
+                        }`}>
+                          💡 상세 정보 보기
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -413,14 +506,20 @@ const ChatTab = ({
                 isDarkMode 
                   ? "glass-input text-white placeholder-gray-400" 
                   : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-gray-800 placeholder-gray-500"
-              } ${input.length > 450 ? 'border-red-400' : ''} ${isProcessingFishing ? 'opacity-50 cursor-not-allowed' : ''}`}
+              } ${input.length > 450 ? 'border-red-400' : ''} ${isProcessingFishing ? 'opacity-50 cursor-not-allowed' : ''} ${
+                input === "여우와 함께 하는 낚시게임" 
+                  ? (isDarkMode ? 'border-yellow-400 shadow-lg shadow-yellow-400/20' : 'border-yellow-500 shadow-lg shadow-yellow-500/20')
+                  : ''
+              }`}
               placeholder={isProcessingFishing 
                 ? "낚시 처리 중..." 
                 : !cooldownLoaded
                   ? "쿨타임 로딩 중..."
                   : fishingCooldown > 0 
                     ? `낚시하기 쿨타임: ${formatCooldown(fishingCooldown)}` 
-                    : "메시지를 입력하세요... (낚시하기)"
+                    : input === "여우와 함께 하는 낚시게임"
+                      ? "🎁 쿠폰 코드 입력됨! 전송하세요!"
+                      : "메시지를 입력하세요... (낚시하기)"
               }
               value={input}
               maxLength={500}
@@ -435,7 +534,11 @@ const ChatTab = ({
                 isDarkMode 
                   ? "glass-input text-blue-400" 
                   : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-blue-600"
-              } ${isProcessingFishing ? 'opacity-50 cursor-not-allowed' : ''}`}
+              } ${isProcessingFishing ? 'opacity-50 cursor-not-allowed' : ''} ${
+                input === "여우와 함께 하는 낚시게임" 
+                  ? (isDarkMode ? 'border-yellow-400 text-yellow-400 shadow-lg shadow-yellow-400/20' : 'border-yellow-500 text-yellow-600 shadow-lg shadow-yellow-500/20')
+                  : ''
+              }`}
               onClick={isProcessingFishing ? undefined : handleSend}
               disabled={isProcessingFishing}
             >
@@ -484,6 +587,151 @@ const ChatTab = ({
           </div>
         </div>
       </div>
+
+      {/* 전투로그 상세 정보 팝업 */}
+      {showBattleDetails && selectedBattleData && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className={`max-w-2xl w-full max-h-[80vh] overflow-y-auto rounded-2xl border-2 ${
+            isDarkMode 
+              ? "bg-gray-900/95 border-purple-500/30" 
+              : "bg-white/95 border-purple-300/50"
+          } backdrop-blur-md`}>
+            {/* 헤더 */}
+            <div className={`sticky top-0 p-6 border-b ${
+              isDarkMode ? "border-white/10 bg-gray-900/95" : "border-gray-300/20 bg-white/95"
+            } backdrop-blur-md`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">⚔️</span>
+                  <div>
+                    <h3 className={`text-xl font-bold ${
+                      isDarkMode ? "text-purple-300" : "text-purple-700"
+                    }`}>
+                      {selectedBattleData.username}님의 전투 기록
+                    </h3>
+                    <p className={`text-sm ${
+                      isDarkMode ? "text-gray-400" : "text-gray-600"
+                    }`}>
+                      {selectedBattleData.enemy}와의 전투
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowBattleDetails(false)}
+                  className={`p-2 rounded-lg transition-colors ${
+                    isDarkMode 
+                      ? "hover:bg-white/10 text-gray-400 hover:text-white" 
+                      : "hover:bg-gray-100 text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* 내용 */}
+            <div className="p-6 space-y-6">
+              {/* 전투 결과 */}
+              <div className={`p-4 rounded-xl ${
+                selectedBattleData.result === '승리' 
+                  ? (isDarkMode ? "bg-green-900/30 border border-green-500/30" : "bg-green-50/80 border border-green-300/50")
+                  : selectedBattleData.result === '패배'
+                  ? (isDarkMode ? "bg-red-900/30 border border-red-500/30" : "bg-red-50/80 border border-red-300/50")
+                  : (isDarkMode ? "bg-yellow-900/30 border border-yellow-500/30" : "bg-yellow-50/80 border border-yellow-300/50")
+              }`}>
+                <div className="text-center">
+                  <div className="text-4xl mb-2">
+                    {selectedBattleData.result === '승리' ? '🏆' : selectedBattleData.result === '패배' ? '💀' : '🏃'}
+                  </div>
+                  <h4 className={`text-2xl font-bold ${
+                    selectedBattleData.result === '승리' 
+                      ? (isDarkMode ? "text-green-300" : "text-green-700")
+                      : selectedBattleData.result === '패배'
+                      ? (isDarkMode ? "text-red-300" : "text-red-700")
+                      : (isDarkMode ? "text-yellow-300" : "text-yellow-700")
+                  }`}>
+                    {selectedBattleData.result}!
+                  </h4>
+                  {selectedBattleData.result === '승리' && selectedBattleData.amberReward > 0 && (
+                    <p className={`text-lg mt-2 ${
+                      isDarkMode ? "text-yellow-300" : "text-yellow-600"
+                    }`}>
+                      🟡 호박석 {selectedBattleData.amberReward}개 획득
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* 전투 정보 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className={`p-4 rounded-xl ${
+                  isDarkMode ? "bg-gray-800/50" : "bg-gray-50/80"
+                }`}>
+                  <h5 className={`font-bold mb-3 ${
+                    isDarkMode ? "text-blue-300" : "text-blue-700"
+                  }`}>
+                    ⚔️ 전투 정보
+                  </h5>
+                  <div className="space-y-2 text-sm">
+                    <div>🎯 상대: {selectedBattleData.enemy}</div>
+                    <div>🔄 최종 턴: {selectedBattleData.round}턴</div>
+                    <div>❤️ 플레이어 체력: {selectedBattleData.playerHp}/{selectedBattleData.playerMaxHp}</div>
+                  </div>
+                </div>
+
+                {selectedBattleData.companions && selectedBattleData.companions.length > 0 && (
+                  <div className={`p-4 rounded-xl ${
+                    isDarkMode ? "bg-gray-800/50" : "bg-gray-50/80"
+                  }`}>
+                    <h5 className={`font-bold mb-3 ${
+                      isDarkMode ? "text-green-300" : "text-green-700"
+                    }`}>
+                      👥 참여 동료
+                    </h5>
+                    <div className="space-y-2 text-sm">
+                      {selectedBattleData.companions.map(companion => {
+                        const companionHp = selectedBattleData.companionHp[companion];
+                        if (companionHp) {
+                          const hpPercent = Math.round((companionHp.hp / companionHp.maxHp) * 100);
+                          const status = companionHp.hp <= 0 ? '💀' : hpPercent < 30 ? '🔴' : hpPercent < 70 ? '🟡' : '🟢';
+                          return (
+                            <div key={companion}>
+                              {status} {companion}: {companionHp.hp}/{companionHp.maxHp} ({hpPercent}%)
+                            </div>
+                          );
+                        }
+                        return <div key={companion}>{companion}</div>;
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 전투 로그 */}
+              {selectedBattleData.log && selectedBattleData.log.length > 0 && (
+                <div className={`p-4 rounded-xl ${
+                  isDarkMode ? "bg-gray-800/30" : "bg-gray-50/50"
+                }`}>
+                  <h5 className={`font-bold mb-3 ${
+                    isDarkMode ? "text-orange-300" : "text-orange-700"
+                  }`}>
+                    📜 전투 로그
+                  </h5>
+                  <div className={`max-h-60 overflow-y-auto space-y-1 text-sm ${
+                    isDarkMode ? "text-gray-300" : "text-gray-700"
+                  }`}>
+                    {selectedBattleData.log.map((logEntry, index) => (
+                      <div key={index} className="leading-relaxed">
+                        {logEntry}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

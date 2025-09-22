@@ -86,6 +86,60 @@ function App() {
   const [activeTab, setActiveTab] = useState("chat");
   const [dailyQuests, setDailyQuests] = useState({ quests: [], lastResetDate: '' });
   const [isGuest, setIsGuest] = useState(false); // 게스트 여부 추적
+  const [jwtToken, setJwtToken] = useState(null); // 🔐 JWT 토큰 상태 (위치 이동)
+  const [fishingCooldown, setFishingCooldown] = useState(0); // 🛡️ 쿨타임 상태 (위치 이동)
+  const [cooldownLoaded, setCooldownLoaded] = useState(false); // 🛡️ 쿨타임 로드 상태 (위치 이동)
+  
+  // 🔧 모든 상태 변수들을 상단으로 이동 (TDZ 문제 해결)
+  const [userMoney, setUserMoney] = useState(0);
+  const [userAmber, setUserAmber] = useState(0);
+  const [userStarPieces, setUserStarPieces] = useState(0);
+  const [companions, setCompanions] = useState([]);
+  const [battleCompanions, setBattleCompanions] = useState([]); // 전투 참여 동료 (최대 3명)
+  const [companionStats, setCompanionStats] = useState({}); // 동료별 레벨/경험치 관리
+  const [showCompanionModal, setShowCompanionModal] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [userAdminStatus, setUserAdminStatus] = useState({}); // 다른 사용자들의 관리자 상태
+  const [connectedUsers, setConnectedUsers] = useState([]); // 접속자 목록
+  const [rankings, setRankings] = useState([]); // 랭킹 데이터
+  const [shopCategory, setShopCategory] = useState("fishing_rod");
+  const [showProfile, setShowProfile] = useState(false);
+  const [selectedUserProfile, setSelectedUserProfile] = useState(null); // 선택된 사용자 프로필 정보
+  const [otherUserData, setOtherUserData] = useState(null); // 다른 사용자의 실제 데이터
+  const [userEquipment, setUserEquipment] = useState({
+    fishingRod: null,
+    accessory: null
+  });
+  const [onlineUsers, setOnlineUsers] = useState([]);
+  const [fishingSkill, setFishingSkill] = useState(0);
+  const [userUuid, setUserUuid] = useState(null);
+  const [isDarkMode, setIsDarkMode] = useState(true); // 기본값: 다크모드
+  const [showQuantityModal, setShowQuantityModal] = useState(false);
+  const [quantityModalData, setQuantityModalData] = useState(null);
+  const [inputQuantity, setInputQuantity] = useState(1);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isFirstLogin, setIsFirstLogin] = useState(false);
+  const [blockedIPs, setBlockedIPs] = useState([]);
+  const [newIPAddress, setNewIPAddress] = useState('');
+  const [blockReason, setBlockReason] = useState('');
+  const [showIPManager, setShowIPManager] = useState(false);
+  const [showAccountManager, setShowAccountManager] = useState(false);
+  const [blockedAccounts, setBlockedAccounts] = useState([]);
+  const [connectedUsersList, setConnectedUsersList] = useState([]);
+  const [newAccountTarget, setNewAccountTarget] = useState('');
+  const [accountBlockReason, setAccountBlockReason] = useState('');
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [initialNickname, setInitialNickname] = useState("");
+  
+  // 🔧 추가 상태 변수들 (TDZ 문제 해결)
+  const [isProcessingSellAll, setIsProcessingSellAll] = useState(false);
+  const [isProcessingDecomposeAll, setIsProcessingDecomposeAll] = useState(false);
+  const [showExplorationModal, setShowExplorationModal] = useState(false);
+  const [selectedMaterial, setSelectedMaterial] = useState(null);
+  const [battleState, setBattleState] = useState(null); // { enemy, playerHp, enemyHp, turn, log }
+  const [showBattleModal, setShowBattleModal] = useState(false);
+  const [isProcessingFishing, setIsProcessingFishing] = useState(false); // 🛡️ 낚시 처리 중 상태
 
   // 페이지 로드 시 저장된 토큰들 및 게스트 상태 복원
   useEffect(() => {
@@ -137,6 +191,44 @@ function App() {
       }, 0);
     }
   }, []);
+
+  // 전투 로그 채팅 공유 함수 (간결한 버전)
+  const shareBattleLog = useCallback(() => {
+    if (!battleState || !username) return;
+    
+    const socket = getSocket();
+    
+    // 간결한 전투로그 제목 생성
+    const battleSummary = `⚔️ '${username}'님의 전투로그`;
+    
+    // 상세 정보 (클릭 시 표시할 데이터)
+    const battleDetails = {
+      username,
+      enemy: battleState.enemy,
+      result: battleState.turn === 'victory' ? '승리' : battleState.turn === 'defeat' ? '패배' : '도망',
+      round: battleState.round,
+      playerHp: battleState.playerHp,
+      playerMaxHp: battleState.playerMaxHp,
+      amberReward: battleState.amberReward || 0,
+      companions: battleState.companions || [],
+      companionHp: battleState.companionHp || {},
+      log: battleState.log || []
+    };
+    
+    // 채팅으로 전송
+    const payload = { 
+      username, 
+      content: battleSummary, 
+      timestamp: new Date().toISOString(),
+      isBattleLog: true, // 전투 로그임을 표시
+      battleDetails: battleDetails // 상세 정보 포함
+    };
+    
+    socket.emit("chat:message", payload);
+    
+    // 성공 메시지
+    console.log("전투 로그가 채팅에 공유되었습니다!");
+  }, [battleState, username, getSocket]);
 
   // 카카오 SDK 초기화
   useEffect(() => {
@@ -275,69 +367,8 @@ function App() {
       }
     }
   };
-  const [userMoney, setUserMoney] = useState(0);
-  const [userAmber, setUserAmber] = useState(0);
-  const [userStarPieces, setUserStarPieces] = useState(0);
-  const [companions, setCompanions] = useState([]);
-  const [battleCompanions, setBattleCompanions] = useState([]); // 전투 참여 동료 (최대 3명)
-  const [companionStats, setCompanionStats] = useState({}); // 동료별 레벨/경험치 관리
-  const [showCompanionModal, setShowCompanionModal] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [userAdminStatus, setUserAdminStatus] = useState({}); // 다른 사용자들의 관리자 상태
-  const [connectedUsers, setConnectedUsers] = useState([]); // 접속자 목록
-  const [rankings, setRankings] = useState([]); // 랭킹 데이터
-  const [shopCategory, setShopCategory] = useState("fishing_rod");
-  const [showProfile, setShowProfile] = useState(false);
-  const [selectedUserProfile, setSelectedUserProfile] = useState(null); // 선택된 사용자 프로필 정보
-  const [otherUserData, setOtherUserData] = useState(null); // 다른 사용자의 실제 데이터
-  const [userEquipment, setUserEquipment] = useState({
-    fishingRod: null,
-    accessory: null
-  });
-  const [onlineUsers, setOnlineUsers] = useState([]);
-  const [fishingSkill, setFishingSkill] = useState(0);
-  const [userUuid, setUserUuid] = useState(null);
-  const [isDarkMode, setIsDarkMode] = useState(true); // 기본값: 다크모드
-  const [showQuantityModal, setShowQuantityModal] = useState(false);
-  const [quantityModalData, setQuantityModalData] = useState(null);
-  const [inputQuantity, setInputQuantity] = useState(1);
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
   
-  // IP 차단 관리 상태
-  const [blockedIPs, setBlockedIPs] = useState([]);
-  const [newIPAddress, setNewIPAddress] = useState('');
-  const [blockReason, setBlockReason] = useState('');
-  const [showIPManager, setShowIPManager] = useState(false);
-  
-  // 계정 차단 관리 상태
-  const [blockedAccounts, setBlockedAccounts] = useState([]);
-  const [connectedUsersList, setConnectedUsersList] = useState([]);
-  const [newAccountTarget, setNewAccountTarget] = useState('');
-  const [accountBlockReason, setAccountBlockReason] = useState('');
-  
-  // 최초 로그인 관련 상태
-  const [showTermsModal, setShowTermsModal] = useState(false);
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  const [initialNickname, setInitialNickname] = useState("");
-  const [isFirstLogin, setIsFirstLogin] = useState(false);
-  
-  // 처리 중 상태 (중복 실행 방지)
-  const [isProcessingSellAll, setIsProcessingSellAll] = useState(false);
-  const [isProcessingDecomposeAll, setIsProcessingDecomposeAll] = useState(false);
-  
-  // 탐사 관련 상태
-  const [showExplorationModal, setShowExplorationModal] = useState(false);
-  const [selectedMaterial, setSelectedMaterial] = useState(null);
-  const [battleState, setBattleState] = useState(null); // { enemy, playerHp, enemyHp, turn, log }
-  const [showBattleModal, setShowBattleModal] = useState(false);
   const battleLogRef = useRef(null); // 전투 로그 자동 스크롤을 위한 ref
-  
-  // 쿨타임 관련 상태 (서버에서 로드, localStorage 백업)
-  const [fishingCooldown, setFishingCooldown] = useState(0); // 초기값은 0으로 설정
-  const [cooldownLoaded, setCooldownLoaded] = useState(false); // 쿨타임 로드 완료 여부
-  // 탐사 쿨타임 제거됨
-  const [isProcessingFishing, setIsProcessingFishing] = useState(false); // 🛡️ 낚시 처리 중 상태
-  const [jwtToken, setJwtToken] = useState(null); // 🔐 JWT 토큰 상태
 
   const serverUrl = useMemo(() => {
     // 프로덕션 환경에서는 현재 도메인 사용
@@ -1990,12 +2021,16 @@ function App() {
 
   // 크리티컬 히트 계산 함수
   const calculateCriticalHit = (baseDamage, criticalChance = 0.05, companionName = null, companionBuffs = {}) => {
-    let finalCriticalChance = criticalChance;
-    
-    // 동료의 크리티컬 버프 적용
-    if (companionName && companionBuffs[companionName]?.critical) {
-      finalCriticalChance += companionBuffs[companionName].critical.multiplier;
-    }
+    const finalCriticalChance = (() => {
+      let chance = criticalChance;
+      
+      // 동료의 크리티컬 버프 적용
+      if (companionName && companionBuffs[companionName]?.critical) {
+        chance += companionBuffs[companionName].critical.multiplier;
+      }
+      
+      return chance;
+    })();
     
     const isCritical = Math.random() < finalCriticalChance;
     if (isCritical) {
@@ -2008,18 +2043,18 @@ function App() {
   // 악세사리에 따른 낚시 쿨타임 계산 (낚시실력은 쿨타임에 영향 없음)
   const getFishingCooldownTime = () => {
     const baseTime = 5 * 60 * 1000; // 5분 (밀리초)
-    let reduction = 0; // 낚시실력은 쿨타임에 영향 없음
-    
+    const reduction = (() => {
     // 악세사리 효과: 각 악세사리마다 15초 감소
     if (userEquipment.accessory) {
       const accessoryItems = getAllShopItems().accessories || [];
       const equippedAccessory = accessoryItems.find(item => item.name === userEquipment.accessory);
       if (equippedAccessory) {
         // 악세사리 레벨에 따른 쿨타임 감소 (레벨당 15초)
-        const additionalReduction = (equippedAccessory.requiredSkill + 1) * 15 * 1000;
-        reduction += additionalReduction;
+          return (equippedAccessory.requiredSkill + 1) * 15 * 1000;
       }
     }
+      return 0; // 낚시실력은 쿨타임에 영향 없음
+    })();
     
     return Math.max(baseTime - reduction, 0); // 최소 0초
   };
@@ -2176,15 +2211,17 @@ function App() {
     if (!companionStats[companionName]) {
       // localStorage에서 저장된 능력치 확인
       const savedStats = localStorage.getItem(`companionStats_${userUuid || username}`);
-      let allStats = {};
-      
-      if (savedStats) {
-        try {
-          allStats = JSON.parse(savedStats);
-        } catch (e) {
-          console.error('Failed to parse companion stats from localStorage:', e);
+      const allStats = (() => {
+        if (savedStats) {
+          try {
+            return JSON.parse(savedStats);
+          } catch (e) {
+            console.error('Failed to parse companion stats from localStorage:', e);
+            return {};
+          }
         }
-      }
+        return {};
+      })();
       
       const newStats = allStats[companionName] || {
         level: 1,
@@ -2218,9 +2255,15 @@ function App() {
         maxHp: calculateCompanionStats(companionName, 1)?.hp || 100
       };
       
-      let newExp = current.exp + expAmount;
-      let newLevel = current.level;
-      let newExpToNext = current.expToNext;
+      const expCalc = (() => {
+        let newExp = current.exp + expAmount;
+        let newLevel = current.level;
+        let newExpToNext = current.expToNext;
+        
+        return { newExp, newLevel, newExpToNext };
+      })();
+      
+      let { newExp, newLevel, newExpToNext } = expCalc;
       
       // 레벨업 체크
       while (newExp >= newExpToNext) {
@@ -2708,7 +2751,7 @@ function App() {
     battleCompanions.forEach(companion => {
       companionBuffs[companion] = {};
     });
-
+    
     // 전투 상태 먼저 초기화 (재료 소모 전에)
     const newBattleState = {
       enemy: enemyFish,
@@ -2882,7 +2925,7 @@ function App() {
       
       // 동료가 쓰러져 있으면 턴 넘김
       if (prevState.companionHp?.[companionName]?.hp <= 0) {
-        let newLog = [...prevState.log, `${companionName}이(가) 쓰러져서 공격할 수 없습니다.`];
+        const newLog = [...prevState.log, `${companionName}이(가) 쓰러져서 공격할 수 없습니다.`];
         return nextTurn({ ...prevState, log: newLog });
       }
       
@@ -2904,7 +2947,7 @@ function App() {
       const baseAttack = companionData?.attack || 25;
       let damage, attackType;
       
-      let newCompanionBuffs = { ...prevState.companionBuffs };
+      const newCompanionBuffs = { ...prevState.companionBuffs };
       
       let isCritical = false;
       
@@ -2945,10 +2988,12 @@ function App() {
         }
       } else {
         // 일반 공격 (버프가 적용된 공격력 사용)
-        let effectiveAttack = baseAttack;
-        if (newCompanionBuffs[companionName]?.attack) {
-          effectiveAttack = Math.floor(baseAttack * newCompanionBuffs[companionName].attack.multiplier);
-        }
+        const effectiveAttack = (() => {
+          if (newCompanionBuffs[companionName]?.attack) {
+            return Math.floor(baseAttack * newCompanionBuffs[companionName].attack.multiplier);
+          }
+          return baseAttack;
+        })();
         const baseDamage = Math.floor(effectiveAttack * (0.8 + Math.random() * 0.4)); // ±20% 랜덤
         const criticalResult = calculateCriticalHit(baseDamage, 0.05, companionName, newCompanionBuffs);
         damage = criticalResult.damage;
@@ -2957,8 +3002,8 @@ function App() {
       }
       
       const newEnemyHp = Math.max(0, prevState.enemyHp - damage);
-      let newLog = [...prevState.log];
-      let newPlayerHp = prevState.playerHp;
+      const newLog = [...prevState.log];
+      const newPlayerHp = prevState.playerHp;
       const newCompanionHp = { ...prevState.companionHp };
       
       if (attackType === 'buff_skill') {
@@ -3063,12 +3108,11 @@ function App() {
       const { damage, isCritical } = calculateCriticalHit(baseDamage); // 크리티컬 계산
       const newEnemyHp = Math.max(0, prevState.enemyHp - damage);
       
-      let attackMessage = `플레이어가 ${damage} 데미지를 입혔습니다!`;
-      if (isCritical) {
-        attackMessage = `💥 크리티컬! 플레이어가 ${damage} 데미지를 입혔습니다!`;
-      }
-      
-      let newLog = [...prevState.log, `${attackMessage} (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`];
+      const attackMessage = isCritical 
+        ? `💥 크리티컬! 플레이어가 ${damage} 데미지를 입혔습니다!`
+        : `플레이어가 ${damage} 데미지를 입혔습니다!`;
+
+      const newLog = [...prevState.log, `${attackMessage} (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`];
 
       if (newEnemyHp <= 0) {
         // 승리 - 호박석 보상 계산 (접두어 배율 적용)
@@ -3155,12 +3199,12 @@ function App() {
       const targetIndex = Math.floor(Math.random() * aliveTargets.length);
       const target = aliveTargets[targetIndex];
       
-      let newPlayerHp = prevState.playerHp;
       const newCompanionHp = { ...prevState.companionHp };
       const newCompanionMorale = { ...prevState.companionMorale };
+      let newPlayerHp = prevState.playerHp;
       
       const attackMessage = isCritical ? `💥 크리티컬! ${prevState.enemy}가 공격했습니다!` : `${prevState.enemy}가 공격했습니다!`;
-      let newLog = [...currentLog, attackMessage];
+      const newLog = [...currentLog, attackMessage];
       
       if (target === 'player') {
         // 플레이어 공격
@@ -6662,6 +6706,22 @@ function App() {
                 )}
                 
                 {battleState && (battleState.turn === 'victory' || battleState.turn === 'defeat' || battleState.turn === 'fled') && (
+                  <div className="flex gap-3">
+                    {/* 채팅 공유 버튼 */}
+                    <button
+                      onClick={shareBattleLog}
+                      className={`flex items-center justify-center gap-2 py-3 px-4 rounded-lg font-semibold transition-all duration-300 hover:scale-105 ${
+                        isDarkMode
+                          ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30"
+                          : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border border-blue-500/30"
+                      }`}
+                      title="전투 결과를 채팅에 공유"
+                    >
+                      <MessageCircle className="w-5 h-5" />
+                      <span className="hidden sm:inline">공유</span>
+                    </button>
+                    
+                    {/* 닫기 버튼 */}
                   <button
                     onClick={() => {
                       setShowBattleModal(false);
@@ -6681,8 +6741,9 @@ function App() {
                           : "bg-gray-300/30 text-gray-600 hover:bg-gray-300/50"
                     }`}
                   >
-                    {battleState && battleState.turn === 'victory' ? '승리!' : battleState && battleState.turn === 'fled' ? '도망 성공!' : '패배...'}
+                      {battleState && battleState.turn === 'victory' ? '승리!' : battleState && battleState.turn === 'fled' ? '도망 성공!' : '패배...'}
                   </button>
+                  </div>
                 )}
               </div>
             </div>

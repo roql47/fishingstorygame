@@ -765,6 +765,22 @@ const companionSchema = new mongoose.Schema(
 
 const CompanionModel = mongoose.model("Companion", companionSchema);
 
+// Coupon Usage Schema (쿠폰 사용 기록)
+const couponUsageSchema = new mongoose.Schema(
+  {
+    userUuid: { type: String, required: true, index: true },
+    username: { type: String, required: true },
+    couponCode: { type: String, required: true },
+    reward: { type: String, required: true }, // "starPieces:3" 형태
+    usedAt: { type: Date, default: Date.now }
+  },
+  { timestamps: true }
+);
+
+couponUsageSchema.index({ userUuid: 1, couponCode: 1 }, { unique: true }); // 사용자당 쿠폰 중복 사용 방지
+
+const CouponUsageModel = mongoose.model("CouponUsage", couponUsageSchema);
+
 // Admin Schema (관리자 시스템)
 const adminSchema = new mongoose.Schema(
   {
@@ -1974,6 +1990,100 @@ io.on("connection", (socket) => {
       }
     }
     
+    // 🎁 쿠폰 코드 처리
+    if (trimmed === "여우와 함께 하는 낚시게임") {
+      try {
+        // Guest 사용자 체크 - DB에서 사용자 정보 조회
+        const dbUser = await UserUuidModel.findOne({ userUuid: user.userUuid });
+        
+        if (!dbUser || (!dbUser.originalGoogleId && !dbUser.originalKakaoId)) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 쿠폰은 구글 또는 카카오 소셜 로그인 후에만 사용할 수 있습니다.",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // 이미 사용한 쿠폰인지 확인
+        const existingUsage = await CouponUsageModel.findOne({
+          userUuid: user.userUuid,
+          couponCode: "여우와 함께 하는 낚시게임"
+        });
+
+        if (existingUsage) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 이미 사용한 쿠폰입니다. 쿠폰은 계정당 한 번만 사용할 수 있습니다.",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // 별조각 3개 지급
+        const rewardAmount = 3;
+        const queryResult = await getUserQuery('user', user.username, user.userUuid);
+        let query;
+        if (queryResult.userUuid) {
+          query = { userUuid: queryResult.userUuid };
+        } else {
+          query = queryResult;
+        }
+
+        let userStarPieces = await StarPieceModel.findOne(query);
+        
+        if (!userStarPieces) {
+          // 새 사용자인 경우 생성
+          const createData = {
+            userId: query.userId || 'user',
+            username: query.username || user.username,
+            userUuid: query.userUuid || user.userUuid,
+            starPieces: rewardAmount
+          };
+          userStarPieces = new StarPieceModel(createData);
+        } else {
+          userStarPieces.starPieces = (userStarPieces.starPieces || 0) + rewardAmount;
+        }
+
+        await userStarPieces.save();
+
+        // 쿠폰 사용 기록 저장
+        const couponUsage = new CouponUsageModel({
+          userUuid: user.userUuid,
+          username: user.username,
+          couponCode: "여우와 함께 하는 낚시게임",
+          reward: `starPieces:${rewardAmount}`
+        });
+        await couponUsage.save();
+
+        // 성공 메시지 전송
+        socket.emit("chat:message", {
+          system: true,
+          username: "system",
+          content: `🎉 축하합니다! 쿠폰이 성공적으로 사용되었습니다!\n⭐ 별조각 ${rewardAmount}개를 받았습니다! (총 ${userStarPieces.starPieces}개)`,
+          timestamp: new Date().toISOString()
+        });
+
+        // 사용자 데이터 업데이트 전송
+        sendUserDataUpdate(socket, user.userUuid, user.username);
+
+        console.log(`🎁 Coupon used: ${user.username} (${user.userUuid}) - starPieces +${rewardAmount}`);
+        return;
+
+      } catch (error) {
+        console.error("쿠폰 처리 중 오류:", error);
+        socket.emit("chat:message", {
+          system: true,
+          username: "system",
+          content: "🚫 쿠폰 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+    }
+
     if (trimmed === "낚시하기") {
       try {
         // 사용자 쿼리 생성
