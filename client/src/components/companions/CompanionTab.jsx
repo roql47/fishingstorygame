@@ -128,6 +128,9 @@ const CompanionTab = ({
                 const isInBattle = battleCompanions.includes(companion);
                 const canAddToBattle = battleCompanions.length < maxBattleCompanions;
                 const companionStat = companionStats[companion] || { level: 1, exp: 0, expToNext: 100 };
+                // NaN 방지를 위한 안전한 값 처리
+                const safeExp = companionStat.exp || 0;
+                const safeExpToNext = companionStat.expToNext || 100;
                 const companionData = calculateCompanionStats(companion, companionStat.level);
                 const baseData = COMPANION_DATA[companion];
                 
@@ -193,7 +196,7 @@ const CompanionTab = ({
                           <div className={`text-xs mt-1 ${
                             isDarkMode ? "text-gray-400" : "text-gray-600"
                           }`}>
-                            {isInBattle ? "전투 참여 중" : "대기 중"} • EXP: {companionStat.exp}/{companionStat.expToNext}
+                            {isInBattle ? "전투 참여 중" : "대기 중"} • EXP: {safeExp}/{safeExpToNext}
                           </div>
                         </div>
                       </div>
@@ -337,6 +340,10 @@ const CompanionTab = ({
                 const level = companionStat?.level || 1;
                 const exp = companionStat?.exp || 0;
                 const expToNext = companionStat?.expToNext || 100;
+                
+                // NaN 방지를 위한 추가 안전 처리
+                const safeExp = isNaN(exp) ? 0 : exp;
+                const safeExpToNext = isNaN(expToNext) ? 100 : expToNext;
                 const companionData = calculateCompanionStats(selectedCompanion, level);
                 const isInBattle = battleCompanions.includes(selectedCompanion);
 
@@ -443,14 +450,14 @@ const CompanionTab = ({
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
                           <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>현재 EXP</span>
-                          <span className={isDarkMode ? "text-white" : "text-gray-800"}>{exp} / {expToNext}</span>
+                          <span className={isDarkMode ? "text-white" : "text-gray-800"}>{safeExp} / {safeExpToNext}</span>
                         </div>
                         <div className={`w-full h-2 rounded-full ${
                           isDarkMode ? "bg-gray-600" : "bg-gray-300"
                         }`}>
                           <div 
                             className="h-full bg-blue-500 rounded-full transition-all duration-300"
-                            style={{ width: `${Math.min(100, (exp / expToNext) * 100)}%` }}
+                            style={{ width: `${Math.min(100, (safeExp / safeExpToNext) * 100)}%` }}
                           ></div>
                         </div>
                       </div>

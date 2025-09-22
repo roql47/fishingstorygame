@@ -189,7 +189,28 @@ function App() {
       try {
         const statsRes = await axios.get(`${serverUrl}/api/companion-stats/${userId}`, { params });
         console.log('✅ Refreshed companion stats:', statsRes.data);
-        setCompanionStats(statsRes.data.companionStats || {});
+        
+        // 서버 데이터를 클라이언트 형식으로 변환 (expToNext 계산)
+        const serverStats = statsRes.data.companionStats || {};
+        const processedStats = {};
+        
+        Object.entries(serverStats).forEach(([companionName, stats]) => {
+          const level = stats.level || 1;
+          const exp = stats.experience || 0; // 서버에서는 experience 필드 사용
+          const expToNext = level * 50 + 50; // 레벨당 필요 경험치 계산
+          
+          processedStats[companionName] = {
+            level: level,
+            exp: exp,
+            expToNext: expToNext,
+            hp: calculateCompanionStats(companionName, level)?.hp || 100,
+            maxHp: calculateCompanionStats(companionName, level)?.hp || 100,
+            isInBattle: stats.isInBattle || false
+          };
+        });
+        
+        console.log('✅ Processed refreshed companion stats:', processedStats);
+        setCompanionStats(processedStats);
       } catch (e) {
         console.warn('⚠️ Failed to refresh companion stats:', e);
       }
@@ -1396,7 +1417,28 @@ function App() {
         try {
           const statsRes = await axios.get(`${serverUrl}/api/companion-stats/${userId}`, { params });
           console.log('✅ Loaded companion stats from server:', statsRes.data);
-          setCompanionStats(statsRes.data.companionStats || {});
+          
+          // 서버 데이터를 클라이언트 형식으로 변환 (expToNext 계산)
+          const serverStats = statsRes.data.companionStats || {};
+          const processedStats = {};
+          
+          Object.entries(serverStats).forEach(([companionName, stats]) => {
+            const level = stats.level || 1;
+            const exp = stats.experience || 0; // 서버에서는 experience 필드 사용
+            const expToNext = level * 50 + 50; // 레벨당 필요 경험치 계산
+            
+            processedStats[companionName] = {
+              level: level,
+              exp: exp,
+              expToNext: expToNext,
+              hp: calculateCompanionStats(companionName, level)?.hp || 100,
+              maxHp: calculateCompanionStats(companionName, level)?.hp || 100,
+              isInBattle: stats.isInBattle || false
+            };
+          });
+          
+          console.log('✅ Processed companion stats:', processedStats);
+          setCompanionStats(processedStats);
         } catch (e) {
           console.warn('⚠️ Failed to load companion stats from server, using localStorage fallback:', e);
           // 서버 실패 시 localStorage 폴백
@@ -2362,6 +2404,8 @@ function App() {
   // 동료 능력치 초기화 함수
   const initializeCompanionStats = (companionName) => {
     if (!companionStats[companionName]) {
+      console.log(`🔧 ${companionName} 능력치 초기화 중...`);
+      
       // localStorage에서 저장된 능력치 확인
       const savedStats = localStorage.getItem(`companionStats_${userUuid || username}`);
       const allStats = (() => {
@@ -2376,13 +2420,24 @@ function App() {
         return {};
       })();
       
+      const defaultLevel = 1;
+      const defaultExp = 0;
+      const defaultExpToNext = defaultLevel * 50 + 50; // 안전한 계산
+      
       const newStats = allStats[companionName] || {
-        level: 1,
-        exp: 0,
-        expToNext: 100,
-        hp: calculateCompanionStats(companionName, 1)?.hp || 100,
-        maxHp: calculateCompanionStats(companionName, 1)?.hp || 100
+        level: defaultLevel,
+        exp: defaultExp,
+        expToNext: defaultExpToNext,
+        hp: calculateCompanionStats(companionName, defaultLevel)?.hp || 100,
+        maxHp: calculateCompanionStats(companionName, defaultLevel)?.hp || 100
       };
+      
+      // expToNext가 NaN이거나 유효하지 않으면 재계산
+      if (!newStats.expToNext || isNaN(newStats.expToNext)) {
+        newStats.expToNext = (newStats.level || 1) * 50 + 50;
+      }
+      
+      console.log(`✅ ${companionName} 초기화된 능력치:`, newStats);
       
       setCompanionStats(prev => {
         const updated = {
