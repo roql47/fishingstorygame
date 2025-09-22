@@ -1,8 +1,22 @@
 // 공지사항 데이터
 export const NOTICE_DATA = [
   {
+    id: 0,
+    date: "2025.09.22",
+    title: "🎆 게임 시스템 업데이트",
+    content: [
+      "일일퀴스트 보상 개선: 물고기 10마리 잡기 보상을 별조각 1개로 변경",
+      "모바일 백그라운드 쿨타임 멈춤 현상 완전 수정",
+      "카카오 로그인 시스템 전면 개선",
+      "기존 계정 중복 생성 방지 및 닉네임 동기화 완료",
+      "Page Visibility API 적용으로 모바일 쿨타임 정확도 향상"
+    ],
+    isNew: true,
+    type: "update"
+  },
+  {
     id: 1,
-    date: "2025.01.22",
+    date: "2025.09.22",
     title: "🔐 JWT 보안 시스템 대폭 강화",
     content: [
       "Bearer 토큰 형식 검증 및 엄격한 인증 절차 도입",
@@ -12,12 +26,12 @@ export const NOTICE_DATA = [
       "고빈도 요청 탐지 및 DDoS 패턴 인식 강화",
       "보안 헤더 적용 (XSS, 클릭재킹 방어)"
     ],
-    isNew: true,
+    isNew: false,
     type: "security"
   },
   {
     id: 2,
-    date: "2025.01.22",
+    date: "2025.09.22",
     title: "🎉 동료 시스템 업데이트",
     content: [
       "모든 동료의 등급이 일반으로 통일되었습니다",
@@ -30,7 +44,7 @@ export const NOTICE_DATA = [
   },
   {
     id: 3,
-    date: "2025.01.21", 
+    date: "2025.09.22", 
     title: "🔐 보안 시스템 강화",
     content: [
       "JWT 토큰 기반 인증 시스템 도입",
@@ -42,7 +56,7 @@ export const NOTICE_DATA = [
   },
   {
     id: 4,
-    date: "2025.01.20",
+    date: "2025.09.22",
     title: "⚔️ 전투 시스템 개선", 
     content: [
       "전투 로그 공유 기능 추가",
@@ -54,7 +68,7 @@ export const NOTICE_DATA = [
   },
   {
     id: 5,
-    date: "2025.01.19",
+    date: "2025.09.19",
     title: "🦊 여우이야기 Alpha Test 시작",
     content: [
       "여우이야기 알파 테스트를 시작합니다",
@@ -69,5 +83,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.10"
+  version: "v1.11"
 };

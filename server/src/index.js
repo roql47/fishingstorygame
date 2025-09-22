@@ -4144,11 +4144,11 @@ app.post("/api/update-nickname", async (req, res) => {
 // 닉네임 중복 체크 API (최초 설정용)
 app.post("/api/check-nickname", async (req, res) => {
   try {
-    const { userUuid, googleId } = req.query;
+    const { userUuid, googleId, kakaoId } = req.query;
     const { nickname } = req.body;
     
     console.log("=== CHECK NICKNAME API ===");
-    console.log("Request params:", { userUuid, googleId, nickname });
+    console.log("Request params:", { userUuid, googleId, kakaoId, nickname });
     
     // 🔒 통합 닉네임 검증
     const validation = validateNickname(nickname);
@@ -4168,6 +4168,13 @@ app.post("/api/check-nickname", async (req, res) => {
         originalGoogleId: { $ne: googleId } // 다른 구글 계정의 닉네임만 체크
       };
       console.log(`Checking nickname for Google user ${googleId}: allowing same account's existing nickname`);
+    } else if (kakaoId) {
+      // 카카오 계정인 경우: 같은 카카오 계정의 기존 닉네임은 허용
+      query = { 
+        displayName: trimmedNickname, 
+        originalKakaoId: { $ne: kakaoId } // 다른 카카오 계정의 닉네임만 체크
+      };
+      console.log(`Checking nickname for Kakao user ${kakaoId}: allowing same account's existing nickname`);
     } else if (userUuid) {
       // 일반 사용자인 경우: 자신 제외
       query = { 
@@ -4199,10 +4206,10 @@ app.post("/api/check-nickname", async (req, res) => {
 app.get("/api/user-settings/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
-    const { username, userUuid, googleId } = req.query;
+    const { username, userUuid, googleId, kakaoId } = req.query;
     
     console.log("=== GET USER SETTINGS API ===");
-    console.log("Request params:", { userId, username, userUuid, googleId });
+    console.log("Request params:", { userId, username, userUuid, googleId, kakaoId });
     
     let user;
     if (userUuid && userUuid !== 'null' && userUuid !== 'undefined') {
@@ -4212,8 +4219,11 @@ app.get("/api/user-settings/:userId", async (req, res) => {
       if (googleId) {
         console.log(`Looking for Google user with originalGoogleId: ${googleId}`);
         user = await UserUuidModel.findOne({ originalGoogleId: googleId });
+      } else if (kakaoId) {
+        console.log(`Looking for Kakao user with originalKakaoId: ${kakaoId}`);
+        user = await UserUuidModel.findOne({ originalKakaoId: kakaoId });
       } else {
-        // 구글 ID가 없으면 username으로 찾기 (fallback)
+        // 구글/카카오 ID가 없으면 username으로 찾기 (fallback)
         user = await UserUuidModel.findOne({ username, isGuest: false });
       }
     } else {
@@ -4255,11 +4265,11 @@ app.get("/api/user-settings/:userId", async (req, res) => {
 app.post("/api/set-display-name/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
-    const { username, userUuid, googleId } = req.query;
+    const { username, userUuid, googleId, kakaoId } = req.query;
     const { displayName } = req.body;
     
     console.log("=== SET DISPLAY NAME API ===");
-    console.log("Request params:", { userId, username, userUuid, googleId });
+    console.log("Request params:", { userId, username, userUuid, googleId, kakaoId });
     console.log("Request body:", { displayName });
     
     // 🔒 통합 닉네임 검증
@@ -4274,12 +4284,15 @@ app.post("/api/set-display-name/:userId", async (req, res) => {
     if (userUuid && userUuid !== 'null' && userUuid !== 'undefined') {
       user = await UserUuidModel.findOne({ userUuid });
     } else if (userId !== 'null') {
-      // 구글/카카오 사용자 - originalGoogleId로 찾기
+      // 구글/카카오 사용자 - originalGoogleId나 originalKakaoId로 찾기
       if (googleId) {
         console.log(`Looking for Google user with originalGoogleId: ${googleId}`);
         user = await UserUuidModel.findOne({ originalGoogleId: googleId });
+      } else if (kakaoId) {
+        console.log(`Looking for Kakao user with originalKakaoId: ${kakaoId}`);
+        user = await UserUuidModel.findOne({ originalKakaoId: kakaoId });
       } else {
-        // 구글 ID가 없으면 username으로 찾기 (fallback)
+        // 구글/카카오 ID가 없으면 username으로 찾기 (fallback)
         user = await UserUuidModel.findOne({ username, isGuest: false });
       }
     } else {
@@ -4314,23 +4327,26 @@ app.post("/api/set-display-name/:userId", async (req, res) => {
 app.post("/api/user-settings/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
-    const { username, userUuid, googleId } = req.query;
+    const { username, userUuid, googleId, kakaoId } = req.query;
     const { termsAccepted, darkMode, fishingCooldown } = req.body;
     
     console.log("=== UPDATE USER SETTINGS API ===");
-    console.log("Request params:", { userId, username, userUuid, googleId });
+    console.log("Request params:", { userId, username, userUuid, googleId, kakaoId });
     console.log("User settings update request received");
     
     let user;
     if (userUuid && userUuid !== 'null' && userUuid !== 'undefined') {
       user = await UserUuidModel.findOne({ userUuid });
     } else if (userId !== 'null') {
-      // 구글/카카오 사용자 - originalGoogleId로 찾기
+      // 구글/카카오 사용자 - originalGoogleId나 originalKakaoId로 찾기
       if (googleId) {
         console.log(`Looking for Google user with originalGoogleId: ${googleId}`);
         user = await UserUuidModel.findOne({ originalGoogleId: googleId });
+      } else if (kakaoId) {
+        console.log(`Looking for Kakao user with originalKakaoId: ${kakaoId}`);
+        user = await UserUuidModel.findOne({ originalKakaoId: kakaoId });
       } else {
-        // 구글 ID가 없으면 username으로 찾기 (fallback)
+        // 구글/카카오 ID가 없으면 username으로 찾기 (fallback)
         user = await UserUuidModel.findOne({ username, isGuest: false });
       }
     } else {
@@ -4537,7 +4553,7 @@ app.get("/api/daily-quests/:userId", async (req, res) => {
           progress: dailyQuest.fishCaught,
           target: 10,
           completed: dailyQuest.questFishCaught,
-          reward: '호박석 10개'
+          reward: '별조각 1개'
         },
         {
           id: 'exploration_win',
@@ -4676,23 +4692,30 @@ app.post("/api/claim-quest-reward", async (req, res) => {
     
     // 퀴스트 완료 여부 확인 및 보상 지급
     let canClaim = false;
-    let rewardAmount = 10; // 호박석 10개
+    let rewardType = 'amber'; // 기본값: 호박석
+    let rewardAmount = 10; // 기본 보상량
     
     switch (questId) {
       case 'fish_caught':
         canClaim = dailyQuest.fishCaught >= 10 && !dailyQuest.questFishCaught;
+        rewardType = 'starPieces'; // 별조각으로 변경
+        rewardAmount = 1; // 1개
         if (canClaim) {
           await DailyQuestModel.findOneAndUpdate(query, { questFishCaught: true });
         }
         break;
       case 'exploration_win':
         canClaim = dailyQuest.explorationWins >= 1 && !dailyQuest.questExplorationWin;
+        rewardType = 'amber'; // 호박석 유지
+        rewardAmount = 10;
         if (canClaim) {
           await DailyQuestModel.findOneAndUpdate(query, { questExplorationWin: true });
         }
         break;
       case 'fish_sold':
         canClaim = dailyQuest.fishSold >= 10 && !dailyQuest.questFishSold;
+        rewardType = 'amber'; // 호박석 유지
+        rewardAmount = 10;
         if (canClaim) {
           await DailyQuestModel.findOneAndUpdate(query, { questFishSold: true });
         }
@@ -4705,28 +4728,57 @@ app.post("/api/claim-quest-reward", async (req, res) => {
       return res.status(400).json({ error: "Quest not completed or already claimed" });
     }
     
-    // 호박석 보상 지급
-    let userAmber = await UserAmberModel.findOne(query);
-    if (!userAmber) {
-      const createData = {
-        userId: query.userId || 'user',
-        username: query.username || username,
-        userUuid: query.userUuid || userUuid,
-        amber: rewardAmount
-      };
-      userAmber = new UserAmberModel(createData);
+    // 보상 지급 (타입별 처리)
+    if (rewardType === 'starPieces') {
+      // 별조각 보상 지급
+      let userStarPieces = await StarPieceModel.findOne(query);
+      if (!userStarPieces) {
+        const createData = {
+          userId: query.userId || 'user',
+          username: query.username || username,
+          userUuid: query.userUuid || userUuid,
+          starPieces: rewardAmount
+        };
+        userStarPieces = new StarPieceModel(createData);
+      } else {
+        userStarPieces.starPieces = (userStarPieces.starPieces || 0) + rewardAmount;
+      }
+      
+      await userStarPieces.save();
+      
+      console.log(`[Quest] Quest reward claimed: ${questId} - ${rewardAmount} star pieces for ${username}`);
+      res.json({ 
+        success: true, 
+        message: `퀴스트 완료! 별조각 ${rewardAmount}개를 획득했습니다!`,
+        newStarPieces: userStarPieces.starPieces,
+        rewardType: 'starPieces'
+      });
+      
     } else {
-      userAmber.amber = (userAmber.amber || 0) + rewardAmount;
+      // 호박석 보상 지급 (기존 로직)
+      let userAmber = await UserAmberModel.findOne(query);
+      if (!userAmber) {
+        const createData = {
+          userId: query.userId || 'user',
+          username: query.username || username,
+          userUuid: query.userUuid || userUuid,
+          amber: rewardAmount
+        };
+        userAmber = new UserAmberModel(createData);
+      } else {
+        userAmber.amber = (userAmber.amber || 0) + rewardAmount;
+      }
+      
+      await userAmber.save();
+      
+      console.log(`[Quest] Quest reward claimed: ${questId} - ${rewardAmount} amber for ${username}`);
+      res.json({ 
+        success: true, 
+        message: `퀴스트 완료! 호박석 ${rewardAmount}개를 획득했습니다!`,
+        newAmber: userAmber.amber,
+        rewardType: 'amber'
+      });
     }
-    
-    await userAmber.save();
-    
-    console.log(`[Quest] Quest reward claimed: ${questId} - ${rewardAmount} amber for ${username}`);
-    res.json({ 
-      success: true, 
-      message: `퀴스트 완료! 호박석 ${rewardAmount}개를 획득했습니다!`,
-      newAmber: userAmber.amber 
-    });
   } catch (error) {
     console.error("Failed to claim quest reward:", error);
     res.status(500).json({ error: "Failed to claim quest reward" });
