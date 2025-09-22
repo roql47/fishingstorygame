@@ -5,7 +5,7 @@ import axios from "axios";
 // 🚀 게임 데이터 훅 임포트 (변수 초기화 문제 해결)
 import { useGameData } from "./hooks/useGameData";
 import ChatTab from "./components/ChatTab";
-import { CompanionTab } from './components/companions';
+import { CompanionTab, processCompanionSkill, canUseCompanionSkill } from './components/companions';
 import { COMPANION_DATA, calculateCompanionStats } from './data/companionData';
 import { 
   Fish, 
@@ -2898,7 +2898,7 @@ function App() {
       // 스킬 사용 가능 여부 체크
       const currentMorale = newCompanionMorale[companionName]?.morale || 0;
       const hasSkill = companionBaseData?.skill;
-      const canUseSkill = hasSkill && currentMorale >= (companionBaseData.skill.moraleRequired || 100);
+      const canUseSkill = canUseCompanionSkill(companionName, newCompanionMorale);
       
       // 동료 공격력 계산
       const baseAttack = companionData?.attack || 25;
@@ -2909,46 +2909,39 @@ function App() {
       let isCritical = false;
       
       if (canUseSkill) {
-        const skill = companionBaseData.skill;
+        // 스킬 시스템 모듈을 사용하여 스킬 처리
+        const skillResult = processCompanionSkill({
+          battleState: prevState,
+          companionName,
+          companionStats,
+          companionMorale: newCompanionMorale,
+          companionBuffs: newCompanionBuffs,
+          calculateCriticalHit,
+          nextTurn
+        });
         
+        if (skillResult) {
+          return skillResult; // 스킬 처리 완료 후 다음 턴으로
+        }
+        
+        // skillResult가 null인 경우 (승리 처리 등) 기존 로직 계속 진행
+        const skill = companionBaseData.skill;
         if (skill.skillType === 'heal') {
-          // 힐링 스킬 (클로에의 에테르축복)
-          const healAmount = Math.floor(baseAttack * skill.healMultiplier);
-          damage = 0; // 힐링 스킬은 데미지 없음
+          damage = 0;
           isCritical = false;
           attackType = 'heal_skill';
-          
-          // 스킬 사용 후 사기 초기화
-          newCompanionMorale[companionName].morale = 0;
         } else if (skill.buffType) {
-          // 버프 스킬 (애비게일의 집중포화, 피에나의 무의태세)
           const baseDamage = Math.floor(baseAttack * (skill.damageMultiplier || 1.0) * (0.9 + Math.random() * 0.2));
           const criticalResult = calculateCriticalHit(baseDamage, 0.05, companionName, newCompanionBuffs);
           damage = criticalResult.damage;
           isCritical = criticalResult.isCritical;
           attackType = 'buff_skill';
-          
-          // 버프 적용
-          if (!newCompanionBuffs[companionName]) {
-            newCompanionBuffs[companionName] = {};
-          }
-          newCompanionBuffs[companionName][skill.buffType] = {
-            multiplier: skill.buffMultiplier,
-            duration: skill.buffDuration,
-            turnsLeft: skill.buffDuration
-          };
-          
-          // 스킬 사용 후 사기 초기화
-          newCompanionMorale[companionName].morale = 0;
         } else {
-          // 데미지 스킬 (실의 폭격)
           const baseDamage = Math.floor(baseAttack * companionBaseData.skill.damageMultiplier * (0.9 + Math.random() * 0.2));
           const criticalResult = calculateCriticalHit(baseDamage, 0.05, companionName, newCompanionBuffs);
           damage = criticalResult.damage;
           isCritical = criticalResult.isCritical;
           attackType = 'damage_skill';
-          // 스킬 사용 후 사기 초기화
-          newCompanionMorale[companionName].morale = 0;
         }
       } else {
         // 일반 공격 (버프가 적용된 공격력 사용)
@@ -2968,66 +2961,7 @@ function App() {
       let newPlayerHp = prevState.playerHp;
       const newCompanionHp = { ...prevState.companionHp };
       
-      if (attackType === 'heal_skill') {
-        // 힐링 스킬 처리
-        const skill = companionBaseData.skill;
-        const healAmount = Math.floor(baseAttack * skill.healMultiplier);
-        
-        // 체력이 가장 낮은 아군 찾기 (플레이어 포함)
-        let lowestHpTarget = null;
-        let lowestHpPercentage = 1.0;
-        
-        // 플레이어 체력 확인
-        const playerHpPercentage = prevState.playerHp / prevState.playerMaxHp;
-        if (playerHpPercentage < lowestHpPercentage) {
-          lowestHpPercentage = playerHpPercentage;
-          lowestHpTarget = 'player';
-        }
-        
-        // 동료들 체력 확인
-        if (prevState.companions) {
-          prevState.companions.forEach(companion => {
-            if (prevState.companionHp?.[companion] && prevState.companionHp[companion].hp > 0) {
-              const companionHpPercentage = prevState.companionHp[companion].hp / prevState.companionHp[companion].maxHp;
-              if (companionHpPercentage < lowestHpPercentage) {
-                lowestHpPercentage = companionHpPercentage;
-                lowestHpTarget = companion;
-              }
-            }
-          });
-        }
-        
-        // 힐링 적용
-        if (lowestHpTarget === 'player') {
-          const healedAmount = Math.min(healAmount, prevState.playerMaxHp - prevState.playerHp);
-          newPlayerHp = Math.min(prevState.playerMaxHp, prevState.playerHp + healAmount);
-          newLog.push(`${companionName}(Lv.${companionLevel})이(가) 스킬 '${companionBaseData.skill.name}'을(를) 사용했습니다!`);
-          newLog.push(`💚 플레이어가 ${healedAmount} 체력을 회복했습니다! (${newPlayerHp}/${prevState.playerMaxHp})`);
-        } else if (lowestHpTarget && newCompanionHp[lowestHpTarget]) {
-          const currentHp = newCompanionHp[lowestHpTarget].hp;
-          const maxHp = newCompanionHp[lowestHpTarget].maxHp;
-          const healedAmount = Math.min(healAmount, maxHp - currentHp);
-          newCompanionHp[lowestHpTarget] = {
-            ...newCompanionHp[lowestHpTarget],
-            hp: Math.min(maxHp, currentHp + healAmount)
-          };
-          newLog.push(`${companionName}(Lv.${companionLevel})이(가) 스킬 '${companionBaseData.skill.name}'을(를) 사용했습니다!`);
-          newLog.push(`💚 ${lowestHpTarget}이(가) ${healedAmount} 체력을 회복했습니다! (${newCompanionHp[lowestHpTarget].hp}/${maxHp})`);
-        } else {
-          newLog.push(`${companionName}(Lv.${companionLevel})이(가) 스킬 '${companionBaseData.skill.name}'을(를) 사용했습니다!`);
-          newLog.push(`💚 모든 아군의 체력이 가득합니다!`);
-        }
-        
-        // 스킬 사용 후 다음 턴으로 넘어가기
-        return nextTurn({
-          ...prevState,
-          playerHp: newPlayerHp,
-          companionHp: newCompanionHp,
-          log: newLog,
-          companionMorale: newCompanionMorale,
-          companionBuffs: newCompanionBuffs
-        });
-      } else if (attackType === 'buff_skill') {
+      if (attackType === 'buff_skill') {
         const skillMessage = isCritical ? `💥 크리티컬! ${companionName}(Lv.${companionLevel})이(가) 스킬 '${companionBaseData.skill.name}'을(를) 사용했습니다!` : `${companionName}(Lv.${companionLevel})이(가) 스킬 '${companionBaseData.skill.name}'을(를) 사용했습니다!`;
         newLog.push(skillMessage);
         
