@@ -373,8 +373,8 @@ class GameApiClient extends CachedApiClient {
       { url: `/api/inventory/${userId}`, params: { username, userUuid }, cacheType: 'inventory' },
       { url: `/api/materials/${userId}`, params: { username, userUuid }, cacheType: 'materials' },
       { url: `/api/money/${userId}`, params: { username, userUuid }, cacheType: 'userMoney' },
-      { url: '/api/ranking', params: {}, cacheType: 'ranking' },
-      { url: '/api/connected-users', params: {}, cacheType: 'connectedUsers' }
+      { url: '/api/ranking', params: {}, cacheType: 'ranking' }
+      // connected-users는 관리자만 접근 가능하므로 warmup에서 제외
     ];
     
     await this.warmupCache(endpoints);

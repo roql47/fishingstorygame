@@ -359,8 +359,8 @@ export const useCacheWarmup = () => {
     console.log('🔥 전역 캐시 워밍업 시작...');
     
     const globalEndpoints = [
-      { url: '/api/ranking', params: {}, cacheType: 'ranking' },
-      { url: '/api/connected-users', params: {}, cacheType: 'connectedUsers' }
+      { url: '/api/ranking', params: {}, cacheType: 'ranking' }
+      // connected-users는 관리자만 접근 가능하므로 global warmup에서 제외
     ];
     
     await apiClient.warmupCache(globalEndpoints);

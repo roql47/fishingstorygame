@@ -99,6 +99,7 @@ function App() {
   const [companionStats, setCompanionStats] = useState({}); // 동료별 레벨/경험치 관리
   const [showCompanionModal, setShowCompanionModal] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [adminStatusLoaded, setAdminStatusLoaded] = useState(false); // 관리자 상태 로드 완료 여부
   const [userAdminStatus, setUserAdminStatus] = useState({}); // 다른 사용자들의 관리자 상태
   const [connectedUsers, setConnectedUsers] = useState([]); // 접속자 목록
   const [rankings, setRankings] = useState([]); // 랭킹 데이터
@@ -1304,6 +1305,7 @@ function App() {
         
         setCompanions(companionsRes.data.companions || []);
         setIsAdmin(adminStatusRes.data.isAdmin || false);
+        setAdminStatusLoaded(true); // 관리자 상태 로드 완료
         
         // 동료 능력치 localStorage에서 복원
         const savedStats = localStorage.getItem(`companionStats_${userUuid || username}`);
@@ -1321,6 +1323,7 @@ function App() {
         console.error('Failed to fetch user data:', e);
         setCompanions([]);
         setIsAdmin(false);
+        setAdminStatusLoaded(true); // 오류가 발생해도 로드 완료로 표시
       }
     };
     
@@ -1345,8 +1348,16 @@ function App() {
   // 접속자 목록 가져오기 (관리자만)
   useEffect(() => {
     const fetchConnectedUsers = async () => {
-      // 관리자가 아니면 접속자 목록을 가져오지 않음
-      if (!isAdmin) {
+      console.log('🔍 DEBUG - Connected users fetch attempt:', {
+        adminStatusLoaded,
+        isAdmin,
+        username,
+        jwtToken: jwtToken ? 'EXISTS' : 'MISSING'
+      });
+      
+      // 관리자 상태가 로드되지 않았거나 관리자가 아니면 접속자 목록을 가져오지 않음
+      if (!adminStatusLoaded || !isAdmin) {
+        console.log('🚫 Skipping connected users fetch - not admin or not loaded');
         return;
       }
       
@@ -1417,12 +1428,12 @@ function App() {
       }
     };
     
-    if (username && isAdmin) {
+    if (username && adminStatusLoaded && isAdmin) {
       fetchConnectedUsers();
       const id = setInterval(fetchConnectedUsers, 15000); // 15초마다 새로고침 (최적화)
       return () => clearInterval(id);
     }
-  }, [serverUrl, username, isAdmin, jwtToken]);
+  }, [serverUrl, username, adminStatusLoaded, isAdmin, jwtToken]);
 
   // 쿨타임과 총 낚은 수는 WebSocket으로 실시간 업데이트됨 (위에서 처리)
 
