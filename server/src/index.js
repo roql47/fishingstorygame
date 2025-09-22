@@ -1887,12 +1887,22 @@ io.on("connection", (socket) => {
       const displayNameToSend = user.displayName || user.username;
       console.log(`[USER:UUID EVENT] Sending to client: { userUuid: ${user.userUuid}, username: ${user.username}, displayName: ${displayNameToSend} }`);
       
-      // 🔐 JWT 토큰 생성 및 전송
+      // 🔐 관리자 상태 확인
+      let isUserAdmin = false;
+      try {
+        const adminRecord = await AdminModel.findOne({ userUuid: user.userUuid });
+        isUserAdmin = adminRecord ? adminRecord.isAdmin : false;
+        console.log(`🔑 Admin status check for ${user.username}: ${isUserAdmin}`);
+      } catch (e) {
+        console.warn('Failed to check admin status:', e);
+      }
+      
+      // 🔐 JWT 토큰 생성 및 전송 (실제 관리자 상태 반영)
       const jwtToken = generateJWT({
         userUuid: user.userUuid,
         username: user.username,
         displayName: displayNameToSend,
-        isAdmin: false // 기본값, 관리자 권한은 별도 처리
+        isAdmin: isUserAdmin // 실제 DB에서 확인한 관리자 상태
       });
       
       // 🔐 JWT 토큰을 클라이언트에 전송
