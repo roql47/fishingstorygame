@@ -766,6 +766,19 @@ const companionSchema = new mongoose.Schema(
 
 const CompanionModel = mongoose.model("Companion", companionSchema);
 
+// Companion Stats Schema (동료 능력치 및 설정)
+const companionStatsSchema = new mongoose.Schema({
+  userId: { type: String, required: true },
+  username: { type: String, required: true },
+  userUuid: { type: String, index: true },
+  companionName: { type: String, required: true }, // 동료 이름
+  level: { type: Number, default: 1 }, // 레벨
+  experience: { type: Number, default: 0 }, // 경험치
+  isInBattle: { type: Boolean, default: false }, // 전투 참여 여부
+}, { timestamps: true });
+
+const CompanionStatsModel = mongoose.model("CompanionStats", companionStatsSchema);
+
 // Coupon Usage Schema (쿠폰 사용 기록)
 const couponUsageSchema = new mongoose.Schema(
   {
@@ -3044,6 +3057,101 @@ app.post("/api/add-star-pieces", authenticateJWT, async (req, res) => {
 });
 
 // Companion APIs (동료 시스템)
+
+// 동료 능력치 조회 API
+app.get("/api/companion-stats/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { username, userUuid } = req.query;
+    
+    console.log("Companion stats request:", { userId, username, userUuid });
+    
+    const queryResult = await getUserQuery(userId, username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    const companionStats = await CompanionStatsModel.find(query);
+    
+    // 동료별로 정리
+    const statsMap = {};
+    companionStats.forEach(stat => {
+      statsMap[stat.companionName] = {
+        level: stat.level,
+        experience: stat.experience,
+        isInBattle: stat.isInBattle
+      };
+    });
+    
+    console.log(`Companion stats for ${username}:`, statsMap);
+    res.json({ companionStats: statsMap });
+    
+  } catch (error) {
+    console.error("Failed to fetch companion stats:", error);
+    res.status(500).json({ error: "동료 능력치를 가져올 수 없습니다." });
+  }
+});
+
+// 동료 능력치 업데이트 API
+app.post("/api/update-companion-stats", authenticateJWT, async (req, res) => {
+  try {
+    const { companionName, level, experience, isInBattle } = req.body;
+    const { userUuid, username } = req.user;
+    
+    console.log("Update companion stats:", { companionName, level, experience, isInBattle, username });
+    
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    // 기존 능력치 찾기 또는 생성
+    let companionStat = await CompanionStatsModel.findOne({
+      ...query,
+      companionName: companionName
+    });
+    
+    if (!companionStat) {
+      // 새로운 동료 능력치 생성
+      companionStat = new CompanionStatsModel({
+        userId: query.userId || 'user',
+        username: query.username || username,
+        userUuid: query.userUuid || userUuid,
+        companionName: companionName,
+        level: level || 1,
+        experience: experience || 0,
+        isInBattle: isInBattle || false
+      });
+    } else {
+      // 기존 능력치 업데이트
+      if (level !== undefined) companionStat.level = level;
+      if (experience !== undefined) companionStat.experience = experience;
+      if (isInBattle !== undefined) companionStat.isInBattle = isInBattle;
+    }
+    
+    await companionStat.save();
+    
+    res.json({ 
+      success: true, 
+      companionStats: {
+        level: companionStat.level,
+        experience: companionStat.experience,
+        isInBattle: companionStat.isInBattle
+      }
+    });
+    
+  } catch (error) {
+    console.error("Failed to update companion stats:", error);
+    res.status(500).json({ error: "동료 능력치 업데이트에 실패했습니다." });
+  }
+});
+
 // 동료 뽑기 API
 app.post("/api/recruit-companion", authenticateJWT, async (req, res) => {
   try {

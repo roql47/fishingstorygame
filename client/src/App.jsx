@@ -142,6 +142,27 @@ function App() {
   const [showBattleModal, setShowBattleModal] = useState(false);
   const [isProcessingFishing, setIsProcessingFishing] = useState(false); // 🛡️ 낚시 처리 중 상태
 
+  // 🔄 동료 능력치 서버 저장 함수
+  const saveCompanionStatsToServer = async (companionName, stats) => {
+    if (!jwtToken) return;
+    
+    try {
+      await axios.post(`${serverUrl}/api/update-companion-stats`, {
+        companionName,
+        level: stats.level,
+        experience: stats.experience,
+        isInBattle: stats.isInBattle
+      }, {
+        headers: {
+          'Authorization': `Bearer ${jwtToken}`
+        }
+      });
+      console.log(`✅ Saved companion stats to server: ${companionName}`, stats);
+    } catch (e) {
+      console.error(`❌ Failed to save companion stats to server: ${companionName}`, e);
+    }
+  };
+
   // 페이지 로드 시 저장된 토큰들 및 게스트 상태 복원
   useEffect(() => {
     const storedIdToken = localStorage.getItem("idToken");
@@ -1307,15 +1328,23 @@ function App() {
         setIsAdmin(adminStatusRes.data.isAdmin || false);
         setAdminStatusLoaded(true); // 관리자 상태 로드 완료
         
-        // 동료 능력치 localStorage에서 복원
-        const savedStats = localStorage.getItem(`companionStats_${userUuid || username}`);
-        if (savedStats) {
-          try {
-            const parsedStats = JSON.parse(savedStats);
-            console.log('✅ Restored companion stats from localStorage:', parsedStats);
-            setCompanionStats(parsedStats);
-          } catch (e) {
-            console.error('❌ Failed to parse companion stats from localStorage:', e);
+        // 동료 능력치 서버에서 불러오기
+        try {
+          const statsRes = await axios.get(`${serverUrl}/api/companion-stats/${userId}`, { params });
+          console.log('✅ Loaded companion stats from server:', statsRes.data);
+          setCompanionStats(statsRes.data.companionStats || {});
+        } catch (e) {
+          console.warn('⚠️ Failed to load companion stats from server, using localStorage fallback:', e);
+          // 서버 실패 시 localStorage 폴백
+          const savedStats = localStorage.getItem(`companionStats_${userUuid || username}`);
+          if (savedStats) {
+            try {
+              const parsedStats = JSON.parse(savedStats);
+              console.log('✅ Restored companion stats from localStorage:', parsedStats);
+              setCompanionStats(parsedStats);
+            } catch (e) {
+              console.error('❌ Failed to parse companion stats from localStorage:', e);
+            }
           }
         }
         
@@ -1329,6 +1358,19 @@ function App() {
     
     fetchUserData();
   }, [serverUrl, username, userUuid, idToken]);
+
+  // 🔄 동료 능력치 변경 시 서버에 저장
+  useEffect(() => {
+    if (!jwtToken || !username || Object.keys(companionStats).length === 0) return;
+    
+    // 각 동료의 능력치를 서버에 저장
+    Object.entries(companionStats).forEach(([companionName, stats]) => {
+      saveCompanionStatsToServer(companionName, stats);
+    });
+    
+    // localStorage에도 백업 저장
+    localStorage.setItem(`companionStats_${userUuid || username}`, JSON.stringify(companionStats));
+  }, [companionStats, jwtToken, username, userUuid]);
 
   // 채팅 메시지의 사용자들 관리자 상태 확인
   useEffect(() => {
@@ -1873,25 +1915,39 @@ function App() {
   // 🚀 다른 사용자 프로필 데이터 가져오기 - useCallback으로 최적화
   const fetchOtherUserProfile = useCallback(async (username) => {
     try {
-      console.log("🔥 CLIENT VERSION: v2024.12.19 - FALLBACK API");
+      console.log("🔥 CLIENT VERSION: v2024.12.19 - WITH JWT TOKEN");
       console.log("Fetching profile for:", username);
       console.log("Server URL:", serverUrl);
+      console.log("JWT Token:", jwtToken ? "EXISTS" : "MISSING");
+      
+      if (!jwtToken) {
+        console.error("❌ No JWT token available for profile request");
+        alert("로그인이 필요합니다.");
+        return;
+      }
       
       let response;
       
       try {
-        // 먼저 새로운 API 시도
+        // 먼저 새로운 API 시도 (JWT 토큰 포함)
         console.log("Trying new API:", `${serverUrl}/api/user-profile?username=${encodeURIComponent(username)}`);
         response = await axios.get(`${serverUrl}/api/user-profile`, {
-          params: { username }
+          params: { username },
+          headers: {
+            'Authorization': `Bearer ${jwtToken}`
+          }
         });
         console.log("✅ New API success");
       } catch (newApiError) {
         if (newApiError.response?.status === 404) {
           console.log("❌ New API failed, trying legacy API...");
-          // 새 API 실패 시 이전 API 시도
+          // 새 API 실패 시 이전 API 시도 (JWT 토큰 포함)
           console.log("Trying legacy API:", `${serverUrl}/api/user-profile/${encodeURIComponent(username)}`);
-          response = await axios.get(`${serverUrl}/api/user-profile/${encodeURIComponent(username)}`);
+          response = await axios.get(`${serverUrl}/api/user-profile/${encodeURIComponent(username)}`, {
+            headers: {
+              'Authorization': `Bearer ${jwtToken}`
+            }
+          });
           console.log("✅ Legacy API success");
         } else {
           throw newApiError;
@@ -1912,7 +1968,7 @@ function App() {
       alert(errorMessage);
       setOtherUserData(null);
     }
-  }, [serverUrl]);
+  }, [serverUrl, jwtToken]);
 
   // 최초 닉네임 설정 함수
   const setInitialNicknameFunc = async () => {
@@ -2394,6 +2450,10 @@ function App() {
           setJwtToken(response.data.jwtToken);
           console.log("🔐 New admin JWT token saved");
         }
+        
+        // ✅ 관리자 상태 로드 완료로 즉시 업데이트
+        setAdminStatusLoaded(true);
+        console.log("🔑 [ADMIN] Admin status updated immediately:", response.data.isAdmin);
         
         setMessages(prev => [...prev, {
           system: true,
