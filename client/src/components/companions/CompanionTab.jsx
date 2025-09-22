@@ -132,15 +132,17 @@ const CompanionTab = ({
                 const baseData = COMPANION_DATA[companion];
                 
                 return (
-                  <div key={index} className={`p-4 rounded-lg transition-all duration-200 ${
+                  <div key={index} className={`p-4 rounded-lg transition-all duration-200 cursor-pointer hover:scale-105 ${
                     isInBattle
                       ? isDarkMode 
-                        ? "bg-green-500/20 border-2 border-green-400/40 glow-effect-green" 
-                        : "bg-green-500/10 border-2 border-green-500/40"
+                        ? "bg-green-500/20 border-2 border-green-400/40 glow-effect-green hover:bg-green-500/30" 
+                        : "bg-green-500/10 border-2 border-green-500/40 hover:bg-green-500/20"
                       : isDarkMode 
-                        ? "bg-purple-500/10 border border-purple-400/20 hover:bg-purple-500/15" 
-                        : "bg-purple-500/5 border border-purple-300/30 hover:bg-purple-500/10"
-                  }`}>
+                        ? "bg-purple-500/10 border border-purple-400/20 hover:bg-purple-500/20" 
+                        : "bg-purple-500/5 border border-purple-300/30 hover:bg-purple-500/15"
+                  }`}
+                  onClick={() => handleCompanionClick(companion)}
+                  >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
@@ -196,7 +198,10 @@ const CompanionTab = ({
                         </div>
                       </div>
                       <button
-                        onClick={() => toggleBattleCompanion(companion)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleBattleCompanion(companion);
+                        }}
                         disabled={!isInBattle && !canAddToBattle}
                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:scale-105 ${
                           isInBattle
@@ -270,21 +275,17 @@ const CompanionTab = ({
             {allCompanions.map((name, index) => (
               <div 
                 key={index} 
-                className={`p-2 rounded text-center cursor-pointer transition-all duration-200 hover:scale-105 ${
+                className={`p-2 rounded text-center ${
                   companions.includes(name)
                     ? isDarkMode
-                      ? "bg-green-500/20 text-green-400 border border-green-400/30 hover:bg-green-500/30"
-                      : "bg-green-500/10 text-green-600 border border-green-500/30 hover:bg-green-500/20"
+                      ? "bg-green-500/20 text-green-400 border border-green-400/30"
+                      : "bg-green-500/10 text-green-600 border border-green-500/30"
                     : isDarkMode
-                      ? "bg-gray-500/10 text-gray-500 border border-gray-500/20 hover:bg-gray-500/20"
-                      : "bg-gray-300/20 text-gray-600 border border-gray-300/30 hover:bg-gray-300/40"
+                      ? "bg-gray-500/10 text-gray-500 border border-gray-500/20"
+                      : "bg-gray-300/20 text-gray-600 border border-gray-300/30"
                 }`}
-                onClick={() => companions.includes(name) && handleCompanionClick(name)}
               >
                 {name} {companions.includes(name) ? "✓" : ""}
-                {companions.includes(name) && (
-                  <div className="text-xs mt-1 opacity-70">클릭하여 상세보기</div>
-                )}
               </div>
             ))}
           </div>
@@ -474,11 +475,6 @@ const CompanionTab = ({
                               <h4 className={`font-medium ${
                                 isDarkMode ? "text-purple-400" : "text-purple-600"
                               }`}>{baseData.skill.name}</h4>
-                              <div className={`text-xs px-2 py-1 rounded-full ${
-                                isDarkMode ? "bg-yellow-500/20 text-yellow-400" : "bg-yellow-500/10 text-yellow-600"
-                              }`}>
-                                사기 {baseData.skill.moraleRequired} 필요
-                              </div>
                             </div>
                             <p className={`text-sm mb-2 ${
                               isDarkMode ? "text-gray-300" : "text-gray-700"
@@ -499,19 +495,6 @@ const CompanionTab = ({
                       </div>
                     )}
 
-                    {/* 설명 */}
-                    <div className={`p-4 rounded-lg ${
-                      isDarkMode ? "bg-gray-700/30" : "bg-gray-100/50"
-                    }`}>
-                      <h3 className={`font-semibold mb-2 ${
-                        isDarkMode ? "text-white" : "text-gray-800"
-                      }`}>설명</h3>
-                      <p className={`text-sm ${
-                        isDarkMode ? "text-gray-300" : "text-gray-700"
-                      }`}>
-                        {baseData.description}
-                      </p>
-                    </div>
                   </div>
                 );
               })()}
