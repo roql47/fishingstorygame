@@ -5,6 +5,8 @@ import axios from "axios";
 // 🚀 게임 데이터 훅 임포트 (변수 초기화 문제 해결)
 import { useGameData } from "./hooks/useGameData";
 import ChatTab from "./components/ChatTab";
+import NoticeModal from "./components/NoticeModal";
+import TutorialModal from "./components/TutorialModal";
 import { CompanionTab, processCompanionSkill, canUseCompanionSkill } from './components/companions';
 import { COMPANION_DATA, calculateCompanionStats } from './data/companionData';
 import { 
@@ -31,7 +33,10 @@ import {
   Target,
   CheckCircle,
   Gift,
-  X
+  X,
+  Bell,
+  BookOpen,
+  Info
 } from "lucide-react";
 import "./App.css";
 
@@ -141,6 +146,8 @@ function App() {
   const [battleState, setBattleState] = useState(null); // { enemy, playerHp, enemyHp, turn, log }
   const [showBattleModal, setShowBattleModal] = useState(false);
   const [isProcessingFishing, setIsProcessingFishing] = useState(false); // 🛡️ 낚시 처리 중 상태
+  const [showNoticeModal, setShowNoticeModal] = useState(false); // 공지사항 모달
+  const [showTutorialModal, setShowTutorialModal] = useState(false); // 튜토리얼 모달
 
   // 🔄 동료 능력치 서버 저장 함수
   const saveCompanionStatsToServer = async (companionName, stats) => {
@@ -896,8 +903,11 @@ function App() {
       }, []);
       
       console.log(`Real-time update: ${uniqueUsers.length} validated users`);
-      setConnectedUsers(uniqueUsers); // connectedUsers 상태 업데이트
-      setOnlineUsers(uniqueUsers);
+      // 유효한 사용자가 있을 때만 업데이트 (기존 목록 유지)
+      if (uniqueUsers.length > 0) {
+        setConnectedUsers(uniqueUsers); // connectedUsers 상태 업데이트
+        setOnlineUsers(uniqueUsers);
+      }
     };
 
     const onReactionUpdate = (data) => {
@@ -1283,7 +1293,10 @@ function App() {
     const handleMaterialsUpdate = (data) => setMaterials(data);
     const handleUsersUpdate = (users) => {
       console.log('Received users update via WebSocket:', users);
-      setConnectedUsers(users || []);
+      // 빈 배열이 아닌 경우에만 업데이트 (기존 목록 유지)
+      if (Array.isArray(users) && users.length > 0) {
+        setConnectedUsers(users);
+      }
     };
 
     socket.on('data:update', handleDataUpdate);
@@ -1467,6 +1480,7 @@ function App() {
       } catch (e) {
         console.error('Failed to fetch connected users:', e);
         // 네트워크 오류 시 기존 목록 유지 (빈 배열로 초기화하지 않음)
+        // setConnectedUsers([]) <- 이 코드는 제거하여 기존 목록 유지
       }
     };
     
@@ -3929,17 +3943,47 @@ function App() {
             </div>
           
           <div className="flex items-center gap-4">
-            {/* 테마 토글 */}
-            <button
-              onClick={toggleDarkMode}
-              className={`p-2 rounded-full hover:glow-effect transition-all duration-300 ${
-                isDarkMode 
-                  ? "glass-input text-yellow-400" 
-                  : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-gray-600 hover:text-yellow-500"
-              }`}
-            >
-              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
+            {/* 유틸리티 버튼들 */}
+            <div className="flex items-center gap-2">
+              {/* 공지사항 버튼 */}
+              <button
+                onClick={() => setShowNoticeModal(true)}
+                className={`p-2 rounded-full hover:glow-effect transition-all duration-300 ${
+                  isDarkMode 
+                    ? "glass-input text-blue-400 hover:text-blue-300" 
+                    : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-blue-600 hover:text-blue-500"
+                }`}
+                title="공지사항"
+              >
+                <Bell className="w-4 h-4" />
+              </button>
+              
+              {/* 튜토리얼 버튼 */}
+              <button
+                onClick={() => setShowTutorialModal(true)}
+                className={`p-2 rounded-full hover:glow-effect transition-all duration-300 ${
+                  isDarkMode 
+                    ? "glass-input text-green-400 hover:text-green-300" 
+                    : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-green-600 hover:text-green-500"
+                }`}
+                title="튜토리얼"
+              >
+                <BookOpen className="w-4 h-4" />
+              </button>
+              
+              {/* 테마 토글 */}
+              <button
+                onClick={toggleDarkMode}
+                className={`p-2 rounded-full hover:glow-effect transition-all duration-300 ${
+                  isDarkMode 
+                    ? "glass-input text-yellow-400" 
+                    : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-gray-600 hover:text-yellow-500"
+                }`}
+                title="테마 변경"
+              >
+                {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
+            </div>
             
             {/* 사용자 정보 */}
             <div 
@@ -6974,6 +7018,20 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* 공지사항 모달 */}
+      <NoticeModal 
+        showNoticeModal={showNoticeModal}
+        setShowNoticeModal={setShowNoticeModal}
+        isDarkMode={isDarkMode}
+      />
+
+      {/* 튜토리얼 모달 */}
+      <TutorialModal 
+        showTutorialModal={showTutorialModal}
+        setShowTutorialModal={setShowTutorialModal}
+        isDarkMode={isDarkMode}
+      />
     </div>
   );
 }

@@ -46,7 +46,7 @@ export const COMPANION_DATA = {
     growthAttack: 3,   // 2 * 1.5 = 3
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "화염 마법사",
-    rarity: "희귀",
+    rarity: "일반",
     skill: {
       name: "집중포화",
       description: "3턴 동안 크리티컬 확률이 20% 상승합니다",
@@ -77,7 +77,7 @@ export const COMPANION_DATA = {
     growthAttack: 3,   // 2 * 1.5 = 3
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "암살자",
-    rarity: "전설",
+    rarity: "일반",
     skill: {
       name: "에테르축복",
       description: "체력이 가장 낮은 아군의 체력을 회복시킵니다",
@@ -96,7 +96,7 @@ export const COMPANION_DATA = {
     growthAttack: 3,   // 2 * 1.5 = 3
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "용족 전사",
-    rarity: "전설"
+    rarity: "일반"
   }
 };
 
