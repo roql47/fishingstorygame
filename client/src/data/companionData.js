@@ -2,24 +2,13 @@
 export const COMPANION_DATA = {
   "실": {
     name: "실",
-    baseHp: 27,        // 80 / 3 = 26.67 → 27
-    baseAttack: 6,     // 25 / 4 = 6.25 → 6
+    baseHp: 54,        // 27 * 2 = 54
+    baseAttack: 9,     // 6 * 1.5 = 9
     baseSpeed: 45,     // 기본 속도
-    growthHp: 5,       // 15 / 3 = 5
-    growthAttack: 1,   // 5 / 4 = 1.25 → 1
+    growthHp: 10,      // 5 * 2 = 10
+    growthAttack: 2,   // 1 * 1.5 = 1.5 → 2
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "민첩한 검사",
-    rarity: "일반"
-  },
-  "피에나": {
-    name: "피에나",
-    baseHp: 33,        // 100 / 3 = 33.33 → 33
-    baseAttack: 5,     // 20 / 4 = 5
-    baseSpeed: 25,     // 기본 속도
-    growthHp: 6,       // 18 / 3 = 6
-    growthAttack: 1,   // 4 / 4 = 1
-    growthSpeed: 5,    // 레벨당 속도 증가량
-    description: "강인한 방패병",
     rarity: "일반",
     skill: {
       name: "폭격",
@@ -28,16 +17,16 @@ export const COMPANION_DATA = {
       moraleRequired: 100
     }
   },
-  "애비게일": {
-    name: "애비게일",
-    baseHp: 23,        // 70 / 3 = 23.33 → 23
-    baseAttack: 8,     // 30 / 4 = 7.5 → 8
-    baseSpeed: 40,     // 기본 속도
-    growthHp: 4,       // 12 / 3 = 4
-    growthAttack: 2,   // 6 / 4 = 1.5 → 2
+  "피에나": {
+    name: "피에나",
+    baseHp: 66,        // 33 * 2 = 66
+    baseAttack: 8,     // 5 * 1.5 = 7.5 → 8
+    baseSpeed: 25,     // 기본 속도
+    growthHp: 12,      // 6 * 2 = 12
+    growthAttack: 2,   // 1 * 1.5 = 1.5 → 2
     growthSpeed: 5,    // 레벨당 속도 증가량
-    description: "화염 마법사",
-    rarity: "희귀",
+    description: "강인한 방패병",
+    rarity: "일반",
     skill: {
       name: "무의태세",
       description: "3턴 동안 공격력이 25% 상승합니다",
@@ -48,35 +37,63 @@ export const COMPANION_DATA = {
       buffDuration: 3
     }
   },
+  "애비게일": {
+    name: "애비게일",
+    baseHp: 46,        // 23 * 2 = 46
+    baseAttack: 12,    // 8 * 1.5 = 12
+    baseSpeed: 40,     // 기본 속도
+    growthHp: 8,       // 4 * 2 = 8
+    growthAttack: 3,   // 2 * 1.5 = 3
+    growthSpeed: 5,    // 레벨당 속도 증가량
+    description: "화염 마법사",
+    rarity: "희귀",
+    skill: {
+      name: "집중포화",
+      description: "3턴 동안 크리티컬 확률이 20% 상승합니다",
+      damageMultiplier: 1.0, // 즉시 데미지는 없음
+      moraleRequired: 100,
+      buffType: "critical",
+      buffMultiplier: 0.20, // 크리티컬 확률 +20%
+      buffDuration: 3
+    }
+  },
   "림스&베리": {
     name: "림스&베리",
-    baseHp: 30,        // 90 / 3 = 30
-    baseAttack: 6,     // 22 / 4 = 5.5 → 6
+    baseHp: 60,        // 30 * 2 = 60
+    baseAttack: 9,     // 6 * 1.5 = 9
     baseSpeed: 50,     // 기본 속도
-    growthHp: 5,       // 16 / 3 = 5.33 → 5
-    growthAttack: 1,   // 5 / 4 = 1.25 → 1
+    growthHp: 10,      // 5 * 2 = 10
+    growthAttack: 2,   // 1 * 1.5 = 1.5 → 2
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "쌍둥이 궁수",
     rarity: "희귀"
   },
   "클로에": {
     name: "클로에",
-    baseHp: 20,        // 60 / 3 = 20
-    baseAttack: 9,     // 35 / 4 = 8.75 → 9
+    baseHp: 40,        // 20 * 2 = 40
+    baseAttack: 14,    // 9 * 1.5 = 13.5 → 14
     baseSpeed: 65,     // 기본 속도 (암살자는 빠름)
-    growthHp: 3,       // 10 / 3 = 3.33 → 3
-    growthAttack: 2,   // 7 / 4 = 1.75 → 2
+    growthHp: 6,       // 3 * 2 = 6
+    growthAttack: 3,   // 2 * 1.5 = 3
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "암살자",
-    rarity: "전설"
+    rarity: "전설",
+    skill: {
+      name: "에테르축복",
+      description: "체력이 가장 낮은 아군의 체력을 회복시킵니다",
+      damageMultiplier: 0, // 데미지 없음
+      healMultiplier: 3.0, // 공격력의 300%
+      moraleRequired: 100,
+      skillType: "heal"
+    }
   },
   "나하트라": {
     name: "나하트라",
-    baseHp: 40,        // 120 / 3 = 40
-    baseAttack: 7,     // 28 / 4 = 7
+    baseHp: 80,        // 40 * 2 = 80
+    baseAttack: 11,    // 7 * 1.5 = 10.5 → 11
     baseSpeed: 30,     // 기본 속도 (용족은 느림)
-    growthHp: 7,       // 20 / 3 = 6.67 → 7
-    growthAttack: 2,   // 6 / 4 = 1.5 → 2
+    growthHp: 14,      // 7 * 2 = 14
+    growthAttack: 3,   // 2 * 1.5 = 3
     growthSpeed: 5,    // 레벨당 속도 증가량
     description: "용족 전사",
     rarity: "전설"

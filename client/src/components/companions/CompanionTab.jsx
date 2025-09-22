@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Users, Sword, Shield, Heart, Star, Zap, X, Info } from 'lucide-react';
+import { Users, Sword, Shield, Heart, Star, Zap, X, Info, Plus } from 'lucide-react';
 import { COMPANION_DATA, calculateCompanionStats, getRarityColor } from '../../data/companionData';
 
 const CompanionTab = ({
@@ -481,14 +481,72 @@ const CompanionTab = ({
                             }`}>
                               {baseData.skill.description}
                             </p>
-                            <div className="flex items-center gap-4 text-sm">
-                              <div className="flex items-center gap-1">
-                                <Sword className="w-3 h-3 text-orange-400" />
-                                <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>데미지:</span>
-                                <span className={isDarkMode ? "font-semibold text-orange-400" : "font-semibold text-orange-600"}>
-                                  {Math.floor((baseData.skill?.damageMultiplier || 1) * 100)}%
-                                </span>
-                              </div>
+                            <div className="grid grid-cols-1 gap-2 text-sm">
+                              {baseData.skill.skillType === 'heal' ? (
+                                // 힐링 스킬 (클로에의 에테르축복)
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1">
+                                    <Plus className="w-3 h-3 text-green-400" />
+                                    <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>힐링량:</span>
+                                  </div>
+                                  <span className={isDarkMode ? "font-semibold text-green-400" : "font-semibold text-green-600"}>
+                                    {(() => {
+                                      const currentAttack = companionData?.attack || baseData.baseAttack;
+                                      const healAmount = Math.floor(currentAttack * (baseData.skill?.healMultiplier || 1));
+                                      const percentage = Math.floor((baseData.skill?.healMultiplier || 1) * 100);
+                                      return `${healAmount} (${percentage}%)`;
+                                    })()}
+                                  </span>
+                                </div>
+                              ) : baseData.skill.buffType ? (
+                                // 버프 스킬 (피에나의 무의태세, 애비게일의 집중포화)
+                                <>
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1">
+                                      {baseData.skill.buffType === 'attack' ? (
+                                        <Shield className="w-3 h-3 text-blue-400" />
+                                      ) : (
+                                        <Star className="w-3 h-3 text-yellow-400" />
+                                      )}
+                                      <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>버프 효과:</span>
+                                    </div>
+                                    <span className={isDarkMode ? "font-semibold text-blue-400" : "font-semibold text-blue-600"}>
+                                      {baseData.skill.buffType === 'attack' ? (
+                                        `공격력 +${Math.floor((baseData.skill.buffMultiplier - 1) * 100)}%`
+                                      ) : baseData.skill.buffType === 'critical' ? (
+                                        `크리티컬 +${Math.floor(baseData.skill.buffMultiplier * 100)}%`
+                                      ) : (
+                                        '알 수 없는 효과'
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1">
+                                      <Star className="w-3 h-3 text-purple-400" />
+                                      <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>지속 시간:</span>
+                                    </div>
+                                    <span className={isDarkMode ? "font-semibold text-purple-400" : "font-semibold text-purple-600"}>
+                                      {baseData.skill.buffDuration}턴
+                                    </span>
+                                  </div>
+                                </>
+                              ) : (
+                                // 데미지 스킬 (실의 폭격)
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1">
+                                    <Sword className="w-3 h-3 text-orange-400" />
+                                    <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>스킬 데미지:</span>
+                                  </div>
+                                  <span className={isDarkMode ? "font-semibold text-orange-400" : "font-semibold text-orange-600"}>
+                                    {(() => {
+                                      const currentAttack = companionData?.attack || baseData.baseAttack;
+                                      const skillDamage = Math.floor(currentAttack * (baseData.skill?.damageMultiplier || 1));
+                                      const percentage = Math.floor((baseData.skill?.damageMultiplier || 1) * 100);
+                                      return `${skillDamage} (${percentage}%)`;
+                                    })()}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
