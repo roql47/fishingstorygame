@@ -1522,8 +1522,12 @@ setInterval(() => {
     console.log(`🧹 Cleaned up ${zombieCount} zombie connections`);
   }
   
-  // 모든 클라이언트에게 정리된 사용자 목록 전송
-  io.emit("users:update", uniqueUsers);
+  // 모든 클라이언트에게 정리된 사용자 목록 전송 (빈 배열이 아닐 때만)
+  if (uniqueUsers.length > 0) {
+    io.emit("users:update", uniqueUsers);
+  } else {
+    console.log('⚠️ Skipping users:update broadcast - no users to send');
+  }
 }, 30000); // 30초
 
 // 📊 보안 모니터링 시스템
@@ -2249,9 +2253,13 @@ io.on("connection", (socket) => {
       
       console.log(`Remaining connections for ${user.userUuid}:`, remainingConnections.length);
       
-      // 접속자 목록 업데이트 전송 (중복 제거)
+      // 접속자 목록 업데이트 전송 (중복 제거, 빈 배열이 아닐 때만)
       const uniqueUsers = cleanupConnectedUsers();
-      io.emit("users:update", uniqueUsers);
+      if (uniqueUsers.length > 0) {
+        io.emit("users:update", uniqueUsers);
+      } else {
+        console.log('⚠️ Skipping users:update on disconnect - no users to send');
+      }
       
       // 완전히 연결이 끊어진 경우에만 퇴장 메시지 전송
       if (remainingConnections.length === 0) {
@@ -3237,6 +3245,16 @@ app.post("/api/recruit-companion", authenticateJWT, async (req, res) => {
       
       console.log(`Successfully recruited: ${randomCompanion}`);
       
+      // 🔄 실시간 동료 데이터 브로드캐스트
+      broadcastUserDataUpdate(userUuid, username, 'companions', { 
+        companions: companionsData.companions 
+      });
+      
+      // 🔄 실시간 별조각 데이터 브로드캐스트
+      broadcastUserDataUpdate(userUuid, username, 'starPieces', { 
+        starPieces: userStarPieces.starPieces 
+      });
+      
       res.json({
         success: true,
         recruited: true,
@@ -3246,6 +3264,12 @@ app.post("/api/recruit-companion", authenticateJWT, async (req, res) => {
       });
     } else {
       console.log("Recruitment failed");
+      
+      // 🔄 실시간 별조각 데이터 브로드캐스트 (실패해도 별조각은 차감됨)
+      broadcastUserDataUpdate(userUuid, username, 'starPieces', { 
+        starPieces: userStarPieces.starPieces 
+      });
+      
       res.json({
         success: true,
         recruited: false,

@@ -107,6 +107,7 @@ function App() {
   const [adminStatusLoaded, setAdminStatusLoaded] = useState(false); // 관리자 상태 로드 완료 여부
   const [userAdminStatus, setUserAdminStatus] = useState({}); // 다른 사용자들의 관리자 상태
   const [connectedUsers, setConnectedUsers] = useState([]); // 접속자 목록
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true); // 접속자 목록 로딩 상태
   const [rankings, setRankings] = useState([]); // 랭킹 데이터
   const [shopCategory, setShopCategory] = useState("fishing_rod");
   const [showProfile, setShowProfile] = useState(false);
@@ -157,8 +158,8 @@ function App() {
       await axios.post(`${serverUrl}/api/update-companion-stats`, {
         companionName,
         level: stats.level,
-        experience: stats.experience,
-        isInBattle: stats.isInBattle
+        experience: stats.exp || stats.experience || 0, // exp 필드를 experience로 전송
+        isInBattle: stats.isInBattle || false
       }, {
         headers: {
           'Authorization': `Bearer ${jwtToken}`
@@ -167,6 +168,34 @@ function App() {
       console.log(`✅ Saved companion stats to server: ${companionName}`, stats);
     } catch (e) {
       console.error(`❌ Failed to save companion stats to server: ${companionName}`, e);
+    }
+  };
+
+  // 🔄 동료 목록 새로고침 함수 (TDZ 방지를 위해 일반 함수로 정의)
+  const refreshCompanions = async () => {
+    if (!username) return;
+    
+    try {
+      const userId = idToken ? 'user' : 'null';
+      const params = { username, userUuid };
+      
+      console.log('🔄 Refreshing companions...', { userId, params });
+      const companionsRes = await axios.get(`${serverUrl}/api/companions/${userId}`, { params });
+      console.log('✅ Refreshed companions:', companionsRes.data);
+      
+      setCompanions(companionsRes.data.companions || []);
+      
+      // 동료 능력치도 함께 새로고침
+      try {
+        const statsRes = await axios.get(`${serverUrl}/api/companion-stats/${userId}`, { params });
+        console.log('✅ Refreshed companion stats:', statsRes.data);
+        setCompanionStats(statsRes.data.companionStats || {});
+      } catch (e) {
+        console.warn('⚠️ Failed to refresh companion stats:', e);
+      }
+      
+    } catch (e) {
+      console.error('❌ Failed to refresh companions:', e);
     }
   };
 
@@ -907,6 +936,7 @@ function App() {
       if (uniqueUsers.length > 0) {
         setConnectedUsers(uniqueUsers); // connectedUsers 상태 업데이트
         setOnlineUsers(uniqueUsers);
+        setIsLoadingUsers(false);
       }
     };
 
@@ -1279,7 +1309,10 @@ function App() {
         }
       }
       if (data.totalCatches) setMyCatches(data.totalCatches.totalCatches);
-      if (data.companions) setCompanions(data.companions.companions);
+      if (data.companions) {
+        console.log('🔄 Updating companions via WebSocket:', data.companions.companions);
+        setCompanions(data.companions.companions);
+      }
       if (data.adminStatus) {
         setUserAdminStatus(prev => ({ ...prev, [username]: data.adminStatus.isAdmin }));
       }
@@ -1296,6 +1329,7 @@ function App() {
       // 빈 배열이 아닌 경우에만 업데이트 (기존 목록 유지)
       if (Array.isArray(users) && users.length > 0) {
         setConnectedUsers(users);
+        setIsLoadingUsers(false);
       }
     };
 
@@ -1303,12 +1337,29 @@ function App() {
     socket.on('data:inventory', handleInventoryUpdate);
     socket.on('data:materials', handleMaterialsUpdate);
     socket.on('users:update', handleUsersUpdate);
+    
+    // 개별 데이터 업데이트 이벤트 처리
+    socket.on('data:companions', (data) => {
+      console.log('🔄 Received companions update via WebSocket:', data);
+      if (data && Array.isArray(data.companions)) {
+        setCompanions(data.companions);
+      }
+    });
+    
+    socket.on('data:starPieces', (data) => {
+      console.log('🔄 Received starPieces update via WebSocket:', data);
+      if (data && typeof data.starPieces === 'number') {
+        setUserStarPieces(data.starPieces);
+      }
+    });
 
     return () => {
       socket.off('data:update', handleDataUpdate);
       socket.off('data:inventory', handleInventoryUpdate);
       socket.off('data:materials', handleMaterialsUpdate);
       socket.off('users:update', handleUsersUpdate);
+      socket.off('data:companions');
+      socket.off('data:starPieces');
       // 데이터 구독 해제
       socket.emit('data:unsubscribe', { userUuid, username });
     };
@@ -1469,7 +1520,17 @@ function App() {
         }, []);
         
         console.log(`Validated ${uniqueUsers.length} unique users out of ${res.data.users.length} received`);
-        setConnectedUsers(uniqueUsers);
+        // 유효한 사용자가 있을 때만 업데이트 (0명일 때 기존 목록 유지)
+        if (uniqueUsers.length > 0) {
+          setConnectedUsers(uniqueUsers);
+          setIsLoadingUsers(false);
+        } else {
+          console.log('⚠️ Received 0 users, keeping existing list to prevent flickering');
+          // 첫 로딩이라면 로딩 상태 해제
+          if (isLoadingUsers) {
+            setIsLoadingUsers(false);
+          }
+        }
         
         // 접속자들의 관리자 상태도 확인
         uniqueUsers.forEach(async (user) => {
@@ -2266,7 +2327,9 @@ function App() {
         setUserStarPieces(response.data.remainingStarPieces);
         
         if (response.data.recruited) {
-          setCompanions(prev => [...prev, response.data.companion]);
+          // 서버에서 최신 동료 목록을 새로고침 (DB와 동기화)
+          await refreshCompanions();
+          
           // 새 동료 능력치 초기화
           initializeCompanionStats(response.data.companion);
           setMessages(prev => [...prev, {
@@ -2336,6 +2399,7 @@ function App() {
 
   // 동료 경험치 추가 함수
   const addCompanionExp = (companionName, expAmount) => {
+    console.log(`📈 addCompanionExp 호출: ${companionName}에게 경험치 ${expAmount} 추가`);
     setCompanionStats(prev => {
       const current = prev[companionName] || {
         level: 1,
@@ -2344,6 +2408,7 @@ function App() {
         hp: calculateCompanionStats(companionName, 1)?.hp || 100,
         maxHp: calculateCompanionStats(companionName, 1)?.hp || 100
       };
+      console.log(`📊 ${companionName} 현재 상태:`, current);
       
       const expCalc = (() => {
         let newExp = current.exp + expAmount;
@@ -2360,7 +2425,10 @@ function App() {
         newExp -= newExpToNext;
         newLevel++;
         newExpToNext = newLevel * 50 + 50; // 레벨당 필요 경험치 증가
+        console.log(`🎉 ${companionName} 레벨업! ${newLevel-1} → ${newLevel}`);
       }
+      
+      console.log(`📊 ${companionName} 최종 능력치: 레벨 ${newLevel}, 경험치 ${newExp}/${newExpToNext}`);
       
       // 레벨업 시 능력치 재계산
       const newStats = calculateCompanionStats(companionName, newLevel);
@@ -2378,6 +2446,14 @@ function App() {
       
       // localStorage에 저장
       localStorage.setItem(`companionStats_${userUuid || username}`, JSON.stringify(updated));
+      
+      // 서버에 즉시 저장 (경험치 변경 시)
+      const updatedStats = updated[companionName];
+      if (jwtToken) {
+        setTimeout(() => {
+          saveCompanionStatsToServer(companionName, updatedStats);
+        }, 100); // 상태 업데이트 후 저장
+      }
       
       // 레벨업 알림
       if (newLevel > current.level) {
@@ -3173,7 +3249,9 @@ function App() {
           // 동료들에게 경험치 지급
           if (prevState.companions && prevState.companions.length > 0) {
             const expReward = Math.floor(prevState.enemyMaxHp / 5) + 10;
+            console.log(`🎯 전투 승리! 동료들에게 경험치 ${expReward} 지급:`, prevState.companions);
             prevState.companions.forEach(companion => {
+              console.log(`📈 ${companion}에게 경험치 ${expReward} 지급 중...`);
               addCompanionExp(companion, expReward);
             });
           }
@@ -3243,7 +3321,9 @@ function App() {
           // 동료들에게 경험치 지급
           if (prevState.companions && prevState.companions.length > 0) {
             const expReward = Math.floor(prevState.enemyMaxHp / 5) + 10; // 적 체력 기반 경험치
+            console.log(`🎯 자동전투 승리! 동료들에게 경험치 ${expReward} 지급:`, prevState.companions);
             prevState.companions.forEach(companion => {
+              console.log(`📈 ${companion}에게 경험치 ${expReward} 지급 중...`);
               addCompanionExp(companion, expReward);
             });
           }
