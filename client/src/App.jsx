@@ -5530,7 +5530,7 @@ function App() {
                     </div>
                     
                     {/* 체력바 */}
-                    <div className={`w-full h-6 rounded-full overflow-hidden border-2 ${
+                    <div className={`w-full h-6 rounded-full overflow-hidden border-2 relative ${
                       isDarkMode ? "bg-gray-700 border-gray-600" : "bg-gray-200 border-gray-300"
                     } ${shakeEffect ? "animate-bounce" : ""}`}>
                       <div 
@@ -5545,6 +5545,15 @@ function App() {
                       >
                         {/* 체력바 글로우 효과 */}
                         <div className="absolute inset-0 bg-white/20 animate-pulse" />
+                      </div>
+                      
+                      {/* 체력 퍼센트 표시 */}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className={`text-sm font-bold ${
+                          isDarkMode ? "text-white drop-shadow-lg" : "text-gray-800 drop-shadow-lg"
+                        }`} style={{ textShadow: "2px 2px 4px rgba(0,0,0,0.8)" }}>
+                          {Math.round((raidBoss.hp / raidBoss.maxHp) * 100)}%
+                        </span>
                       </div>
                     </div>
                     
