@@ -165,6 +165,9 @@ function App() {
   
   // 쿨타임 interval 참조
   const cooldownIntervalRef = useRef(null);
+  
+  // 레이드 로그 스크롤 참조
+  const raidLogScrollRef = useRef(null);
 
   // 컴포넌트 언마운트 시 interval 정리
   useEffect(() => {
@@ -175,6 +178,13 @@ function App() {
       }
     };
   }, []);
+
+  // 레이드 로그 자동 스크롤
+  useEffect(() => {
+    if (raidLogScrollRef.current && raidLogs.length > 0) {
+      raidLogScrollRef.current.scrollTop = raidLogScrollRef.current.scrollHeight;
+    }
+  }, [raidLogs]);
 
   // 🔄 동료 능력치 서버 저장 함수
   const saveCompanionStatsToServer = async (companionName, stats) => {
@@ -257,7 +267,7 @@ function App() {
       return [...prev, newDamageNumber];
     });
     
-    // 3초 후 제거
+    // 1초 후 제거 (3배 빠르게)
     setTimeout(() => {
       console.log(`🗑️ 데미지 숫자 제거: ID ${animationId}`);
       setDamageNumbers(prev => {
@@ -265,21 +275,21 @@ function App() {
         console.log(`📊 데미지 숫자 제거 후 개수: ${filtered.length}`);
         return filtered;
       });
-    }, 3000);
+    }, 1000);
     
     // 크리티컬 히트 효과
     if (isCritical) {
       setCriticalHit(true);
-      setTimeout(() => setCriticalHit(false), 1000);
+      setTimeout(() => setCriticalHit(false), 300);
     }
     
     // 화면 흔들림 효과
     setShakeEffect(true);
-    setTimeout(() => setShakeEffect(false), 500);
+    setTimeout(() => setShakeEffect(false), 200);
     
     // 데미지 플래시 효과
     setShowDamageEffect(true);
-    setTimeout(() => setShowDamageEffect(false), 300);
+    setTimeout(() => setShowDamageEffect(false), 100);
   };
 
   // 레이드 보스 공격 함수
@@ -309,7 +319,7 @@ function App() {
               setTimeout(() => {
                 const companionCritical = companion.attack > 15; // 동료는 15 이상이면 크리티컬
                 triggerDamageEffect(companion.attack, companionCritical, `동료 ${companion.name} 공격`);
-              }, (index + 1) * 300); // 300ms 간격으로 순차 실행
+              }, (index + 1) * 100); // 100ms 간격으로 순차 실행
             });
           }
         } else {
@@ -1362,17 +1372,9 @@ function App() {
           return prev;
         }
         
-        // 다른 플레이어의 공격에만 애니메이션 효과 (내 공격은 중복 방지)
+        // 다른 플레이어의 공격 애니메이션은 비활성화
         if (data.log.userUuid !== userUuid) {
-          const damage = data.log.damage;
-          const isCritical = damage > 30;
-          
-          console.log(`🎭 다른 플레이어 애니메이션 예약: ${damage} 데미지`);
-          
-          // 약간의 지연을 두고 애니메이션 실행
-          setTimeout(() => {
-            triggerDamageEffect(damage, isCritical, "다른 플레이어 공격");
-          }, 200);
+          console.log(`🚫 다른 플레이어 애니메이션 비활성화: ${data.log.damage} 데미지`);
         } else {
           console.log(`🚫 내 공격이므로 애니메이션 스킵: ${data.log.damage} 데미지`);
         }
@@ -5409,8 +5411,8 @@ function App() {
                     left: `${dmg.x}px`,
                     top: `${dmg.y}px`,
                     animation: dmg.isCritical 
-                      ? `floatUp 3s ease-out forwards, criticalGlow 1s ease-in-out infinite alternate`
-                      : `floatUp 3s ease-out forwards`,
+                      ? `floatUp 1s ease-out forwards, criticalGlow 0.3s ease-in-out infinite alternate`
+                      : `floatUp 1s ease-out forwards`,
                     textShadow,
                     transform: `rotate(${dmg.rotation}deg) scale(${dmg.scale})`,
                     filter: dmg.isCritical ? "brightness(1.8) saturate(1.5) contrast(1.2)" : "none"
@@ -5647,9 +5649,12 @@ function App() {
                       isDarkMode ? "text-white" : "text-gray-800"
                     }`}>⚔️ 전투 로그</h4>
                     
-                    <div className={`h-48 overflow-y-auto space-y-2 ${
-                      isDarkMode ? "scrollbar-dark" : "scrollbar-light"
-                    }`}>
+                    <div 
+                      ref={raidLogScrollRef}
+                      className={`h-48 overflow-y-auto space-y-2 ${
+                        isDarkMode ? "scrollbar-dark" : "scrollbar-light"
+                      }`}
+                    >
                       {raidLogs.length === 0 ? (
                         <p className={`text-sm ${
                           isDarkMode ? "text-gray-400" : "text-gray-600"

@@ -6,7 +6,7 @@ const RaidSystem = require('../modules/raidSystem');
 const raidSystem = new RaidSystem();
 
 // 레이드 라우트 설정 함수
-function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel) {
+function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel) {
   // 레이드 보스 소환 API
   router.post("/summon", authenticateJWT, async (req, res) => {
     try {
@@ -60,19 +60,19 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         최종_낚시실력: fishingSkill
       });
       
-      // 전투 참전 동료 가져오기
-      const companions = await CompanionModel.find({ 
+      // 전투 참전 동료 가져오기 (CompanionStatsModel 사용)
+      const companions = await CompanionStatsModel.find({ 
         userUuid, 
         isInBattle: true 
       }).lean();
       
       // 모든 동료도 확인 (디버깅용)
-      const allCompanions = await CompanionModel.find({ userUuid }).lean();
+      const allCompanions = await CompanionStatsModel.find({ userUuid }).lean();
       
       console.log(`[Raid] ${user.displayName} 동료 데이터:`, {
         전투_참전_동료: companions.length,
         전체_동료: allCompanions.length,
-        동료_목록: allCompanions.map(c => ({ name: c.name, isInBattle: c.isInBattle, level: c.level }))
+        동료_목록: allCompanions.map(c => ({ name: c.companionName, isInBattle: c.isInBattle, level: c.level }))
       });
       
       // 탐사 전투와 동일한 calculatePlayerAttack 함수 로직
@@ -96,7 +96,7 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         const companionAttack = Math.floor(companionLevel * 2 + Math.random() * 5); // 레벨 * 2 + 0~4 랜덤
         companionDamage += companionAttack;
         companionAttacks.push({
-          name: companion.name,
+          name: companion.companionName, // CompanionStatsModel에서는 companionName 사용
           attack: companionAttack
         });
       }

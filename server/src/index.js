@@ -7295,7 +7295,7 @@ function authenticateJWT(req, res, next) {
 }
 
 // 레이드 라우터 등록
-const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel);
+const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel);
 app.use("/api/raid", raidRouter);
 
 // 🔐 선택적 JWT 인증 미들웨어 (토큰이 없어도 통과, 있으면 검증)
