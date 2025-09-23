@@ -3,6 +3,19 @@ export const NOTICE_DATA = [
   {
     id: 0,
     date: "2025.09.23",
+    title: "⚔️ 레이드 시스템 업데이트",
+    content: [
+      "레이드 보스 '마르가글레슘' 출현현",
+      "플레이어와 동료의 개별 데미지 애니메이션 구현",
+      "동료 최대 3명까지 레이드 전투 참여 가능",
+      "실시간 데미지 순위 표시 및 보상 시스템 개선"
+    ],
+    isNew: true,
+    type: "update"
+  },
+  {
+    id: 1,
+    date: "2025.09.23",
     title: "🎣 낚시 시스템 & 상점 업데이트",
     content: [
       "낚시 메시지에 물고기 등급(Rank)과 확률 정보 표시",
@@ -11,11 +24,11 @@ export const NOTICE_DATA = [
       "카카오톡 로그인 문제 해결",
       "동료 시스템 실시간 업데이트 개선"
     ],
-    isNew: true,
+    isNew: false,
     type: "update"
   },
   {
-    id: 1,
+    id: 2,
     date: "2025.09.22",
     title: "🎆 게임 시스템 업데이트",
     content: [
@@ -29,7 +42,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 2,
+    id: 3,
     date: "2025.09.22",
     title: "🔐 JWT 보안 시스템 대폭 강화",
     content: [
@@ -44,7 +57,7 @@ export const NOTICE_DATA = [
     type: "security"
   },
   {
-    id: 3,
+    id: 4,
     date: "2025.09.22",
     title: "🎉 동료 시스템 업데이트",
     content: [
@@ -57,7 +70,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 4,
+    id: 5,
     date: "2025.09.22", 
     title: "🔐 보안 시스템 강화",
     content: [
@@ -69,7 +82,7 @@ export const NOTICE_DATA = [
     type: "security"
   },
   {
-    id: 5,
+    id: 6,
     date: "2025.09.22",
     title: "⚔️ 전투 시스템 개선", 
     content: [
@@ -81,7 +94,7 @@ export const NOTICE_DATA = [
     type: "improvement"
   },
   {
-    id: 6,
+    id: 7,
     date: "2025.09.19",
     title: "🦊 여우이야기 Alpha Test 시작",
     content: [

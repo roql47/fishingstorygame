@@ -14,6 +14,9 @@ const debugLog = isProduction ? () => {} : console.log;
 const infoLog = console.log; // 중요한 로그는 유지
 const errorLog = console.error; // 에러 로그는 항상 유지
 
+// 레이드 시스템 모듈 import
+const { setupRaidRoutes, setupRaidWebSocketEvents } = require('./routes/raidRoutes');
+
 // 🔍 DB 쿼리 성능 측정 헬퍼 함수
 const measureDBQuery = async (queryName, queryFunction) => {
   const startTime = Date.now();
@@ -2302,6 +2305,9 @@ io.on("connection", (socket) => {
       sendUserDataUpdate(socket, userUuid, username);
     }
   });
+
+  // 레이드 WebSocket 이벤트 설정
+  setupRaidWebSocketEvents(socket);
 
   socket.on("data:request", async ({ type, userUuid, username }) => {
     if (!userUuid || !username) return;
@@ -7287,6 +7293,10 @@ function authenticateJWT(req, res, next) {
   console.log(`🔐 JWT authenticated: ${decoded.username} (${decoded.userUuid})`);
   next();
 }
+
+// 레이드 라우터 등록
+const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel);
+app.use("/api/raid", raidRouter);
 
 // 🔐 선택적 JWT 인증 미들웨어 (토큰이 없어도 통과, 있으면 검증)
 function optionalJWT(req, res, next) {

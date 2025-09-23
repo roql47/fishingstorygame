@@ -18,6 +18,7 @@ import {
   User,
   Clock,
   Trophy,
+  Sword,
   Moon,
   Sun,
   ShoppingCart,
@@ -149,6 +150,31 @@ function App() {
   const [isProcessingFishing, setIsProcessingFishing] = useState(false); // 🛡️ 낚시 처리 중 상태
   const [showNoticeModal, setShowNoticeModal] = useState(false); // 공지사항 모달
   const [showTutorialModal, setShowTutorialModal] = useState(false); // 튜토리얼 모달
+  
+  // 레이드 관련 상태
+  const [raidBoss, setRaidBoss] = useState(null); // { name, hp, maxHp, isActive }
+  const [raidLogs, setRaidLogs] = useState([]); // 전투 로그
+  const [isAttacking, setIsAttacking] = useState(false); // 공격 중 상태
+  const [attackCooldown, setAttackCooldown] = useState(0); // 공격 쿨타임 (초)
+  
+  // 액션 애니메이션 상태
+  const [showDamageEffect, setShowDamageEffect] = useState(false); // 데미지 효과
+  const [damageNumbers, setDamageNumbers] = useState([]); // 떠오르는 데미지 숫자들
+  const [shakeEffect, setShakeEffect] = useState(false); // 화면 흔들림
+  const [criticalHit, setCriticalHit] = useState(false); // 크리티컬 히트
+  
+  // 쿨타임 interval 참조
+  const cooldownIntervalRef = useRef(null);
+
+  // 컴포넌트 언마운트 시 interval 정리
+  useEffect(() => {
+    return () => {
+      if (cooldownIntervalRef.current) {
+        clearInterval(cooldownIntervalRef.current);
+        console.log("🧹 컴포넌트 언마운트로 쿨타임 interval 정리");
+      }
+    };
+  }, []);
 
   // 🔄 동료 능력치 서버 저장 함수
   const saveCompanionStatsToServer = async (companionName, stats) => {
@@ -168,6 +194,162 @@ function App() {
       console.log(`✅ Saved companion stats to server: ${companionName}`, stats);
     } catch (e) {
       console.error(`❌ Failed to save companion stats to server: ${companionName}`, e);
+    }
+  };
+
+  // 레이드 보스 소환 함수
+  const summonRaidBoss = async () => {
+    try {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/raid/summon`);
+      if (response.data.success) {
+        setRaidBoss(response.data.boss);
+        setRaidLogs([]);
+      }
+    } catch (error) {
+      console.error('레이드 보스 소환 실패:', error);
+      alert('레이드 보스 소환에 실패했습니다.');
+    }
+  };
+
+  // 레이드 데미지 순위 계산 함수
+  const getRaidDamageRanking = () => {
+    if (!raidBoss || !raidBoss.participants) return [];
+    
+    // participants는 항상 일반 객체로 전송됨
+    const rankings = Object.entries(raidBoss.participants)
+      .map(([userUuid, damage]) => {
+        // 로그에서 해당 사용자의 최신 username 찾기
+        const userLogs = raidLogs.filter(log => log.userUuid === userUuid);
+        const username = userLogs.length > 0 ? userLogs[userLogs.length - 1].username : userUuid;
+        
+        return { userUuid, username, damage };
+      })
+      .sort((a, b) => b.damage - a.damage);
+    
+    return rankings;
+  };
+
+  // 액션 애니메이션 함수들
+  const triggerDamageEffect = (damage, isCritical = false, source = "unknown") => {
+    const animationId = Date.now() + Math.random();
+    console.log(`🎬 애니메이션 트리거: ${damage} 데미지, 크리티컬: ${isCritical}, 소스: ${source}, ID: ${animationId}`);
+    
+    // 소스에 따른 스타일 결정
+    const isCompanion = source.includes("동료");
+    const isPlayer = source.includes("플레이어");
+    
+    // 데미지 숫자 애니메이션 - 레이드 영역 내 랜덤 위치
+    const newDamageNumber = {
+      id: animationId,
+      damage,
+      isCritical,
+      source,
+      isCompanion,
+      isPlayer,
+      x: Math.random() * 400 + 50, // 50px ~ 450px (레이드 카드 내부)
+      y: Math.random() * 300 + 100, // 100px ~ 400px (보스 주변)
+      rotation: (Math.random() - 0.5) * 30, // -15도 ~ +15도 랜덤 회전
+      scale: isCritical ? 1.2 + Math.random() * 0.3 : 1 + Math.random() * 0.2 // 랜덤 크기
+    };
+    
+    setDamageNumbers(prev => {
+      console.log(`📊 현재 데미지 숫자 개수: ${prev.length}, 추가 후: ${prev.length + 1}`);
+      return [...prev, newDamageNumber];
+    });
+    
+    // 3초 후 제거
+    setTimeout(() => {
+      console.log(`🗑️ 데미지 숫자 제거: ID ${animationId}`);
+      setDamageNumbers(prev => {
+        const filtered = prev.filter(num => num.id !== animationId);
+        console.log(`📊 데미지 숫자 제거 후 개수: ${filtered.length}`);
+        return filtered;
+      });
+    }, 3000);
+    
+    // 크리티컬 히트 효과
+    if (isCritical) {
+      setCriticalHit(true);
+      setTimeout(() => setCriticalHit(false), 1000);
+    }
+    
+    // 화면 흔들림 효과
+    setShakeEffect(true);
+    setTimeout(() => setShakeEffect(false), 500);
+    
+    // 데미지 플래시 효과
+    setShowDamageEffect(true);
+    setTimeout(() => setShowDamageEffect(false), 300);
+  };
+
+  // 레이드 보스 공격 함수
+  const attackRaidBoss = async () => {
+    if (!raidBoss || !raidBoss.isActive || isAttacking || attackCooldown > 0) return;
+    
+    console.log(`⚔️ 공격 시작 - 현재 상태: 공격중=${isAttacking}, 쿨타임=${attackCooldown}`);
+    setIsAttacking(true);
+    
+    try {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/raid/attack`);
+      if (response.data.success) {
+        console.log(`🎯 공격 성공 응답: ${response.data.damage} 데미지`);
+        console.log(`📊 데미지 세부사항:`, response.data.damageBreakdown);
+        
+        // 개별 데미지 애니메이션 트리거
+        const breakdown = response.data.damageBreakdown;
+        
+        if (breakdown) {
+          // 플레이어 데미지 애니메이션
+          const playerCritical = breakdown.playerDamage > 30;
+          triggerDamageEffect(breakdown.playerDamage, playerCritical, "플레이어 공격");
+          
+          // 동료들 데미지 애니메이션 (각각 개별로)
+          if (breakdown.companionAttacks && breakdown.companionAttacks.length > 0) {
+            breakdown.companionAttacks.forEach((companion, index) => {
+              setTimeout(() => {
+                const companionCritical = companion.attack > 15; // 동료는 15 이상이면 크리티컬
+                triggerDamageEffect(companion.attack, companionCritical, `동료 ${companion.name} 공격`);
+              }, (index + 1) * 300); // 300ms 간격으로 순차 실행
+            });
+          }
+        } else {
+          // 기존 방식 (fallback)
+          const damage = response.data.damage;
+          const isCritical = damage > 30;
+          triggerDamageEffect(damage, isCritical, "내 공격");
+        }
+        
+        // 기존 interval 정리
+        if (cooldownIntervalRef.current) {
+          clearInterval(cooldownIntervalRef.current);
+        }
+        
+        // 10초 쿨타임 시작
+        setAttackCooldown(10);
+        console.log("⏱️ 쿨타임 시작: 10초");
+        
+        cooldownIntervalRef.current = setInterval(() => {
+          setAttackCooldown(prev => {
+            const newValue = prev - 1;
+            console.log(`⏱️ 쿨타임: ${newValue}초 남음`);
+            
+            if (newValue <= 0) {
+              clearInterval(cooldownIntervalRef.current);
+              cooldownIntervalRef.current = null;
+              console.log("✅ 쿨타임 완료!");
+              return 0;
+            }
+            return newValue;
+          });
+        }, 1000);
+        
+        // 전투 로그와 보스 상태는 WebSocket으로 실시간 업데이트됨
+      }
+    } catch (error) {
+      console.error('레이드 공격 실패:', error);
+      alert('공격에 실패했습니다.');
+    } finally {
+      setIsAttacking(false);
     }
   };
 
@@ -1160,6 +1342,109 @@ function App() {
     socket.on("user:uuid", onUserUuid);
     socket.on("message:reaction:update", onReactionUpdate);
     
+    // 레이드 관련 이벤트 핸들러들
+    const onRaidBossUpdate = (data) => {
+      console.log(`🏰 보스 상태 업데이트:`, data.boss);
+      setRaidBoss(data.boss);
+    };
+    
+    const onRaidLogUpdate = (data) => {
+      console.log(`📨 raid:log:update 받음:`, data.log);
+      console.log(`🔍 내 userUuid: "${userUuid}" (타입: ${typeof userUuid})`);
+      console.log(`🔍 로그 userUuid: "${data.log.userUuid}" (타입: ${typeof data.log.userUuid})`);
+      console.log(`🔍 UUID 일치 여부: ${userUuid === data.log.userUuid}`);
+      
+      setRaidLogs(prev => {
+        // 중복 로그 방지 - 같은 ID의 로그가 이미 있으면 추가하지 않음
+        const existingLog = prev.find(log => log.id === data.log.id);
+        if (existingLog) {
+          console.log(`❌ 중복 로그 감지됨, 무시: ${data.log.id}`);
+          return prev;
+        }
+        
+        // 다른 플레이어의 공격에만 애니메이션 효과 (내 공격은 중복 방지)
+        if (data.log.userUuid !== userUuid) {
+          const damage = data.log.damage;
+          const isCritical = damage > 30;
+          
+          console.log(`🎭 다른 플레이어 애니메이션 예약: ${damage} 데미지`);
+          
+          // 약간의 지연을 두고 애니메이션 실행
+          setTimeout(() => {
+            triggerDamageEffect(damage, isCritical, "다른 플레이어 공격");
+          }, 200);
+        } else {
+          console.log(`🚫 내 공격이므로 애니메이션 스킵: ${data.log.damage} 데미지`);
+        }
+        
+        console.log(`✅ 로그 추가: ${data.log.id}`);
+        return [...prev, data.log];
+      });
+    };
+    
+    const onRaidBossDefeated = (data) => {
+      // 쿨타임 즉시 리셋
+      setAttackCooldown(0);
+      if (cooldownIntervalRef.current) {
+        clearInterval(cooldownIntervalRef.current);
+        cooldownIntervalRef.current = null;
+        console.log("🧹 보스 처치로 쿨타임 즉시 정리");
+      }
+      
+      // 승리 애니메이션 효과
+      setCriticalHit(true);
+      setShakeEffect(true);
+      
+      // 큰 승리 데미지 표시
+      const victoryDamage = {
+        id: Date.now(),
+        damage: "승리!",
+        isCritical: true,
+        x: 150,
+        y: 100
+      };
+      setDamageNumbers(prev => [...prev, victoryDamage]);
+      console.log("🎉 승리 애니메이션 트리거");
+      
+      // 3초 후 정리
+      setTimeout(() => {
+        setRaidBoss(null);
+        setRaidLogs([]);
+        setAttackCooldown(0);
+        setCriticalHit(false);
+        setShakeEffect(false);
+        setDamageNumbers([]);
+        
+        // 쿨타임 interval도 정리
+        if (cooldownIntervalRef.current) {
+          clearInterval(cooldownIntervalRef.current);
+          cooldownIntervalRef.current = null;
+          console.log("🧹 레이드 종료로 쿨타임 interval 정리");
+        }
+      }, 3000);
+      
+      // 보상 알림
+      let rewardMessage = "";
+      if (data.reward && data.reward.amount > 0) {
+        rewardMessage += `호박석 ${data.reward.amount}개`;
+      }
+      if (data.lastAttackBonus && data.lastAttackBonus.starPieces > 0) {
+        if (rewardMessage) rewardMessage += ", ";
+        rewardMessage += `별조각 ${data.lastAttackBonus.starPieces}개 (막타 보너스)`;
+      }
+      
+      if (rewardMessage) {
+        setTimeout(() => {
+          alert(`🎉 레이드 완료! ${rewardMessage}를 획득했습니다!`);
+        }, 1000);
+      }
+    };
+
+    // 초기 레이드 상태 요청
+    if (jwtToken && userUuid) {
+      socket.emit("raid:status:request");
+    }
+    
     // 🔐 JWT 토큰 처리
     socket.on("auth:token", (data) => {
       console.log("🔐 JWT token received from server");
@@ -1182,6 +1467,11 @@ function App() {
     };
     
     socket.on("duplicate_login", onDuplicateLogin);
+    
+    // 레이드 이벤트 리스너 등록
+    socket.on("raid:boss:update", onRaidBossUpdate);
+    socket.on("raid:log:update", onRaidLogUpdate);
+    socket.on("raid:boss:defeated", onRaidBossDefeated);
     
     // 입장 에러 처리 (닉네임 중복 등)
     const onJoinError = (data) => {
@@ -1273,6 +1563,11 @@ function App() {
       socket.off("chat:error", onChatError);
       socket.off("connect_error", onConnectError);
       socket.off("account-blocked", onAccountBlocked);
+      
+      // 레이드 관련 이벤트 정리
+      socket.off("raid:boss:update", onRaidBossUpdate);
+      socket.off("raid:log:update", onRaidLogUpdate);
+      socket.off("raid:boss:defeated", onRaidBossDefeated);
     };
   }, [username, idToken]);
 
@@ -4324,6 +4619,21 @@ function App() {
             <span className="hidden sm:inline">동료모집</span>
           </button>
           <button
+            onClick={() => setActiveTab("raid")}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300 font-medium ${
+              activeTab === "raid"
+                ? isDarkMode
+                  ? "bg-red-500/20 text-red-400 border border-red-400/30"
+                  : "bg-red-500/10 text-red-600 border border-red-500/30"
+                : isDarkMode
+                  ? "text-gray-400 hover:text-gray-300"
+                  : "text-gray-600 hover:text-gray-800"
+            }`}
+          >
+            <Sword className="w-4 h-4" />
+            <span className="hidden sm:inline">레이드</span>
+          </button>
+          <button
             onClick={() => setActiveTab("quests")}
             className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300 font-medium ${
               activeTab === "quests"
@@ -5061,6 +5371,317 @@ function App() {
               recruitCompanion={recruitCompanion}
               toggleBattleCompanion={toggleBattleCompanion}
             />
+          )}
+
+          {/* 레이드 탭 */}
+          {activeTab === "raid" && (
+          <div className={`rounded-2xl board-shadow min-h-full flex flex-col relative overflow-hidden ${
+            isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
+          } ${shakeEffect ? "animate-pulse" : ""} ${showDamageEffect ? "bg-red-500/20" : ""}`}>
+            
+            {/* 데미지 숫자 애니메이션 */}
+            {damageNumbers.map(dmg => {
+              // 소스별 스타일 결정
+              let textColor = "text-red-500";
+              let icon = "⚔️ ";
+              let textShadow = "2px 2px 4px rgba(0,0,0,0.5)";
+              let additionalClasses = "";
+              
+              if (dmg.isCritical) {
+                textColor = "text-yellow-400";
+                icon = "💥 ";
+                textShadow = "0 0 30px #fbbf24, 0 0 60px #f59e0b, 0 0 90px #fbbf24, 0 0 120px #fbbf24";
+                additionalClasses = "drop-shadow-2xl animate-pulse scale-150";
+              } else if (dmg.isCompanion) {
+                textColor = "text-blue-400";
+                icon = "⚔️ ";
+                textShadow = "0 0 15px #60a5fa, 2px 2px 4px rgba(0,0,0,0.5)";
+              } else if (dmg.isPlayer) {
+                textColor = "text-red-500";
+                icon = "⚔️ ";
+              }
+              
+              return (
+                <div
+                  key={dmg.id}
+                  className={`absolute pointer-events-none z-50 font-bold text-4xl ${textColor} ${additionalClasses}`}
+                  style={{
+                    left: `${dmg.x}px`,
+                    top: `${dmg.y}px`,
+                    animation: dmg.isCritical 
+                      ? `floatUp 3s ease-out forwards, criticalGlow 1s ease-in-out infinite alternate`
+                      : `floatUp 3s ease-out forwards`,
+                    textShadow,
+                    transform: `rotate(${dmg.rotation}deg) scale(${dmg.scale})`,
+                    filter: dmg.isCritical ? "brightness(1.8) saturate(1.5) contrast(1.2)" : "none"
+                  }}
+                >
+                  {icon}{dmg.damage}
+                </div>
+              );
+            })}
+            
+            {/* 크리티컬 히트 전체 화면 효과 */}
+            {criticalHit && (
+              <div className="absolute inset-0 bg-yellow-400/30 animate-ping pointer-events-none z-40" />
+            )}
+            
+            {/* 인라인 CSS 애니메이션 */}
+            <style jsx>{`
+              @keyframes floatUp {
+                0% {
+                  opacity: 1;
+                  transform: translateY(0px) scale(1);
+                }
+                50% {
+                  opacity: 1;
+                  transform: translateY(-30px) scale(1.2);
+                }
+                100% {
+                  opacity: 0;
+                  transform: translateY(-60px) scale(0.8);
+                }
+              }
+              
+              @keyframes shakeX {
+                0%, 100% { transform: translateX(0); }
+                25% { transform: translateX(-5px); }
+                75% { transform: translateX(5px); }
+              }
+              
+              @keyframes criticalGlow {
+                0% { 
+                  text-shadow: 0 0 30px #fbbf24, 0 0 60px #f59e0b, 0 0 90px #fbbf24;
+                  filter: brightness(1.8) saturate(1.5);
+                }
+                100% { 
+                  text-shadow: 0 0 50px #fbbf24, 0 0 100px #f59e0b, 0 0 150px #fbbf24, 0 0 200px #fbbf24;
+                  filter: brightness(2.2) saturate(2.0);
+                }
+              }
+              
+              .shake-animation {
+                animation: shakeX 0.5s ease-in-out;
+              }
+            `}</style>
+            {/* 레이드 헤더 */}
+            <div className={`border-b p-4 ${
+              isDarkMode ? "border-white/10" : "border-gray-300/30"
+            }`}>
+              <div className="flex items-center gap-3">
+                <Sword className={`w-6 h-6 ${
+                  isDarkMode ? "text-red-400" : "text-red-600"
+                }`} />
+                <h2 className={`text-xl font-bold ${
+                  isDarkMode ? "text-white" : "text-gray-800"
+                }`}>[Raid] 레이드 전투</h2>
+              </div>
+              <p className={`text-sm mt-2 ${
+                isDarkMode ? "text-gray-400" : "text-gray-600"
+              }`}>강력한 레이드 보스와 함께 전투하고 보상을 획득하세요!</p>
+            </div>
+            
+            {/* 레이드 컨텐츠 */}
+            <div className="p-4 flex-1 overflow-y-auto">
+              {!raidBoss || !raidBoss.isActive ? (
+                // 레이드 보스가 없을 때
+                <div className="text-center py-8">
+                  <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${
+                    isDarkMode ? "bg-red-500/20" : "bg-red-500/10"
+                  }`}>
+                    <Sword className={`w-8 h-8 ${
+                      isDarkMode ? "text-red-400" : "text-red-600"
+                    }`} />
+                  </div>
+                  <h3 className={`text-lg font-bold mb-2 ${
+                    isDarkMode ? "text-white" : "text-gray-800"
+                  }`}>레이드 보스가 없습니다</h3>
+                  <p className={`text-sm mb-6 ${
+                    isDarkMode ? "text-gray-400" : "text-gray-600"
+                  }`}>레이드 보스를 소환하여 전투를 시작하세요!</p>
+                  
+                  <button
+                    onClick={summonRaidBoss}
+                    className={`px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
+                      isDarkMode
+                        ? "bg-red-600 hover:bg-red-500 text-white"
+                        : "bg-red-500 hover:bg-red-600 text-white"
+                    } shadow-lg hover:shadow-xl transform hover:scale-105`}
+                  >
+                    🐉 마르가글레슘 소환
+                  </button>
+                </div>
+              ) : (
+                // 레이드 보스가 있을 때
+                <div className="space-y-6">
+                  {/* 보스 정보 */}
+                  <div className={`p-6 rounded-xl ${
+                    isDarkMode ? "bg-red-500/10 border border-red-400/30" : "bg-red-50 border border-red-200"
+                  }`}>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className={`text-xl font-bold ${
+                        isDarkMode ? "text-red-400" : "text-red-600"
+                      }`}>🐉 {raidBoss.name}</h3>
+                      <span className={`text-sm ${
+                        isDarkMode ? "text-gray-400" : "text-gray-600"
+                      }`}>{raidBoss.hp} / {raidBoss.maxHp} HP</span>
+                    </div>
+                    
+                    {/* 체력바 */}
+                    <div className={`w-full h-6 rounded-full overflow-hidden border-2 ${
+                      isDarkMode ? "bg-gray-700 border-gray-600" : "bg-gray-200 border-gray-300"
+                    } ${shakeEffect ? "animate-bounce" : ""}`}>
+                      <div 
+                        className={`h-full bg-gradient-to-r transition-all duration-700 ease-out relative ${
+                          raidBoss.hp < raidBoss.maxHp * 0.3 
+                            ? "from-red-600 to-red-700 animate-pulse" 
+                            : raidBoss.hp < raidBoss.maxHp * 0.6
+                              ? "from-orange-500 to-red-500"
+                              : "from-green-500 to-green-600"
+                        }`}
+                        style={{ width: `${(raidBoss.hp / raidBoss.maxHp) * 100}%` }}
+                      >
+                        {/* 체력바 글로우 효과 */}
+                        <div className="absolute inset-0 bg-white/20 animate-pulse" />
+                      </div>
+                    </div>
+                    
+                    {/* 공격 버튼 */}
+                    <div className="mt-4">
+                      <div className="relative">
+                        <button
+                          onClick={attackRaidBoss}
+                          disabled={isAttacking || attackCooldown > 0}
+                          className={`w-full px-6 py-4 rounded-xl font-medium transition-all duration-300 relative overflow-hidden ${
+                            isAttacking || attackCooldown > 0
+                              ? "bg-gray-400 text-gray-600 cursor-not-allowed"
+                              : isDarkMode
+                                ? "bg-red-600 hover:bg-red-500 text-white hover:shadow-red-500/50"
+                                : "bg-red-500 hover:bg-red-600 text-white hover:shadow-red-500/50"
+                          } shadow-lg hover:shadow-2xl transform hover:scale-105 ${
+                            isAttacking ? "animate-pulse scale-95" : ""
+                          }`}
+                        >
+                          {/* 쿨타임 프로그레스바 - 버튼 전체 */}
+                          {attackCooldown > 0 && (
+                            <div 
+                              className="absolute top-0 right-0 h-full bg-pink-200 rounded-xl transition-all duration-1000 ease-linear opacity-70"
+                              style={{ width: `${(attackCooldown / 10) * 100}%` }}
+                            />
+                          )}
+                          
+                          <div className="relative z-10">
+                            {isAttacking 
+                              ? "⚔️ 공격 중..." 
+                              : attackCooldown > 0 
+                                ? `⏱️ 쿨타임 ${attackCooldown}초`
+                                : "⚔️ 공격하기"
+                            }
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* 데미지 순위 */}
+                  <div className={`p-4 rounded-xl ${
+                    isDarkMode ? "bg-purple-500/10 border border-purple-400/30" : "bg-purple-50 border border-purple-200"
+                  }`}>
+                    <h4 className={`font-bold mb-3 ${
+                      isDarkMode ? "text-purple-400" : "text-purple-600"
+                    }`}>🏆 데미지 순위</h4>
+                    
+                    <div className="space-y-2">
+                      {getRaidDamageRanking().length === 0 ? (
+                        <p className={`text-sm ${
+                          isDarkMode ? "text-gray-400" : "text-gray-600"
+                        }`}>아직 참가자가 없습니다.</p>
+                      ) : (
+                        getRaidDamageRanking().map((player, index) => (
+                          <div
+                            key={player.userUuid}
+                            className={`flex items-center justify-between p-2 rounded ${
+                              player.userUuid === userUuid
+                                ? isDarkMode
+                                  ? "bg-yellow-500/20 border border-yellow-400/30"
+                                  : "bg-yellow-100 border border-yellow-300"
+                                : isDarkMode
+                                  ? "bg-gray-700/50"
+                                  : "bg-white/50"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className={`font-bold text-sm ${
+                                index === 0 ? "text-yellow-500" :
+                                index === 1 ? "text-gray-400" :
+                                index === 2 ? "text-orange-500" :
+                                isDarkMode ? "text-gray-400" : "text-gray-600"
+                              }`}>
+                                {index + 1}위
+                              </span>
+                              <span className={`font-medium ${
+                                player.userUuid === userUuid
+                                  ? isDarkMode ? "text-yellow-400" : "text-yellow-700"
+                                  : isDarkMode ? "text-white" : "text-gray-800"
+                              }`}>
+                                {player.username}
+                                {player.userUuid === userUuid && " (나)"}
+                              </span>
+                            </div>
+                            <span className={`font-bold ${
+                              isDarkMode ? "text-red-400" : "text-red-600"
+                            }`}>
+                              {player.damage}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* 전투 로그 */}
+                  <div className={`p-4 rounded-xl ${
+                    isDarkMode ? "bg-gray-800/50" : "bg-gray-100"
+                  }`}>
+                    <h4 className={`font-bold mb-3 ${
+                      isDarkMode ? "text-white" : "text-gray-800"
+                    }`}>⚔️ 전투 로그</h4>
+                    
+                    <div className={`h-48 overflow-y-auto space-y-2 ${
+                      isDarkMode ? "scrollbar-dark" : "scrollbar-light"
+                    }`}>
+                      {raidLogs.length === 0 ? (
+                        <p className={`text-sm ${
+                          isDarkMode ? "text-gray-400" : "text-gray-600"
+                        }`}>아직 전투 기록이 없습니다.</p>
+                      ) : (
+                        raidLogs.map((log) => (
+                          <div
+                            key={log.id || log.timestamp}
+                            className={`text-sm p-2 rounded ${
+                              isDarkMode ? "bg-gray-700/50" : "bg-white/50"
+                            }`}
+                          >
+                            <span className={`font-medium ${
+                              isDarkMode ? "text-blue-400" : "text-blue-600"
+                            }`}>{log.username}</span>
+                            <span className={isDarkMode ? "text-gray-300" : "text-gray-700"}>
+                              님이 {log.damage} 데미지를 입혔습니다!
+                            </span>
+                            <span className={`text-xs ml-2 ${
+                              isDarkMode ? "text-gray-500" : "text-gray-500"
+                            }`}>
+                              {new Date(log.timestamp).toLocaleTimeString()}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
           )}
 
           {/* 내정보 탭 */}
