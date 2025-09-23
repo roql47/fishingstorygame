@@ -888,14 +888,27 @@ function App() {
                   localStorage.setItem("kakaoId", kakaoId);
                   
                   // 서버에서 사용자 설정 로드 시도 (카카오 계정 기반)
+                  console.log('=== 카카오 사용자 설정 로드 시도 ===');
+                  console.log('kakaoId:', kakaoId);
+                  console.log('kakaoNickname:', kakaoNickname);
+                  
                   const settings = await loadUserSettings('user', kakaoNickname, '', '', kakaoId);
                   
+                  console.log('=== 로드된 설정 확인 ===');
+                  console.log('settings:', settings);
+                  console.log('settings.termsAccepted:', settings?.termsAccepted);
+                  console.log('typeof settings.termsAccepted:', typeof settings?.termsAccepted);
+                  
                   if (settings && settings.termsAccepted) {
-                    console.log("Kakao redirect - existing user with settings:", settings);
+                    console.log("✅ Kakao redirect - existing user with settings:", settings);
                     // 기존 사용자로 인식되어 설정이 로드됨
                   } else {
                     // 새 사용자이거나 이용약관 미동의 - 이용약관과 닉네임 설정 필요
-                    console.log("Kakao redirect - new user or terms not accepted, showing terms modal");
+                    console.log("❌ Kakao redirect - new user or terms not accepted, showing terms modal");
+                    console.log('설정이 없거나 이용약관 미동의:', { 
+                      hasSettings: !!settings, 
+                      termsAccepted: settings?.termsAccepted 
+                    });
                     setIsFirstLogin(true);
                     setShowTermsModal(true);
                     // username은 설정하지 않음 - 모달에서 설정할 예정
