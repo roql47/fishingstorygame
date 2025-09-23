@@ -1011,7 +1011,8 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
       }
     } else if (kakaoId) {
       // 카카오 로그인 사용자
-      user = await UserUuidModel.findOne({ originalKakaoId: kakaoId });
+      const kakaoIdToSearch = kakaoId.startsWith('kakao_') ? kakaoId : `kakao_${kakaoId}`;
+      user = await UserUuidModel.findOne({ originalKakaoId: kakaoIdToSearch });
       if (!user) {
         // 보안 강화: 카카오 사용자도 닉네임 중복 체크
         const defaultUsername = username || "카카오사용자";
@@ -1737,7 +1738,8 @@ io.on("connection", (socket) => {
         if (provider === 'google') {
         user = await UserUuidModel.findOne({ originalGoogleId: googleId });
         } else if (provider === 'kakao') {
-          user = await UserUuidModel.findOne({ originalKakaoId: kakaoId });
+          const kakaoIdToSearch = kakaoId.startsWith('kakao_') ? kakaoId : `kakao_${kakaoId}`;
+          user = await UserUuidModel.findOne({ originalKakaoId: kakaoIdToSearch });
         }
         
         if (user) {
@@ -4255,7 +4257,10 @@ app.get("/api/user-settings/:userId", async (req, res) => {
         user = await UserUuidModel.findOne({ originalGoogleId: googleId });
       } else if (kakaoId) {
         console.log(`Looking for Kakao user with originalKakaoId: ${kakaoId}`);
-        user = await UserUuidModel.findOne({ originalKakaoId: kakaoId });
+        // kakaoId가 숫자만 있으면 접두사 추가해서 찾기
+        const kakaoIdToSearch = kakaoId.startsWith('kakao_') ? kakaoId : `kakao_${kakaoId}`;
+        console.log(`Searching with: ${kakaoIdToSearch}`);
+        user = await UserUuidModel.findOne({ originalKakaoId: kakaoIdToSearch });
       } else {
         // 구글/카카오 ID가 없으면 username으로 찾기 (fallback)
         user = await UserUuidModel.findOne({ username, isGuest: false });
@@ -4266,7 +4271,14 @@ app.get("/api/user-settings/:userId", async (req, res) => {
     }
     
     if (!user) {
-      return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+      // 카카오/구글 사용자가 없으면 자동 생성
+      if (kakaoId || googleId) {
+        console.log(`Creating new ${kakaoId ? 'Kakao' : 'Google'} user...`);
+        user = await getOrCreateUser(username, googleId, kakaoId);
+        console.log(`New ${kakaoId ? 'Kakao' : 'Google'} user created:`, user.userUuid);
+      } else {
+        return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+      }
     }
     
     // 쿨타임 계산
@@ -4324,7 +4336,10 @@ app.post("/api/set-display-name/:userId", async (req, res) => {
         user = await UserUuidModel.findOne({ originalGoogleId: googleId });
       } else if (kakaoId) {
         console.log(`Looking for Kakao user with originalKakaoId: ${kakaoId}`);
-        user = await UserUuidModel.findOne({ originalKakaoId: kakaoId });
+        // kakaoId가 숫자만 있으면 접두사 추가해서 찾기
+        const kakaoIdToSearch = kakaoId.startsWith('kakao_') ? kakaoId : `kakao_${kakaoId}`;
+        console.log(`Searching with: ${kakaoIdToSearch}`);
+        user = await UserUuidModel.findOne({ originalKakaoId: kakaoIdToSearch });
       } else {
         // 구글/카카오 ID가 없으면 username으로 찾기 (fallback)
         user = await UserUuidModel.findOne({ username, isGuest: false });
@@ -4335,7 +4350,14 @@ app.post("/api/set-display-name/:userId", async (req, res) => {
     }
     
     if (!user) {
-      return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+      // 카카오/구글 사용자가 없으면 자동 생성
+      if (kakaoId || googleId) {
+        console.log(`Creating new ${kakaoId ? 'Kakao' : 'Google'} user for displayName setting...`);
+        user = await getOrCreateUser(username, googleId, kakaoId);
+        console.log(`New ${kakaoId ? 'Kakao' : 'Google'} user created:`, user.userUuid);
+      } else {
+        return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+      }
     }
     
     // displayName만 업데이트 (username은 소셜 이름으로 유지)
@@ -4378,7 +4400,10 @@ app.post("/api/user-settings/:userId", async (req, res) => {
         user = await UserUuidModel.findOne({ originalGoogleId: googleId });
       } else if (kakaoId) {
         console.log(`Looking for Kakao user with originalKakaoId: ${kakaoId}`);
-        user = await UserUuidModel.findOne({ originalKakaoId: kakaoId });
+        // kakaoId가 숫자만 있으면 접두사 추가해서 찾기
+        const kakaoIdToSearch = kakaoId.startsWith('kakao_') ? kakaoId : `kakao_${kakaoId}`;
+        console.log(`Searching with: ${kakaoIdToSearch}`);
+        user = await UserUuidModel.findOne({ originalKakaoId: kakaoIdToSearch });
       } else {
         // 구글/카카오 ID가 없으면 username으로 찾기 (fallback)
         user = await UserUuidModel.findOne({ username, isGuest: false });
@@ -4389,7 +4414,14 @@ app.post("/api/user-settings/:userId", async (req, res) => {
     }
     
     if (!user) {
-      return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+      // 카카오/구글 사용자가 없으면 자동 생성
+      if (kakaoId || googleId) {
+        console.log(`Creating new ${kakaoId ? 'Kakao' : 'Google'} user for settings update...`);
+        user = await getOrCreateUser(username, googleId, kakaoId);
+        console.log(`New ${kakaoId ? 'Kakao' : 'Google'} user created:`, user.userUuid);
+      } else {
+        return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+      }
     }
     
     // 설정 업데이트
