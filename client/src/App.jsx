@@ -186,6 +186,13 @@ function App() {
     }
   }, [raidLogs]);
 
+  // 동료 전투 상태 동기화 (로그인 후)
+  useEffect(() => {
+    if (jwtToken && userUuid && companions.length > 0) {
+      syncCompanionBattleStatus();
+    }
+  }, [jwtToken, userUuid, companions]);
+
   // 🔄 동료 능력치 서버 저장 함수
   const saveCompanionStatsToServer = async (companionName, stats) => {
     if (!jwtToken) return;
@@ -2922,16 +2929,75 @@ function App() {
       
       if (isCurrentlyInBattle) {
         // 전투에서 제외
-        return prev.filter(name => name !== companionName);
+        const newBattleCompanions = prev.filter(name => name !== companionName);
+        
+        // 서버에 isInBattle: false 업데이트
+        updateCompanionBattleStatus(companionName, false);
+        
+        return newBattleCompanions;
       } else {
         // 전투에 추가 (최대 3명까지)
         if (prev.length >= 3) {
           alert('전투 참여는 최대 3명까지 가능합니다!');
           return prev;
         }
+        
+        // 서버에 isInBattle: true 업데이트
+        updateCompanionBattleStatus(companionName, true);
+        
         return [...prev, companionName];
       }
     });
+  };
+
+  // 동료 전투 상태 서버 업데이트 함수
+  const updateCompanionBattleStatus = async (companionName, isInBattle) => {
+    if (!jwtToken) return;
+    
+    try {
+      const currentStats = companionStats[companionName] || { level: 1, exp: 0 };
+      
+      const response = await authenticatedRequest.post(`${serverUrl}/api/update-companion-stats`, {
+        companionName,
+        level: currentStats.level,
+        experience: currentStats.exp,
+        isInBattle
+      });
+      
+      if (response.data.success) {
+        console.log(`✅ 동료 ${companionName} 전투 상태 업데이트: ${isInBattle}`);
+      }
+    } catch (error) {
+      console.error(`❌ 동료 전투 상태 업데이트 실패 (${companionName}):`, error);
+    }
+  };
+
+  // 서버에서 동료 전투 상태 동기화
+  const syncCompanionBattleStatus = async () => {
+    if (!jwtToken || !userUuid) return;
+    
+    try {
+      // 서버에서 모든 동료 상태 가져오기
+      const response = await authenticatedRequest.get(`${serverUrl}/api/companion-stats`);
+      
+      if (response.data.success && response.data.companionStats) {
+        const serverCompanionStats = response.data.companionStats;
+        const battleCompanionsFromServer = [];
+        
+        // 서버 데이터에서 isInBattle: true인 동료들 찾기
+        serverCompanionStats.forEach(companion => {
+          if (companion.isInBattle) {
+            battleCompanionsFromServer.push(companion.companionName);
+          }
+        });
+        
+        // 클라이언트 상태 업데이트
+        setBattleCompanions(battleCompanionsFromServer);
+        console.log(`🔄 동료 전투 상태 동기화 완료:`, battleCompanionsFromServer);
+      }
+    } catch (error) {
+      console.error(`❌ 동료 전투 상태 동기화 실패:`, error);
+    }
   };
 
   // 다른 사용자의 관리자 상태 확인 함수

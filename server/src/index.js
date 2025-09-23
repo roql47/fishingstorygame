@@ -3148,6 +3148,35 @@ app.get("/api/companion-stats/:userId", async (req, res) => {
   }
 });
 
+// 동료 능력치 조회 API
+app.get("/api/companion-stats", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid, username } = req.user;
+    
+    console.log("Get companion stats:", { username, userUuid });
+    
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    // 모든 동료 능력치 조회
+    const companionStats = await CompanionStatsModel.find(query).lean();
+    
+    res.json({ 
+      success: true, 
+      companionStats: companionStats
+    });
+    
+  } catch (error) {
+    console.error("Failed to get companion stats:", error);
+    res.status(500).json({ error: "동료 능력치 조회에 실패했습니다." });
+  }
+});
+
 // 동료 능력치 업데이트 API
 app.post("/api/update-companion-stats", authenticateJWT, async (req, res) => {
   try {
