@@ -2318,16 +2318,21 @@ io.on("connection", (socket) => {
           const totalCatches = await getTotalCatchesData(userUuid);
           socket.emit('data:totalCatches', JSON.parse(JSON.stringify(totalCatches || { totalFishCaught: 0 })));
           break;
+        case 'companions':
+          const companions = await getCompanionsData(userUuid);
+          socket.emit('data:companions', JSON.parse(JSON.stringify(companions || { companions: [] })));
+          break;
         case 'all':
           // 🚀 병렬 처리로 모든 데이터 한 번에 조회 (성능 최적화)
-          const [allInventory, allMaterials, allMoney, allAmber, allStarPieces, allCooldown, allTotalCatches] = await Promise.all([
+          const [allInventory, allMaterials, allMoney, allAmber, allStarPieces, allCooldown, allTotalCatches, allCompanions] = await Promise.all([
             getInventoryData(userUuid),
             getMaterialsData(userUuid),
             getMoneyData(userUuid),
             getAmberData(userUuid),
             getStarPiecesData(userUuid),
             getCooldownData(userUuid),
-            getTotalCatchesData(userUuid)
+            getTotalCatchesData(userUuid),
+            getCompanionsData(userUuid)
           ]);
           
           // 각 데이터를 개별 이벤트로 전송
@@ -2338,6 +2343,7 @@ io.on("connection", (socket) => {
           socket.emit('data:starPieces', JSON.parse(JSON.stringify(allStarPieces || { starPieces: 0 })));
           socket.emit('data:cooldown', JSON.parse(JSON.stringify(allCooldown || { fishingCooldown: 0 })));
           socket.emit('data:totalCatches', JSON.parse(JSON.stringify(allTotalCatches || { totalFishCaught: 0 })));
+          socket.emit('data:companions', JSON.parse(JSON.stringify(allCompanions || { companions: [] })));
           
           console.log(`🚀 Parallel data fetch completed for ${username} (${userUuid})`);
           break;
@@ -2576,9 +2582,14 @@ async function getTotalCatchesData(userUuid) {
 }
 
 async function getCompanionsData(userUuid) {
-  const user = await UserUuidModel.findOne({ userUuid });
-  const companions = user?.companions || [];
-  return { companions };
+  try {
+    const companionData = await CompanionModel.findOne({ userUuid });
+    const companions = companionData?.companions || [];
+    return { companions };
+  } catch (error) {
+    console.error('Error fetching companions data:', error);
+    return { companions: [] };
+  }
 }
 
 async function getAdminStatusData(userUuid) {
@@ -2625,7 +2636,7 @@ function broadcastUserDataUpdate(userUuid, username, dataType, data) {
   const safeData = createSafeBroadcastData(data);
   
   io.sockets.sockets.forEach((socket) => {
-    if (socket.data?.userUuid === userUuid && socket.connected) {
+    if (socket.userUuid === userUuid && socket.connected) {
       try {
         socket.emit(`data:${dataType}`, safeData);
         broadcastCount++;
@@ -4086,41 +4097,64 @@ app.post("/api/battle-attack", async (req, res) => {
 // 카카오 토큰 교환 API
 app.post("/api/kakao-token", async (req, res) => {
   try {
+    console.log("=== 카카오 토큰 교환 API 호출 ===");
+    console.log("Request headers:", req.headers);
+    console.log("Request body:", req.body);
+    
     const { code, redirectUri } = req.body;
     
     if (!code) {
+      console.error("❌ Authorization code가 없음");
       return res.status(400).json({ error: "Authorization code is required" });
     }
     
-    console.log("카카오 토큰 교환 요청:", { code: code.substring(0, 10) + "...", redirectUri });
+    if (!redirectUri) {
+      console.error("❌ Redirect URI가 없음");
+      return res.status(400).json({ error: "Redirect URI is required" });
+    }
+    
+    console.log("✅ 카카오 토큰 교환 요청:", { 
+      code: code.substring(0, 10) + "...", 
+      redirectUri,
+      clientId: KAKAO_CLIENT_ID 
+    });
     
     // 카카오 토큰 교환 요청
+    const tokenRequestBody = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: KAKAO_CLIENT_ID,
+      redirect_uri: redirectUri,
+      code: code
+    });
+    
+    console.log("카카오 API 요청 파라미터:", tokenRequestBody.toString());
+    
     const tokenResponse = await fetch('https://kauth.kakao.com/oauth/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
       },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        client_id: KAKAO_CLIENT_ID,
-        redirect_uri: redirectUri,
-        code: code
-      })
+      body: tokenRequestBody
     });
     
+    console.log("카카오 API 응답 상태:", tokenResponse.status);
+    console.log("카카오 API 응답 헤더:", Object.fromEntries(tokenResponse.headers.entries()));
+    
     const tokenData = await tokenResponse.json();
+    console.log("카카오 API 응답 데이터:", tokenData);
     
     if (tokenData.access_token) {
-      console.log("카카오 토큰 교환 성공");
+      console.log("✅ 카카오 토큰 교환 성공");
       res.json(tokenData);
     } else {
-      console.error("카카오 토큰 교환 실패:", tokenData);
+      console.error("❌ 카카오 토큰 교환 실패:", tokenData);
       res.status(400).json({ error: "Failed to exchange token", details: tokenData });
     }
     
   } catch (error) {
-    console.error("카카오 토큰 교환 오류:", error);
-    res.status(500).json({ error: "Internal server error" });
+    console.error("❌ 카카오 토큰 교환 오류:", error);
+    console.error("오류 스택:", error.stack);
+    res.status(500).json({ error: "Internal server error", message: error.message });
   }
 });
 
@@ -5162,8 +5196,8 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
       });
     }
     
-    // 낚시대 구매 시 낚시실력 +1
-    if (category === 'fishing_rod') {
+    // 낚시대 또는 악세사리 구매 시 낚시실력 +1 (순차 구매를 위해)
+    if (category === 'fishing_rod' || category === 'accessories') {
       let fishingSkill = await FishingSkillModel.findOne(query);
       if (!fishingSkill) {
         const createData = {
@@ -5188,7 +5222,7 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
         const userKey = userUuid || username;
         if (userKey) setCachedFishingSkill(userKey, fishingSkill.skill);
       }
-      // 낚시 실력 증가 완료
+      console.log(`낚시 실력 증가 완료: ${category} 구매로 ${fishingSkill.skill}`);
     }
     
     // 구매 성공 응답 (화폐 종류에 따라 적절한 잔액 반환)

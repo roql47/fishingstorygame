@@ -453,12 +453,25 @@ function App() {
   const battleLogRef = useRef(null); // 전투 로그 자동 스크롤을 위한 ref
 
   const serverUrl = useMemo(() => {
-    // 프로덕션 환경에서는 현재 도메인 사용
-    if (import.meta.env.PROD) {
-      return window.location.origin;
+    const hostname = window.location.hostname;
+    const origin = window.location.origin;
+    
+    console.log('=== Server URL 설정 ===');
+    console.log('Hostname:', hostname);
+    console.log('Origin:', origin);
+    console.log('import.meta.env.PROD:', import.meta.env.PROD);
+    console.log('VITE_SERVER_URL:', import.meta.env.VITE_SERVER_URL);
+    
+    // 배포 환경 감지: hostname이 localhost가 아니면 배포 환경
+    if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+      console.log('✅ 배포 환경 감지, serverUrl:', origin);
+      return origin;
     }
-    // 개발 환경에서만 환경 변수 사용
-    return import.meta.env.VITE_SERVER_URL || "http://localhost:4000";
+    
+    // 로컬 개발 환경에서만 환경 변수 사용
+    const localUrl = import.meta.env.VITE_SERVER_URL || "http://localhost:4000";
+    console.log('🔧 로컬 개발 환경, serverUrl:', localUrl);
+    return localUrl;
   }, []);
 
   // 🔐 JWT 인증 헤더를 포함한 axios 요청 함수
@@ -806,39 +819,70 @@ function App() {
           // 서버를 통해 토큰 교환 (CORS 문제 해결)
           const handleKakaoTokenExchange = async () => {
             try {
-              const response = await fetch(`/api/kakao-token`, {
+              const requestData = {
+                code: kakaoCode,
+                redirectUri: window.location.origin
+              };
+              
+              console.log('=== 카카오 토큰 교환 요청 ===');
+              console.log('Server URL:', serverUrl);
+              console.log('Request Data:', requestData);
+              console.log('Current Origin:', window.location.origin);
+              console.log('Current Href:', window.location.href);
+              
+              const response = await fetch(`${serverUrl}/api/kakao-token`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                  code: kakaoCode,
-                  redirectUri: window.location.origin
-                })
+                body: JSON.stringify(requestData)
               });
               
+              console.log('=== 카카오 토큰 교환 응답 ===');
+              console.log('Response Status:', response.status);
+              console.log('Response OK:', response.ok);
+              
               const tokenData = await response.json();
+              console.log('Response Data:', tokenData);
               
               if (tokenData.access_token) {
-                console.log('카카오 토큰 교환 성공:', tokenData);
+                console.log('✅ 카카오 토큰 교환 성공:', tokenData);
                 
                 // SDK에 토큰 설정
                 window.Kakao.Auth.setAccessToken(tokenData.access_token);
                 
-                // 사용자 정보 가져오기 (async/await 방식)
+                // 사용자 정보 가져오기 (id_token에서 직접 추출 + API 호출)
                 try {
-                  const userResponse = await new Promise((resolve, reject) => {
-                    window.Kakao.API.request({
-                      url: '/v2/user/me',
-                      success: resolve,
-                      fail: reject
+                  let kakaoId, kakaoNickname;
+                  
+                  // 먼저 id_token에서 정보 추출 시도
+                  if (tokenData.id_token) {
+                    try {
+                      const payload = JSON.parse(atob(tokenData.id_token.split('.')[1]));
+                      console.log('Kakao id_token payload:', payload);
+                      kakaoId = payload.sub;
+                      kakaoNickname = payload.nickname || `카카오사용자${kakaoId}`;
+                      console.log('✅ 카카오 사용자 정보 (id_token에서):', { kakaoId, kakaoNickname });
+                    } catch (tokenError) {
+                      console.error('Failed to parse id_token:', tokenError);
+                    }
+                  }
+                  
+                  // id_token 파싱이 실패했으면 API로 사용자 정보 가져오기
+                  if (!kakaoId) {
+                    console.log('Trying to get user info via API...');
+                    const userResponse = await new Promise((resolve, reject) => {
+                      window.Kakao.API.request({
+                        url: '/v2/user/me',
+                        success: resolve,
+                        fail: reject
+                      });
                     });
-                  });
-                  
-                  console.log('Kakao user info from redirect:', userResponse);
-                  
-                  const kakaoId = userResponse.id;
-                  const kakaoNickname = userResponse.kakao_account?.profile?.nickname || `카카오사용자${kakaoId}`;
+                    
+                    console.log('Kakao user info from API:', userResponse);
+                    kakaoId = userResponse.id;
+                    kakaoNickname = userResponse.kakao_account?.profile?.nickname || `카카오사용자${kakaoId}`;
+                  }
                   
                   // 카카오 ID 저장 (서버에서 기존 사용자 식별용)
                   localStorage.setItem("kakaoId", kakaoId);
@@ -870,10 +914,21 @@ function App() {
                   console.error('Failed to get Kakao user info from redirect:', error);
                 }
               } else {
-                console.error('카카오 토큰 교환 실패:', tokenData);
+                console.error('❌ 카카오 토큰 교환 실패:', tokenData);
+                if (tokenData.error) {
+                  console.error('카카오 오류 상세:', tokenData.error);
+                }
+                if (tokenData.details) {
+                  console.error('서버 오류 상세:', tokenData.details);
+                }
               }
             } catch (error) {
-              console.error('카카오 토큰 요청 오류:', error);
+              console.error('❌ 카카오 토큰 요청 오류:', error);
+              console.error('오류 타입:', error.name);
+              console.error('오류 메시지:', error.message);
+              if (error.stack) {
+                console.error('오류 스택:', error.stack);
+              }
             }
           };
           
@@ -1272,8 +1327,8 @@ function App() {
     setTimeout(() => {
       requestAllDataParallel();
       
-      // 추가로 재료와 인벤토리 직접 요청 (확실한 로딩을 위해)
-      console.log('🔄 Requesting materials and inventory directly...');
+      // 추가로 재료와 인벤토리, 동료 데이터 직접 요청 (확실한 로딩을 위해)
+      console.log('🔄 Requesting materials, inventory, and companions directly...');
       fetchMaterials();
       
       // 인벤토리도 직접 요청
@@ -1292,6 +1347,10 @@ function App() {
         }
       };
       fetchInventoryDirect();
+      
+      // 동료 데이터도 WebSocket으로 직접 요청
+      console.log('🔄 Requesting companions via WebSocket...');
+      socket.emit('data:request', { type: 'companions', userUuid, username });
       
     }, 1000); // 연결 안정화 후 요청
 
@@ -3861,6 +3920,8 @@ function App() {
           setFishingSkill(prev => prev + 1);
         } else if (category === 'accessories') {
           setUserEquipment(prev => ({ ...prev, accessory: itemName }));
+          // 악세사리 구매 시에도 낚시실력 +1 (순차 구매를 위해)
+          setFishingSkill(prev => prev + 1);
           // 🛡️ [FIX] 악세사리 구매 시 서버에서 쿨타임 재계산 요청
           try {
             const response = await authenticatedRequest.post(`${serverUrl}/api/recalculate-fishing-cooldown`, {});
@@ -3894,10 +3955,11 @@ function App() {
         }, 500);
         
         // 구매 메시지 채팅에 추가
-        const skillMessage = category === 'fishing_rod' ? ' (낚시실력 +1)' : '';
+        const skillMessage = (category === 'fishing_rod' || category === 'accessories') ? ' (낚시실력 +1)' : '';
+        const currencyText = currency === 'amber' ? '호박석' : '골드';
         setMessages(prev => [...prev, {
           system: true,
-          content: `${itemName}을(를) ${(price || 0).toLocaleString()}골드에 구매하고 장착했습니다!${skillMessage}`,
+          content: `${itemName}을(를) ${(price || 0).toLocaleString()}${currencyText}에 구매하고 장착했습니다!${skillMessage}`,
           timestamp: new Date().toISOString()
         }]);
       }

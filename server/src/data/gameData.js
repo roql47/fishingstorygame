@@ -165,12 +165,12 @@ const SHOP_DATA = {
     { name: '에메랄드브로치', price: 120, currency: 'amber', description: '에메랄드가 박힌 고급스러운 브로치입니다', requiredSkill: 4 },
     { name: '토파즈이어링', price: 180, currency: 'amber', description: '토파즈의 빛이 아름다운 이어링입니다', requiredSkill: 5 },
     { name: '자수정팔찌', price: 250, currency: 'amber', description: '자수정으로 만든 우아한 팔찌입니다', requiredSkill: 6 },
-    { name: '백금티아라', price: 350, currency: 'amber', description: '백금으로 제작된 고귀한 티아라입니다', requiredSkill: 7 },
-    { name: '만드라고라허브', price: 500, currency: 'amber', description: '신비한 만드라고라 허브입니다', requiredSkill: 8 },
-    { name: '에테르나무묘목', price: 700, currency: 'amber', description: '에테르 나무의 신비한 묘목입니다', requiredSkill: 9 },
-    { name: '몽마의조각상', price: 1000, currency: 'amber', description: '몽마의 힘이 깃든 신비한 조각상입니다', requiredSkill: 10 },
-    { name: '마카롱훈장', price: 1500, currency: 'amber', description: '달콤한 마카롱 모양의 특별한 훈장입니다', requiredSkill: 11 },
-    { name: '빛나는마력순환체', price: 2000, currency: 'amber', description: '마력이 순환하는 빛나는 신비한 구슬입니다', requiredSkill: 12 }
+    { name: '백금티아라', price: 465, currency: 'amber', description: '백금으로 제작된 고귀한 티아라입니다', requiredSkill: 7 },
+    { name: '만드라고라허브', price: 700, currency: 'amber', description: '신비한 만드라고라 허브입니다', requiredSkill: 8 },
+    { name: '에테르나무묘목', price: 1000, currency: 'amber', description: '에테르 나무의 신비한 묘목입니다', requiredSkill: 9 },
+    { name: '몽마의조각상', price: 1800, currency: 'amber', description: '몽마의 힘이 깃든 신비한 조각상입니다', requiredSkill: 10 },
+    { name: '마카롱훈장', price: 3200, currency: 'amber', description: '달콤한 마카롱 모양의 특별한 훈장입니다', requiredSkill: 11 },
+    { name: '빛나는마력순환체', price: 5000, currency: 'amber', description: '마력이 순환하는 빛나는 신비한 구슬입니다', requiredSkill: 12 }
   ]
 };
 
