@@ -2,6 +2,20 @@
 export const NOTICE_DATA = [
   {
     id: 0,
+    date: "2025.09.23",
+    title: "🎣 낚시 시스템 & 상점 업데이트",
+    content: [
+      "낚시 메시지에 물고기 등급(Rank)과 확률 정보 표시",
+      "새로운 악세사리 6종 추가 ",
+      "악세사리 순차 구매 시스템 완전 수정",
+      "카카오톡 로그인 문제 해결",
+      "동료 시스템 실시간 업데이트 개선"
+    ],
+    isNew: true,
+    type: "update"
+  },
+  {
+    id: 1,
     date: "2025.09.22",
     title: "🎆 게임 시스템 업데이트",
     content: [
@@ -11,11 +25,11 @@ export const NOTICE_DATA = [
       "기존 계정 중복 생성 방지 및 닉네임 동기화 완료",
       "Page Visibility API 적용으로 모바일 쿨타임 정확도 향상"
     ],
-    isNew: true,
+    isNew: false,
     type: "update"
   },
   {
-    id: 1,
+    id: 2,
     date: "2025.09.22",
     title: "🔐 JWT 보안 시스템 대폭 강화",
     content: [
@@ -30,7 +44,7 @@ export const NOTICE_DATA = [
     type: "security"
   },
   {
-    id: 2,
+    id: 3,
     date: "2025.09.22",
     title: "🎉 동료 시스템 업데이트",
     content: [
@@ -43,7 +57,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 3,
+    id: 4,
     date: "2025.09.22", 
     title: "🔐 보안 시스템 강화",
     content: [
@@ -55,7 +69,7 @@ export const NOTICE_DATA = [
     type: "security"
   },
   {
-    id: 4,
+    id: 5,
     date: "2025.09.22",
     title: "⚔️ 전투 시스템 개선", 
     content: [
@@ -67,7 +81,7 @@ export const NOTICE_DATA = [
     type: "improvement"
   },
   {
-    id: 5,
+    id: 6,
     date: "2025.09.19",
     title: "🦊 여우이야기 Alpha Test 시작",
     content: [

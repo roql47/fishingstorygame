@@ -1294,15 +1294,29 @@ function randomFish(fishingSkill = 0) {
   const random = Math.random() * 100;
   let cumulative = 0;
   
-  for (const fishInfo of availableFish) {
+  for (let i = 0; i < availableFish.length; i++) {
+    const fishInfo = availableFish[i];
     cumulative += fishInfo.probability;
     if (random <= cumulative) {
-      return { fish: fishInfo.name };
+      // 물고기 등급 계산 (rank 기반)
+      const fishRank = fishInfo.rank || (i + 1);
+      return { 
+        fish: fishInfo.name, 
+        probability: fishInfo.probability,
+        fishIndex: i,
+        rank: fishRank
+      };
     }
   }
   
   // 만약을 위한 fallback
-  return { fish: availableFish[0]?.name || "타코문어" };
+  const defaultFish = availableFish[0];
+  return { 
+    fish: defaultFish?.name || "타코문어",
+    probability: defaultFish?.probability || 40,
+    fishIndex: 0,
+    rank: defaultFish?.rank || 1
+  };
 }
 
 // Google auth
@@ -2140,8 +2154,9 @@ io.on("connection", (socket) => {
         const fishingSkill = await FishingSkillModel.findOne(query);
         const userSkill = fishingSkill ? fishingSkill.skill : 0;
         
-        // 물고기 선택
-        const { fish } = randomFish(userSkill);
+        // 물고기 선택 (확률 정보 포함)
+        const fishingResult = randomFish(userSkill);
+        const { fish, probability, fishIndex, rank } = fishingResult;
         
         // 물고기 저장 데이터 준비
         const catchData = {
@@ -2172,11 +2187,12 @@ io.on("connection", (socket) => {
           batchUpdates.fishCount.set(socket.data.userUuid, currentCount + 1);
         }
         
-        // 성공 메시지
+        // 성공 메시지 (확률과 등급 정보 포함)
+        const probabilityStr = probability >= 1 ? `${probability.toFixed(1)}%` : `${probability.toFixed(2)}%`;
         io.emit("chat:message", {
           system: true,
           username: "system",
-          content: `${catchData.displayName} 님이 ${fish}를 낚았습니다!`,
+          content: `${catchData.displayName} 님이 ${probabilityStr} 확률로 ${fish} (${rank}Rank)를 낚았습니다!`,
           timestamp,
         });
         

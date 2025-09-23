@@ -191,6 +191,12 @@ export const useGameData = () => {
   const getAvailableShopItem = useCallback((category, fishingSkill = 0, userEquipment = {}) => {
     const allItems = getAllShopItems()[category] || [];
     
+    console.log(`=== getAvailableShopItem 디버깅 ===`);
+    console.log(`Category: ${category}`);
+    console.log(`Fishing Skill: ${fishingSkill}`);
+    console.log(`User Equipment:`, userEquipment);
+    console.log(`All Items:`, allItems);
+    
     // 현재 장착된 아이템의 레벨 확인
     let currentItemLevel = -1;
     if (category === 'fishing_rod' && userEquipment.fishingRod) {
@@ -203,15 +209,31 @@ export const useGameData = () => {
       if (currentItem) {
         currentItemLevel = currentItem.requiredSkill;
       }
+      console.log(`Current accessory: ${userEquipment.accessory}, level: ${currentItemLevel}`);
     }
     
-    // 구매 가능하고 현재 아이템보다 높은 레벨의 아이템들 필터링
-    const availableItems = allItems.filter(item => 
-      fishingSkill >= item.requiredSkill && item.requiredSkill > currentItemLevel
-    );
+    // 구매 가능한 아이템들 필터링
+    const availableItems = allItems.filter(item => {
+      let canBuy;
+      
+      if (category === 'accessories') {
+        // 악세사리는 순차 구매: 현재 아이템보다 바로 다음 레벨만 구매 가능
+        canBuy = item.requiredSkill === (currentItemLevel + 1);
+      } else {
+        // 낚시대는 기존 로직: 낚시실력 >= requiredSkill && 현재보다 높은 레벨
+        canBuy = fishingSkill >= item.requiredSkill && item.requiredSkill > currentItemLevel;
+      }
+      
+      console.log(`${item.name}: requiredSkill=${item.requiredSkill}, currentLevel=${currentItemLevel}, canBuy=${canBuy}`);
+      return canBuy;
+    });
+    
+    console.log(`Available items:`, availableItems);
     
     // 가장 낮은 레벨의 아이템 반환 (다음 업그레이드 대상)
     const nextItem = availableItems.length > 0 ? availableItems[0] : null;
+    
+    console.log(`Next item:`, nextItem);
     
     // 🔧 안전한 기본값 보장
     if (nextItem && nextItem.price === undefined) {
