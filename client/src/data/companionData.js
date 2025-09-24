@@ -82,7 +82,7 @@ export const COMPANION_DATA = {
       name: "에테르축복",
       description: "체력이 가장 낮은 아군의 체력을 회복시킵니다",
       damageMultiplier: 0, // 데미지 없음
-      healMultiplier: 3.0, // 공격력의 300%
+      healMultiplier: 1.85, // 공격력의 185%
       moraleRequired: 100,
       skillType: "heal"
     }

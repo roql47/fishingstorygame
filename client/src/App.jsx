@@ -305,6 +305,9 @@ function App() {
     
     console.log(`⚔️ 공격 시작 - 현재 상태: 공격중=${isAttacking}, 쿨타임=${attackCooldown}`);
     setIsAttacking(true);
+
+    // 레이드 공격 전에 동료 전투 상태를 서버에 동기화
+    await syncBattleCompanionsToServer();
     
     try {
       const response = await authenticatedRequest.post(`${serverUrl}/api/raid/attack`);
@@ -3000,6 +3003,28 @@ function App() {
     }
   };
 
+  // 클라이언트 동료 전투 상태를 서버에 동기화
+  const syncBattleCompanionsToServer = async () => {
+    if (!jwtToken || companions.length === 0) return;
+    
+    try {
+      console.log(`🔄 클라이언트 → 서버 동료 전투 상태 동기화 시작:`, battleCompanions);
+      
+      // 모든 동료의 전투 상태를 서버에 업데이트
+      const promises = companions.map(async (companionName) => {
+        const isInBattle = battleCompanions.includes(companionName);
+        const currentStats = companionStats[companionName] || { level: 1, exp: 0 };
+        
+        return updateCompanionBattleStatus(companionName, isInBattle);
+      });
+      
+      await Promise.all(promises);
+      console.log(`✅ 클라이언트 → 서버 동료 전투 상태 동기화 완료`);
+    } catch (error) {
+      console.error(`❌ 클라이언트 → 서버 동료 전투 상태 동기화 실패:`, error);
+    }
+  };
+
   // 다른 사용자의 관리자 상태 확인 함수
   const checkUserAdminStatus = async (username) => {
     try {
@@ -3361,6 +3386,9 @@ function App() {
       alert("재료가 부족합니다.");
       return;
     }
+
+    // 탐사 시작 전에 동료 전투 상태를 서버에 동기화
+    await syncBattleCompanionsToServer();
 
     // 서버에 탐사 시작 쿨타임 설정 요청 - JWT 인증 사용
     // 탐사 쿨타임 제거됨
@@ -4292,12 +4320,11 @@ function App() {
         // 장비 자동 장착
         if (category === 'fishing_rod') {
           setUserEquipment(prev => ({ ...prev, fishingRod: itemName }));
-          // 낚시대 구매 시 낚시실력 +1 (쿨타임에는 영향 없음)
+          // 낚시대 구매 시에만 낚시실력 +1
           setFishingSkill(prev => prev + 1);
         } else if (category === 'accessories') {
           setUserEquipment(prev => ({ ...prev, accessory: itemName }));
-          // 악세사리 구매 시에도 낚시실력 +1 (순차 구매를 위해)
-          setFishingSkill(prev => prev + 1);
+          // 악세사리 구매 시에는 낚시실력 증가 안함
           // 🛡️ [FIX] 악세사리 구매 시 서버에서 쿨타임 재계산 요청
           try {
             const response = await authenticatedRequest.post(`${serverUrl}/api/recalculate-fishing-cooldown`, {});
@@ -4331,7 +4358,7 @@ function App() {
         }, 500);
         
         // 구매 메시지 채팅에 추가
-        const skillMessage = (category === 'fishing_rod' || category === 'accessories') ? ' (낚시실력 +1)' : '';
+        const skillMessage = (category === 'fishing_rod') ? ' (낚시실력 +1)' : '';
         const currencyText = currency === 'amber' ? '호박석' : '골드';
         setMessages(prev => [...prev, {
           system: true,

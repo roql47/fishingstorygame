@@ -52,6 +52,10 @@ export const processHealingSkill = ({
   const newCompanionHp = { ...battleState.companionHp };
   let newLog = [...battleState.log];
   
+  // 스킬 사용 후 사기 초기화
+  const newCompanionMorale = { ...companionMorale };
+  newCompanionMorale[companionName].morale = 0;
+  
   // 체력이 가장 낮은 아군 찾기
   const lowestHpTarget = findLowestHpTarget(battleState);
   
@@ -80,7 +84,7 @@ export const processHealingSkill = ({
     playerHp: newPlayerHp,
     companionHp: newCompanionHp,
     log: newLog,
-    companionMorale,
+    companionMorale: newCompanionMorale,
     companionBuffs
   };
 };

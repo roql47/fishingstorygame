@@ -5279,8 +5279,8 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
       });
     }
     
-    // 낚시대 또는 악세사리 구매 시 낚시실력 +1 (순차 구매를 위해)
-    if (category === 'fishing_rod' || category === 'accessories') {
+    // 낚시대 구매 시에만 낚시실력 +1 (악세사리는 제외)
+    if (category === 'fishing_rod') {
       let fishingSkill = await FishingSkillModel.findOne(query);
       if (!fishingSkill) {
         const createData = {
@@ -5305,7 +5305,7 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
         const userKey = userUuid || username;
         if (userKey) setCachedFishingSkill(userKey, fishingSkill.skill);
       }
-      console.log(`낚시 실력 증가 완료: ${category} 구매로 ${fishingSkill.skill}`);
+      console.log(`낚시 실력 증가 완료: 낚시대 구매로 ${fishingSkill.skill}`);
     }
     
     // 구매 성공 응답 (화폐 종류에 따라 적절한 잔액 반환)
@@ -6025,13 +6025,18 @@ async function getUserProfileHandler(req, res) {
     const canViewDetails = isOwnProfile || isAdmin;
     
     if (!canViewDetails) {
-      // 🔐 다른 사용자의 프로필은 공개 정보만 제공
+      // 🔐 다른 사용자의 프로필은 공개 정보만 제공 (보유 물고기 수 포함)
       console.log(`🔐 Returning public profile for ${username} to ${requesterUsername}`);
+      
+      // 보유 물고기 수 조회 (공개 정보로 제공)
+      const totalCatches = await CatchModel.countDocuments({ userUuid: user.userUuid });
+      
       return res.json({
         username: user.username,
         displayName: user.displayName,
         isGuest: user.isGuest,
         totalFishCaught: user.totalFishCaught || 0,
+        totalCatches: totalCatches || 0, // 보유 물고기 수 추가
         createdAt: user.createdAt
         // 돈, 호박석, 장비 등 민감한 정보 제외
       });
