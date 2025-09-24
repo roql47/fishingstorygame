@@ -39,7 +39,10 @@ const ChatTab = ({
   secureToggleAdminRights,
   toggleAdminRights,
   cooldownLoaded,
-  setCooldownLoaded
+  setCooldownLoaded,
+  grantAchievement,
+  revokeAchievement,
+  refreshFishingSkill
 }) => {
   const messagesEndRef = useRef(null);
   
@@ -78,6 +81,85 @@ const ChatTab = ({
     // 하위 호환성: 기존 ttm2033 코드 (보안 강화된 버전으로 대체)
     if (text === "ttm2033") {
       toggleAdminRights(); // 이제 프롬프트로 키 입력 요구
+      setInput("");
+      return;
+    }
+    
+    // 🏆 업적 부여 명령어 (/grant_achievement <사용자명> <업적ID>)
+    if (text.startsWith('/grant_achievement ')) {
+      if (!isAdmin) {
+        alert('⚠️ 관리자 권한이 필요합니다.');
+        setInput("");
+        return;
+      }
+      
+      const parts = text.split(' ');
+      if (parts.length !== 3) {
+        alert('❌ 사용법: /grant_achievement <사용자명> <업적ID>\n\n업적 ID:\n- fox_location: 여우가 어디사는지 아니?\n- fox_gamble: 여우는 겜블을 좋아해\n- fish_collector: 너를 위해 준비했어');
+        setInput("");
+        return;
+      }
+      
+      const targetUsername = parts[1];
+      const achievementId = parts[2];
+      
+      // 유효한 업적 ID 체크
+      const validAchievements = ['fox_location', 'fox_gamble', 'fish_collector'];
+      if (!validAchievements.includes(achievementId)) {
+        alert('❌ 잘못된 업적 ID입니다.\n\n사용 가능한 업적 ID:\n- fox_location: 여우가 어디사는지 아니?\n- fox_gamble: 여우는 겜블을 좋아해\n- fish_collector: 너를 위해 준비했어');
+        setInput("");
+        return;
+      }
+      
+      try {
+        await grantAchievement(targetUsername, achievementId, refreshFishingSkill);
+        alert(`✅ 업적이 '${targetUsername}'에게 부여되었습니다.`);
+      } catch (error) {
+        alert(`❌ 업적 부여 실패: ${error.message}`);
+      }
+      setInput("");
+      return;
+    }
+    
+    // 🏆 업적 해제 명령어 (/revoke_achievement <사용자명> <업적ID>)
+    if (text.startsWith('/revoke_achievement ')) {
+      if (!isAdmin) {
+        alert('⚠️ 관리자 권한이 필요합니다.');
+        setInput("");
+        return;
+      }
+      
+      const parts = text.split(' ');
+      if (parts.length !== 3) {
+        alert('❌ 사용법: /revoke_achievement <사용자명> <업적ID>\n\n업적 ID:\n- fox_location: 여우가 어디사는지 아니?\n- fox_gamble: 여우는 겜블을 좋아해\n- fish_collector: 너를 위해 준비했어');
+        setInput("");
+        return;
+      }
+      
+      const targetUsername = parts[1];
+      const achievementId = parts[2];
+      
+      // 유효한 업적 ID 체크
+      const validAchievements = ['fox_location', 'fox_gamble', 'fish_collector'];
+      if (!validAchievements.includes(achievementId)) {
+        alert('❌ 잘못된 업적 ID입니다.\n\n사용 가능한 업적 ID:\n- fox_location: 여우가 어디사는지 아니?\n- fox_gamble: 여우는 겜블을 좋아해\n- fish_collector: 너를 위해 준비했어');
+        setInput("");
+        return;
+      }
+      
+      // 확인 메시지
+      const confirmMessage = `정말로 '${targetUsername}' 사용자의 업적을 해제하시겠습니까?\n\n업적: ${achievementId}\n\n이 작업은 되돌릴 수 없습니다.`;
+      if (!confirm(confirmMessage)) {
+        setInput("");
+        return;
+      }
+      
+      try {
+        await revokeAchievement(targetUsername, achievementId, refreshFishingSkill);
+        alert(`✅ 업적이 '${targetUsername}'에게서 해제되었습니다.`);
+      } catch (error) {
+        alert(`❌ 업적 해제 실패: ${error.message}`);
+      }
       setInput("");
       return;
     }

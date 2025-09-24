@@ -9,6 +9,8 @@ import NoticeModal from "./components/NoticeModal";
 import TutorialModal from "./components/TutorialModal";
 import { CompanionTab, processCompanionSkill, canUseCompanionSkill } from './components/companions';
 import { COMPANION_DATA, calculateCompanionStats } from './data/companionData';
+import { useAchievements, ACHIEVEMENT_DEFINITIONS } from './hooks/useAchievements';
+import AchievementModal from './components/AchievementModal';
 import { 
   Fish, 
   MessageCircle, 
@@ -18,6 +20,7 @@ import {
   User,
   Clock,
   Trophy,
+  Medal,
   Sword,
   Moon,
   Sun,
@@ -136,6 +139,9 @@ function App() {
   const [connectedUsersList, setConnectedUsersList] = useState([]);
   const [newAccountTarget, setNewAccountTarget] = useState('');
   const [accountBlockReason, setAccountBlockReason] = useState('');
+  
+  // 업적 관련 상태
+  const [showAchievements, setShowAchievements] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [initialNickname, setInitialNickname] = useState("");
@@ -720,6 +726,17 @@ function App() {
     };
   }, [jwtToken]);
 
+  // 🏆 업적 훅 사용 (필요한 변수들이 정의된 후에 호출)
+  const {
+    achievements,
+    loading: achievementsLoading,
+    error: achievementsError,
+    fetchAchievements,
+    grantAchievement,
+    revokeAchievement,
+    checkAchievements
+  } = useAchievements(serverUrl, jwtToken, authenticatedRequest, isAdmin, username);
+
   // 🔒 닉네임 검증 함수 (재사용 가능) - v2024.12.19
   const validateNickname = (nickname) => {
     const trimmed = nickname.trim();
@@ -832,6 +849,15 @@ function App() {
       setTimeout(() => {
         fetchCooldownStatus(settings.displayName || settings.username, settings.userUuid);
       }, 100); // 사용자 설정 로드 후 쿨타임 가져오기
+      
+      // 🏆 업적 데이터 로드
+      if (settings.userUuid) {
+        try {
+          await fetchAchievements();
+        } catch (error) {
+          console.error('Failed to load achievements:', error);
+        }
+      }
       
       // 초기 재료 데이터 로드 (모든 로그인 방식에 적용)
       if (settings.userUuid) {
@@ -2423,6 +2449,24 @@ function App() {
 
   // 🔧 getFishPrice, getFishMaterial 함수들은 useGameData 훅에서 제공됨
 
+  // 🏆 업적 관련 함수들은 useAchievements 훅에서 제공됨
+  
+  // 🎯 낚시실력 새로고침 함수
+  const refreshFishingSkill = useCallback(async () => {
+    try {
+      const userId = idToken ? 'user' : 'null';
+      const params = { username, userUuid };
+      const skillRes = await axios.get(`${serverUrl}/api/fishing-skill/${userId}`, { params });
+      const newSkill = skillRes.data.skill || 0;
+      setFishingSkill(newSkill);
+      console.log('🔄 낚시실력 업데이트:', newSkill);
+      return newSkill;
+    } catch (error) {
+      console.error('Failed to refresh fishing skill:', error);
+      return fishingSkill; // 실패 시 기존 값 반환
+    }
+  }, [serverUrl, idToken, username, userUuid, fishingSkill]);
+
   // 🚀 다른 사용자 프로필 데이터 가져오기 - useCallback으로 최적화
   const fetchOtherUserProfile = useCallback(async (username) => {
     try {
@@ -3395,6 +3439,22 @@ function App() {
 
     console.log(`Starting exploration with ${material.material}, current count: ${material.count}`);
 
+    // 먼저 재료 소모를 시도하고, 성공한 후에만 전투 시작
+    try {
+      const consumed = await consumeMaterial(material.material, 1);
+      if (!consumed) {
+        console.error("Failed to consume material");
+        alert("재료 소모에 실패했습니다.");
+        return;
+      }
+      console.log(`Successfully consumed ${material.material}`);
+    } catch (error) {
+      console.error("Error consuming material:", error);
+      alert("재료 소모 중 오류가 발생했습니다.");
+      return;
+    }
+
+    // 재료 소모 성공 후 전투 준비
     // 접두어 선택
     const selectedPrefix = selectFishPrefix();
     const enemyFish = `${selectedPrefix.name} ${baseFish}`;
@@ -3491,7 +3551,7 @@ function App() {
       ],
       material: material.material,
       round: 1,
-      materialConsumed: false, // 재료 소모 여부 추적
+      materialConsumed: true, // 재료는 이미 소모됨
       autoMode: false, // 자동 전투 모드
       canFlee: true, // 도망 가능 여부 (첫 턴에만 가능)
       companions: [...battleCompanions], // 전투 참여 동료 목록
@@ -3504,26 +3564,6 @@ function App() {
     setSelectedMaterial(material);
     setShowExplorationModal(false);
     setShowBattleModal(true);
-
-    // 전투 시작 후 재료 소모
-    try {
-      const consumed = await consumeMaterial(material.material, 1);
-      if (consumed) {
-        console.log(`Successfully consumed ${material.material}`);
-        setBattleState(prev => prev ? { ...prev, materialConsumed: true } : null);
-      } else {
-        console.error("Failed to consume material");
-        // 재료 소모 실패 시 전투 종료
-        setBattleState(null);
-        setShowBattleModal(false);
-        alert("재료 소모에 실패했습니다.");
-      }
-    } catch (error) {
-      console.error("Error consuming material:", error);
-      setBattleState(null);
-      setShowBattleModal(false);
-      alert("재료 소모 중 오류가 발생했습니다.");
-    }
   };
 
   // 도망가기 함수
@@ -4939,6 +4979,9 @@ function App() {
               toggleAdminRights={toggleAdminRights}
               cooldownLoaded={cooldownLoaded}
               setCooldownLoaded={setCooldownLoaded}
+              grantAchievement={grantAchievement}
+              revokeAchievement={revokeAchievement}
+              refreshFishingSkill={refreshFishingSkill}
             />
           )}
 
@@ -5645,7 +5688,7 @@ function App() {
                         <span className={`text-sm font-bold ${
                           isDarkMode ? "text-white drop-shadow-lg" : "text-gray-800 drop-shadow-lg"
                         }`} style={{ textShadow: "2px 2px 4px rgba(0,0,0,0.8)" }}>
-                          {Math.round((raidBoss.hp / raidBoss.maxHp) * 100)}%
+                          {((raidBoss.hp / raidBoss.maxHp) * 100).toFixed(2)}%
                         </span>
                       </div>
                     </div>
@@ -5860,6 +5903,23 @@ function App() {
                     <span className={`text-sm font-medium ${
                       isDarkMode ? "text-blue-400" : "text-blue-600"
                     }`}>{myCatches}마리</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className={`text-sm ${
+                      isDarkMode ? "text-gray-400" : "text-gray-600"
+                    }`}>달성 업적</span>
+                    <span className={`text-sm font-medium ${
+                      isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                    }`}>
+                      {achievements.filter(a => a.completed).length}/{achievements.length}
+                      {achievements.filter(a => a.completed).length > 0 && (
+                        <span className={`ml-1 text-xs ${
+                          isDarkMode ? "text-yellow-500" : "text-yellow-500"
+                        }`}>
+                          🏆
+                        </span>
+                      )}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -6466,6 +6526,26 @@ function App() {
                     }`}>장착된 장비</p>
                   </div>
                 </div>
+                
+                {/* 업적 버튼 */}
+                <button
+                  onClick={async () => {
+                    if (selectedUserProfile) {
+                      await fetchAchievements(selectedUserProfile.username);
+                    } else {
+                      await fetchAchievements();
+                    }
+                    setShowAchievements(true);
+                  }}
+                  className={`p-2 rounded-lg hover:scale-110 transition-all duration-300 ${
+                    isDarkMode 
+                      ? "glass-input text-yellow-400 hover:text-yellow-300" 
+                      : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-yellow-600 hover:text-yellow-500"
+                  }`}
+                  title="업적 보기"
+                >
+                  <Medal className="w-5 h-5" />
+                </button>
               </div>
               <button
                 onClick={() => {
@@ -6671,6 +6751,16 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* 업적 모달 */}
+      <AchievementModal
+        isOpen={showAchievements}
+        onClose={() => setShowAchievements(false)}
+        achievements={achievements}
+        selectedUserProfile={selectedUserProfile}
+        isDarkMode={isDarkMode}
+        loading={achievementsLoading}
+      />
 
           {/* 랭킹 탭 */}
           {activeTab === "ranking" && (

@@ -6,7 +6,7 @@ const RaidSystem = require('../modules/raidSystem');
 const raidSystem = new RaidSystem();
 
 // 레이드 라우트 설정 함수
-function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel) {
+function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem) {
   // 레이드 보스 소환 API
   router.post("/summon", authenticateJWT, async (req, res) => {
     try {
@@ -53,7 +53,17 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       
       // 낚시 실력 정보 가져오기 (별도 모델에서)
       const fishingSkillData = await FishingSkillModel.findOne({ userUuid }).lean();
-      const fishingSkill = fishingSkillData?.skill || 1;
+      const baseSkill = fishingSkillData?.skill || 1;
+      
+      // 🏆 업적 보너스 계산 (모듈 사용)
+      let achievementBonus = 0;
+      try {
+        achievementBonus = await achievementSystem.calculateAchievementBonus(userUuid);
+      } catch (error) {
+        console.error("Failed to calculate achievement bonus in raid:", error);
+      }
+      
+      const fishingSkill = baseSkill + achievementBonus;
       
       console.log(`[Raid] ${user.displayName} 낚시실력 데이터:`, {
         fishingSkillData,
@@ -246,9 +256,9 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
 }
 
 // WebSocket 이벤트 설정 함수
-function setupRaidWebSocketEvents(socket) {
+function setupRaidWebSocketEvents(socket, UserUuidModel) {
   // 레이드 상태 요청 처리
-  socket.on("raid:status:request", () => {
+  socket.on("raid:status:request", async () => {
     const status = raidSystem.getRaidStatus();
     if (status.boss) {
       // 클라이언트 전송용 보스 정보 (Map을 객체로 변환)
@@ -258,10 +268,33 @@ function setupRaidWebSocketEvents(socket) {
       };
       
       socket.emit("raid:boss:update", { boss: bossForClient });
-      // 최근 로그 전송
-      status.logs.forEach(log => {
-        socket.emit("raid:log:update", { log });
-      });
+      
+      // 최근 로그 전송 시 UUID를 사용자명으로 변환
+      const recentLogs = status.logs.slice(-20); // 최근 20개 로그만
+      for (const log of recentLogs) {
+        let displayUsername = log.username;
+        
+        // username이 UUID 형태인지 확인 (예: #0001, #0002 등)
+        if (log.username && log.username.startsWith('#')) {
+          try {
+            // userUuid로 실제 사용자명 조회
+            const user = await UserUuidModel.findOne({ userUuid: log.userUuid }).lean();
+            if (user) {
+              displayUsername = user.displayName || user.username;
+            }
+          } catch (error) {
+            console.error(`[Raid] 사용자명 조회 실패 for ${log.userUuid}:`, error);
+          }
+        }
+        
+        // 수정된 로그 전송
+        const correctedLog = {
+          ...log,
+          username: displayUsername
+        };
+        
+        socket.emit("raid:log:update", { log: correctedLog });
+      }
     }
   });
 }

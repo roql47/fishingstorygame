@@ -893,6 +893,10 @@ const userUuidSchema = new mongoose.Schema(
 
 const UserUuidModel = mongoose.model("UserUuid", userUuidSchema);
 
+// 업적 시스템 모듈 import
+const { AchievementModel, AchievementSystem } = require('./modules/achievementSystem');
+const { setupAchievementRoutes } = require('./routes/achievementRoutes');
+
 // [Quest] Daily Quest Schema (일일 퀘스트 시스템)
 const dailyQuestSchema = new mongoose.Schema(
   {
@@ -2307,7 +2311,7 @@ io.on("connection", (socket) => {
   });
 
   // 레이드 WebSocket 이벤트 설정
-  setupRaidWebSocketEvents(socket);
+  setupRaidWebSocketEvents(socket, UserUuidModel);
 
   socket.on("data:request", async ({ type, userUuid, username }) => {
     if (!userUuid || !username) return;
@@ -5622,15 +5626,31 @@ app.post("/api/consume-material", authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: "Not enough materials" });
     }
     
-    // 재료 제거 (quantity만큼 삭제)
+    // 재료 제거 (quantity만큼 삭제) - 더 안전한 방식으로 처리
+    let deletedCount = 0;
     for (let i = 0; i < quantity; i++) {
-      const deletedMaterial = await MaterialModel.findOneAndDelete({ ...query, material: materialName });
-      if (!deletedMaterial) {
-        console.log(`Failed to delete material ${i + 1}/${quantity}`);
-        return res.status(400).json({ error: "Failed to consume material" });
+      try {
+        const deletedMaterial = await MaterialModel.findOneAndDelete({ ...query, material: materialName });
+        if (deletedMaterial) {
+          deletedCount++;
+          console.log(`Successfully deleted material ${deletedCount}/${quantity}: ${materialName}`);
+        } else {
+          console.log(`Failed to delete material ${i + 1}/${quantity} - material not found`);
+          // 일부만 삭제된 경우에도 성공으로 처리 (이미 삭제된 것은 되돌릴 수 없음)
+          break;
+        }
+      } catch (deleteError) {
+        console.error(`Error deleting material ${i + 1}/${quantity}:`, deleteError);
+        break;
       }
     }
-    console.log(`Successfully consumed ${quantity} ${materialName}`);
+    
+    if (deletedCount === 0) {
+      console.log("No materials were deleted");
+      return res.status(400).json({ error: "Failed to consume material" });
+    }
+    
+    console.log(`Successfully consumed ${deletedCount} ${materialName} (requested: ${quantity})`);
     
     res.json({ success: true });
   } catch (error) {
@@ -5705,7 +5725,24 @@ app.get("/api/fishing-skill/:userId", optionalJWT, async (req, res) => {
       }
     }
     
-    res.json({ skill: fishingSkill.skill || 0 });
+    // 🏆 업적 보너스 계산 (모듈 사용)
+    let achievementBonus = 0;
+    try {
+      const targetUserUuid = queryResult.userUuid || userUuid;
+      if (targetUserUuid) {
+        achievementBonus = await achievementSystem.calculateAchievementBonus(targetUserUuid);
+      }
+    } catch (error) {
+      console.error("Failed to calculate achievement bonus:", error);
+    }
+    
+    const finalSkill = (fishingSkill.skill || 0) + achievementBonus;
+    
+    res.json({ 
+      skill: finalSkill,
+      baseSkill: fishingSkill.skill || 0,
+      achievementBonus: achievementBonus
+    });
   } catch (error) {
     console.error("Failed to fetch fishing skill:", error);
     console.error("Error details:", {
@@ -6025,20 +6062,32 @@ async function getUserProfileHandler(req, res) {
     const canViewDetails = isOwnProfile || isAdmin;
     
     if (!canViewDetails) {
-      // 🔐 다른 사용자의 프로필은 공개 정보만 제공 (보유 물고기 수 포함)
+      // 🔐 다른 사용자의 프로필은 공개 정보 제공 (장비, 재산 정보 포함)
       console.log(`🔐 Returning public profile for ${username} to ${requesterUsername}`);
       
-      // 보유 물고기 수 조회 (공개 정보로 제공)
-      const totalCatches = await CatchModel.countDocuments({ userUuid: user.userUuid });
+      // 모든 공개 정보 병렬 조회
+      const [userMoney, userAmber, userEquipment, fishingSkill, totalCatches] = await Promise.all([
+        UserMoneyModel.findOne({ userUuid: user.userUuid }),
+        UserAmberModel.findOne({ userUuid: user.userUuid }),
+        UserEquipmentModel.findOne({ userUuid: user.userUuid }),
+        FishingSkillModel.findOne({ userUuid: user.userUuid }),
+        CatchModel.countDocuments({ userUuid: user.userUuid })
+      ]);
       
       return res.json({
         username: user.username,
         displayName: user.displayName,
         isGuest: user.isGuest,
+        money: userMoney?.money || 0, // 보유 골드 공개
+        amber: userAmber?.amber || 0, // 보유 호박석 공개
+        equipment: { // 장착 장비 공개
+          fishingRod: userEquipment?.fishingRod || null,
+          accessory: userEquipment?.accessory || null
+        },
+        fishingSkill: fishingSkill?.skill || 0, // 낚시실력 공개
         totalFishCaught: user.totalFishCaught || 0,
-        totalCatches: totalCatches || 0, // 보유 물고기 수 추가
+        totalCatches: totalCatches || 0,
         createdAt: user.createdAt
-        // 돈, 호박석, 장비 등 민감한 정보 제외
       });
     }
     
@@ -6077,6 +6126,19 @@ async function getUserProfileHandler(req, res) {
     console.error("Failed to fetch user profile:", error);
     res.status(500).json({ error: "Failed to fetch user profile" });
   }
+}
+
+// 🏆 업적 시스템 인스턴스 생성
+const achievementSystem = new AchievementSystem(CatchModel, FishingSkillModel, UserUuidModel);
+
+// 🏆 업적 자동 체크 함수 (모듈화된 함수 호출)
+async function checkAndGrantAchievements(userUuid, username) {
+  return await achievementSystem.checkAndGrantAchievements(userUuid, username);
+}
+
+// 🏆 낚시실력에 업적 보너스 적용 (로깅용)
+async function updateFishingSkillWithAchievements(userUuid) {
+  return await achievementSystem.logAchievementBonus(userUuid);
 }
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
@@ -7226,6 +7288,18 @@ app.post("/api/fishing", authenticateJWT, async (req, res) => {
       }
     );
     
+    // 🏆 낚시 성공 시 업적 체크
+    if (fishingResult.success) {
+      try {
+        const achievementGranted = await checkAndGrantAchievements(userUuid, username);
+        if (achievementGranted) {
+          console.log(`🏆 Achievement granted to ${username} after fishing`);
+        }
+      } catch (error) {
+        console.error("Failed to check achievements after fishing:", error);
+      }
+    }
+    
     console.log(`🎣 Fishing completed for ${username}: ${fishingResult.success ? 'SUCCESS' : 'FAIL'}`);
     
     res.json({
@@ -7329,8 +7403,12 @@ function authenticateJWT(req, res, next) {
 }
 
 // 레이드 라우터 등록
-const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel);
-app.use("/api/raid", raidRouter);
+  const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem);
+  app.use("/api/raid", raidRouter);
+
+// 업적 라우터 등록
+const { router: achievementRouter } = setupAchievementRoutes(authenticateJWT, UserUuidModel, CatchModel, FishingSkillModel);
+app.use("/api/achievements", achievementRouter);
 
 // 🔐 선택적 JWT 인증 미들웨어 (토큰이 없어도 통과, 있으면 검증)
 function optionalJWT(req, res, next) {
