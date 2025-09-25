@@ -1203,6 +1203,14 @@ function App() {
     console.log("useEffect [username, idToken] triggered:", { username, idToken, userUuid });
     console.log("Current localStorage nickname:", localStorage.getItem("nickname"));
     console.log("Current localStorage userUuid:", localStorage.getItem("userUuid"));
+    
+    // 동료 경험치 재계산 (새로운 공식 적용)
+    if (username || userUuid) {
+      setTimeout(() => {
+        recalculateAllCompanionExp();
+      }, 1000); // 1초 후 실행
+    }
+    
     // username이 없어도 idToken이 있으면 소켓 연결 (이용약관 모달을 위해)
     if (!username && !idToken) return;
     const socket = getSocket();
@@ -2970,6 +2978,31 @@ function App() {
   // 레벨별 필요 경험치 계산 함수
   const calculateExpToNextLevel = (level) => {
     return Math.floor(100 + Math.pow(level, 1.8) * 25);
+  };
+
+  // 모든 동료 경험치 강제 재계산 함수
+  const recalculateAllCompanionExp = () => {
+    setCompanionStats(prev => {
+      const updated = { ...prev };
+      
+      Object.keys(updated).forEach(companionName => {
+        const current = updated[companionName];
+        const currentLevel = current.level || 1;
+        const newExpToNext = calculateExpToNextLevel(currentLevel + 1);
+        
+        console.log(`🔄 ${companionName} 경험치 재계산: ${current.expToNext} → ${newExpToNext}`);
+        
+        updated[companionName] = {
+          ...current,
+          expToNext: newExpToNext
+        };
+      });
+      
+      // localStorage에 저장
+      localStorage.setItem(`companionStats_${userUuid || username}`, JSON.stringify(updated));
+      
+      return updated;
+    });
   };
 
   // 동료 경험치 추가 함수
