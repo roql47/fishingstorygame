@@ -39,6 +39,12 @@ class RaidSystem {
     const currentDamage = this.raidBoss.participants.get(userUuid) || 0;
     this.raidBoss.participants.set(userUuid, currentDamage + damage);
 
+    // 참가자 닉네임 정보 저장 (Map으로 관리)
+    if (!this.raidBoss.participantNames) {
+      this.raidBoss.participantNames = new Map();
+    }
+    this.raidBoss.participantNames.set(userUuid, username);
+
     // 보스 체력 감소
     this.raidBoss.hp = Math.max(0, this.raidBoss.hp - damage);
 

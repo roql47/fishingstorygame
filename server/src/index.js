@@ -670,6 +670,7 @@ const catchSchema = new mongoose.Schema(
     weight: { type: Number, required: true },
     userId: { type: String, index: true },
     displayName: { type: String },
+    probability: { type: Number }, // 업적 체크를 위한 확률 정보
   },
   { timestamps: { createdAt: true, updatedAt: false } }
 );
@@ -2183,6 +2184,7 @@ io.on("connection", (socket) => {
         const catchData = {
           fish,
           weight: 0,
+          probability: probability, // 업적 체크를 위한 확률 정보 저장
         };
         
         // 사용자 식별 정보 추가
@@ -6112,13 +6114,14 @@ async function getUserProfileHandler(req, res) {
       // 🔐 다른 사용자의 프로필은 공개 정보 제공 (장비, 재산 정보 포함)
       console.log(`🔐 Returning public profile for ${username} to ${requesterUsername}`);
       
-      // 모든 공개 정보 병렬 조회
-      const [userMoney, userAmber, userEquipment, fishingSkill, totalCatches] = await Promise.all([
+      // 모든 공개 정보 병렬 조회 (업적 보너스 포함)
+      const [userMoney, userAmber, userEquipment, fishingSkillData, totalCatches, achievementBonus] = await Promise.all([
         UserMoneyModel.findOne({ userUuid: user.userUuid }),
         UserAmberModel.findOne({ userUuid: user.userUuid }),
         UserEquipmentModel.findOne({ userUuid: user.userUuid }),
         FishingSkillModel.findOne({ userUuid: user.userUuid }),
-        CatchModel.countDocuments({ userUuid: user.userUuid })
+        CatchModel.countDocuments({ userUuid: user.userUuid }),
+        achievementSystem.calculateAchievementBonus(user.userUuid)
       ]);
       
       return res.json({
@@ -6131,7 +6134,12 @@ async function getUserProfileHandler(req, res) {
           fishingRod: userEquipment?.fishingRod || null,
           accessory: userEquipment?.accessory || null
         },
-        fishingSkill: fishingSkill?.skill || 0, // 낚시실력 공개
+        fishingSkill: (fishingSkillData?.skill || 0) + (achievementBonus || 0), // 낚시실력 공개 (업적 보너스 포함)
+        fishingSkillDetails: { // 낚시실력 상세 정보
+          baseSkill: fishingSkillData?.skill || 0,
+          achievementBonus: achievementBonus || 0,
+          totalSkill: (fishingSkillData?.skill || 0) + (achievementBonus || 0)
+        },
         totalFishCaught: user.totalFishCaught || 0,
         totalCatches: totalCatches || 0,
         createdAt: user.createdAt
@@ -6141,12 +6149,13 @@ async function getUserProfileHandler(req, res) {
     // 🔐 본인 프로필이거나 관리자인 경우 상세 정보 제공
     console.log(`🔐 Returning detailed profile for ${username} to ${requesterUsername} (${isOwnProfile ? 'own' : 'admin'})`);
     
-    const [userMoney, userAmber, userEquipment, fishingSkill, totalCatches] = await Promise.all([
+    const [userMoney, userAmber, userEquipment, fishingSkillData, totalCatches, achievementBonus] = await Promise.all([
       UserMoneyModel.findOne({ userUuid: user.userUuid }),
       UserAmberModel.findOne({ userUuid: user.userUuid }),
       UserEquipmentModel.findOne({ userUuid: user.userUuid }),
       FishingSkillModel.findOne({ userUuid: user.userUuid }),
-      CatchModel.countDocuments({ userUuid: user.userUuid })
+      CatchModel.countDocuments({ userUuid: user.userUuid }),
+      achievementSystem.calculateAchievementBonus(user.userUuid)
     ]);
     
     const profileData = {
@@ -6161,7 +6170,12 @@ async function getUserProfileHandler(req, res) {
         fishingRod: userEquipment?.fishingRod || null,
         accessory: userEquipment?.accessory || null
       },
-      fishingSkill: fishingSkill?.skill || 0,
+      fishingSkill: (fishingSkillData?.skill || 0) + (achievementBonus || 0),
+      fishingSkillDetails: { // 낚시실력 상세 정보
+        baseSkill: fishingSkillData?.skill || 0,
+        achievementBonus: achievementBonus || 0,
+        totalSkill: (fishingSkillData?.skill || 0) + (achievementBonus || 0)
+      },
       totalCatches: totalCatches || 0,
       totalFishCaught: user.totalFishCaught || 0,
       createdAt: user.createdAt

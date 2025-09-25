@@ -246,9 +246,21 @@ function App() {
     // participants는 항상 일반 객체로 전송됨
     const rankings = Object.entries(raidBoss.participants)
       .map(([userUuid, damage]) => {
-        // 로그에서 해당 사용자의 최신 username 찾기
-        const userLogs = raidLogs.filter(log => log.userUuid === userUuid);
-        const username = userLogs.length > 0 ? userLogs[userLogs.length - 1].username : userUuid;
+        // 1순위: participantNames에서 닉네임 찾기 (서버에서 전송된 최신 닉네임)
+        let username = raidBoss.participantNames && raidBoss.participantNames[userUuid] 
+          ? raidBoss.participantNames[userUuid] 
+          : null;
+        
+        // 2순위: 로그에서 해당 사용자의 최신 username 찾기
+        if (!username) {
+          const userLogs = raidLogs.filter(log => log.userUuid === userUuid);
+          username = userLogs.length > 0 ? userLogs[userLogs.length - 1].username : null;
+        }
+        
+        // 3순위: UUID의 마지막 4자리만 표시 (fallback)
+        if (!username) {
+          username = `#${userUuid.slice(-4)}`;
+        }
         
         return { userUuid, username, damage };
       })
@@ -2533,23 +2545,31 @@ function App() {
       let response;
       
       try {
-        // 먼저 새로운 API 시도 (JWT 토큰 포함)
+        // 먼저 새로운 API 시도 (JWT 토큰 포함, 캐시 무효화)
         console.log("Trying new API:", `${serverUrl}/api/user-profile?username=${encodeURIComponent(username)}`);
         response = await axios.get(`${serverUrl}/api/user-profile`, {
-          params: { username },
+          params: { 
+            username,
+            _t: Date.now() // 캐시 무효화를 위한 타임스탬프
+          },
           headers: {
-            'Authorization': `Bearer ${jwtToken}`
+            'Authorization': `Bearer ${jwtToken}`,
+            'Cache-Control': 'no-cache' // 캐시 무효화
           }
         });
         console.log("✅ New API success");
       } catch (newApiError) {
         if (newApiError.response?.status === 404) {
           console.log("❌ New API failed, trying legacy API...");
-          // 새 API 실패 시 이전 API 시도 (JWT 토큰 포함)
+          // 새 API 실패 시 이전 API 시도 (JWT 토큰 포함, 캐시 무효화)
           console.log("Trying legacy API:", `${serverUrl}/api/user-profile/${encodeURIComponent(username)}`);
           response = await axios.get(`${serverUrl}/api/user-profile/${encodeURIComponent(username)}`, {
+            params: {
+              _t: Date.now() // 캐시 무효화를 위한 타임스탬프
+            },
             headers: {
-              'Authorization': `Bearer ${jwtToken}`
+              'Authorization': `Bearer ${jwtToken}`,
+              'Cache-Control': 'no-cache' // 캐시 무효화
             }
           });
           console.log("✅ Legacy API success");
@@ -2916,7 +2936,7 @@ function App() {
       
       const defaultLevel = 1;
       const defaultExp = 0;
-      const defaultExpToNext = defaultLevel * 50 + 50; // 안전한 계산
+      const defaultExpToNext = calculateExpToNextLevel(2); // 새로운 경험치 공식
       
       const newStats = allStats[companionName] || {
         level: defaultLevel,
@@ -2926,9 +2946,10 @@ function App() {
         maxHp: calculateCompanionStats(companionName, defaultLevel)?.hp || 100
       };
       
-      // expToNext가 NaN이거나 유효하지 않으면 재계산
+      // expToNext가 NaN이거나 유효하지 않으면 새로운 공식으로 재계산
       if (!newStats.expToNext || isNaN(newStats.expToNext)) {
-        newStats.expToNext = (newStats.level || 1) * 50 + 50;
+        const currentLevel = newStats.level || 1;
+        newStats.expToNext = calculateExpToNextLevel(currentLevel + 1);
       }
       
       console.log(`✅ ${companionName} 초기화된 능력치:`, newStats);
@@ -2946,6 +2967,11 @@ function App() {
     }
   };
 
+  // 레벨별 필요 경험치 계산 함수
+  const calculateExpToNextLevel = (level) => {
+    return Math.floor(100 + Math.pow(level, 1.8) * 25);
+  };
+
   // 동료 경험치 추가 함수
   const addCompanionExp = (companionName, expAmount) => {
     console.log(`📈 addCompanionExp 호출: ${companionName}에게 경험치 ${expAmount} 추가`);
@@ -2953,7 +2979,7 @@ function App() {
       const current = prev[companionName] || {
         level: 1,
         exp: 0,
-        expToNext: 100,
+        expToNext: calculateExpToNextLevel(2), // 레벨 2까지 필요한 경험치
         hp: calculateCompanionStats(companionName, 1)?.hp || 100,
         maxHp: calculateCompanionStats(companionName, 1)?.hp || 100
       };
@@ -2973,8 +2999,9 @@ function App() {
       while (newExp >= newExpToNext) {
         newExp -= newExpToNext;
         newLevel++;
-        newExpToNext = newLevel * 50 + 50; // 레벨당 필요 경험치 증가
-        console.log(`🎉 ${companionName} 레벨업! ${newLevel-1} → ${newLevel}`);
+        // 새로운 경험치 공식 사용
+        newExpToNext = calculateExpToNextLevel(newLevel + 1);
+        console.log(`🎉 ${companionName} 레벨업! ${newLevel-1} → ${newLevel} (다음 레벨까지: ${newExpToNext})`);
       }
       
       console.log(`📊 ${companionName} 최종 능력치: 레벨 ${newLevel}, 경험치 ${newExp}/${newExpToNext}`);
@@ -6760,26 +6787,24 @@ function App() {
                         {selectedUserProfile ? (otherUserData?.fishingSkill || 0) : fishingSkill}
                       </div>
                       
-                      {/* 내 프로필일 때만 툴팁 표시 */}
-                      {!selectedUserProfile && (
-                        <div className={`absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 ${
-                          isDarkMode 
-                            ? "bg-gray-800 text-white border border-gray-700" 
-                            : "bg-white text-gray-800 border border-gray-300 shadow-lg"
-                        }`}>
-                          <div className="space-y-1">
-                            <div>낚시대: {fishingSkillDetails.baseSkill}</div>
-                            <div>업적 보너스: +{fishingSkillDetails.achievementBonus}</div>
-                            <div className="border-t border-gray-500 pt-1">
-                              <div className="font-semibold">총합: {fishingSkillDetails.totalSkill}</div>
-                            </div>
+                      {/* 툴팁 표시 (내 프로필 또는 다른 사용자 프로필) */}
+                      <div className={`absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 ${
+                        isDarkMode 
+                          ? "bg-gray-800 text-white border border-gray-700" 
+                          : "bg-white text-gray-800 border border-gray-300 shadow-lg"
+                      }`}>
+                        <div className="space-y-1">
+                          <div>낚시대: {selectedUserProfile ? (otherUserData?.fishingSkillDetails?.baseSkill || 0) : fishingSkillDetails.baseSkill}</div>
+                          <div>업적 보너스: +{selectedUserProfile ? (otherUserData?.fishingSkillDetails?.achievementBonus || 0) : fishingSkillDetails.achievementBonus}</div>
+                          <div className="border-t border-gray-500 pt-1">
+                            <div className="font-semibold">총합: {selectedUserProfile ? (otherUserData?.fishingSkillDetails?.totalSkill || 0) : fishingSkillDetails.totalSkill}</div>
                           </div>
-                          {/* 화살표 */}
-                          <div className={`absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent ${
-                            isDarkMode ? "border-t-gray-800" : "border-t-white"
-                          }`}></div>
                         </div>
-                      )}
+                        {/* 화살표 */}
+                        <div className={`absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent ${
+                          isDarkMode ? "border-t-gray-800" : "border-t-white"
+                        }`}></div>
+                      </div>
                     </div>
                     <div className={`text-xs ${
                       isDarkMode ? "text-gray-500" : "text-gray-600"

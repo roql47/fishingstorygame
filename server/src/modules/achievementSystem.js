@@ -39,6 +39,18 @@ const ACHIEVEMENT_DEFINITIONS = {
     name: "너를 위해 준비했어",
     description: "보유물고기 100마리 이상",
     autoCheck: true // 자동으로 체크 가능
+  },
+  rare_fish_hunter: {
+    id: "rare_fish_hunter",
+    name: "이제 입질이 오기 시작했어",
+    description: "0.3% 물고기 10번 낚시하기",
+    autoCheck: true // 자동으로 체크 가능
+  },
+  raid_finisher: {
+    id: "raid_finisher",
+    name: "전장의 지배자",
+    description: "레이드 물고기 마지막 공격으로 처치",
+    autoCheck: true // 자동으로 체크 가능
   }
 };
 
@@ -54,38 +66,85 @@ class AchievementSystem {
   async checkAndGrantAchievements(userUuid, username) {
     try {
       console.log(`🏆 Checking achievements for ${username} (${userUuid})`);
+      let achievementGranted = false;
       
-      // 보유 물고기 수 체크
+      // 1. 보유 물고기 수 체크 (기존 업적)
       const totalFish = await this.CatchModel.countDocuments({ userUuid });
       console.log(`🐟 Total fish for ${username}: ${totalFish}`);
       
       if (totalFish >= 100) {
-        // 이미 업적을 가지고 있는지 확인
         const existingAchievement = await AchievementModel.findOne({
           userUuid,
           achievementId: "fish_collector"
         });
         
         if (!existingAchievement) {
-          // 업적 부여
-          const achievement = new AchievementModel({
-            userUuid,
-            username,
-            achievementId: "fish_collector",
-            achievementName: ACHIEVEMENT_DEFINITIONS.fish_collector.name,
-            description: ACHIEVEMENT_DEFINITIONS.fish_collector.description
-          });
-          
-          await achievement.save();
-          console.log(`🏆 Achievement granted to ${username}: fish_collector`);
-          
-          return true;
+          await this.grantSingleAchievement(userUuid, username, "fish_collector");
+          achievementGranted = true;
         }
+      }
+      
+      // 2. 0.3% 물고기 10번 낚시 체크 (새로운 업적)
+      const rareFishCount = await this.CatchModel.countDocuments({ 
+        userUuid,
+        probability: 0.3 
+      });
+      console.log(`🎣 0.3% 물고기 낚은 횟수 for ${username}: ${rareFishCount}`);
+      
+      if (rareFishCount >= 10) {
+        const existingRareFishAchievement = await AchievementModel.findOne({
+          userUuid,
+          achievementId: "rare_fish_hunter"
+        });
+        
+        if (!existingRareFishAchievement) {
+          await this.grantSingleAchievement(userUuid, username, "rare_fish_hunter");
+          achievementGranted = true;
+        }
+      }
+      
+      return achievementGranted;
+    } catch (error) {
+      console.error("Failed to check achievements:", error);
+      return false;
+    }
+  }
+
+  // 단일 업적 부여 헬퍼 함수
+  async grantSingleAchievement(userUuid, username, achievementId) {
+    const achievementDef = ACHIEVEMENT_DEFINITIONS[achievementId];
+    const achievement = new AchievementModel({
+      userUuid,
+      username,
+      achievementId,
+      achievementName: achievementDef.name,
+      description: achievementDef.description
+    });
+    
+    await achievement.save();
+    console.log(`🏆 Achievement granted to ${username}: ${achievementId}`);
+  }
+
+  // 레이드 마지막 공격 업적 체크 및 부여
+  async checkRaidFinisherAchievement(userUuid, username) {
+    try {
+      console.log(`🏆 Checking raid finisher achievement for ${username} (${userUuid})`);
+      
+      // 이미 업적을 가지고 있는지 확인
+      const existingAchievement = await AchievementModel.findOne({
+        userUuid,
+        achievementId: "raid_finisher"
+      });
+      
+      if (!existingAchievement) {
+        await this.grantSingleAchievement(userUuid, username, "raid_finisher");
+        console.log(`🏆 Raid finisher achievement granted to ${username}!`);
+        return true;
       }
       
       return false;
     } catch (error) {
-      console.error("Failed to check achievements:", error);
+      console.error("Failed to check raid finisher achievement:", error);
       return false;
     }
   }

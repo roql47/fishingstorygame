@@ -3,6 +3,20 @@ export const NOTICE_DATA = [
   {
     id: 0,
     date: "2025.09.25",
+    title: "🏆 새로운 업적 추가 및 시스템 개선",
+    content: [
+      "새로운 업적 2종 추가:",
+      "레이드 데미지 순위에서 UUID 대신 닉네임 표시",
+      "다른 플레이어 프로필 낚시실력 최신화 및 툴팁 표시",
+      "레벨업당 동료 최대 레벨경험치 증가 수치 변경경",
+      "탐사전투시 호박석 보상 배율 하향향"
+    ],
+    isNew: true,
+    type: "major_update"
+  },
+  {
+    id: 1,
+    date: "2025.09.25",
     title: "🛠️ 시스템 안정성 및 UI 개선",
     content: [
       "탐사 재료 소모 실패 버그 수정",
@@ -11,11 +25,11 @@ export const NOTICE_DATA = [
       "프로필 낚시실력에 마우스 호버 시 상세 정보 표시",
       "낚시대/업적 보너스 분리 표시로 투명성 향상"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
-    id: 1,
+    id: 2,
     date: "2025.09.24",
     title: "🏆 업적 시스템 업데이트",
     content: [
@@ -27,7 +41,7 @@ export const NOTICE_DATA = [
     type: "major_update"
   },
   {
-    id: 2,
+    id: 3,
     date: "2025.09.24",
     title: "🛠️ 게임 시스템 bug-fixed",
     content: [
@@ -41,7 +55,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 3,
+    id: 4,
     date: "2025.09.23",
     title: "⚔️ 레이드 시스템 업데이트",
     content: [
@@ -54,7 +68,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 4,
+    id: 5,
     date: "2025.09.23",
     title: "🎣 낚시 시스템 & 상점 업데이트",
     content: [
@@ -68,7 +82,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 5,
+    id: 6,
     date: "2025.09.22",
     title: "🎆 게임 시스템 업데이트",
     content: [
@@ -82,7 +96,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 6,
+    id: 7,
     date: "2025.09.22",
     title: "🔐 JWT 보안 시스템 대폭 강화",
     content: [
@@ -97,7 +111,7 @@ export const NOTICE_DATA = [
     type: "security"
   },
   {
-    id: 7,
+    id: 8,
     date: "2025.09.22",
     title: "🎉 동료 시스템 업데이트",
     content: [
@@ -110,8 +124,8 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 8,
-    date: "2025.09.22", 
+    id: 9,
+    date: "2025.09.22",
     title: "🔐 보안 시스템 강화",
     content: [
       "JWT 토큰 기반 인증 시스템 도입",
@@ -122,7 +136,7 @@ export const NOTICE_DATA = [
     type: "security"
   },
   {
-    id: 9,
+    id: 10,
     date: "2025.09.22",
     title: "⚔️ 전투 시스템 개선", 
     content: [
@@ -134,7 +148,7 @@ export const NOTICE_DATA = [
     type: "improvement"
   },
   {
-    id: 10,
+    id: 11,
     date: "2025.09.19",
     title: "🦊 여우이야기 Alpha Test 시작",
     content: [
@@ -150,5 +164,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.18"
+  version: "v1.19"
 };

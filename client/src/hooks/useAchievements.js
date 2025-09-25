@@ -19,6 +19,18 @@ export const ACHIEVEMENT_DEFINITIONS = {
     name: "너를 위해 준비했어",
     description: "보유물고기 100마리 이상",
     autoCheck: true
+  },
+  rare_fish_hunter: {
+    id: "rare_fish_hunter",
+    name: "이제 입질이 오기 시작했어",
+    description: "0.3% 물고기 10번 낚시하기",
+    autoCheck: true
+  },
+  raid_finisher: {
+    id: "raid_finisher",
+    name: "전장의 지배자",
+    description: "레이드 물고기 마지막 공격으로 처치",
+    autoCheck: true
   }
 };
 

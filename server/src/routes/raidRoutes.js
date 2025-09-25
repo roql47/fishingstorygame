@@ -18,7 +18,9 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       // 클라이언트 전송용 보스 정보 (Map을 객체로 변환)
       const bossForClient = {
         ...boss,
-        participants: Object.fromEntries(boss.participants)
+        participants: Object.fromEntries(boss.participants),
+        participantNames: boss.participantNames ? 
+          Object.fromEntries(boss.participantNames) : {}
       };
       
       // 모든 클라이언트에게 레이드 보스 정보 전송
@@ -127,7 +129,9 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       // 클라이언트 전송용 보스 정보 (Map을 객체로 변환)
       const bossForClient = {
         ...raidSystem.raidBoss,
-        participants: Object.fromEntries(raidSystem.raidBoss.participants)
+        participants: Object.fromEntries(raidSystem.raidBoss.participants),
+        participantNames: raidSystem.raidBoss.participantNames ? 
+          Object.fromEntries(raidSystem.raidBoss.participantNames) : {}
       };
       
       // 모든 클라이언트에게 업데이트 전송
@@ -167,7 +171,9 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       ...status,
       boss: status.boss ? {
         ...status.boss,
-        participants: Object.fromEntries(status.boss.participants)
+        participants: Object.fromEntries(status.boss.participants),
+        participantNames: status.boss.participantNames ? 
+          Object.fromEntries(status.boss.participantNames) : {}
       } : null
     };
     
@@ -210,6 +216,22 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
             { userUuid: lastAttacker.userUuid },
             { $inc: { starPieces: 1 } }
           );
+          
+          // 🏆 레이드 마지막 공격 업적 체크 및 부여
+          try {
+            const user = await UserUuidModel.findOne({ userUuid: lastAttacker.userUuid }).lean();
+            if (user) {
+              const achievementGranted = await achievementSystem.checkRaidFinisherAchievement(
+                lastAttacker.userUuid, 
+                user.displayName || user.username
+              );
+              if (achievementGranted) {
+                console.log(`🏆 Raid finisher achievement granted to ${user.displayName || user.username}!`);
+              }
+            }
+          } catch (achievementError) {
+            console.error(`[Raid] Failed to check raid finisher achievement for ${lastAttacker.userUuid}:`, achievementError);
+          }
           
           // 막타 보상 알림
           const lastAttackerSocket = Array.from(io.sockets.sockets.values())
@@ -264,7 +286,9 @@ function setupRaidWebSocketEvents(socket, UserUuidModel) {
       // 클라이언트 전송용 보스 정보 (Map을 객체로 변환)
       const bossForClient = {
         ...status.boss,
-        participants: Object.fromEntries(status.boss.participants)
+        participants: Object.fromEntries(status.boss.participants),
+        participantNames: status.boss.participantNames ? 
+          Object.fromEntries(status.boss.participantNames) : {}
       };
       
       socket.emit("raid:boss:update", { boss: bossForClient });
