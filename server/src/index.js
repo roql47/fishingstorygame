@@ -2157,12 +2157,26 @@ io.on("connection", (socket) => {
           query = { userId: socket.data.userId || 'user' };
         }
         
-        // 낚시 스킬 조회
+        // 낚시 스킬 조회 (기본 실력)
         const fishingSkill = await FishingSkillModel.findOne(query);
-        const userSkill = fishingSkill ? fishingSkill.skill : 0;
+        const baseSkill = fishingSkill ? fishingSkill.skill : 0;
         
-        // 물고기 선택 (확률 정보 포함)
-        const fishingResult = randomFish(userSkill);
+        // 🏆 업적 보너스 계산 및 최종 낚시실력 산정
+        let achievementBonus = 0;
+        try {
+          const targetUserUuid = socket.data.userUuid;
+          if (targetUserUuid) {
+            achievementBonus = await achievementSystem.calculateAchievementBonus(targetUserUuid);
+          }
+        } catch (error) {
+          console.error("Failed to calculate achievement bonus in fishing:", error);
+        }
+        
+        const finalSkill = baseSkill + achievementBonus;
+        console.log(`🎣 낚시 실력 정보 - 기본: ${baseSkill}, 업적보너스: ${achievementBonus}, 최종: ${finalSkill}`);
+        
+        // 물고기 선택 (업적 보너스가 반영된 최종 실력 사용)
+        const fishingResult = randomFish(finalSkill);
         const { fish, probability, fishIndex, rank } = fishingResult;
         
         // 물고기 저장 데이터 준비
@@ -2192,6 +2206,39 @@ io.on("connection", (socket) => {
         if (socket.data.userUuid) {
           const currentCount = batchUpdates.fishCount.get(socket.data.userUuid) || 0;
           batchUpdates.fishCount.set(socket.data.userUuid, currentCount + 1);
+        }
+
+        // 🏆 낚시 성공 시 업적 체크
+        let achievementGranted = false;
+        let newAchievement = null;
+        try {
+          const targetUserUuid = socket.data.userUuid;
+          const targetUsername = socket.data.username || socket.data.displayName;
+          if (targetUserUuid && targetUsername) {
+            achievementGranted = await checkAndGrantAchievements(targetUserUuid, targetUsername);
+            if (achievementGranted) {
+              console.log(`🏆 Achievement granted to ${targetUsername} after WebSocket fishing`);
+              // 방금 달성한 업적 정보 가져오기
+              const latestAchievement = await AchievementModel.findOne({ 
+                userUuid: targetUserUuid, 
+                achievementId: "fish_collector" 
+              }).sort({ createdAt: -1 });
+              if (latestAchievement) {
+                newAchievement = {
+                  id: latestAchievement.achievementId,
+                  name: latestAchievement.achievementName,
+                  description: latestAchievement.description
+                };
+                // 업적 달성 알림을 해당 사용자에게만 전송
+                socket.emit("achievement:granted", {
+                  achievement: newAchievement,
+                  message: `🏆 업적 달성! "${newAchievement.name}"`
+                });
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Failed to check achievements after WebSocket fishing:", error);
         }
         
         // 성공 메시지 (확률과 등급 정보 포함)
@@ -7289,11 +7336,25 @@ app.post("/api/fishing", authenticateJWT, async (req, res) => {
     );
     
     // 🏆 낚시 성공 시 업적 체크
+    let achievementGranted = false;
+    let newAchievement = null;
     if (fishingResult.success) {
       try {
-        const achievementGranted = await checkAndGrantAchievements(userUuid, username);
+        achievementGranted = await checkAndGrantAchievements(userUuid, username);
         if (achievementGranted) {
           console.log(`🏆 Achievement granted to ${username} after fishing`);
+          // 방금 달성한 업적 정보 가져오기
+          const latestAchievement = await AchievementModel.findOne({ 
+            userUuid, 
+            achievementId: "fish_collector" 
+          }).sort({ createdAt: -1 });
+          if (latestAchievement) {
+            newAchievement = {
+              id: latestAchievement.achievementId,
+              name: latestAchievement.achievementName,
+              description: latestAchievement.description
+            };
+          }
         }
       } catch (error) {
         console.error("Failed to check achievements after fishing:", error);
@@ -7306,7 +7367,9 @@ app.post("/api/fishing", authenticateJWT, async (req, res) => {
       success: true,
       fishingResult,
       cooldownEnd: cooldownEnd.toISOString(),
-      remainingTime: cooldownDuration
+      remainingTime: cooldownDuration,
+      achievementGranted,
+      newAchievement
     });
     
   } catch (error) {

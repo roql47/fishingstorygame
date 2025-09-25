@@ -123,6 +123,11 @@ function App() {
   });
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [fishingSkill, setFishingSkill] = useState(0);
+  const [fishingSkillDetails, setFishingSkillDetails] = useState({
+    baseSkill: 0,
+    achievementBonus: 0,
+    totalSkill: 0
+  });
   const [userUuid, setUserUuid] = useState(null);
   const [isDarkMode, setIsDarkMode] = useState(true); // 기본값: 다크모드
   const [showQuantityModal, setShowQuantityModal] = useState(false);
@@ -1787,6 +1792,26 @@ function App() {
       }
     });
     
+    // 🏆 업적 달성 알림 처리
+    socket.on('achievement:granted', (data) => {
+      console.log('🏆 Achievement granted:', data);
+      if (data.achievement && data.message) {
+        // 업적 달성 팝업 표시
+        setTimeout(() => {
+          alert(`${data.message}\n\n${data.achievement.description}\n\n낚시실력이 1 증가했습니다!`);
+        }, 1000);
+        
+        // 낚시실력 새로고침
+        setTimeout(async () => {
+          await refreshFishingSkill();
+          // 업적 목록도 새로고침
+          if (fetchAchievements) {
+            await fetchAchievements();
+          }
+        }, 1500);
+      }
+    });
+    
     socket.on('data:starPieces', (data) => {
       console.log('🔄 Received starPieces update via WebSocket:', data);
       if (data && typeof data.starPieces === 'number') {
@@ -1801,6 +1826,7 @@ function App() {
       socket.off('users:update', handleUsersUpdate);
       socket.off('data:companions');
       socket.off('data:starPieces');
+      socket.off('achievement:granted');
       // 데이터 구독 해제
       socket.emit('data:unsubscribe', { userUuid, username });
     };
@@ -2055,7 +2081,17 @@ function App() {
         ]);
         
         setUserEquipment(equipmentRes.data || { fishingRod: null, accessory: null });
-        setFishingSkill(skillRes.data.skill || 0);
+        const skillData = skillRes.data;
+        const totalSkill = skillData.skill || 0;
+        const baseSkill = skillData.baseSkill || 0;
+        const achievementBonus = skillData.achievementBonus || 0;
+        
+        setFishingSkill(totalSkill);
+        setFishingSkillDetails({
+          baseSkill,
+          achievementBonus,
+          totalSkill
+        });
       } catch (e) {
         console.error('Failed to fetch user game data:', e);
         setUserEquipment({ fishingRod: null, accessory: null });
@@ -2458,8 +2494,21 @@ function App() {
       const params = { username, userUuid };
       const skillRes = await axios.get(`${serverUrl}/api/fishing-skill/${userId}`, { params });
       const newSkill = skillRes.data.skill || 0;
+      const baseSkill = skillRes.data.baseSkill || 0;
+      const achievementBonus = skillRes.data.achievementBonus || 0;
+      
       setFishingSkill(newSkill);
-      console.log('🔄 낚시실력 업데이트:', newSkill);
+      setFishingSkillDetails({
+        baseSkill,
+        achievementBonus,
+        totalSkill: newSkill
+      });
+      
+      console.log('🔄 낚시실력 업데이트:', { 
+        total: newSkill, 
+        base: baseSkill, 
+        achievement: achievementBonus 
+      });
       return newSkill;
     } catch (error) {
       console.error('Failed to refresh fishing skill:', error);
@@ -4391,7 +4440,17 @@ function App() {
             
             // 낚시실력도 새로고침
             const skillRes = await axios.get(`${serverUrl}/api/fishing-skill/${userId}`, { params });
-            setFishingSkill(skillRes.data.skill || 0);
+            const skillData = skillRes.data;
+            const totalSkill = skillData.skill || 0;
+            const baseSkill = skillData.baseSkill || 0;
+            const achievementBonus = skillData.achievementBonus || 0;
+            
+            setFishingSkill(totalSkill);
+            setFishingSkillDetails({
+              baseSkill,
+              achievementBonus,
+              totalSkill
+            });
           } catch (e) {
             console.error('Failed to refresh equipment after purchase:', e);
           }
@@ -5892,9 +5951,30 @@ function App() {
                     <span className={`text-sm ${
                       isDarkMode ? "text-gray-400" : "text-gray-600"
                     }`}>낚시 실력</span>
-                    <span className={`text-sm font-medium ${
-                      isDarkMode ? "text-emerald-400" : "text-emerald-600"
-                    }`}>Lv.{fishingSkill}</span>
+                    <div className="relative group">
+                      <span className={`text-sm font-medium cursor-help ${
+                        isDarkMode ? "text-emerald-400" : "text-emerald-600"
+                      }`}>Lv.{fishingSkill}</span>
+                      
+                      {/* 툴팁 */}
+                      <div className={`absolute bottom-full right-0 mb-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 ${
+                        isDarkMode 
+                          ? "bg-gray-800 text-white border border-gray-700" 
+                          : "bg-white text-gray-800 border border-gray-300 shadow-lg"
+                      }`}>
+                        <div className="space-y-1">
+                          <div>낚시대: {fishingSkillDetails.baseSkill}</div>
+                          <div>업적 보너스: +{fishingSkillDetails.achievementBonus}</div>
+                          <div className="border-t border-gray-500 pt-1">
+                            <div className="font-semibold">총합: {fishingSkillDetails.totalSkill}</div>
+                          </div>
+                        </div>
+                        {/* 화살표 */}
+                        <div className={`absolute top-full right-3 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent ${
+                          isDarkMode ? "border-t-gray-800" : "border-t-white"
+                        }`}></div>
+                      </div>
+                    </div>
                   </div>
                   <div className="flex justify-between">
                     <span className={`text-sm ${
@@ -6673,10 +6753,33 @@ function App() {
                     }`}>보유 호박석</div>
                   </div>
                   <div className="text-center">
-                    <div className={`font-bold text-lg ${
-                      isDarkMode ? "text-blue-400" : "text-blue-600"
-                    }`}>
-                      {selectedUserProfile ? (otherUserData?.fishingSkill || 0) : fishingSkill}
+                    <div className="relative group">
+                      <div className={`font-bold text-lg cursor-help ${
+                        isDarkMode ? "text-blue-400" : "text-blue-600"
+                      }`}>
+                        {selectedUserProfile ? (otherUserData?.fishingSkill || 0) : fishingSkill}
+                      </div>
+                      
+                      {/* 내 프로필일 때만 툴팁 표시 */}
+                      {!selectedUserProfile && (
+                        <div className={`absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 ${
+                          isDarkMode 
+                            ? "bg-gray-800 text-white border border-gray-700" 
+                            : "bg-white text-gray-800 border border-gray-300 shadow-lg"
+                        }`}>
+                          <div className="space-y-1">
+                            <div>낚시대: {fishingSkillDetails.baseSkill}</div>
+                            <div>업적 보너스: +{fishingSkillDetails.achievementBonus}</div>
+                            <div className="border-t border-gray-500 pt-1">
+                              <div className="font-semibold">총합: {fishingSkillDetails.totalSkill}</div>
+                            </div>
+                          </div>
+                          {/* 화살표 */}
+                          <div className={`absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent ${
+                            isDarkMode ? "border-t-gray-800" : "border-t-white"
+                          }`}></div>
+                        </div>
+                      )}
                     </div>
                     <div className={`text-xs ${
                       isDarkMode ? "text-gray-500" : "text-gray-600"
