@@ -846,6 +846,7 @@ const cooldownSchema = new mongoose.Schema(
     username: { type: String, required: true },
     userUuid: { type: String, index: true },
     fishingCooldownEnd: { type: Date, default: null }, // 낚시 쿨타임 종료 시간
+    raidAttackCooldownEnd: { type: Date, default: null }, // 레이드 공격 쿨타임 종료 시간
   },
   { timestamps: true }
 );
@@ -877,6 +878,7 @@ const userUuidSchema = new mongoose.Schema(
     
     // 쿨타임 정보
     fishingCooldownEnd: { type: Date, default: null }, // 낚시 쿨타임 종료 시간
+    raidAttackCooldownEnd: { type: Date, default: null }, // 레이드 공격 쿨타임 종료 시간
     
     // 물고기 카운터
     totalFishCaught: { type: Number, default: 0 }, // 총 낚은 물고기 수
@@ -3735,18 +3737,25 @@ app.get("/api/cooldown/:userId", async (req, res) => {
     const now = new Date();
     
     let fishingCooldown = 0;
+    let raidAttackCooldown = 0;
     
     if (cooldownRecord) {
       // 낚시 쿨타임 계산
       if (cooldownRecord.fishingCooldownEnd && cooldownRecord.fishingCooldownEnd > now) {
         fishingCooldown = cooldownRecord.fishingCooldownEnd.getTime() - now.getTime();
       }
+      
+      // 레이드 공격 쿨타임 계산
+      if (cooldownRecord.raidAttackCooldownEnd && cooldownRecord.raidAttackCooldownEnd > now) {
+        raidAttackCooldown = cooldownRecord.raidAttackCooldownEnd.getTime() - now.getTime();
+      }
     }
     
     // 쿨다운 데이터는 보안상 로그에 기록하지 않음
     
     res.json({ 
-      fishingCooldown: Math.max(0, fishingCooldown)
+      fishingCooldown: Math.max(0, fishingCooldown),
+      raidAttackCooldown: Math.max(0, raidAttackCooldown)
     });
   } catch (error) {
     console.error("Failed to fetch cooldown status:", error);
@@ -7480,7 +7489,7 @@ function authenticateJWT(req, res, next) {
 }
 
 // 레이드 라우터 등록
-  const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel);
+  const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel, CooldownModel);
   app.use("/api/raid", raidRouter);
 
 // 업적 라우터 등록

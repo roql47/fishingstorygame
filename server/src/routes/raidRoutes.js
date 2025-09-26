@@ -6,7 +6,7 @@ const RaidSystem = require('../modules/raidSystem');
 const raidSystem = new RaidSystem();
 
 // 레이드 라우트 설정 함수
-function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel) {
+function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel, CooldownModel) {
   // 레이드 보스 소환 API (관리자 전용)
   router.post("/summon", authenticateJWT, async (req, res) => {
     try {
@@ -90,6 +90,20 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       if (!user) {
         return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
       }
+
+      // 🛡️ 서버에서 레이드 공격 쿨타임 검증 (10초)
+      const now = new Date();
+      const cooldownRecord = await CooldownModel.findOne({ userUuid }).lean();
+      
+      if (cooldownRecord && cooldownRecord.raidAttackCooldownEnd && cooldownRecord.raidAttackCooldownEnd > now) {
+        const remainingTime = Math.ceil((cooldownRecord.raidAttackCooldownEnd.getTime() - now.getTime()) / 1000);
+        console.log(`🚨 [RAID] Cooldown bypass attempt by ${user.displayName || user.username} - Remaining: ${remainingTime}s`);
+        return res.status(429).json({ 
+          error: "레이드 공격 쿨타임이 남아있습니다.",
+          remainingTime: remainingTime,
+          cooldownEnd: cooldownRecord.raidAttackCooldownEnd.toISOString()
+        });
+      }
       
       // 낚시 실력 정보 가져오기 (별도 모델에서)
       const fishingSkillData = await FishingSkillModel.findOne({ userUuid }).lean();
@@ -163,6 +177,32 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       
       // 레이드 보스 공격 (이미 계산된 최종 데미지 사용)
       const attackResult = raidSystem.attackBoss(userUuid, user.displayName || user.username, finalDamage);
+      
+      // 🛡️ 서버에서 레이드 공격 쿨타임 설정 (10초)
+      const raidCooldownDuration = 10 * 1000; // 10초
+      const raidCooldownEnd = new Date(now.getTime() + raidCooldownDuration);
+      
+      const cooldownUpdateData = {
+        userId: 'user',
+        username: user.displayName || user.username,
+        userUuid: userUuid,
+        raidAttackCooldownEnd: raidCooldownEnd
+      };
+      
+      // 쿨타임 설정 (병렬 처리)
+      const cooldownPromises = [
+        CooldownModel.findOneAndUpdate({ userUuid }, cooldownUpdateData, { upsert: true, new: true })
+      ];
+      
+      // UserUuidModel에도 쿨타임 업데이트
+      cooldownPromises.push(
+        UserUuidModel.updateOne(
+          { userUuid },
+          { raidAttackCooldownEnd: raidCooldownEnd }
+        )
+      );
+      
+      await Promise.all(cooldownPromises);
       
       // 클라이언트 전송용 보스 정보 (Map을 객체로 변환)
       const bossForClient = {

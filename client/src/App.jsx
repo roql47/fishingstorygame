@@ -459,35 +459,48 @@ function App() {
           triggerDamageEffect(damage, isCritical, "내 공격");
         }
         
-        // 기존 interval 정리
-        if (cooldownIntervalRef.current) {
-          clearInterval(cooldownIntervalRef.current);
-        }
-        
-        // 10초 쿨타임 시작
-        setAttackCooldown(10);
-        console.log("⏱️ 쿨타임 시작: 10초");
-        
-        cooldownIntervalRef.current = setInterval(() => {
-          setAttackCooldown(prev => {
-            const newValue = prev - 1;
-            console.log(`⏱️ 쿨타임: ${newValue}초 남음`);
-            
-            if (newValue <= 0) {
-              clearInterval(cooldownIntervalRef.current);
-              cooldownIntervalRef.current = null;
-              console.log("✅ 쿨타임 완료!");
-              return 0;
-            }
-            return newValue;
-          });
-        }, 1000);
+        // 서버에서 쿨타임 상태 다시 가져오기 (서버에서 설정한 쿨타임 반영)
+        setTimeout(() => {
+          fetchCooldownStatus(username, userUuid);
+        }, 100); // 서버 업데이트 후 약간의 딜레이
         
         // 전투 로그와 보스 상태는 WebSocket으로 실시간 업데이트됨
       }
     } catch (error) {
       console.error('레이드 공격 실패:', error);
-      alert('공격에 실패했습니다.');
+      
+      // 쿨타임 관련 오류인 경우 서버에서 쿨타임 정보 다시 가져오기
+      if (error.response?.status === 429) {
+        const errorData = error.response.data;
+        if (errorData.remainingTime) {
+          setAttackCooldown(errorData.remainingTime);
+          console.log(`⚔️ 서버에서 받은 레이드 쿨타임: ${errorData.remainingTime}초`);
+          
+          // 기존 interval 정리
+          if (cooldownIntervalRef.current) {
+            clearInterval(cooldownIntervalRef.current);
+          }
+          
+          // 레이드 쿨타임 interval 시작
+          cooldownIntervalRef.current = setInterval(() => {
+            setAttackCooldown(prev => {
+              const newValue = prev - 1;
+              console.log(`⚔️ 레이드 쿨타임: ${newValue}초 남음`);
+              
+              if (newValue <= 0) {
+                clearInterval(cooldownIntervalRef.current);
+                cooldownIntervalRef.current = null;
+                console.log("✅ 레이드 쿨타임 완료!");
+                return 0;
+              }
+              return newValue;
+            });
+          }, 1000);
+        }
+        alert(`⏱️ ${errorData.error}`);
+      } else {
+        alert('공격에 실패했습니다.');
+      }
     } finally {
       setIsAttacking(false);
     }
@@ -913,11 +926,43 @@ function App() {
       console.log("Cooldown status loaded from server:", cooldownData);
       
       const serverCooldown = Math.max(0, cooldownData.fishingCooldown || 0);
+      const serverRaidCooldown = Math.max(0, cooldownData.raidAttackCooldown || 0);
       console.log('📡 Server cooldown:', serverCooldown);
+      console.log('⚔️ Server raid cooldown:', serverRaidCooldown);
       
       // localStorage와 서버 쿨타임 중 더 긴 것 사용
       const maxCooldown = Math.max(localRemainingTime, serverCooldown);
       console.log('⏰ Final cooldown (max of local/server):', maxCooldown);
+      
+      // 레이드 공격 쿨타임 설정 (서버 기준)
+      if (serverRaidCooldown > 0) {
+        const raidCooldownSeconds = Math.ceil(serverRaidCooldown / 1000);
+        setAttackCooldown(raidCooldownSeconds);
+        console.log(`⚔️ 레이드 쿨타임 설정: ${raidCooldownSeconds}초`);
+        
+        // 기존 interval 정리
+        if (cooldownIntervalRef.current) {
+          clearInterval(cooldownIntervalRef.current);
+        }
+        
+        // 레이드 쿨타임 interval 시작
+        cooldownIntervalRef.current = setInterval(() => {
+          setAttackCooldown(prev => {
+            const newValue = prev - 1;
+            console.log(`⚔️ 레이드 쿨타임: ${newValue}초 남음`);
+            
+            if (newValue <= 0) {
+              clearInterval(cooldownIntervalRef.current);
+              cooldownIntervalRef.current = null;
+              console.log("✅ 레이드 쿨타임 완료!");
+              return 0;
+            }
+            return newValue;
+          });
+        }, 1000);
+      } else {
+        setAttackCooldown(0);
+      }
       
       setFishingCooldown(maxCooldown);
       setCooldownLoaded(true);
