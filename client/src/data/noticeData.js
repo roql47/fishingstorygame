@@ -2,6 +2,20 @@
 export const NOTICE_DATA = [
   {
     id: 0,
+    date: "2025.09.26",
+    title: "⚔️ 레이드 시스템 대폭 개선",
+    content: [
+      "레이드 순위 변동 시 카드 애니메이션 효과 추가",
+      "레이드 보스 및 보상 개편",
+      "레이드 보스 체력조정",
+      "레이드 소환 권한 변경",
+      " 데미지 수치에 천 단위 구분 쉼표 표시"
+    ],
+    isNew: true,
+    type: "major_update"
+  },
+  {
+    id: 1,
     date: "2025.09.25",
     title: "🏆 새로운 업적 추가 및 시스템 개선",
     content: [
@@ -11,11 +25,11 @@ export const NOTICE_DATA = [
       "레벨업당 동료 최대 레벨경험치 증가 수치 변경",
       "탐사전투시 호박석 보상 배율 하향"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
-    id: 1,
+    id: 2,
     date: "2025.09.25",
     title: "🛠️ 시스템 안정성 및 UI 개선",
     content: [
@@ -29,7 +43,7 @@ export const NOTICE_DATA = [
     type: "major_update"
   },
   {
-    id: 2,
+    id: 3,
     date: "2025.09.24",
     title: "🏆 업적 시스템 업데이트",
     content: [
@@ -41,7 +55,7 @@ export const NOTICE_DATA = [
     type: "major_update"
   },
   {
-    id: 3,
+    id: 4,
     date: "2025.09.24",
     title: "🛠️ 게임 시스템 bug-fixed",
     content: [
@@ -55,7 +69,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 4,
+    id: 5,
     date: "2025.09.23",
     title: "⚔️ 레이드 시스템 업데이트",
     content: [
@@ -68,7 +82,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 5,
+    id: 6,
     date: "2025.09.23",
     title: "🎣 낚시 시스템 & 상점 업데이트",
     content: [
@@ -82,7 +96,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 6,
+    id: 7,
     date: "2025.09.22",
     title: "🎆 게임 시스템 업데이트",
     content: [
@@ -96,7 +110,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 7,
+    id: 8,
     date: "2025.09.22",
     title: "🔐 JWT 보안 시스템 대폭 강화",
     content: [
@@ -111,7 +125,7 @@ export const NOTICE_DATA = [
     type: "security"
   },
   {
-    id: 8,
+    id: 9,
     date: "2025.09.22",
     title: "🎉 동료 시스템 업데이트",
     content: [
@@ -124,7 +138,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 9,
+    id: 10,
     date: "2025.09.22",
     title: "🔐 보안 시스템 강화",
     content: [
@@ -136,7 +150,7 @@ export const NOTICE_DATA = [
     type: "security"
   },
   {
-    id: 10,
+    id: 11,
     date: "2025.09.22",
     title: "⚔️ 전투 시스템 개선", 
     content: [
@@ -148,7 +162,7 @@ export const NOTICE_DATA = [
     type: "improvement"
   },
   {
-    id: 11,
+    id: 12,
     date: "2025.09.19",
     title: "🦊 여우이야기 Alpha Test 시작",
     content: [
@@ -164,5 +178,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.19"
+  version: "v1.20"
 };

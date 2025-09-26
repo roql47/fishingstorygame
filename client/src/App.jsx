@@ -168,6 +168,11 @@ function App() {
   const [isAttacking, setIsAttacking] = useState(false); // 공격 중 상태
   const [attackCooldown, setAttackCooldown] = useState(0); // 공격 쿨타임 (초)
   
+  // 레이드 순위 애니메이션 관련 상태
+  const [previousRanking, setPreviousRanking] = useState([]); // 이전 순위
+  const [rankingAnimations, setRankingAnimations] = useState({}); // 각 플레이어별 애니메이션 상태
+  const [rankingChanges, setRankingChanges] = useState({}); // 순위 변동 정보
+  
   // 액션 애니메이션 상태
   const [showDamageEffect, setShowDamageEffect] = useState(false); // 데미지 효과
   const [damageNumbers, setDamageNumbers] = useState([]); // 떠오르는 데미지 숫자들
@@ -235,7 +240,11 @@ function App() {
       }
     } catch (error) {
       console.error('레이드 보스 소환 실패:', error);
-      alert('레이드 보스 소환에 실패했습니다.');
+      if (error.response?.status === 403) {
+        alert('❌ 관리자만 레이드 보스를 소환할 수 있습니다.');
+      } else {
+        alert('레이드 보스 소환에 실패했습니다.');
+      }
     }
   };
 
@@ -268,6 +277,94 @@ function App() {
     
     return rankings;
   };
+
+  // 순위 변동 감지 및 애니메이션 트리거
+  const detectRankingChanges = useCallback((newRanking) => {
+    if (previousRanking.length === 0) {
+      setPreviousRanking(newRanking);
+      return;
+    }
+
+    const changes = {};
+    const animations = {};
+
+    // 새로운 순위에서 각 플레이어의 순위 변동 확인
+    newRanking.forEach((player, newIndex) => {
+      const previousIndex = previousRanking.findIndex(p => p.userUuid === player.userUuid);
+      
+      if (previousIndex !== -1) {
+        const rankChange = previousIndex - newIndex; // 양수면 순위 상승, 음수면 순위 하락
+        
+        if (rankChange !== 0) {
+          changes[player.userUuid] = {
+            previousRank: previousIndex + 1,
+            currentRank: newIndex + 1,
+            change: rankChange > 0 ? 'up' : 'down',
+            changeAmount: Math.abs(rankChange)
+          };
+          
+          // 애니메이션 상태 설정
+          animations[player.userUuid] = {
+            isAnimating: true,
+            direction: rankChange > 0 ? 'up' : 'down',
+            startTime: Date.now()
+          };
+
+          // 사용자 본인의 순위 변동 시 특별한 피드백
+          if (player.userUuid === userUuid) {
+            console.log(`🏆 내 순위가 ${rankChange > 0 ? '상승' : '하락'}했습니다! ${previousIndex + 1}위 → ${newIndex + 1}위`);
+            
+            // 순위 상승 시 축하 메시지 (콘솔)
+            if (rankChange > 0) {
+              console.log(`🎉 축하합니다! ${Math.abs(rankChange)}단계 순위가 상승했습니다!`);
+            }
+          }
+        }
+      } else {
+        // 새로 추가된 플레이어
+        changes[player.userUuid] = {
+          previousRank: null,
+          currentRank: newIndex + 1,
+          change: 'new',
+          changeAmount: 0
+        };
+        
+        animations[player.userUuid] = {
+          isAnimating: true,
+          direction: 'new',
+          startTime: Date.now()
+        };
+
+        // 새 참가자 로그
+        if (player.userUuid === userUuid) {
+          console.log(`🎯 레이드에 처음 참여하여 ${newIndex + 1}위에 진입했습니다!`);
+        }
+      }
+    });
+
+    if (Object.keys(changes).length > 0) {
+      setRankingChanges(changes);
+      setRankingAnimations(animations);
+      
+      console.log(`📊 순위 변동 감지: ${Object.keys(changes).length}명의 순위가 변경되었습니다.`);
+      
+      // 3초 후 애니메이션 상태 초기화
+      setTimeout(() => {
+        setRankingAnimations({});
+        setRankingChanges({});
+      }, 3000);
+    }
+
+    setPreviousRanking(newRanking);
+  }, [previousRanking, userUuid]);
+
+  // 레이드 보스 상태 변경 시 순위 변동 감지
+  useEffect(() => {
+    if (raidBoss && raidBoss.participants) {
+      const currentRanking = getRaidDamageRanking();
+      detectRankingChanges(currentRanking);
+    }
+  }, [raidBoss, detectRankingChanges]);
 
   // 액션 애니메이션 함수들
   const triggerDamageEffect = (damage, isCritical = false, source = "unknown") => {
@@ -422,7 +519,7 @@ function App() {
         Object.entries(serverStats).forEach(([companionName, stats]) => {
           const level = stats.level || 1;
           const exp = stats.experience || 0; // 서버에서는 experience 필드 사용
-          const expToNext = level * 50 + 50; // 레벨당 필요 경험치 계산
+          const expToNext = calculateExpToNextLevel(level + 1); // 새로운 경험치 공식 사용
           
           processedStats[companionName] = {
             level: level,
@@ -1891,7 +1988,7 @@ function App() {
           Object.entries(serverStats).forEach(([companionName, stats]) => {
             const level = stats.level || 1;
             const exp = stats.experience || 0; // 서버에서는 experience 필드 사용
-            const expToNext = level * 50 + 50; // 레벨당 필요 경험치 계산
+            const expToNext = calculateExpToNextLevel(level + 1); // 새로운 경험치 공식 사용
             
             processedStats[companionName] = {
               level: level,
@@ -1930,6 +2027,16 @@ function App() {
     
     fetchUserData();
   }, [serverUrl, username, userUuid, idToken]);
+
+  // 🔄 동료 탭 활성화 시 경험치 재계산
+  useEffect(() => {
+    if (activeTab === "companions" && Object.keys(companionStats).length > 0) {
+      console.log('🎯 동료 탭 활성화 - 경험치 재계산 실행');
+      setTimeout(() => {
+        recalculateAllCompanionExp();
+      }, 500); // 0.5초 후 실행
+    }
+  }, [activeTab, companionStats]);
 
   // 🔄 동료 능력치 변경 시 서버에 저장
   useEffect(() => {
@@ -2982,28 +3089,62 @@ function App() {
 
   // 모든 동료 경험치 강제 재계산 함수
   const recalculateAllCompanionExp = () => {
+    console.log('🔄 모든 동료 경험치 강제 재계산 시작...');
+    
     setCompanionStats(prev => {
       const updated = { ...prev };
+      let hasChanges = false;
       
       Object.keys(updated).forEach(companionName => {
         const current = updated[companionName];
         const currentLevel = current.level || 1;
         const newExpToNext = calculateExpToNextLevel(currentLevel + 1);
         
-        console.log(`🔄 ${companionName} 경험치 재계산: ${current.expToNext} → ${newExpToNext}`);
-        
-        updated[companionName] = {
-          ...current,
-          expToNext: newExpToNext
-        };
+        // 기존 값과 다른 경우에만 업데이트
+        if (current.expToNext !== newExpToNext) {
+          console.log(`🔄 ${companionName} 경험치 재계산: ${current.expToNext} → ${newExpToNext} (레벨 ${currentLevel})`);
+          
+          updated[companionName] = {
+            ...current,
+            expToNext: newExpToNext
+          };
+          hasChanges = true;
+        }
       });
       
-      // localStorage에 저장
-      localStorage.setItem(`companionStats_${userUuid || username}`, JSON.stringify(updated));
-      
-      return updated;
+      if (hasChanges) {
+        console.log('✅ 경험치 재계산 완료, localStorage에 저장 중...');
+        // localStorage에 저장
+        localStorage.setItem(`companionStats_${userUuid || username}`, JSON.stringify(updated));
+        return updated;
+      } else {
+        console.log('ℹ️ 재계산할 경험치 변경사항 없음');
+        return prev;
+      }
     });
   };
+
+  // 개발용: localStorage 클리어 함수
+  const clearCompanionStatsCache = () => {
+    const key = `companionStats_${userUuid || username}`;
+    localStorage.removeItem(key);
+    console.log(`🗑️ localStorage에서 ${key} 삭제 완료`);
+    // 페이지 새로고침 권장
+    if (window.confirm('localStorage를 클리어했습니다. 페이지를 새로고침하시겠습니까?')) {
+      window.location.reload();
+    }
+  };
+
+  // 개발용 함수들을 윈도우 객체에 추가 (콘솔에서 사용 가능)
+  useEffect(() => {
+    window.recalculateAllCompanionExp = recalculateAllCompanionExp;
+    window.clearCompanionStatsCache = clearCompanionStatsCache;
+    
+    return () => {
+      delete window.recalculateAllCompanionExp;
+      delete window.clearCompanionStatsCache;
+    };
+  }, [userUuid, username]);
 
   // 동료 경험치 추가 함수
   const addCompanionExp = (companionName, expAmount) => {
@@ -5755,18 +5896,32 @@ function App() {
                   }`}>레이드 보스가 없습니다</h3>
                   <p className={`text-sm mb-6 ${
                     isDarkMode ? "text-gray-400" : "text-gray-600"
-                  }`}>레이드 보스를 소환하여 전투를 시작하세요!</p>
+                  }`}>
+                    {isAdmin 
+                      ? "레이드 보스를 소환하여 전투를 시작하세요!" 
+                      : "관리자가 레이드 보스를 소환할 때까지 기다려주세요."}
+                  </p>
                   
-                  <button
-                    onClick={summonRaidBoss}
-                    className={`px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
-                      isDarkMode
-                        ? "bg-red-600 hover:bg-red-500 text-white"
-                        : "bg-red-500 hover:bg-red-600 text-white"
-                    } shadow-lg hover:shadow-xl transform hover:scale-105`}
-                  >
-                    🐉 마르가글레슘 소환
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={summonRaidBoss}
+                      className={`px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
+                        isDarkMode
+                          ? "bg-red-600 hover:bg-red-500 text-white"
+                          : "bg-red-500 hover:bg-red-600 text-white"
+                      } shadow-lg hover:shadow-xl transform hover:scale-105`}
+                    >
+                      🐉 마르가글레슘 소환
+                    </button>
+                  )}
+                  
+                  {!isAdmin && (
+                    <div className={`px-4 py-2 rounded-lg ${
+                      isDarkMode ? "bg-gray-700/50 text-gray-400" : "bg-gray-200/50 text-gray-600"
+                    }`}>
+                      👑 관리자만 레이드를 소환할 수 있습니다
+                    </div>
+                  )}
                 </div>
               ) : (
                 // 레이드 보스가 있을 때
@@ -5863,44 +6018,109 @@ function App() {
                           isDarkMode ? "text-gray-400" : "text-gray-600"
                         }`}>아직 참가자가 없습니다.</p>
                       ) : (
-                        getRaidDamageRanking().map((player, index) => (
-                          <div
-                            key={player.userUuid}
-                            className={`flex items-center justify-between p-2 rounded ${
-                              player.userUuid === userUuid
-                                ? isDarkMode
-                                  ? "bg-yellow-500/20 border border-yellow-400/30"
-                                  : "bg-yellow-100 border border-yellow-300"
-                                : isDarkMode
-                                  ? "bg-gray-700/50"
-                                  : "bg-white/50"
-                            }`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className={`font-bold text-sm ${
-                                index === 0 ? "text-yellow-500" :
-                                index === 1 ? "text-gray-400" :
-                                index === 2 ? "text-orange-500" :
-                                isDarkMode ? "text-gray-400" : "text-gray-600"
-                              }`}>
-                                {index + 1}위
-                              </span>
-                              <span className={`font-medium ${
+                        getRaidDamageRanking().map((player, index) => {
+                          const animation = rankingAnimations[player.userUuid];
+                          const change = rankingChanges[player.userUuid];
+                          
+                          return (
+                            <div
+                              key={player.userUuid}
+                              className={`relative flex items-center justify-between p-2 rounded transition-all duration-300 ${
+                                animation?.isAnimating 
+                                  ? animation.direction === 'up' 
+                                    ? "rank-up-animation bg-green-500/30 glow-pulse-animation" 
+                                    : animation.direction === 'down'
+                                    ? "rank-down-animation bg-red-500/30"
+                                    : "new-entry-animation bg-blue-500/30 glow-pulse-animation"
+                                  : ""
+                              } ${
                                 player.userUuid === userUuid
-                                  ? isDarkMode ? "text-yellow-400" : "text-yellow-700"
-                                  : isDarkMode ? "text-white" : "text-gray-800"
-                              }`}>
-                                {player.username}
-                                {player.userUuid === userUuid && " (나)"}
-                              </span>
+                                  ? isDarkMode
+                                    ? "bg-yellow-500/20 border border-yellow-400/30"
+                                    : "bg-yellow-100 border border-yellow-300"
+                                  : isDarkMode
+                                    ? "bg-gray-700/50"
+                                    : "bg-white/50"
+                              }`}
+                              style={{
+                                transition: animation?.isAnimating 
+                                  ? "all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55)"
+                                  : "all 0.3s ease"
+                              }}
+                            >
+                              {/* 순위 변동 표시 */}
+                              {change && animation?.isAnimating && (
+                                <div className={`absolute -top-3 -right-3 z-20 flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold shadow-lg ${
+                                  change.change === 'up' 
+                                    ? "bg-gradient-to-r from-green-500 to-emerald-500 text-white animate-bounce"
+                                    : change.change === 'down'
+                                    ? "bg-gradient-to-r from-red-500 to-pink-500 text-white animate-pulse"
+                                    : "bg-gradient-to-r from-blue-500 to-purple-500 text-white animate-bounce"
+                                } border-2 border-white/50`}>
+                                  {change.change === 'up' && (
+                                    <>
+                                      <span className="text-sm">🚀</span>
+                                      <span>+{change.changeAmount}</span>
+                                    </>
+                                  )}
+                                  {change.change === 'down' && (
+                                    <>
+                                      <span className="text-sm">📉</span>
+                                      <span>-{change.changeAmount}</span>
+                                    </>
+                                  )}
+                                  {change.change === 'new' && (
+                                    <>
+                                      <span className="text-sm">✨</span>
+                                      <span>NEW!</span>
+                                    </>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* 본인 카드 특별 표시 */}
+                              {player.userUuid === userUuid && animation?.isAnimating && (
+                                <div className="absolute -top-1 -left-1 w-full h-full border-2 border-yellow-400 rounded animate-ping pointer-events-none" />
+                              )}
+                              
+                              <div className="flex items-center gap-2">
+                                <span className={`font-bold text-sm flex items-center gap-1 ${
+                                  index === 0 ? "text-yellow-500" :
+                                  index === 1 ? "text-gray-400" :
+                                  index === 2 ? "text-orange-500" :
+                                  isDarkMode ? "text-gray-400" : "text-gray-600"
+                                }`}>
+                                  {/* 순위 아이콘 */}
+                                  {index === 0 && <span>🥇</span>}
+                                  {index === 1 && <span>🥈</span>}
+                                  {index === 2 && <span>🥉</span>}
+                                  {index + 1}위
+                                </span>
+                                <span className={`font-medium ${
+                                  player.userUuid === userUuid
+                                    ? isDarkMode ? "text-yellow-400" : "text-yellow-700"
+                                    : isDarkMode ? "text-white" : "text-gray-800"
+                                }`}>
+                                  {player.username}
+                                  {player.userUuid === userUuid && " (나)"}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className={`font-bold ${
+                                  isDarkMode ? "text-red-400" : "text-red-600"
+                                }`}>
+                                  {player.damage.toLocaleString()}
+                                </span>
+                                {/* 데미지 증가 애니메이션 */}
+                                {animation?.isAnimating && change?.change !== 'new' && (
+                                  <span className="animate-pulse text-green-400 font-bold">
+                                    💥
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            <span className={`font-bold ${
-                              isDarkMode ? "text-red-400" : "text-red-600"
-                            }`}>
-                              {player.damage}
-                            </span>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                   </div>

@@ -7,10 +7,16 @@ const raidSystem = new RaidSystem();
 
 // 레이드 라우트 설정 함수
 function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem) {
-  // 레이드 보스 소환 API
+  // 레이드 보스 소환 API (관리자 전용)
   router.post("/summon", authenticateJWT, async (req, res) => {
     try {
       const { userUuid } = req.user;
+      
+      // 관리자 권한 확인
+      const user = await UserUuidModel.findOne({ userUuid }).lean();
+      if (!user || !user.isAdmin) {
+        return res.status(403).json({ error: "관리자만 레이드 보스를 소환할 수 있습니다." });
+      }
       
       // 레이드 보스 소환
       const boss = raidSystem.summonBoss();

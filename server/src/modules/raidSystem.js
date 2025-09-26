@@ -13,8 +13,8 @@ class RaidSystem {
 
     this.raidBoss = {
       name: "마르가글레슘",
-      hp: 80000,
-      maxHp: 80000,
+      hp: 12000,
+      maxHp: 12000,
       isActive: true,
       participants: new Map(),
       startTime: Date.now()
@@ -81,17 +81,15 @@ class RaidSystem {
       const { userUuid, damage } = participants[i];
       let rewardAmount = 0;
 
-      // 순위별 보상
-      if (i === 0) rewardAmount = 10; // 1위
-      else if (i === 1) rewardAmount = 8; // 2위
-      else if (i === 2) rewardAmount = 6; // 3위
-      else if (i === 3) rewardAmount = 4; // 4위
-      else rewardAmount = 2; // 5위 이하
+      // 순위별 호박석 보상
+      if (i === 0) rewardAmount = 300; // 1위
+      else if (i === 1) rewardAmount = 200; // 2위
+      else if (i === 2) rewardAmount = 150; // 3위
+      else if (i === 3) rewardAmount = 100; // 4위
+      else if (i === 4) rewardAmount = 80; // 5위
+      else rewardAmount = 50; // 6위 이하
 
-      // 마지막 공격자 추가 보상
-      if (userUuid === lastAttacker) {
-        rewardAmount += 10;
-      }
+      // 마지막 공격자는 별도로 별조각 보상 처리 (호박석 보상에는 추가하지 않음)
 
       rewards.push({ 
         userUuid, 
