@@ -7480,7 +7480,7 @@ function authenticateJWT(req, res, next) {
 }
 
 // 레이드 라우터 등록
-  const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem);
+  const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel);
   app.use("/api/raid", raidRouter);
 
 // 업적 라우터 등록

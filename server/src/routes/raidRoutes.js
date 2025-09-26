@@ -6,15 +6,47 @@ const RaidSystem = require('../modules/raidSystem');
 const raidSystem = new RaidSystem();
 
 // 레이드 라우트 설정 함수
-function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem) {
+function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel) {
   // 레이드 보스 소환 API (관리자 전용)
   router.post("/summon", authenticateJWT, async (req, res) => {
     try {
       const { userUuid } = req.user;
       
-      // 관리자 권한 확인
+      // 관리자 권한 확인 (JWT 토큰과 데이터베이스 양쪽 확인)
       const user = await UserUuidModel.findOne({ userUuid }).lean();
-      if (!user || !user.isAdmin) {
+      
+      // JWT 토큰에서 관리자 권한 확인
+      const jwtIsAdmin = req.user.isAdmin;
+      
+      // 데이터베이스에서 관리자 권한 확인 (UserUuidModel과 AdminModel 양쪽 확인)
+      let dbIsAdmin = user?.isAdmin || false;
+      
+      // AdminModel에서도 확인 (별도 관리자 컬렉션)
+      const adminRecord = await AdminModel.findOne({ userUuid }).lean();
+      if (adminRecord?.isAdmin) {
+        dbIsAdmin = true;
+        
+        // AdminModel에 권한이 있지만 UserUuidModel에 없는 경우 동기화
+        if (user && !user.isAdmin) {
+          console.log(`🔄 [RAID] Syncing admin rights for ${userUuid}: AdminModel -> UserUuidModel`);
+          await UserUuidModel.updateOne(
+            { userUuid },
+            { $set: { isAdmin: true } }
+          );
+        }
+      }
+      
+      // JWT 토큰 또는 데이터베이스 중 하나라도 관리자면 허용
+      const hasAdminRights = jwtIsAdmin || dbIsAdmin;
+      
+      console.log(`🔍 [RAID] Admin check for ${userUuid}:`, {
+        jwtIsAdmin,
+        userModelIsAdmin: user?.isAdmin,
+        adminModelIsAdmin: adminRecord?.isAdmin,
+        finalDecision: hasAdminRights
+      });
+      
+      if (!hasAdminRights) {
         return res.status(403).json({ error: "관리자만 레이드 보스를 소환할 수 있습니다." });
       }
       
