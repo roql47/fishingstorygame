@@ -1129,8 +1129,11 @@ function App() {
       setIdToken(token);
       
       // JWT 토큰 디코딩하여 사용자 정보 추출
+      if (!token || !token.includes('.')) {
+        throw new Error('Invalid token format');
+      }
       const payload = JSON.parse(decodeURIComponent(escape(atob(token.split('.')[1]))));
-      const googleName = payload.name || payload.email.split('@')[0];
+      const googleName = payload.name || (payload.email ? payload.email.split('@')[0] : 'Guest');
       
       // 한글 이름이 깨지는 경우 이메일 주소 사용
       const safeName = googleName.includes('?') || googleName.includes('�') 
@@ -1163,8 +1166,11 @@ function App() {
       console.error("Failed to process Google login:", error);
       // 오류 발생 시 이메일 주소 사용
       try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        const fallbackName = payload.email.split('@')[0];
+        let fallbackName = "Guest";
+        if (token && token.includes('.')) {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          fallbackName = payload.email ? payload.email.split('@')[0] : "Guest";
+        }
         
         // 기존 닉네임 우선 사용
         const existingNickname = localStorage.getItem("nickname");
@@ -1266,7 +1272,7 @@ function App() {
                   let kakaoId, kakaoNickname;
                   
                   // 먼저 id_token에서 정보 추출 시도
-                  if (tokenData.id_token) {
+                  if (tokenData.id_token && tokenData.id_token.includes('.')) {
                     try {
                       const payload = JSON.parse(atob(tokenData.id_token.split('.')[1]));
                       console.log('Kakao id_token payload:', payload);
@@ -3507,7 +3513,7 @@ function App() {
       const params = { username, userUuid };
       console.log('🔑 [SECURITY] Secure admin toggle attempt');
       
-      const response = await axios.post(`${serverUrl}/api/toggle-admin`, {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/toggle-admin`, {
         adminKey: adminKey // 보안 키 전송
       }, { params });
       
