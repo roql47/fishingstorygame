@@ -1,12 +1,30 @@
 const express = require('express');
 const router = express.Router();
 const RaidSystem = require('../modules/raidSystem');
+const { AchievementSystem } = require('../modules/achievementSystem');
 
 // 레이드 시스템 인스턴스 생성
 const raidSystem = new RaidSystem();
 
 // 레이드 라우트 설정 함수
-function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel, CooldownModel, StarPieceModel, RaidDamageModel) {
+function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, oldAchievementSystem, AdminModel, CooldownModel, StarPieceModel, RaidDamageModel, RareFishCountModel, CatchModel) {
+  
+  // 🏆 레이드 라우트 전용 업적 시스템 인스턴스 생성 (모든 모델 포함)
+  const achievementSystem = new AchievementSystem(
+    CatchModel, 
+    FishingSkillModel, 
+    UserUuidModel, 
+    RaidDamageModel, 
+    RareFishCountModel
+  );
+  
+  console.log('🏆 [RAID] Achievement system initialized with models:', {
+    CatchModel: !!CatchModel,
+    FishingSkillModel: !!FishingSkillModel,
+    UserUuidModel: !!UserUuidModel,
+    RaidDamageModel: !!RaidDamageModel,
+    RareFishCountModel: !!RareFishCountModel
+  });
   // 레이드 보스 소환 API (관리자 전용)
   router.post("/summon", authenticateJWT, async (req, res) => {
     try {
@@ -180,9 +198,14 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       
       // ⚔️ 레이드 누적 데미지 업데이트 및 업적 체크
       try {
-        await achievementSystem.updateRaidDamage(userUuid, user.displayName || user.username, finalDamage);
+        console.log(`⚔️ [RAID] Updating raid damage for ${user.displayName || user.username}: ${finalDamage}`);
+        const achievementGranted = await achievementSystem.updateRaidDamage(userUuid, user.displayName || user.username, finalDamage);
+        if (achievementGranted) {
+          console.log(`🏆 [RAID] Achievement granted to ${user.displayName || user.username} after raid attack!`);
+        }
       } catch (error) {
-        console.error("Failed to update raid damage:", error);
+        console.error("❌ [RAID] Failed to update raid damage:", error);
+        console.error("❌ [RAID] Error stack:", error.stack);
       }
       
       // 🛡️ 서버에서 레이드 공격 쿨타임 설정 (10초)

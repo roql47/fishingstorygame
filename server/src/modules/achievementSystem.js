@@ -62,11 +62,12 @@ const ACHIEVEMENT_DEFINITIONS = {
 
 // 업적 시스템 클래스
 class AchievementSystem {
-  constructor(CatchModel, FishingSkillModel, UserUuidModel, RaidDamageModel) {
+  constructor(CatchModel, FishingSkillModel, UserUuidModel, RaidDamageModel, RareFishCountModel) {
     this.CatchModel = CatchModel;
     this.FishingSkillModel = FishingSkillModel;
     this.UserUuidModel = UserUuidModel;
     this.RaidDamageModel = RaidDamageModel;
+    this.RareFishCountModel = RareFishCountModel;
   }
 
   // 업적 자동 체크 및 부여
@@ -92,10 +93,8 @@ class AchievementSystem {
       }
       
       // 2. 0.3% 물고기 10번 낚시 체크 (새로운 업적)
-      const rareFishCount = await this.CatchModel.countDocuments({ 
-        userUuid,
-        probability: 0.3 
-      });
+      const rareFishRecord = await this.RareFishCountModel.findOne({ userUuid });
+      const rareFishCount = rareFishRecord?.rareFishCount || 0;
       console.log(`🎣 0.3% 물고기 낚은 횟수 for ${username}: ${rareFishCount}`);
       
       if (rareFishCount >= 10) {
@@ -152,8 +151,16 @@ class AchievementSystem {
   // 레이드 데미지 업데이트 및 업적 체크
   async updateRaidDamage(userUuid, username, damage) {
     try {
+      console.log(`⚔️ [ACHIEVEMENT] Starting raid damage update for ${username} (${userUuid}): +${damage}`);
+      
+      // RaidDamageModel 존재 확인
+      if (!this.RaidDamageModel) {
+        console.error("❌ [ACHIEVEMENT] RaidDamageModel is not initialized!");
+        return false;
+      }
+      
       // 레이드 데미지 누적
-      await this.RaidDamageModel.findOneAndUpdate(
+      const result = await this.RaidDamageModel.findOneAndUpdate(
         { userUuid },
         { 
           $inc: { totalDamage: damage },
@@ -162,12 +169,40 @@ class AchievementSystem {
         { upsert: true, new: true }
       );
       
-      console.log(`⚔️ ${username} 레이드 데미지 ${damage} 추가됨`);
+      console.log(`⚔️ [ACHIEVEMENT] ${username} 레이드 데미지 ${damage} 추가됨, 총 누적: ${result.totalDamage}`);
+      
+      // 업적 체크
+      const achievementGranted = await this.checkAndGrantAchievements(userUuid, username);
+      console.log(`🏆 [ACHIEVEMENT] Achievement check result: ${achievementGranted}`);
+      
+      return achievementGranted;
+    } catch (error) {
+      console.error("❌ [ACHIEVEMENT] Failed to update raid damage:", error);
+      console.error("❌ [ACHIEVEMENT] Error details:", error.message);
+      console.error("❌ [ACHIEVEMENT] Error stack:", error.stack);
+      return false;
+    }
+  }
+
+  // 희귀 물고기 카운트 업데이트 및 업적 체크
+  async updateRareFishCount(userUuid, username) {
+    try {
+      // 희귀 물고기 카운트 증가
+      const result = await this.RareFishCountModel.findOneAndUpdate(
+        { userUuid },
+        { 
+          $inc: { rareFishCount: 1 },
+          username: username // 닉네임 업데이트
+        },
+        { upsert: true, new: true }
+      );
+      
+      console.log(`🎣 ${username} 희귀 물고기 카운트 증가, 총 개수: ${result.rareFishCount}`);
       
       // 업적 체크
       return await this.checkAndGrantAchievements(userUuid, username);
     } catch (error) {
-      console.error("Failed to update raid damage:", error);
+      console.error("Failed to update rare fish count:", error);
       return false;
     }
   }
@@ -291,19 +326,28 @@ class AchievementSystem {
   // 사용자 업적 목록 조회 (진행상황 포함)
   async getUserAchievements(userUuid) {
     try {
+      console.log('🏆 getUserAchievements called for userUuid:', userUuid);
+      
       // 사용자의 완료된 업적 조회
       const completedAchievements = await AchievementModel.find({ 
         userUuid 
       }).lean();
       
+      console.log('🏆 Completed achievements found:', completedAchievements.length);
+      
       // 진행상황 데이터 조회
-      const [totalFish, rareFishCount, raidDamageRecord] = await Promise.all([
+      const [totalFish, rareFishRecord, raidDamageRecord] = await Promise.all([
         this.CatchModel.countDocuments({ userUuid }),
-        this.CatchModel.countDocuments({ userUuid, probability: 0.3 }),
+        this.RareFishCountModel.findOne({ userUuid }).lean(),
         this.RaidDamageModel.findOne({ userUuid }).lean()
       ]);
       
+      const rareFishCount = rareFishRecord?.rareFishCount || 0;
+      
       const totalRaidDamage = raidDamageRecord?.totalDamage || 0;
+      
+      console.log('🏆 Progress data:', { totalFish, rareFishCount, totalRaidDamage });
+      console.log('🏆 Raw records:', { rareFishRecord, raidDamageRecord });
       
       // 모든 업적 정의와 완료 상태 및 진행상황 매핑
       const achievements = Object.values(ACHIEVEMENT_DEFINITIONS).map(def => {
@@ -337,12 +381,18 @@ class AchievementSystem {
         };
       });
       
-      return {
+      console.log('🏆 Final achievements array:', achievements);
+      
+      const result = {
         success: true,
         achievements,
         totalAchievements: achievements.length,
         completedCount: completedAchievements.length
       };
+      
+      console.log('🏆 Returning result:', result);
+      
+      return result;
     } catch (error) {
       console.error("Failed to fetch user achievements:", error);
       throw error;

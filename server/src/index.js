@@ -890,6 +890,18 @@ const raidDamageSchema = new mongoose.Schema(
 
 const RaidDamageModel = mongoose.model("RaidDamage", raidDamageSchema);
 
+// Rare Fish Count Schema (희귀 물고기 낚은 횟수 추적)
+const rareFishCountSchema = new mongoose.Schema(
+  {
+    userUuid: { type: String, required: true, index: true },
+    username: { type: String, required: true },
+    rareFishCount: { type: Number, default: 0 }, // 0.3% 물고기 낚은 횟수
+  },
+  { timestamps: true }
+);
+
+const RareFishCountModel = mongoose.model("RareFishCount", rareFishCountSchema);
+
 // 동료 목록 정의
 const COMPANION_LIST = [
   "실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라"
@@ -2247,6 +2259,16 @@ io.on("connection", (socket) => {
         if (socket.data.userUuid) {
           const currentCount = batchUpdates.fishCount.get(socket.data.userUuid) || 0;
           batchUpdates.fishCount.set(socket.data.userUuid, currentCount + 1);
+        }
+
+        // 🎣 0.3% 물고기 카운트 업데이트
+        if (probability === 0.3 && socket.data.userUuid) {
+          try {
+            await achievementSystem.updateRareFishCount(socket.data.userUuid, socket.data.username);
+            console.log(`🎣 Rare fish count updated for ${socket.data.username}`);
+          } catch (error) {
+            console.error("Failed to update rare fish count:", error);
+          }
         }
 
         // 🏆 낚시 성공 시 업적 체크
@@ -6382,7 +6404,7 @@ async function getUserProfileHandler(req, res) {
 }
 
 // 🏆 업적 시스템 인스턴스 생성
-const achievementSystem = new AchievementSystem(CatchModel, FishingSkillModel, UserUuidModel, RaidDamageModel);
+const achievementSystem = new AchievementSystem(CatchModel, FishingSkillModel, UserUuidModel, RaidDamageModel, RareFishCountModel);
 
 // 🏆 업적 자동 체크 함수 (모듈화된 함수 호출)
 async function checkAndGrantAchievements(userUuid, username) {
@@ -7673,7 +7695,7 @@ function authenticateJWT(req, res, next) {
 }
 
 // 레이드 라우터 등록
-  const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel, CooldownModel, StarPieceModel, RaidDamageModel);
+  const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel, CooldownModel, StarPieceModel, RaidDamageModel, RareFishCountModel, CatchModel);
   app.use("/api/raid", raidRouter);
 
 // 원정 라우터 등록
@@ -7685,7 +7707,7 @@ const expeditionRouter = setupExpeditionRoutes(authenticateJWT, CompanionStatsMo
 app.use("/api/expedition", expeditionRouter);
 
 // 업적 라우터 등록
-const { router: achievementRouter } = setupAchievementRoutes(authenticateJWT, UserUuidModel, CatchModel, FishingSkillModel);
+const { router: achievementRouter } = setupAchievementRoutes(authenticateJWT, UserUuidModel, CatchModel, FishingSkillModel, RaidDamageModel, RareFishCountModel);
 app.use("/api/achievements", achievementRouter);
 
 // 🔐 선택적 JWT 인증 미들웨어 (토큰이 없어도 통과, 있으면 검증)

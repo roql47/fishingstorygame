@@ -2,15 +2,17 @@ const express = require('express');
 const router = express.Router();
 const { AchievementSystem, ACHIEVEMENT_DEFINITIONS } = require('../modules/achievementSystem');
 
-function setupAchievementRoutes(authenticateJWT, UserUuidModel, CatchModel, FishingSkillModel) {
+function setupAchievementRoutes(authenticateJWT, UserUuidModel, CatchModel, FishingSkillModel, RaidDamageModel, RareFishCountModel) {
   // 업적 시스템 인스턴스 생성
-  const achievementSystem = new AchievementSystem(CatchModel, FishingSkillModel, UserUuidModel);
+  const achievementSystem = new AchievementSystem(CatchModel, FishingSkillModel, UserUuidModel, RaidDamageModel, RareFishCountModel);
 
   // 🏆 업적 조회 API
   router.get("/", authenticateJWT, async (req, res) => {
     try {
-      const { userUuid } = req.user;
+      const { userUuid, username } = req.user;
       const { targetUsername } = req.query;
+      
+      console.log('🏆 Achievement API called by:', { userUuid, username, targetUsername });
       
       let targetUserUuid = userUuid;
       
@@ -18,12 +20,17 @@ function setupAchievementRoutes(authenticateJWT, UserUuidModel, CatchModel, Fish
       if (targetUsername) {
         const targetUser = await UserUuidModel.findOne({ username: targetUsername }).lean();
         if (!targetUser) {
+          console.error('🏆 Target user not found:', targetUsername);
           return res.status(404).json({ error: "User not found" });
         }
         targetUserUuid = targetUser.userUuid;
+        console.log('🏆 Target user found:', { targetUsername, targetUserUuid });
       }
       
+      console.log('🏆 Getting achievements for userUuid:', targetUserUuid);
       const result = await achievementSystem.getUserAchievements(targetUserUuid);
+      console.log('🏆 Achievement result:', result);
+      
       res.json(result);
     } catch (error) {
       console.error("Failed to fetch achievements:", error);
@@ -146,6 +153,33 @@ function setupAchievementRoutes(authenticateJWT, UserUuidModel, CatchModel, Fish
     } catch (error) {
       console.error("Failed to get achievement bonus:", error);
       res.status(500).json({ error: "Failed to get achievement bonus" });
+    }
+  });
+
+  // 🔍 레이드 데미지 확인 API (디버깅용)
+  router.get("/debug/raid-damage/:userUuid", authenticateJWT, async (req, res) => {
+    try {
+      const { userUuid: requestUserUuid, isAdmin } = req.user;
+      const { userUuid } = req.params;
+      
+      // 본인 데이터이거나 관리자인 경우만 허용
+      if (userUuid !== requestUserUuid && !isAdmin) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      const mongoose = require('mongoose');
+      const RaidDamageModel = mongoose.model('RaidDamage');
+      const raidDamageRecord = await RaidDamageModel.findOne({ userUuid });
+      
+      res.json({
+        success: true,
+        userUuid,
+        raidDamageRecord,
+        totalDamage: raidDamageRecord?.totalDamage || 0
+      });
+    } catch (error) {
+      console.error("Failed to get raid damage:", error);
+      res.status(500).json({ error: "Failed to get raid damage" });
     }
   });
 

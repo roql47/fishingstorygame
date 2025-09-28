@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
 // 업적 정의 (서버와 동일)
 export const ACHIEVEMENT_DEFINITIONS = {
@@ -55,9 +55,17 @@ export const useAchievements = (serverUrl, jwtToken, authenticatedRequest, isAdm
 
   // 🏆 업적 데이터 가져오기
   const fetchAchievements = useCallback(async (targetUsername = null) => {
+    console.log('🏆 fetchAchievements called with:', { 
+      targetUsername, 
+      jwtToken: !!jwtToken, 
+      username,
+      serverUrl 
+    });
+    
     if (!jwtToken) {
       console.warn('No JWT token available for achievements');
-      return;
+      setAchievements([]);
+      return [];
     }
     
     setLoading(true);
@@ -65,24 +73,39 @@ export const useAchievements = (serverUrl, jwtToken, authenticatedRequest, isAdm
     
     try {
       const params = targetUsername ? { targetUsername } : {};
+      console.log('🏆 Making API call to:', `${serverUrl}/api/achievements`, 'with params:', params);
+      
       const response = await authenticatedRequest.get(`${serverUrl}/api/achievements`, { params });
+      
+      console.log('🏆 API response:', response.data);
       
       if (response.data.success) {
         setAchievements(response.data.achievements);
-        console.log('🏆 Achievements loaded:', response.data.achievements);
+        console.log('🏆 Achievements loaded successfully:', response.data.achievements);
         return response.data.achievements;
       } else {
+        console.error('🏆 API returned success: false');
         throw new Error('Failed to fetch achievements');
       }
     } catch (error) {
       console.error('❌ Failed to fetch achievements:', error);
+      console.error('❌ Error response:', error.response?.data);
+      console.error('❌ Error status:', error.response?.status);
       setError(error.response?.data?.error || error.message);
       setAchievements([]);
-      return null;
+      return [];
     } finally {
       setLoading(false);
     }
-  }, [serverUrl, jwtToken, authenticatedRequest]);
+  }, [serverUrl, jwtToken, authenticatedRequest, username]);
+
+  // 🏆 초기 업적 데이터 로드
+  useEffect(() => {
+    if (jwtToken && username && serverUrl && authenticatedRequest) {
+      console.log('🏆 Initial achievement load for:', username);
+      fetchAchievements();
+    }
+  }, [jwtToken, username, serverUrl]); // fetchAchievements 제거하여 무한 루프 방지
 
   // 🏆 관리자 업적 부여 함수
   const grantAchievement = useCallback(async (targetUsername, achievementId, onFishingSkillUpdate) => {

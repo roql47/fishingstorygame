@@ -134,12 +134,8 @@ const AchievementItem = ({ achievement, isDarkMode }) => {
   
   // 진행상황 포맷팅 함수
   const formatProgress = (progress, maxProgress) => {
-    if (maxProgress >= 1000000) {
-      return `${(progress / 1000000).toFixed(1)}M / ${(maxProgress / 1000000).toFixed(1)}M`;
-    } else if (maxProgress >= 1000) {
-      return `${(progress / 1000).toFixed(1)}K / ${(maxProgress / 1000).toFixed(1)}K`;
-    }
-    return `${progress} / ${maxProgress}`;
+    // 모든 값을 실제 숫자로 표시 (쉼표 구분자 사용)
+    return `${progress.toLocaleString()} / ${maxProgress.toLocaleString()}`;
   };
 
   return (
