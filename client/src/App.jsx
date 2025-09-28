@@ -479,6 +479,13 @@ function App() {
           fetchCooldownStatus(username, userUuid);
         }, 100); // 서버 업데이트 후 약간의 딜레이
         
+        // 🔄 업적 진행상황 새로고침 (레이드 공격 후)
+        setTimeout(() => {
+          if (refreshAchievementProgress) {
+            refreshAchievementProgress();
+          }
+        }, 500); // 서버에서 데미지 업데이트 후 딜레이
+        
         // 전투 로그와 보스 상태는 WebSocket으로 실시간 업데이트됨
       }
     } catch (error) {
@@ -876,7 +883,8 @@ function App() {
     fetchAchievements,
     grantAchievement,
     revokeAchievement,
-    checkAchievements
+    checkAchievements,
+    refreshAchievementProgress
   } = useAchievements(serverUrl, jwtToken, authenticatedRequest, isAdmin, username);
 
   // 🔒 닉네임 검증 함수 (재사용 가능) - v2024.12.19
@@ -1384,7 +1392,26 @@ function App() {
         
         if (isMyFish) {
           console.log("This is my fish, updating inventory...");
-          // [퀘스트] 낚시 퀘스트 진행도 업데이트
+          
+          // [퀘스트] 낚시 퀘스트 진행도 업데이트 (로컬 + 서버)
+          // 로컬에서 즉시 반영
+          setDailyQuests(prev => {
+            if (!prev.quests) return prev;
+            
+            const updatedQuests = prev.quests.map(quest => {
+              if (quest.type === 'fish_caught' && !quest.completed) {
+                return {
+                  ...quest,
+                  progress: Math.min(quest.progress + 1, quest.target)
+                };
+              }
+              return quest;
+            });
+            
+            return { ...prev, quests: updatedQuests };
+          });
+          
+          // 서버에도 업데이트 (백그라운드)
           updateQuestProgress('fish_caught', 1);
           // 인벤토리 즉시 업데이트
           setTimeout(() => {
@@ -1399,6 +1426,11 @@ function App() {
             const safeInventory = Array.isArray(res.data) ? res.data : [];
             setInventory(safeInventory);
             console.log("Inventory updated");
+            
+            // 🔄 업적 진행상황 새로고침 (낚시 후)
+            if (refreshAchievementProgress) {
+              refreshAchievementProgress();
+            }
               } catch (e) {
                 console.error('Failed to fetch inventory:', e);
               }
@@ -3018,6 +3050,13 @@ function App() {
     }
   }, [username, userUuid]);
 
+  // 퀘스트 탭으로 이동할 때마다 데이터 새로고침 (실시간 반영)
+  useEffect(() => {
+    if (activeTab === "quests" && username && userUuid) {
+      loadDailyQuests();
+    }
+  }, [activeTab, username, userUuid]);
+
   // 호박석 지급 함수
   const addAmber = async (amount) => {
     try {
@@ -4466,7 +4505,26 @@ function App() {
       
       if (response.data.success) {
         setUserMoney(prev => prev + totalPrice);
-        // [퀘스트] 물고기 판매 퀘스트 진행도 업데이트
+        
+        // [퀘스트] 물고기 판매 퀘스트 진행도 업데이트 (로컬 + 서버)
+        // 로컬에서 즉시 반영
+        setDailyQuests(prev => {
+          if (!prev.quests) return prev;
+          
+          const updatedQuests = prev.quests.map(quest => {
+            if (quest.type === 'fish_sold' && !quest.completed) {
+              return {
+                ...quest,
+                progress: Math.min(quest.progress + quantity, quest.target)
+              };
+            }
+            return quest;
+          });
+          
+          return { ...prev, quests: updatedQuests };
+        });
+        
+        // 서버에도 업데이트 (백그라운드)
         updateQuestProgress('fish_sold', quantity);
         
         // 🚀 인벤토리 최적화: 로컬에서 먼저 업데이트 후 서버에서 검증

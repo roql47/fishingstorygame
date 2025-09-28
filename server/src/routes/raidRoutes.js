@@ -6,7 +6,7 @@ const RaidSystem = require('../modules/raidSystem');
 const raidSystem = new RaidSystem();
 
 // 레이드 라우트 설정 함수
-function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel, CooldownModel) {
+function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel, CooldownModel, StarPieceModel, RaidDamageModel) {
   // 레이드 보스 소환 API (관리자 전용)
   router.post("/summon", authenticateJWT, async (req, res) => {
     try {
@@ -178,6 +178,13 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       // 레이드 보스 공격 (이미 계산된 최종 데미지 사용)
       const attackResult = raidSystem.attackBoss(userUuid, user.displayName || user.username, finalDamage);
       
+      // ⚔️ 레이드 누적 데미지 업데이트 및 업적 체크
+      try {
+        await achievementSystem.updateRaidDamage(userUuid, user.displayName || user.username, finalDamage);
+      } catch (error) {
+        console.error("Failed to update raid damage:", error);
+      }
+      
       // 🛡️ 서버에서 레이드 공격 쿨타임 설정 (10초)
       const raidCooldownDuration = 10 * 1000; // 10초
       const raidCooldownEnd = new Date(now.getTime() + raidCooldownDuration);
@@ -302,10 +309,23 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       if (rewards.length > 0) {
         const lastAttacker = rewards.find(r => r.isLastAttacker);
         if (lastAttacker) {
-          await UserUuidModel.findOneAndUpdate(
-            { userUuid: lastAttacker.userUuid },
-            { $inc: { starPieces: 1 } }
-          );
+          // StarPieceModel을 사용하여 별조각 지급
+          let userStarPieces = await StarPieceModel.findOne({ userUuid: lastAttacker.userUuid });
+          
+          if (!userStarPieces) {
+            // 새 사용자인 경우 생성
+            const createData = {
+              userId: 'user',
+              username: lastAttacker.username,
+              userUuid: lastAttacker.userUuid,
+              starPieces: 1
+            };
+            userStarPieces = new StarPieceModel(createData);
+          } else {
+            userStarPieces.starPieces = (userStarPieces.starPieces || 0) + 1;
+          }
+          
+          await userStarPieces.save();
           
           // 🏆 레이드 마지막 공격 업적 체크 및 부여
           try {
@@ -333,7 +353,7 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
             });
           }
           
-          console.log(`[Raid] 막타 보너스: ${lastAttacker.userUuid} - 별조각 1개`);
+          console.log(`[Raid] 막타 보너스: ${lastAttacker.userUuid} - 별조각 1개 (총 ${userStarPieces.starPieces}개)`);
         }
       }
       

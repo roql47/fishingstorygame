@@ -51,15 +51,22 @@ const ACHIEVEMENT_DEFINITIONS = {
     name: "전장의 지배자",
     description: "레이드 물고기 마지막 공격으로 처치",
     autoCheck: true // 자동으로 체크 가능
+  },
+  raid_damage_master: {
+    id: "raid_damage_master",
+    name: "마음을 불태워라",
+    description: "레이드 누적데미지 1000000달성",
+    autoCheck: true // 자동으로 체크 가능
   }
 };
 
 // 업적 시스템 클래스
 class AchievementSystem {
-  constructor(CatchModel, FishingSkillModel, UserUuidModel) {
+  constructor(CatchModel, FishingSkillModel, UserUuidModel, RaidDamageModel) {
     this.CatchModel = CatchModel;
     this.FishingSkillModel = FishingSkillModel;
     this.UserUuidModel = UserUuidModel;
+    this.RaidDamageModel = RaidDamageModel;
   }
 
   // 업적 자동 체크 및 부여
@@ -103,6 +110,23 @@ class AchievementSystem {
         }
       }
       
+      // 3. 레이드 누적 데미지 1000000 체크 (새로운 업적)
+      const raidDamageRecord = await this.RaidDamageModel.findOne({ userUuid });
+      const totalRaidDamage = raidDamageRecord?.totalDamage || 0;
+      console.log(`⚔️ 레이드 누적 데미지 for ${username}: ${totalRaidDamage}`);
+      
+      if (totalRaidDamage >= 1000000) {
+        const existingRaidDamageAchievement = await AchievementModel.findOne({
+          userUuid,
+          achievementId: "raid_damage_master"
+        });
+        
+        if (!existingRaidDamageAchievement) {
+          await this.grantSingleAchievement(userUuid, username, "raid_damage_master");
+          achievementGranted = true;
+        }
+      }
+      
       return achievementGranted;
     } catch (error) {
       console.error("Failed to check achievements:", error);
@@ -123,6 +147,29 @@ class AchievementSystem {
     
     await achievement.save();
     console.log(`🏆 Achievement granted to ${username}: ${achievementId}`);
+  }
+
+  // 레이드 데미지 업데이트 및 업적 체크
+  async updateRaidDamage(userUuid, username, damage) {
+    try {
+      // 레이드 데미지 누적
+      await this.RaidDamageModel.findOneAndUpdate(
+        { userUuid },
+        { 
+          $inc: { totalDamage: damage },
+          username: username // 닉네임 업데이트
+        },
+        { upsert: true, new: true }
+      );
+      
+      console.log(`⚔️ ${username} 레이드 데미지 ${damage} 추가됨`);
+      
+      // 업적 체크
+      return await this.checkAndGrantAchievements(userUuid, username);
+    } catch (error) {
+      console.error("Failed to update raid damage:", error);
+      return false;
+    }
   }
 
   // 레이드 마지막 공격 업적 체크 및 부여
@@ -241,7 +288,7 @@ class AchievementSystem {
     }
   }
 
-  // 사용자 업적 목록 조회
+  // 사용자 업적 목록 조회 (진행상황 포함)
   async getUserAchievements(userUuid) {
     try {
       // 사용자의 완료된 업적 조회
@@ -249,16 +296,44 @@ class AchievementSystem {
         userUuid 
       }).lean();
       
-      // 모든 업적 정의와 완료 상태 매핑
+      // 진행상황 데이터 조회
+      const [totalFish, rareFishCount, raidDamageRecord] = await Promise.all([
+        this.CatchModel.countDocuments({ userUuid }),
+        this.CatchModel.countDocuments({ userUuid, probability: 0.3 }),
+        this.RaidDamageModel.findOne({ userUuid }).lean()
+      ]);
+      
+      const totalRaidDamage = raidDamageRecord?.totalDamage || 0;
+      
+      // 모든 업적 정의와 완료 상태 및 진행상황 매핑
       const achievements = Object.values(ACHIEVEMENT_DEFINITIONS).map(def => {
         const completed = completedAchievements.find(a => a.achievementId === def.id);
+        
+        // 진행상황 계산
+        let progress = null;
+        let maxProgress = null;
+        
+        if (def.id === "fish_collector") {
+          progress = totalFish;
+          maxProgress = 100;
+        } else if (def.id === "rare_fish_hunter") {
+          progress = rareFishCount;
+          maxProgress = 10;
+        } else if (def.id === "raid_damage_master") {
+          progress = totalRaidDamage;
+          maxProgress = 1000000;
+        }
+        
         return {
           id: def.id,
           name: def.name,
           description: def.description,
           completed: !!completed,
           completedAt: completed?.completedAt || null,
-          grantedBy: completed?.grantedBy || null
+          grantedBy: completed?.grantedBy || null,
+          progress: progress,
+          maxProgress: maxProgress,
+          progressPercentage: maxProgress ? Math.min(100, Math.round((progress / maxProgress) * 100)) : null
         };
       });
       

@@ -121,7 +121,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true }) => {
      }
 
      // 캐릭터 타입에 따라 최대치 결정
-     const maxProgress = characterId.startsWith('companion_') ? 250 : characterId.startsWith('monster_') ? 150 : 200;
+     const maxProgress = characterId.startsWith('companion_') ? 250 : characterId.startsWith('monster_') ? 100 : 200;
     
     const interval = (250 / speed) * 1000; // 250/속도 초 (속도 50 = 5초, 속도 25 = 10초)
     let progress = 0;
@@ -267,17 +267,37 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true }) => {
       const data = await response.json();
       
       if (data.success && data.room) {
+        // 보상을 이미 수령한 경우 로비로 이동
+        const playerRewards = data.room.rewards?.filter(reward => reward.playerId === userData.userUuid) || [];
+        if (data.room.status === 'completed' && playerRewards.length === 0) {
+          // 보상이 없으면 이미 수령한 것으로 간주하고 로비로 이동
+          setCurrentView('lobby');
+          setCurrentRoom(null);
+          return;
+        }
+        
         setCurrentRoom(data.room);
         if (data.room.status === 'waiting') {
           setCurrentView('room');
         } else if (data.room.status === 'in_progress') {
           setCurrentView('battle');
-        } else if (data.room.status === 'completed') {
+        } else if (data.room.status === 'completed' && playerRewards.length > 0) {
           setCurrentView('battle'); // 보상 수령 화면
+        } else {
+          // 기타 경우 로비로 이동
+          setCurrentView('lobby');
+          setCurrentRoom(null);
         }
+      } else {
+        // 방이 없으면 로비로 이동
+        setCurrentView('lobby');
+        setCurrentRoom(null);
       }
     } catch (error) {
       console.error('현재 방 확인 실패:', error);
+      // 오류 발생 시 로비로 이동
+      setCurrentView('lobby');
+      setCurrentRoom(null);
     }
   };
 
@@ -572,16 +592,34 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true }) => {
       
       if (data.success) {
         alert(`${data.message}\n보상: ${data.rewards.map(r => `${r.fishName} x${r.quantity}`).join(', ')}`);
-        // 로비로 돌아가기
+        
+        // 소켓에서 방 나가기
+        if (socket && currentRoom) {
+          socket.emit('expedition-leave-room', currentRoom.id);
+        }
+        
+        // 상태 초기화 및 로비로 돌아가기
         setCurrentView('lobby');
         setCurrentRoom(null);
         loadAvailableRooms();
       } else {
         alert(data.error || '보상 수령에 실패했습니다.');
+        
+        // 보상이 없다는 오류인 경우 로비로 이동
+        if (data.error && data.error.includes('수령할 보상이 없습니다')) {
+          setCurrentView('lobby');
+          setCurrentRoom(null);
+          loadAvailableRooms();
+        }
       }
     } catch (error) {
       console.error('보상 수령 실패:', error);
       alert('보상 수령 중 오류가 발생했습니다.');
+      
+      // 오류 발생 시도 로비로 이동
+      setCurrentView('lobby');
+      setCurrentRoom(null);
+      loadAvailableRooms();
     }
   };
 
@@ -705,21 +743,13 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true }) => {
         clearTurnProgress();
         clearAllSpeedBars(); // 전투 종료 시 속도바 중단
         
-        // 승리 시 즉시 방 상태 업데이트 및 자동 보상 팝업
+        // 승리 시 즉시 방 상태 업데이트
         if (updateData.type === 'victory') {
           setCurrentRoom(updatedRoom);
           setForceUpdateCounter(prev => prev + 1);
           
-          // 3초 후 자동으로 보상 수령 및 원정대기실 이동
-          setTimeout(async () => {
-            try {
-              await claimRewards();
-              setCurrentView('lobby');
-              setCurrentRoom(null);
-            } catch (error) {
-              console.error('자동 보상 수령 실패:', error);
-            }
-          }, 3000);
+          // 승리 시 보상 화면을 보여주지만 자동 수령은 제거
+          // 사용자가 수동으로 보상 수령 버튼을 눌러야 함
         }
         
         // 패배 시 패배 모달 표시
@@ -1914,7 +1944,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true }) => {
                        }`}>
                          <div
                            className="h-1 rounded-full bg-gradient-to-r from-orange-500 to-orange-600 transition-all duration-100"
-                           style={{ width: `${((speedBars[`monster_${monster.id}`] || 0) / 150) * 100}%` }}
+                           style={{ width: `${((speedBars[`monster_${monster.id}`] || 0) / 100) * 100}%` }}
                          ></div>
                        </div>
                      </div>

@@ -878,6 +878,18 @@ const cooldownSchema = new mongoose.Schema(
 
 const CooldownModel = mongoose.model("Cooldown", cooldownSchema);
 
+// Raid Damage Schema (레이드 누적 데미지 추적)
+const raidDamageSchema = new mongoose.Schema(
+  {
+    userUuid: { type: String, required: true, index: true },
+    username: { type: String, required: true },
+    totalDamage: { type: Number, default: 0 }, // 누적 데미지
+  },
+  { timestamps: true }
+);
+
+const RaidDamageModel = mongoose.model("RaidDamage", raidDamageSchema);
+
 // 동료 목록 정의
 const COMPANION_LIST = [
   "실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라"
@@ -6370,7 +6382,7 @@ async function getUserProfileHandler(req, res) {
 }
 
 // 🏆 업적 시스템 인스턴스 생성
-const achievementSystem = new AchievementSystem(CatchModel, FishingSkillModel, UserUuidModel);
+const achievementSystem = new AchievementSystem(CatchModel, FishingSkillModel, UserUuidModel, RaidDamageModel);
 
 // 🏆 업적 자동 체크 함수 (모듈화된 함수 호출)
 async function checkAndGrantAchievements(userUuid, username) {
@@ -7661,7 +7673,7 @@ function authenticateJWT(req, res, next) {
 }
 
 // 레이드 라우터 등록
-  const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel, CooldownModel);
+  const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel, CooldownModel, StarPieceModel, RaidDamageModel);
   app.use("/api/raid", raidRouter);
 
 // 원정 라우터 등록

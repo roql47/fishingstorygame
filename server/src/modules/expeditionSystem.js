@@ -193,11 +193,16 @@ class ExpeditionSystem {
              }
          }
 
-        // 방이 비었거나 호스트가 나간 경우 방 삭제
-        if (room.players.length === 0 || !room.players.some(p => p.isHost)) {
+        // 방이 비었거나 호스트가 나간 경우 또는 보상 수령 완료 상태인 경우 방 삭제
+        if (room.players.length === 0 || !room.players.some(p => p.isHost) || room.status === 'reward_claimed') {
+            // 모든 타이머 정리
+            this.clearAllTimers(room);
+            
             this.expeditionRooms.delete(roomId);
             // 남은 플레이어들을 방에서 제거
             room.players.forEach(p => this.playerRooms.delete(p.id));
+            
+            console.log(`[EXPEDITION] Room ${roomId} deleted. Reason: ${room.players.length === 0 ? 'empty' : !room.players.some(p => p.isHost) ? 'no host' : 'rewards claimed'}`);
             return { roomDeleted: true };
         }
 
@@ -1868,9 +1873,9 @@ class ExpeditionSystem {
         // 처치한 몬스터 기반으로 보상 계산
         room.monsters.forEach(monster => {
             if (!monster.isAlive) {
-                // 몬스터의 기본 물고기를 보상으로 지급
+                // 몬스터의 기본 물고기를 보상으로 지급 (1~3개 랜덤)
                 const fishName = monster.baseFish;
-                const quantity = 1;
+                const baseQuantity = Math.floor(Math.random() * 3) + 1; // 1~3개 랜덤
                 
                 // 접두어에 따른 추가 보상
                 let bonusQuantity = 0;
@@ -1879,10 +1884,10 @@ class ExpeditionSystem {
                         bonusQuantity = Math.random() < 0.3 ? 1 : 0; // 30% 확률로 +1
                         break;
                     case '심연의':
-                        bonusQuantity = Math.random() < 0.5 ? 1 : 0; // 50% 확률로 +1
+                        bonusQuantity = Math.random() < 0.5 ? 2 : 0; // 50% 확률로 +2
                         break;
                     case '깊은어둠의':
-                        bonusQuantity = Math.random() < 0.7 ? 1 : 0; // 70% 확률로 +1
+                        bonusQuantity = Math.random() < 0.7 ? 3 : 0; // 70% 확률로 +3
                         break;
                 }
                 
@@ -1890,7 +1895,7 @@ class ExpeditionSystem {
                         playerId: player.id,
                         playerName: player.name,
                     fishName: fishName,
-                    quantity: quantity + bonusQuantity,
+                    quantity: baseQuantity + bonusQuantity,
                         prefix: monster.prefix?.name || '거대한',
                         rarity: 'common'
                 });
@@ -1909,6 +1914,17 @@ class ExpeditionSystem {
                 // 해당 플레이어의 보상을 수령 완료로 표시
                 if (room.rewards) {
                     room.rewards = room.rewards.filter(reward => reward.playerId !== userUuid);
+                    
+                    // 모든 플레이어가 보상을 수령했는지 확인
+                    const remainingRewards = room.rewards.filter(reward => 
+                        room.players.some(player => player.id === reward.playerId)
+                    );
+                    
+                    // 모든 보상이 수령되었으면 방 상태를 'reward_claimed'로 변경
+                    if (remainingRewards.length === 0) {
+                        room.status = 'reward_claimed';
+                        console.log(`[EXPEDITION] All rewards claimed for room ${roomId}, status changed to reward_claimed`);
+                    }
                 }
                 break;
             }
@@ -1920,7 +1936,14 @@ class ExpeditionSystem {
         const roomId = this.playerRooms.get(playerId);
         if (!roomId) return null;
 
-        return this.expeditionRooms.get(roomId);
+        const room = this.expeditionRooms.get(roomId);
+        
+        // 보상 수령 완료 상태인 방은 null 반환 (로비로 이동시키기 위해)
+        if (room && room.status === 'reward_claimed') {
+            return null;
+        }
+        
+        return room;
     }
 
     // 방 정보 조회 (roomId로)

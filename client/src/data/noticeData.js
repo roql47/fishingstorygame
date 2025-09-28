@@ -3,6 +3,21 @@ export const NOTICE_DATA = [
   {
     id: 0,
     date: "2025.09.28",
+    title: "⚔️ 원정 시스템 개선 & 업적 시스템 업데이트",
+    content: [
+      "원정 보상 화면에서 홈 세션으로 안 넘어가던 문제 수정",
+      "원정 전투 보상 대폭 상향",
+      "새로운 업적 1개 추가",
+      "업적 진행도 표시 기능 추가",
+      "퀘스트 진행도 동기화 안되던 문제 수정",
+      "레이드 보상 시스템 안정성 개선"
+    ],
+    isNew: true,
+    type: "major_update"
+  },
+  {
+    id: 1,
+    date: "2025.09.26",
     title: "⚔️ 원정 시스템 추가 & 레이드 보상 수정",
     content: [
       "원정(Expedition) 시스템 추가:",
@@ -14,12 +29,12 @@ export const NOTICE_DATA = [
       "보상이 정상적으로 지급되지 않던 문제 해결",
       "에테르 열쇠 추가"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
-    id: 1,
-    date: "2025.09.26",
+    id: 2,
+    date: "2025.09.25",
     title: "⚔️ 레이드 시스템 대폭 개선",
     content: [
       "레이드 순위 변동 시 카드 애니메이션 효과 추가",
@@ -33,7 +48,7 @@ export const NOTICE_DATA = [
     type: "major_update"
   },
   {
-    id: 2,
+    id: 3,
     date: "2025.09.25",
     title: "🏆 새로운 업적 추가 및 시스템 개선",
     content: [
@@ -47,8 +62,8 @@ export const NOTICE_DATA = [
     type: "major_update"
   },
   {
-    id: 3,
-    date: "2025.09.25",
+    id: 4,
+    date: "2025.09.24",
     title: "🛠️ 시스템 안정성 및 UI 개선",
     content: [
       "탐사 재료 소모 실패 버그 수정",
@@ -61,7 +76,7 @@ export const NOTICE_DATA = [
     type: "major_update"
   },
   {
-    id: 4,
+    id: 5,
     date: "2025.09.24",
     title: "🏆 업적 시스템 업데이트",
     content: [
@@ -73,8 +88,8 @@ export const NOTICE_DATA = [
     type: "major_update"
   },
   {
-    id: 5,
-    date: "2025.09.24",
+    id: 6,
+    date: "2025.09.23",
     title: "🛠️ 게임 시스템 bug-fixed",
     content: [
       "탐사전투 후 레이드 동료 데미지 계산 버그 수정",
@@ -87,7 +102,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 6,
+    id: 7,
     date: "2025.09.23",
     title: "⚔️ 레이드 시스템 업데이트",
     content: [
@@ -100,8 +115,8 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 7,
-    date: "2025.09.23",
+    id: 8,
+    date: "2025.09.22",
     title: "🎣 낚시 시스템 & 상점 업데이트",
     content: [
       "낚시 메시지에 물고기 등급(Rank)과 확률 정보 표시",
@@ -114,7 +129,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 8,
+    id: 9,
     date: "2025.09.22",
     title: "🎆 게임 시스템 업데이트",
     content: [
@@ -128,7 +143,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 9,
+    id: 10,
     date: "2025.09.22",
     title: "🔐 JWT 보안 시스템 대폭 강화",
     content: [
@@ -143,7 +158,7 @@ export const NOTICE_DATA = [
     type: "security"
   },
   {
-    id: 10,
+    id: 11,
     date: "2025.09.22",
     title: "🎉 동료 시스템 업데이트",
     content: [
@@ -156,7 +171,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 11,
+    id: 12,
     date: "2025.09.22",
     title: "🔐 보안 시스템 강화",
     content: [
@@ -168,8 +183,8 @@ export const NOTICE_DATA = [
     type: "security"
   },
   {
-    id: 12,
-    date: "2025.09.22",
+    id: 13,
+    date: "2025.09.19",
     title: "⚔️ 전투 시스템 개선", 
     content: [
       "전투 로그 공유 기능 추가",
@@ -180,7 +195,7 @@ export const NOTICE_DATA = [
     type: "improvement"
   },
   {
-    id: 13,
+    id: 14,
     date: "2025.09.19",
     title: "🦊 여우이야기 Alpha Test 시작",
     content: [
@@ -196,5 +211,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.21"
+  version: "v1.22"
 };

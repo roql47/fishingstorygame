@@ -327,6 +327,20 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
 
         // 보상 수령 완료 표시
         expeditionSystem.markRewardsClaimed(userUuid);
+        
+        // 플레이어를 방에서 제거하고 방 정리
+        const leaveResult = await expeditionSystem.leaveExpeditionRoom(userUuid);
+        
+        // 소켓을 통해 방 업데이트 또는 삭제 알림
+        if (req.io) {
+            if (leaveResult && leaveResult.roomDeleted) {
+                req.io.emit('expeditionRoomDeleted', { playerId: userUuid });
+                req.io.emit('expeditionRoomsRefresh');
+            } else if (leaveResult && leaveResult.room) {
+                req.io.emit('expeditionRoomUpdated', leaveResult.room);
+                req.io.emit('expeditionRoomsRefresh');
+            }
+        }
 
         res.json({ 
             success: true, 

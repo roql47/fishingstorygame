@@ -129,6 +129,19 @@ const AchievementModal = ({
  * 개별 업적 아이템 컴포넌트
  */
 const AchievementItem = ({ achievement, isDarkMode }) => {
+  // 진행상황이 있는 업적인지 확인
+  const hasProgress = achievement.progress !== null && achievement.maxProgress !== null;
+  
+  // 진행상황 포맷팅 함수
+  const formatProgress = (progress, maxProgress) => {
+    if (maxProgress >= 1000000) {
+      return `${(progress / 1000000).toFixed(1)}M / ${(maxProgress / 1000000).toFixed(1)}M`;
+    } else if (maxProgress >= 1000) {
+      return `${(progress / 1000).toFixed(1)}K / ${(maxProgress / 1000).toFixed(1)}K`;
+    }
+    return `${progress} / ${maxProgress}`;
+  };
+
   return (
     <div
       className={`p-4 rounded-xl border transition-all duration-300 ${
@@ -167,6 +180,33 @@ const AchievementItem = ({ achievement, isDarkMode }) => {
             }`}>
               {achievement.description}
             </p>
+            
+            {/* 진행상황 표시 */}
+            {hasProgress && !achievement.completed && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-xs ${
+                    isDarkMode ? "text-gray-400" : "text-gray-600"
+                  }`}>
+                    진행상황
+                  </span>
+                  <span className={`text-xs font-medium ${
+                    isDarkMode ? "text-blue-400" : "text-blue-600"
+                  }`}>
+                    {formatProgress(achievement.progress, achievement.maxProgress)} ({achievement.progressPercentage}%)
+                  </span>
+                </div>
+                <div className={`w-full h-1.5 rounded-full ${
+                  isDarkMode ? "bg-gray-700" : "bg-gray-200"
+                }`}>
+                  <div 
+                    className="h-full bg-gradient-to-r from-blue-400 to-blue-500 rounded-full transition-all duration-500"
+                    style={{ width: `${achievement.progressPercentage}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            
             {achievement.completed && achievement.completedAt && (
               <p className={`text-xs mt-2 ${
                 isDarkMode ? "text-gray-500" : "text-gray-600"
@@ -176,13 +216,21 @@ const AchievementItem = ({ achievement, isDarkMode }) => {
             )}
           </div>
         </div>
-        {achievement.completed && (
+        {achievement.completed ? (
           <div className={`px-2 py-1 rounded-full text-xs font-medium ${
             isDarkMode
               ? "bg-green-500/20 text-green-400"
               : "bg-green-500/10 text-green-600"
           }`}>
             완료
+          </div>
+        ) : hasProgress && (
+          <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+            isDarkMode
+              ? "bg-blue-500/20 text-blue-400"
+              : "bg-blue-500/10 text-blue-600"
+          }`}>
+            {achievement.progressPercentage}%
           </div>
         )}
       </div>

@@ -31,6 +31,12 @@ export const ACHIEVEMENT_DEFINITIONS = {
     name: "전장의 지배자",
     description: "레이드 물고기 마지막 공격으로 처치",
     autoCheck: true
+  },
+  raid_damage_master: {
+    id: "raid_damage_master",
+    name: "마음을 불태워라",
+    description: "레이드 누적데미지 1000000달성",
+    autoCheck: true
   }
 };
 
@@ -209,6 +215,19 @@ export const useAchievements = (serverUrl, jwtToken, authenticatedRequest, isAdm
     }
   }, [serverUrl, jwtToken, authenticatedRequest, fetchAchievements]);
 
+  // 🔄 업적 진행상황 새로고침 (업적 달성 여부와 관계없이 진행상황 업데이트)
+  const refreshAchievementProgress = useCallback(async () => {
+    if (!jwtToken) return;
+    
+    try {
+      // 업적 목록을 새로고침하여 진행상황 업데이트
+      await fetchAchievements();
+      console.log('🔄 Achievement progress refreshed');
+    } catch (error) {
+      console.error('Failed to refresh achievement progress:', error);
+    }
+  }, [jwtToken, fetchAchievements]);
+
   // 🏆 업적 통계 계산
   const getAchievementStats = useCallback(() => {
     const completed = achievements.filter(a => a.completed);
@@ -249,6 +268,7 @@ export const useAchievements = (serverUrl, jwtToken, authenticatedRequest, isAdm
     grantAchievement,
     revokeAchievement,
     checkAchievements,
+    refreshAchievementProgress,
     
     // 유틸리티
     getAchievementStats,
