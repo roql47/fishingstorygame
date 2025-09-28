@@ -48,6 +48,41 @@ import {
 } from "lucide-react";
 import "./App.css";
 
+// 🔐 JWT 토큰 안전 파싱 유틸리티
+const safeParseJWT = (token) => {
+  try {
+    if (!token || typeof token !== 'string' || !token.includes('.')) {
+      console.warn('Invalid JWT token format');
+      return null;
+    }
+    
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      console.warn('JWT token does not have 3 parts');
+      return null;
+    }
+    
+    const payload = JSON.parse(atob(parts[1]));
+    console.log('JWT payload:', payload);
+    return payload;
+  } catch (error) {
+    console.error('Failed to parse JWT token:', error);
+    return null;
+  }
+};
+
+// 🔐 현재 JWT 토큰에서 관리자 상태 확인
+const checkJWTAdminStatus = () => {
+  const token = localStorage.getItem('jwtToken');
+  const payload = safeParseJWT(token);
+  if (payload) {
+    console.log('Current JWT admin status:', payload.isAdmin);
+    return payload.isAdmin || false;
+  }
+  console.warn('No valid JWT token found');
+  return false;
+};
+
 // Axios 응답 인터셉터 설정 (차단된 IP/계정 처리)
 axios.interceptors.response.use(
   (response) => response,
@@ -833,10 +868,11 @@ function App() {
 
   // 🔐 JWT 인증 헤더를 포함한 axios 요청 함수
   const authenticatedRequest = useMemo(() => {
-    const token = jwtToken || localStorage.getItem("jwtToken");
-    
     return {
       get: (url, config = {}) => {
+        // 실시간으로 최신 토큰 가져오기
+        const token = jwtToken || localStorage.getItem("jwtToken");
+        console.log('🔐 GET request to:', url, 'with token:', token ? 'present' : 'missing');
         return axios.get(url, {
           ...config,
           headers: {
@@ -846,6 +882,10 @@ function App() {
         });
       },
       post: (url, data, config = {}) => {
+        // 실시간으로 최신 토큰 가져오기
+        const token = jwtToken || localStorage.getItem("jwtToken");
+        console.log('🔐 POST request to:', url, 'with token:', token ? 'present' : 'missing');
+        console.log('🔐 POST headers will include Authorization:', token ? `Bearer ${token.substring(0, 20)}...` : 'NO TOKEN');
         return axios.post(url, data, {
           ...config,
           headers: {
@@ -855,6 +895,9 @@ function App() {
         });
       },
       put: (url, data, config = {}) => {
+        // 실시간으로 최신 토큰 가져오기
+        const token = jwtToken || localStorage.getItem("jwtToken");
+        console.log('🔐 PUT request to:', url, 'with token:', token ? 'present' : 'missing');
         return axios.put(url, data, {
           ...config,
           headers: {
@@ -864,6 +907,9 @@ function App() {
         });
       },
       delete: (url, config = {}) => {
+        // 실시간으로 최신 토큰 가져오기
+        const token = jwtToken || localStorage.getItem("jwtToken");
+        console.log('🔐 DELETE request to:', url, 'with token:', token ? 'present' : 'missing');
         return axios.delete(url, {
           ...config,
           headers: {
@@ -1129,10 +1175,10 @@ function App() {
       setIdToken(token);
       
       // JWT 토큰 디코딩하여 사용자 정보 추출
-      if (!token || !token.includes('.')) {
+      const payload = safeParseJWT(token);
+      if (!payload) {
         throw new Error('Invalid token format');
       }
-      const payload = JSON.parse(decodeURIComponent(escape(atob(token.split('.')[1]))));
       const googleName = payload.name || (payload.email ? payload.email.split('@')[0] : 'Guest');
       
       // 한글 이름이 깨지는 경우 이메일 주소 사용
@@ -1167,9 +1213,9 @@ function App() {
       // 오류 발생 시 이메일 주소 사용
       try {
         let fallbackName = "Guest";
-        if (token && token.includes('.')) {
-          const payload = JSON.parse(atob(token.split('.')[1]));
-          fallbackName = payload.email ? payload.email.split('@')[0] : "Guest";
+        const payload = safeParseJWT(token);
+        if (payload && payload.email) {
+          fallbackName = payload.email.split('@')[0];
         }
         
         // 기존 닉네임 우선 사용
@@ -1272,13 +1318,15 @@ function App() {
                   let kakaoId, kakaoNickname;
                   
                   // 먼저 id_token에서 정보 추출 시도
-                  if (tokenData.id_token && tokenData.id_token.includes('.')) {
+                  if (tokenData.id_token) {
                     try {
-                      const payload = JSON.parse(atob(tokenData.id_token.split('.')[1]));
-                      console.log('Kakao id_token payload:', payload);
-                      kakaoId = payload.sub;
-                      kakaoNickname = payload.nickname || `카카오사용자${kakaoId}`;
-                      console.log('✅ 카카오 사용자 정보 (id_token에서):', { kakaoId, kakaoNickname });
+                      const payload = safeParseJWT(tokenData.id_token);
+                      if (payload) {
+                        console.log('Kakao id_token payload:', payload);
+                        kakaoId = payload.sub;
+                        kakaoNickname = payload.nickname || `카카오사용자${kakaoId}`;
+                        console.log('✅ 카카오 사용자 정보 (id_token에서):', { kakaoId, kakaoNickname });
+                      }
                     } catch (tokenError) {
                       console.error('Failed to parse id_token:', tokenError);
                     }
@@ -2462,7 +2510,7 @@ function App() {
 
     try {
       const params = { username, userUuid };
-      const response = await axios.post(`${serverUrl}/api/admin/block-account`, {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/admin/block-account`, {
         userUuid: targetUserUuid,
         username: targetUsername,
         reason: reason,
@@ -2518,7 +2566,7 @@ function App() {
         targetUserUuid = newAccountTarget; // 서버에서 실제 UUID를 찾을 것임
       }
 
-      const response = await axios.post(`${serverUrl}/api/admin/block-account`, {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/admin/block-account`, {
         userUuid: targetUserUuid,
         username: targetUsername,
         reason: accountBlockReason.trim(),
@@ -2557,7 +2605,7 @@ function App() {
 
     try {
       const params = { username, userUuid };
-      const response = await axios.post(`${serverUrl}/api/admin/unblock-account`, {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/admin/unblock-account`, {
         userUuid: targetUserUuid,
         adminKey: adminKey
       }, { params });
@@ -2580,7 +2628,7 @@ function App() {
 
     try {
       const params = { username, userUuid };
-      const response = await axios.get(`${serverUrl}/api/admin/blocked-accounts`, { params });
+      const response = await authenticatedRequest.get(`${serverUrl}/api/admin/blocked-accounts`, { params });
       
       if (response.data.success) {
         setBlockedAccounts(response.data.blockedAccounts || []);
@@ -3527,6 +3575,10 @@ function App() {
           localStorage.setItem("jwtToken", response.data.jwtToken);
           setJwtToken(response.data.jwtToken);
           console.log("🔐 New admin JWT token saved");
+          
+          // JWT 토큰에서 관리자 상태 확인
+          const jwtAdminStatus = checkJWTAdminStatus();
+          console.log("🔑 JWT Admin Status after toggle:", jwtAdminStatus);
         }
         
         // ✅ 관리자 상태 로드 완료로 즉시 업데이트
@@ -3647,7 +3699,7 @@ function App() {
     
     try {
       const params = { username, userUuid };
-      const response = await axios.get(`${serverUrl}/api/admin/blocked-ips`, { params });
+      const response = await authenticatedRequest.get(`${serverUrl}/api/admin/blocked-ips`, { params });
       
       if (response.data.success) {
         setBlockedIPs(response.data.blockedIPs || []);
@@ -3663,7 +3715,7 @@ function App() {
     
     try {
       const params = { username, userUuid };
-      const response = await axios.get(`${serverUrl}/api/admin/user-ips`, { params });
+      const response = await authenticatedRequest.get(`${serverUrl}/api/admin/user-ips`, { params });
       
       if (response.data.success) {
         setConnectedUsersList(response.data.connectedUsers || []);
@@ -3683,8 +3735,19 @@ function App() {
     const adminKey = prompt('🔑 관리자 비밀 키를 입력하세요:');
     if (!adminKey) return;
 
+    // 🔐 토큰 상태 확인
+    const currentToken = jwtToken || localStorage.getItem("jwtToken");
+    console.log('🔐 blockIP - Current jwtToken state:', jwtToken);
+    console.log('🔐 blockIP - localStorage token:', localStorage.getItem("jwtToken"));
+    console.log('🔐 blockIP - Final token to use:', currentToken ? 'present' : 'missing');
+    
+    if (!currentToken) {
+      alert('❌ JWT 토큰이 없습니다. 다시 로그인해주세요.');
+      return;
+    }
+
     try {
-      const response = await axios.post(`${serverUrl}/api/admin/block-ip`, {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/admin/block-ip`, {
         ipAddress: newIPAddress,
         reason: blockReason || '관리자에 의한 수동 차단',
         adminKey: adminKey
@@ -3712,7 +3775,7 @@ function App() {
     if (!confirm(confirmMessage)) return;
 
     try {
-      const response = await axios.post(`${serverUrl}/api/admin/unblock-ip`, {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/admin/unblock-ip`, {
         ipAddress: ipAddress,
         adminKey: adminKey
       }, {
