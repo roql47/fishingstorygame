@@ -17,6 +17,9 @@ const errorLog = console.error; // 에러 로그는 항상 유지
 // 레이드 시스템 모듈 import
 const { setupRaidRoutes, setupRaidWebSocketEvents } = require('./routes/raidRoutes');
 
+// 원정 시스템 모듈 import
+const setupExpeditionRoutes = require('./routes/expeditionRoutes');
+
 // 🔍 DB 쿼리 성능 측정 헬퍼 함수
 const measureDBQuery = async (queryName, queryFunction) => {
   const startTime = Date.now();
@@ -573,6 +576,18 @@ io.on('connection', (socket) => {
   // 연결 유지를 위한 heartbeat 설정
   let heartbeatInterval;
   
+  // 원정 방 참가 이벤트
+  socket.on('expedition-join-room', (roomId) => {
+    socket.join(`expedition_${roomId}`);
+    console.log(`🏠 Socket ${socket.id} joined expedition room: ${roomId}`);
+  });
+  
+  // 원정 방 나가기 이벤트
+  socket.on('expedition-leave-room', (roomId) => {
+    socket.leave(`expedition_${roomId}`);
+    console.log(`🚪 Socket ${socket.id} left expedition room: ${roomId}`);
+  });
+  
   // 사용자 정보 저장 (로그인 시 설정됨)
   socket.on('user-login', (userData) => {
     if (userData && userData.username && userData.userUuid) {
@@ -782,6 +797,16 @@ const companionStatsSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 const CompanionStatsModel = mongoose.model("CompanionStats", companionStatsSchema);
+
+// Ether Key Schema (에테르 열쇠 - 파티던전 입장권)
+const etherKeySchema = new mongoose.Schema({
+  userId: { type: String, required: true },
+  username: { type: String, required: true },
+  userUuid: { type: String, index: true },
+  etherKeys: { type: Number, default: 0 }, // 보유한 에테르 열쇠 수
+}, { timestamps: true });
+
+const EtherKeyModel = mongoose.model("EtherKey", etherKeySchema);
 
 // Coupon Usage Schema (쿠폰 사용 기록)
 const couponUsageSchema = new mongoose.Schema(
@@ -3116,6 +3141,60 @@ app.get("/api/star-pieces/:userId", authenticateJWT, async (req, res) => {
   }
 });
 
+// Ether Keys API (에테르 열쇠 조회)
+app.get("/api/ether-keys/:userId", authenticateJWT, async (req, res) => {
+  try {
+    // 🔐 JWT에서 사용자 정보 추출
+    const { userUuid, username } = req.user || {};
+    const { userId } = req.params;
+    
+    debugLog(`🔐 JWT Ether keys request: ${username} (${userUuid})`);
+    
+    // UUID 기반 사용자 조회
+    const queryResult = await getUserQuery(userId, username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+      console.log("Using UUID query for ether keys:", query);
+    } else {
+      query = queryResult;
+      console.log("Using fallback query for ether keys:", query);
+    }
+    
+    // 🔒 보안 검증: 본인 데이터만 조회 가능
+    const ownershipValidation = await validateUserOwnership(query, userUuid, username);
+    if (!ownershipValidation.isValid) {
+      console.warn("Unauthorized ether keys access:", ownershipValidation.reason);
+      return res.status(403).json({ error: "Access denied: You can only view your own data" });
+    }
+    
+    console.log("Database query for ether keys:", query);
+    
+    let userEtherKeys = await EtherKeyModel.findOne(query);
+    
+    if (!userEtherKeys) {
+      // 새 사용자인 경우 초기 에테르 열쇠 0개로 생성
+      const createData = {
+        userId: query.userId || 'user',
+        username: query.username || username,
+        userUuid: query.userUuid || userUuid,
+        etherKeys: 0
+      };
+      
+      console.log("Creating new ether keys record with data:", createData);
+      userEtherKeys = new EtherKeyModel(createData);
+      await userEtherKeys.save();
+      console.log("Created new user ether keys record:", userEtherKeys);
+    }
+    
+    res.json({ etherKeys: userEtherKeys.etherKeys || 0 });
+  } catch (error) {
+    console.error("Failed to fetch ether keys:", error);
+    console.error("Error stack:", error.stack);
+    res.status(500).json({ error: "Failed to fetch ether keys", details: error.message });
+  }
+});
+
 // Add Star Pieces API (별조각 추가)
 app.post("/api/add-star-pieces", authenticateJWT, async (req, res) => {
   try {
@@ -3161,6 +3240,79 @@ app.post("/api/add-star-pieces", authenticateJWT, async (req, res) => {
     console.error("Failed to add star pieces:", error);
     console.error("Error stack:", error.stack);
     res.status(500).json({ error: "Failed to add star pieces", details: error.message });
+  }
+});
+
+// Exchange Star Pieces for Ether Keys API (별조각으로 에테르 열쇠 교환)
+app.post("/api/exchange-ether-keys", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid, username } = req.user;
+    const { quantity = 5 } = req.body; // 기본값 5개 교환
+    
+    console.log("Exchange ether keys request:", { username, userUuid, quantity });
+    
+    // 별조각 1개당 에테르 열쇠 5개 교환
+    const starPiecesRequired = 1;
+    const etherKeysToAdd = quantity;
+    
+    if (etherKeysToAdd !== 5) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "한 번에 5개의 에테르 열쇠만 교환할 수 있습니다." 
+      });
+    }
+    
+    // UUID 기반 사용자 조회
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    // 별조각 확인
+    let userStarPieces = await StarPieceModel.findOne(query);
+    if (!userStarPieces || userStarPieces.starPieces < starPiecesRequired) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "별조각이 부족합니다. (필요: 1개)" 
+      });
+    }
+    
+    // 에테르 열쇠 레코드 찾기 또는 생성
+    let userEtherKeys = await EtherKeyModel.findOne(query);
+    if (!userEtherKeys) {
+      const createData = {
+        userId: query.userId || 'user',
+        username: query.username || username,
+        userUuid: query.userUuid || userUuid,
+        etherKeys: 0
+      };
+      userEtherKeys = new EtherKeyModel(createData);
+    }
+    
+    // 트랜잭션 처리
+    userStarPieces.starPieces -= starPiecesRequired;
+    userEtherKeys.etherKeys = (userEtherKeys.etherKeys || 0) + etherKeysToAdd;
+    
+    await userStarPieces.save();
+    await userEtherKeys.save();
+    
+    console.log(`[EXCHANGE] ${username} exchanged ${starPiecesRequired} star pieces for ${etherKeysToAdd} ether keys`);
+    
+    res.json({ 
+      success: true, 
+      newEtherKeys: userEtherKeys.etherKeys,
+      newStarPieces: userStarPieces.starPieces
+    });
+  } catch (error) {
+    console.error("Failed to exchange ether keys:", error);
+    res.status(500).json({ 
+      success: false, 
+      error: "에테르 열쇠 교환에 실패했습니다.", 
+      details: error.message 
+    });
   }
 });
 
@@ -3572,12 +3724,17 @@ const ADMIN_SECRET_KEYS = [
 // 관리자 시도 추적 (어러용도 방지)
 const adminAttempts = new Map(); // IP -> { count, lastAttempt }
 
-// 보안 강화된 관리자 권한 토글 API
-app.post("/api/toggle-admin", async (req, res) => {
+// 보안 강화된 관리자 권한 토글 API (JWT + AdminKey 이중 보안)
+app.post("/api/toggle-admin", authenticateJWT, async (req, res) => {
   try {
-    const { username, userUuid } = req.query;
+    // JWT에서 사용자 정보 추출
+    const { userUuid: jwtUserUuid, username: jwtUsername } = req.user;
     const { adminKey } = req.body; // 관리자 키 필수
     const clientIP = getClientIP(req);
+    
+    // JWT와 요청 정보 일치 확인
+    const username = jwtUsername;
+    const userUuid = jwtUserUuid;
     
     console.log(`🚨 [SECURITY] Admin toggle attempt - IP: ${clientIP}, User: ${username}`);
     
@@ -3811,13 +3968,13 @@ const calculateFishingCooldownTime = async (userQuery) => {
   }
 };
 
-// 낚시 쿨타임 설정 API (서버에서 쿨타임 계산) - 모든 사용자 접근 가능
-app.post("/api/set-fishing-cooldown", async (req, res) => {
+// 낚시 쿨타임 설정 API (JWT 인증 필수)
+app.post("/api/set-fishing-cooldown", authenticateJWT, async (req, res) => {
   try {
-    // 쿼리 파라미터에서 사용자 정보 추출 (JWT 불필요)
-    const { username, userUuid } = req.query;
+    // JWT에서 사용자 정보 추출 (보안 강화)
+    const { userUuid, username } = req.user;
     
-    console.log("Set fishing cooldown request received");
+    console.log(`🔐 Set fishing cooldown request: ${username} (${userUuid})`);
     
     const queryResult = await getUserQuery('user', username, userUuid);
     let query;
@@ -4054,13 +4211,14 @@ const getServerAccessoryLevel = (accessoryName) => {
   return level >= 0 ? level + 1 : 0;
 };
 
-// 전투 시작 API (보안 강화)
-app.post("/api/start-battle", async (req, res) => {
+// 전투 시작 API (JWT 인증 필수)
+app.post("/api/start-battle", authenticateJWT, async (req, res) => {
   try {
     const { material, baseFish, selectedPrefix } = req.body;
-    const { username, userUuid } = req.query;
+    // JWT에서 사용자 정보 추출 (보안 강화)
+    const { userUuid, username } = req.user;
     
-    console.log("Start battle request:", { material, baseFish, selectedPrefix, username, userUuid });
+    console.log(`🔐 Start battle request: ${username} (${userUuid})`, { material, baseFish, selectedPrefix });
     
     // 사용자 조회
     const queryResult = await getUserQuery('user', username, userUuid);
@@ -4111,13 +4269,14 @@ app.post("/api/start-battle", async (req, res) => {
   }
 });
 
-// 전투 공격 API (보안 강화)
-app.post("/api/battle-attack", async (req, res) => {
+// 전투 공격 API (JWT 인증 필수)
+app.post("/api/battle-attack", authenticateJWT, async (req, res) => {
   try {
     const { battleState, attackType } = req.body; // 'player' or 'enemy'
-    const { username, userUuid } = req.query;
+    // JWT에서 사용자 정보 추출 (보안 강화)
+    const { userUuid, username } = req.user;
     
-    console.log("Battle attack request:", { attackType, username, userUuid });
+    console.log(`🔐 Battle attack request: ${username} (${userUuid})`, { attackType });
     
     if (!battleState) {
       return res.status(400).json({ error: "Invalid battle state" });
@@ -4420,15 +4579,21 @@ app.get("/api/user-settings/:userId", async (req, res) => {
   }
 });
 
-// 사용자 displayName 설정 API (최초 닉네임 설정용)
-app.post("/api/set-display-name/:userId", async (req, res) => {
+// 사용자 displayName 설정 API (JWT 인증 필수)
+app.post("/api/set-display-name/:userId", authenticateJWT, async (req, res) => {
   try {
     const { userId } = req.params;
-    const { username, userUuid, googleId, kakaoId } = req.query;
+    // JWT에서 사용자 정보 추출 (보안 강화)
+    const { userUuid, username } = req.user;
     const { displayName } = req.body;
     
+    // 본인만 닉네임 변경 가능하도록 검증
+    if (userId !== 'user' && userId !== userUuid && userId !== username) {
+      return res.status(403).json({ error: "본인의 닉네임만 변경할 수 있습니다." });
+    }
+    
     console.log("=== SET DISPLAY NAME API ===");
-    console.log("Request params:", { userId, username, userUuid, googleId, kakaoId });
+    console.log(`🔐 Request params: ${username} (${userUuid})`);
     console.log("Request body:", { displayName });
     
     // 🔒 통합 닉네임 검증
@@ -4492,15 +4657,21 @@ app.post("/api/set-display-name/:userId", async (req, res) => {
   }
 });
 
-// 사용자 설정 업데이트 API
-app.post("/api/user-settings/:userId", async (req, res) => {
+// 사용자 설정 업데이트 API (JWT 인증 필수)
+app.post("/api/user-settings/:userId", authenticateJWT, async (req, res) => {
   try {
     const { userId } = req.params;
-    const { username, userUuid, googleId, kakaoId } = req.query;
+    // JWT에서 사용자 정보 추출 (보안 강화)
+    const { userUuid, username } = req.user;
     const { termsAccepted, darkMode, fishingCooldown } = req.body;
     
+    // 본인만 설정 변경 가능하도록 검증
+    if (userId !== 'user' && userId !== userUuid && userId !== username) {
+      return res.status(403).json({ error: "본인의 설정만 변경할 수 있습니다." });
+    }
+    
     console.log("=== UPDATE USER SETTINGS API ===");
-    console.log("Request params:", { userId, username, userUuid, googleId, kakaoId });
+    console.log(`🔐 Request params: ${username} (${userUuid})`);
     console.log("User settings update request received");
     
     let user;
@@ -4764,11 +4935,11 @@ app.get("/api/daily-quests/:userId", async (req, res) => {
 });
 
 // 퀴스트 진행도 업데이트 API - 모든 사용자 접근 가능
-app.post("/api/update-quest-progress", async (req, res) => {
+app.post("/api/update-quest-progress", authenticateJWT, async (req, res) => {
   try {
     const { questType, amount = 1 } = req.body;
-    // 쿼리 파라미터에서 사용자 정보 추출 (JWT 불필요)
-    const { username, userUuid } = req.query;
+    // JWT에서 사용자 정보 추출 (보안 강화)
+    const { userUuid, username } = req.user;
     
     console.log("Quest progress update:", { questType, amount, username, userUuid });
     
@@ -4848,11 +5019,11 @@ app.post("/api/update-quest-progress", async (req, res) => {
 });
 
 // 퀴스트 보상 수령 API - 모든 사용자 접근 가능
-app.post("/api/claim-quest-reward", async (req, res) => {
+app.post("/api/claim-quest-reward", authenticateJWT, async (req, res) => {
   try {
     const { questId } = req.body;
-    // 쿼리 파라미터에서 사용자 정보 추출 (JWT 불필요)
-    const { username, userUuid } = req.query;
+    // JWT에서 사용자 정보 추출 (보안 강화)
+    const { userUuid, username } = req.user;
     
     console.log("Quest reward claim:", { questId, username, userUuid });
     
@@ -6415,13 +6586,14 @@ app.post("/api/reset-account", authenticateJWT, async (req, res) => {
   }
 });
 
-// 🔑 관리자 권한: 사용자 계정 초기화 API
-app.post("/api/admin/reset-user-account", async (req, res) => {
+// 🔑 관리자 권한: 사용자 계정 초기화 API (JWT + AdminKey 이중 보안)
+app.post("/api/admin/reset-user-account", authenticateJWT, async (req, res) => {
   try {
     const { targetUsername, adminKey, confirmationKey } = req.body;
-    const { username: adminUsername, userUuid: adminUserUuid } = req.query;
+    // JWT에서 관리자 정보 추출 (보안 강화)
+    const { userUuid: adminUserUuid, username: adminUsername } = req.user;
     
-    console.log("🔑 [ADMIN] Reset user account request:", { targetUsername, adminUsername });
+    console.log(`🔑 [ADMIN] Reset user account request by ${adminUsername} (${adminUserUuid}):`, { targetUsername });
     
     // 관리자 권한 확인 (두 모델 모두 확인 및 동기화)
     console.log("🔍 [DEBUG] Looking for admin user:", { adminUserUuid, adminUsername });
@@ -6523,7 +6695,7 @@ app.post("/api/admin/reset-user-account", async (req, res) => {
 
 // 🔑 관리자 권한: 사용자 계정 삭제 API
 // 🛡️ IP 차단 API
-app.post("/api/admin/block-ip", async (req, res) => {
+app.post("/api/admin/block-ip", authenticateJWT, async (req, res) => {
   try {
     const { ipAddress, reason, adminKey } = req.body;
     const { username: adminUsername, userUuid: adminUserUuid } = req.query;
@@ -6625,7 +6797,7 @@ app.post("/api/admin/block-ip", async (req, res) => {
 });
 
 // 🛡️ IP 차단 해제 API
-app.post("/api/admin/unblock-ip", async (req, res) => {
+app.post("/api/admin/unblock-ip", authenticateJWT, async (req, res) => {
   try {
     const { ipAddress, adminKey } = req.body;
     const { username: adminUsername, userUuid: adminUserUuid } = req.query;
@@ -6686,7 +6858,7 @@ app.post("/api/admin/unblock-ip", async (req, res) => {
 });
 
 // 🚫 계정 차단 API
-app.post("/api/admin/block-account", async (req, res) => {
+app.post("/api/admin/block-account", authenticateJWT, async (req, res) => {
   try {
     const { userUuid, username, reason, adminKey } = req.body;
     const { username: adminUsername, userUuid: adminUserUuid } = req.query;
@@ -6842,7 +7014,7 @@ app.post("/api/admin/block-account", async (req, res) => {
 });
 
 // ✅ 계정 차단 해제 API
-app.post("/api/admin/unblock-account", async (req, res) => {
+app.post("/api/admin/unblock-account", authenticateJWT, async (req, res) => {
   try {
     const { userUuid, adminKey } = req.body;
     const { username: adminUsername, userUuid: adminUserUuid } = req.query;
@@ -7134,7 +7306,7 @@ app.get("/api/admin/blocked-ips", async (req, res) => {
   }
 });
 
-app.post("/api/admin/delete-user-account", async (req, res) => {
+app.post("/api/admin/delete-user-account", authenticateJWT, async (req, res) => {
   try {
     const { targetUsername, adminKey, confirmationKey } = req.body;
     const { username: adminUsername, userUuid: adminUserUuid } = req.query;
@@ -7491,6 +7663,14 @@ function authenticateJWT(req, res, next) {
 // 레이드 라우터 등록
   const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel, CooldownModel);
   app.use("/api/raid", raidRouter);
+
+// 원정 라우터 등록
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
+const expeditionRouter = setupExpeditionRoutes(authenticateJWT, CompanionStatsModel, FishingSkillModel, UserEquipmentModel, EtherKeyModel);
+app.use("/api/expedition", expeditionRouter);
 
 // 업적 라우터 등록
 const { router: achievementRouter } = setupAchievementRoutes(authenticateJWT, UserUuidModel, CatchModel, FishingSkillModel);

@@ -42,7 +42,8 @@ const ChatTab = ({
   setCooldownLoaded,
   grantAchievement,
   revokeAchievement,
-  refreshFishingSkill
+  refreshFishingSkill,
+  authenticatedRequest
 }) => {
   const messagesEndRef = useRef(null);
   
@@ -186,10 +187,10 @@ const ChatTab = ({
       // 🛡️ 3. 처리 중 상태 설정
       setIsProcessingFishing(true);
       
-      // 서버에 낚시 쿨타임 설정 (서버에서 쿨타임 계산) - 모든 사용자 접근 가능
+      // 서버에 낚시 쿨타임 설정 (서버에서 쿨타임 계산) - JWT 인증 필요
       try {
         const params = { username, userUuid };
-        const response = await axios.post(`${serverUrl}/api/set-fishing-cooldown`, {}, { params });
+        const response = await authenticatedRequest.post(`${serverUrl}/api/set-fishing-cooldown`, {}, { params });
         
         // 🚀 서버에서 계산된 쿨타임으로 클라이언트 설정
         const serverCooldownTime = response.data.remainingTime || 0;

@@ -69,7 +69,11 @@ class RaidSystem {
 
     // 데미지 순위 계산
     const participants = Array.from(this.raidBoss.participants.entries())
-      .map(([userUuid, damage]) => ({ userUuid, damage }))
+      .map(([userUuid, damage]) => ({ 
+        userUuid, 
+        damage,
+        username: this.raidBoss.participantNames?.get(userUuid) || 'Unknown'
+      }))
       .sort((a, b) => b.damage - a.damage);
 
     // 마지막 공격자 찾기
@@ -78,7 +82,7 @@ class RaidSystem {
     // 보상 계산
     const rewards = [];
     for (let i = 0; i < participants.length; i++) {
-      const { userUuid, damage } = participants[i];
+      const { userUuid, damage, username } = participants[i];
       let rewardAmount = 0;
 
       // 순위별 호박석 보상
@@ -93,6 +97,7 @@ class RaidSystem {
 
       rewards.push({ 
         userUuid, 
+        username,
         damage, 
         rank: i + 1, 
         reward: rewardAmount,

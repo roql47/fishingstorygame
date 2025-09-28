@@ -268,13 +268,25 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       
       // 보상 지급
       for (const reward of rewards) {
-        const { userUuid, damage, rank, reward: rewardAmount, isLastAttacker } = reward;
+        const { userUuid, username, damage, rank, reward: rewardAmount, isLastAttacker } = reward;
         
         // 호박석 지급
-        await UserUuidModel.findOneAndUpdate(
-          { userUuid },
-          { $inc: { amberStones: rewardAmount } }
-        );
+        const mongoose = require('mongoose');
+        const UserAmberModel = mongoose.model('UserAmber');
+        
+        let userAmber = await UserAmberModel.findOne({ userUuid });
+        if (!userAmber) {
+          // 새 사용자인 경우 생성
+          userAmber = new UserAmberModel({
+            userId: 'user',
+            username: username,
+            userUuid: userUuid,
+            amber: rewardAmount
+          });
+        } else {
+          userAmber.amber = (userAmber.amber || 0) + rewardAmount;
+        }
+        await userAmber.save();
         
         // 개별 보상 알림
         const userSocket = Array.from(io.sockets.sockets.values())

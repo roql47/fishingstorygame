@@ -7,7 +7,7 @@ export const COMPANION_DATA = {
     baseSpeed: 45,     // 기본 속도
     growthHp: 10,      // 5 * 2 = 10
     growthAttack: 2,   // 1 * 1.5 = 1.5 → 2
-    growthSpeed: 5,    // 레벨당 속도 증가량
+    growthSpeed: 0.5,    // 레벨당 속도 증가량
     description: "민첩한 검사",
     rarity: "일반",
     skill: {
@@ -24,7 +24,7 @@ export const COMPANION_DATA = {
     baseSpeed: 25,     // 기본 속도
     growthHp: 12,      // 6 * 2 = 12
     growthAttack: 2,   // 1 * 1.5 = 1.5 → 2
-    growthSpeed: 5,    // 레벨당 속도 증가량
+    growthSpeed: 0.5,    // 레벨당 속도 증가량
     description: "강인한 방패병",
     rarity: "일반",
     skill: {
@@ -44,7 +44,7 @@ export const COMPANION_DATA = {
     baseSpeed: 40,     // 기본 속도
     growthHp: 8,       // 4 * 2 = 8
     growthAttack: 3,   // 2 * 1.5 = 3
-    growthSpeed: 5,    // 레벨당 속도 증가량
+    growthSpeed: 0.5,    // 레벨당 속도 증가량
     description: "화염 마법사",
     rarity: "일반",
     skill: {
@@ -64,7 +64,7 @@ export const COMPANION_DATA = {
     baseSpeed: 50,     // 기본 속도
     growthHp: 10,      // 5 * 2 = 10
     growthAttack: 2,   // 1 * 1.5 = 1.5 → 2
-    growthSpeed: 5,    // 레벨당 속도 증가량
+    growthSpeed: 0.5,    // 레벨당 속도 증가량
     description: "쌍둥이 궁수",
     rarity: "희귀"
   },
@@ -75,7 +75,7 @@ export const COMPANION_DATA = {
     baseSpeed: 65,     // 기본 속도 (암살자는 빠름)
     growthHp: 6,       // 3 * 2 = 6
     growthAttack: 3,   // 2 * 1.5 = 3
-    growthSpeed: 5,    // 레벨당 속도 증가량
+    growthSpeed: 0.5,    // 레벨당 속도 증가량
     description: "암살자",
     rarity: "일반",
     skill: {
@@ -94,7 +94,7 @@ export const COMPANION_DATA = {
     baseSpeed: 30,     // 기본 속도 (용족은 느림)
     growthHp: 14,      // 7 * 2 = 14
     growthAttack: 3,   // 2 * 1.5 = 3
-    growthSpeed: 5,    // 레벨당 속도 증가량
+    growthSpeed: 0.5,    // 레벨당 속도 증가량
     description: "용족 전사",
     rarity: "일반"
   }

@@ -2,6 +2,23 @@
 export const NOTICE_DATA = [
   {
     id: 0,
+    date: "2025.09.28",
+    title: "⚔️ 원정 시스템 추가 & 레이드 보상 수정",
+    content: [
+      "원정(Expedition) 시스템 추가:",
+      "에테르 열쇠 1개로 파티던전 생성 가능",
+      "최대 4명까지 파티 구성",
+      "몬스터 처치 시 물고기 보상 획득",
+      "접두어별 추가 보상 확률",
+      "레이드 보상 시스템 수정:",
+      "보상이 정상적으로 지급되지 않던 문제 해결",
+      "에테르 열쇠 추가"
+    ],
+    isNew: true,
+    type: "major_update"
+  },
+  {
+    id: 1,
     date: "2025.09.26",
     title: "⚔️ 레이드 시스템 대폭 개선",
     content: [
@@ -12,11 +29,11 @@ export const NOTICE_DATA = [
       "데미지 수치에 천 단위 구분 쉼표 표시",
       "새로고침 시 쿨타임 사라지는 문제 해결"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
-    id: 1,
+    id: 2,
     date: "2025.09.25",
     title: "🏆 새로운 업적 추가 및 시스템 개선",
     content: [
@@ -30,7 +47,7 @@ export const NOTICE_DATA = [
     type: "major_update"
   },
   {
-    id: 2,
+    id: 3,
     date: "2025.09.25",
     title: "🛠️ 시스템 안정성 및 UI 개선",
     content: [
@@ -44,7 +61,7 @@ export const NOTICE_DATA = [
     type: "major_update"
   },
   {
-    id: 3,
+    id: 4,
     date: "2025.09.24",
     title: "🏆 업적 시스템 업데이트",
     content: [
@@ -56,7 +73,7 @@ export const NOTICE_DATA = [
     type: "major_update"
   },
   {
-    id: 4,
+    id: 5,
     date: "2025.09.24",
     title: "🛠️ 게임 시스템 bug-fixed",
     content: [
@@ -70,7 +87,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 5,
+    id: 6,
     date: "2025.09.23",
     title: "⚔️ 레이드 시스템 업데이트",
     content: [
@@ -83,7 +100,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 6,
+    id: 7,
     date: "2025.09.23",
     title: "🎣 낚시 시스템 & 상점 업데이트",
     content: [
@@ -97,11 +114,11 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 7,
+    id: 8,
     date: "2025.09.22",
     title: "🎆 게임 시스템 업데이트",
     content: [
-      "일일퀴스트 보상 개선: 물고기 10마리 잡기 보상을 별조각 1개로 변경",
+      "일일퀘스트 보상 개선: 물고기 10마리 잡기 보상을 별조각 1개로 변경",
       "모바일 백그라운드 쿨타임 멈춤 현상 완전 수정",
       "카카오 로그인 시스템 전면 개선",
       "기존 계정 중복 생성 방지 및 닉네임 동기화 완료",
@@ -111,7 +128,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 8,
+    id: 9,
     date: "2025.09.22",
     title: "🔐 JWT 보안 시스템 대폭 강화",
     content: [
@@ -126,7 +143,7 @@ export const NOTICE_DATA = [
     type: "security"
   },
   {
-    id: 9,
+    id: 10,
     date: "2025.09.22",
     title: "🎉 동료 시스템 업데이트",
     content: [
@@ -139,7 +156,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 10,
+    id: 11,
     date: "2025.09.22",
     title: "🔐 보안 시스템 강화",
     content: [
@@ -151,7 +168,7 @@ export const NOTICE_DATA = [
     type: "security"
   },
   {
-    id: 11,
+    id: 12,
     date: "2025.09.22",
     title: "⚔️ 전투 시스템 개선", 
     content: [
@@ -163,7 +180,7 @@ export const NOTICE_DATA = [
     type: "improvement"
   },
   {
-    id: 12,
+    id: 13,
     date: "2025.09.19",
     title: "🦊 여우이야기 Alpha Test 시작",
     content: [
@@ -179,5 +196,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.20"
+  version: "v1.21"
 };

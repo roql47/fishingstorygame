@@ -178,9 +178,18 @@ export const useGameData = () => {
         return prefix;
       }
     }
-    
-    return fishPrefixes[0]; // 기본값
   }, [fishPrefixes]);
+
+  // 🚀 접두어별 속도 배율 반환 함수
+  const getPrefixSpeedMultiplier = useCallback((prefixName) => {
+    switch (prefixName) {
+      case '거대한': return 1.0;
+      case '변종': return 1.1;
+      case '심연의': return 1.2;
+      case '깊은어둠의': return 1.3;
+      default: return 1.0;
+    }
+  }, []);
   
   // 🚀 상점 아이템 조회 함수
   const getAllShopItems = useCallback(() => {
@@ -262,6 +271,7 @@ export const useGameData = () => {
     getFishMaterial,
     getMaterialToFish,
     selectFishPrefix,
+    getPrefixSpeedMultiplier,
     getAllShopItems,
     getAvailableShopItem
   };

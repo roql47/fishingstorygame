@@ -39,11 +39,18 @@ class CachedApiClient {
   
   // 🔧 인터셉터 설정
   setupInterceptors() {
-    // 요청 인터셉터
+    // 요청 인터셉터 - JWT 토큰 자동 포함
     this.axios.interceptors.request.use(
       (config) => {
         this.stats.totalRequests++;
         config.metadata = { startTime: Date.now() };
+        
+        // JWT 토큰 자동 포함
+        const token = localStorage.getItem('jwtToken');
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+        
         return config;
       },
       (error) => {

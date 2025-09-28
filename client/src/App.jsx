@@ -2,12 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getSocket, notifyUserLogin } from "./lib/socket";
 // Google auth functions are now handled inline
 import axios from "axios";
+// 🔒 보안 유틸리티
+import { protectConsole, showProtectionMessage, disableRightClick } from "./utils/security";
 // 🚀 게임 데이터 훅 임포트 (변수 초기화 문제 해결)
 import { useGameData } from "./hooks/useGameData";
 import ChatTab from "./components/ChatTab";
 import NoticeModal from "./components/NoticeModal";
 import TutorialModal from "./components/TutorialModal";
 import { CompanionTab, processCompanionSkill, canUseCompanionSkill } from './components/companions';
+import ExpeditionTab from './components/ExpeditionTab';
+import ShopTab from './components/ShopTab';
 import { COMPANION_DATA, calculateCompanionStats } from './data/companionData';
 import { useAchievements, ACHIEVEMENT_DEFINITIONS } from './hooks/useAchievements';
 import AchievementModal from './components/AchievementModal';
@@ -63,6 +67,15 @@ axios.interceptors.response.use(
 );
 
 function App() {
+  // 🔒 보안 초기화 (프로덕션에서만)
+  useEffect(() => {
+    if (import.meta.env.PROD) {
+      showProtectionMessage();
+      protectConsole();
+      disableRightClick();
+    }
+  }, []);
+
   // 🚀 게임 데이터 훅 사용 (변수 초기화 문제 해결)
   const {
     isLoading: gameDataLoading,
@@ -103,6 +116,7 @@ function App() {
   const [userMoney, setUserMoney] = useState(0);
   const [userAmber, setUserAmber] = useState(0);
   const [userStarPieces, setUserStarPieces] = useState(0);
+  const [userEtherKeys, setUserEtherKeys] = useState(0);
   const [companions, setCompanions] = useState([]);
   const [battleCompanions, setBattleCompanions] = useState([]); // 전투 참여 동료 (최대 3명)
   const [companionStats, setCompanionStats] = useState({}); // 동료별 레벨/경험치 관리
@@ -114,6 +128,7 @@ function App() {
   const [isLoadingUsers, setIsLoadingUsers] = useState(true); // 접속자 목록 로딩 상태
   const [rankings, setRankings] = useState([]); // 랭킹 데이터
   const [shopCategory, setShopCategory] = useState("fishing_rod");
+  const [inventoryCategory, setInventoryCategory] = useState("fish");
   const [showProfile, setShowProfile] = useState(false);
   const [selectedUserProfile, setSelectedUserProfile] = useState(null); // 선택된 사용자 프로필 정보
   const [otherUserData, setOtherUserData] = useState(null); // 다른 사용자의 실제 데이터
@@ -1865,6 +1880,10 @@ function App() {
       console.log('🔄 Requesting companions via WebSocket...');
       socket.emit('data:request', { type: 'companions', userUuid, username });
       
+      // 에테르 열쇠 데이터도 직접 요청
+      console.log('🔄 Requesting etherKeys via WebSocket...');
+      socket.emit('data:request', { type: 'etherKeys', userUuid, username });
+      
     }, 1000); // 연결 안정화 후 요청
 
     // 실시간 데이터 업데이트 리스너
@@ -1878,6 +1897,7 @@ function App() {
       if (data.money) setUserMoney(data.money.money);
       if (data.amber) setUserAmber(data.amber.amber);
       if (data.starPieces) setUserStarPieces(data.starPieces.starPieces);
+      if (data.etherKeys) setUserEtherKeys(data.etherKeys.etherKeys);
       if (data.cooldown) {
         const newFishingCooldown = data.cooldown.fishingCooldown || 0;
         
@@ -1981,6 +2001,13 @@ function App() {
       }
     });
 
+    socket.on('data:etherKeys', (data) => {
+      console.log('🔄 Received etherKeys update via WebSocket:', data);
+      if (data && typeof data.etherKeys === 'number') {
+        setUserEtherKeys(data.etherKeys);
+      }
+    });
+
     return () => {
       socket.off('data:update', handleDataUpdate);
       socket.off('data:inventory', handleInventoryUpdate);
@@ -1988,6 +2015,7 @@ function App() {
       socket.off('users:update', handleUsersUpdate);
       socket.off('data:companions');
       socket.off('data:starPieces');
+      socket.off('data:etherKeys');
       socket.off('achievement:granted');
       // 데이터 구독 해제
       socket.emit('data:unsubscribe', { userUuid, username });
@@ -2943,14 +2971,13 @@ function App() {
     }
   };
   
-  // 퀘스트 진행도 업데이트 - 모든 사용자 접근 가능
+  // 퀘스트 진행도 업데이트 (JWT 인증 필수)
   const updateQuestProgress = async (questType, amount = 1) => {
     try {
-      const params = { username, userUuid };
-      await axios.post(`${serverUrl}/api/update-quest-progress`, {
+      await authenticatedRequest.post(`${serverUrl}/api/update-quest-progress`, {
         questType,
         amount
-      }, { params });
+      });
       
       // 퀘스트 데이터 새로고침
       await loadDailyQuests();
@@ -2959,13 +2986,12 @@ function App() {
     }
   };
   
-  // 퀘스트 보상 수령 - 모든 사용자 접근 가능
+  // 퀘스트 보상 수령 (JWT 인증 필수)
   const claimQuestReward = async (questId) => {
     try {
-      const params = { username, userUuid };
-      const response = await axios.post(`${serverUrl}/api/claim-quest-reward`, {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/claim-quest-reward`, {
         questId
-      }, { params });
+      });
       
       if (response.data.success) {
         alert(response.data.message);
@@ -3071,6 +3097,47 @@ function App() {
         alert(error.response.data.error || '동료 모집에 실패했습니다.');
       } else {
         alert('동료 모집에 실패했습니다.');
+      }
+    }
+  };
+
+  // 에테르 열쇠 교환 함수
+  const exchangeEtherKeys = async () => {
+    const starPieceCost = 1; // 별조각 1개 비용
+    const etherKeysToGet = 5; // 에테르 열쇠 5개 획득
+    
+    if (userStarPieces < starPieceCost) {
+      alert(`별조각이 부족합니다! (필요: ${starPieceCost}개, 보유: ${userStarPieces}개)`);
+      return;
+    }
+    
+    try {
+      console.log('Exchanging ether keys with params:', { username, userUuid });
+      
+      const response = await authenticatedRequest.post(`${serverUrl}/api/exchange-ether-keys`, {
+        quantity: etherKeysToGet
+      });
+      
+      console.log('Exchange response:', response.data);
+      
+      if (response.data.success) {
+        setUserStarPieces(response.data.newStarPieces);
+        setUserEtherKeys(response.data.newEtherKeys);
+        
+        setMessages(prev => [...prev, {
+          system: true,
+          username: "system",
+          content: `✨ 별조각 ${starPieceCost}개로 에테르 열쇠 ${etherKeysToGet}개를 교환했습니다! (총 ${response.data.newEtherKeys}개 보유)`,
+          timestamp: new Date().toISOString()
+        }]);
+        alert(`✨ 에테르 열쇠 ${etherKeysToGet}개를 획득했습니다!`);
+      }
+    } catch (error) {
+      console.error('Failed to exchange ether keys:', error);
+      if (error.response?.status === 400) {
+        alert(error.response.data.error || '에테르 열쇠 교환에 실패했습니다.');
+      } else {
+        alert('에테르 열쇠 교환에 실패했습니다.');
       }
     }
   };
@@ -3712,6 +3779,17 @@ function App() {
     }
   };
 
+  // 접두어별 속도 배율 반환 함수
+  const getPrefixSpeedMultiplier = (prefixName) => {
+    switch (prefixName) {
+      case '거대한': return 1.0;
+      case '변종': return 1.1;
+      case '심연의': return 1.2;
+      case '깊은어둠의': return 1.3;
+      default: return 1.0;
+    }
+  };
+
   // 탐사 시작 함수
   const startExploration = async (material) => {
     const baseFish = getMaterialToFish(material.material);
@@ -3784,8 +3862,11 @@ function App() {
       };
     });
 
-    // 턴 순서 계산 (속도 기반)
-    const enemySpeed = fishSpeedMap?.[baseFish] || 50;
+    // 턴 순서 계산 (속도 기반) - 새로운 공식 적용
+    const fishIndex = allFishTypes.findIndex(fish => fish.name === baseFish) + 1; // 1부터 시작
+    const baseSpeed = 25 + (fishIndex * 0.5);
+    const prefixMultiplier = getPrefixSpeedMultiplier(selectedPrefix.name);
+    const enemySpeed = baseSpeed * prefixMultiplier;
     const turnOrder = ['player']; // 플레이어는 항상 첫 번째
     
     // 동료들과 적의 속도 비교하여 턴 순서 결정
@@ -5044,6 +5125,24 @@ function App() {
             <span className="hidden sm:inline">탐사</span>
           </button>
           <button
+            onClick={() => setActiveTab("expedition")}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300 font-medium ${
+              activeTab === "expedition"
+                ? isDarkMode
+                  ? "bg-teal-500/20 text-teal-400 border border-teal-400/30"
+                  : "bg-teal-500/10 text-teal-600 border border-teal-500/30"
+                : isDarkMode
+                  ? "text-gray-400 hover:text-gray-300"
+                  : "text-gray-600 hover:text-gray-800"
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span className="hidden sm:inline">원정</span>
+          </button>
+          <button
             onClick={() => setActiveTab("companions")}
             className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300 font-medium ${
               activeTab === "companions"
@@ -5287,6 +5386,7 @@ function App() {
               grantAchievement={grantAchievement}
               revokeAchievement={revokeAchievement}
               refreshFishingSkill={refreshFishingSkill}
+              authenticatedRequest={authenticatedRequest}
             />
           )}
 
@@ -5399,27 +5499,47 @@ function App() {
                   </button>
                 </div>
               )}
+              
+              {/* 카테고리 탭 */}
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={() => setInventoryCategory("fish")}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 font-medium ${
+                    inventoryCategory === "fish"
+                      ? isDarkMode
+                        ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
+                        : "bg-blue-500/10 text-blue-600 border border-blue-500/30"
+                      : isDarkMode
+                        ? "text-gray-400 hover:text-gray-300"
+                        : "text-gray-600 hover:text-gray-800"
+                  }`}
+                >
+                  <Fish className="w-4 h-4" />
+                  <span className="text-sm">물고기</span>
+                </button>
+              </div>
             </div>
             
             {/* 인벤토리 목록 */}
             <div className="flex-1 p-4">
+              {/* 물고기 인벤토리 */}
               {inventory.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 mb-4 bounce-slow">
-                    <Fish className={`w-8 h-8 ${
-                      isDarkMode ? "text-blue-400" : "text-blue-600"
-                    }`} />
+                  <div className="text-center py-12">
+                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 mb-4 bounce-slow">
+                      <Fish className={`w-8 h-8 ${
+                        isDarkMode ? "text-blue-400" : "text-blue-600"
+                      }`} />
+                    </div>
+                    <p className={`text-sm font-medium mb-2 ${
+                      isDarkMode ? "text-gray-300" : "text-gray-700"
+                    }`}>아직 낚은 물고기가 없습니다</p>
+                    <p className={`text-xs ${
+                      isDarkMode ? "text-gray-500" : "text-gray-600"
+                    }`}>채팅에서 "낚시하기"를 시도해보세요!</p>
                   </div>
-                  <p className={`text-sm font-medium mb-2 ${
-                    isDarkMode ? "text-gray-300" : "text-gray-700"
-                  }`}>아직 낚은 물고기가 없습니다</p>
-                  <p className={`text-xs ${
-                    isDarkMode ? "text-gray-500" : "text-gray-600"
-                  }`}>채팅에서 "낚시하기"를 시도해보세요!</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {inventory
+                ) : (
+                  <div className="space-y-3">
+                    {inventory
                     .sort((a, b) => {
                       // 희귀도 낮은 순으로 정렬 (rank가 낮을수록 희귀도가 낮음)
                       const fishA = allFishTypes.find(f => f.name === a.fish);
@@ -5484,61 +5604,98 @@ function App() {
                         </div>
                       </div>
                     </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
               )}
 
-              {/* 재료 섹션 */}
-              {materials.length > 0 && (
-                <div className="mt-6">
-                  <div className={`flex items-center justify-between mb-4 px-2 ${
-                    isDarkMode ? "text-purple-400" : "text-purple-600"
-                  }`}>
-                    <div className="flex items-center gap-2">
-                    <Gem className="w-5 h-5" />
-                    <h3 className="font-semibold">재료 ({materials.length}종)</h3>
+                  {/* 재료 섹션 */}
+                  {materials.length > 0 && (
+                    <div className="mt-6">
+                      <div className={`flex items-center justify-between mb-4 px-2 ${
+                        isDarkMode ? "text-purple-400" : "text-purple-600"
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          <Gem className="w-5 h-5" />
+                          <h3 className="font-semibold">재료 ({materials.length}종)</h3>
+                        </div>
+                        <button
+                          onClick={fetchMaterials}
+                          className={`p-2 rounded-lg hover:scale-110 transition-all duration-300 ${
+                            isDarkMode 
+                              ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30" 
+                              : "bg-purple-500/10 text-purple-600 hover:bg-purple-500/20"
+                          }`}
+                          title="재료 새로고침"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="space-y-3">
+                        {materials.map((item, index) => (
+                          <div key={index} className={`p-4 rounded-xl hover:glow-effect transition-all duration-300 group ${
+                            isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+                          }`}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20">
+                                  <Gem className={`w-6 h-6 group-hover:scale-110 transition-transform ${
+                                    isDarkMode ? "text-purple-400" : "text-purple-600"
+                                  }`} />
+                                </div>
+                                <div>
+                                  <div className={`font-medium text-base ${
+                                    isDarkMode ? "text-white" : "text-gray-800"
+                                  }`}>{item.material}</div>
+                                  <div className={`text-xs ${
+                                    isDarkMode ? "text-gray-400" : "text-gray-600"
+                                  }`}>보유량: {item.count}개</div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <button
-                      onClick={fetchMaterials}
-                      className={`p-2 rounded-lg hover:scale-110 transition-all duration-300 ${
-                        isDarkMode 
-                          ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30" 
-                          : "bg-purple-500/10 text-purple-600 hover:bg-purple-500/20"
-                      }`}
-                      title="재료 새로고침"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                    </button>
-                  </div>
-                  <div className="space-y-3">
-                    {materials.map((item, index) => (
-                      <div key={index} className={`p-4 rounded-xl hover:glow-effect transition-all duration-300 group ${
+                  )}
+
+                  {/* 기타 아이템 섹션 */}
+                  <div className="mt-6">
+                    <div className={`flex items-center justify-between mb-4 px-2 ${
+                      isDarkMode ? "text-orange-400" : "text-orange-600"
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <Diamond className="w-5 h-5" />
+                        <h3 className="font-semibold">기타 아이템</h3>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      {/* 에테르 열쇠 */}
+                      <div className={`p-4 rounded-xl hover:glow-effect transition-all duration-300 group ${
                         isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
                       }`}>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20">
-                              <Gem className={`w-6 h-6 group-hover:scale-110 transition-transform ${
-                                isDarkMode ? "text-purple-400" : "text-purple-600"
+                            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-orange-500/20 to-amber-500/20">
+                              <Diamond className={`w-6 h-6 group-hover:scale-110 transition-transform ${
+                                isDarkMode ? "text-orange-400" : "text-orange-600"
                               }`} />
                             </div>
                             <div>
                               <div className={`font-medium text-base ${
                                 isDarkMode ? "text-white" : "text-gray-800"
-                              }`}>{item.material}</div>
+                              }`}>에테르 열쇠</div>
                               <div className={`text-xs ${
                                 isDarkMode ? "text-gray-400" : "text-gray-600"
-                              }`}>보유량: {item.count}개</div>
+                              }`}>보유량: {userEtherKeys || 0}개</div>
                             </div>
                           </div>
                         </div>
                       </div>
-                    ))}
+                    </div>
                   </div>
-                </div>
-              )}
             </div>
           </div>
           )}
@@ -5643,12 +5800,93 @@ function App() {
                   <Gem className="w-4 h-4" />
                   <span className="text-sm">악세서리</span>
                 </button>
+                <button
+                  onClick={() => setShopCategory("misc")}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 font-medium ${
+                    shopCategory === "misc"
+                      ? isDarkMode
+                        ? "bg-orange-500/20 text-orange-400 border border-orange-400/30"
+                        : "bg-orange-500/10 text-orange-600 border border-orange-500/30"
+                      : isDarkMode
+                        ? "text-gray-400 hover:text-gray-300"
+                        : "text-gray-600 hover:text-gray-800"
+                  }`}
+                >
+                  <Diamond className="w-4 h-4" />
+                  <span className="text-sm">기타</span>
+                </button>
               </div>
             </div>
             
             {/* 상점 목록 */}
             <div className="flex-1 p-4">
               {(() => {
+                // 기타 탭인 경우 에테르 열쇠 표시
+                if (shopCategory === "misc") {
+                  return (
+                    <div className="max-w-md mx-auto">
+                      <div className={`p-6 rounded-xl hover:glow-effect transition-all duration-300 group ${
+                        isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+                      }`}>
+                        <div className="flex items-center gap-4">
+                          <div className={`p-3 rounded-lg ${
+                            isDarkMode ? "bg-orange-500/20" : "bg-orange-500/10"
+                          }`}>
+                            <Diamond className={`w-8 h-8 ${
+                              isDarkMode ? "text-orange-400" : "text-orange-600"
+                            }`} />
+                          </div>
+                          <div className="flex-1">
+                            <h3 className={`font-bold text-lg mb-1 ${
+                              isDarkMode ? "text-white" : "text-gray-800"
+                            }`}>에테르 열쇠 5개</h3>
+                            <p className={`text-sm mb-2 ${
+                              isDarkMode ? "text-gray-400" : "text-gray-600"
+                            }`}>파티던전 입장권</p>
+                            <p className={`text-xs ${
+                              isDarkMode ? "text-gray-500" : "text-gray-500"
+                            }`}>파티던전을 생성하거나 참여할 때 필요한 특별한 열쇠입니다.</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-300/20">
+                          <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${
+                            isDarkMode 
+                              ? "bg-blue-500/20 border border-blue-500/30" 
+                              : "bg-blue-500/10 border border-blue-500/20"
+                          }`}>
+                            <Star className={`w-4 h-4 ${
+                              isDarkMode ? "text-blue-400" : "text-blue-600"
+                            }`} />
+                            <span className={`text-sm font-bold ${
+                              isDarkMode ? "text-blue-400" : "text-blue-600"
+                            }`}>1</span>
+                            <span className={`text-xs ${
+                              isDarkMode ? "text-gray-400" : "text-gray-600"
+                            }`}>별조각</span>
+                          </div>
+                          <button
+                            onClick={() => exchangeEtherKeys()}
+                            disabled={!userStarPieces || userStarPieces < 1}
+                            className={`px-6 py-2 rounded-lg font-medium transition-all duration-200 ${
+                              !userStarPieces || userStarPieces < 1
+                                ? isDarkMode
+                                  ? "bg-gray-600 text-gray-400 cursor-not-allowed"
+                                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                : isDarkMode
+                                  ? "bg-orange-600 hover:bg-orange-500 text-white hover:scale-105 active:scale-95"
+                                  : "bg-orange-500 hover:bg-orange-600 text-white hover:scale-105 active:scale-95"
+                            }`}
+                          >
+                            교환하기
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // 기존 낚시대/악세서리 로직
                 const availableItem = getAvailableShopItem(shopCategory, fishingSkill, userEquipment);
                 
                 if (!availableItem) {
@@ -5798,6 +6036,19 @@ function App() {
               })()}
             </div>
           </div>
+          )}
+
+          {/* 원정 탭 */}
+          {activeTab === "expedition" && (
+            <div className={`rounded-2xl board-shadow min-h-full flex flex-col ${
+              isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
+            }`}>
+              <ExpeditionTab 
+                userData={{ username, userUuid }}
+                socket={socket}
+                isDarkMode={isDarkMode}
+              />
+            </div>
           )}
 
           {/* 동료모집 탭 */}
