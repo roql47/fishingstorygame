@@ -2200,17 +2200,17 @@ io.on("connection", (socket) => {
     // 🎁 HAPPY MONDAY 쿠폰 코드 처리
     if (trimmed === "HAPPY MONDAY") {
       try {
-        // 쿠폰 만료일 체크 (한국시간 기준 2025년 09월 26일 오후 12시)
+        // 쿠폰 만료일 체크 (한국시간 기준 2025년 10월 06일 오후 12시)
         const now = new Date();
         const kstOffset = 9 * 60 * 60 * 1000; // 9시간을 밀리초로
         const kstNow = new Date(now.getTime() + kstOffset);
-        const expiryDate = new Date('2025-09-26T12:00:00+09:00'); // 한국시간 기준
+        const expiryDate = new Date('2025-10-06T12:00:00+09:00'); // 한국시간 기준
         
         if (kstNow > expiryDate) {
           socket.emit("chat:message", {
             system: true,
             username: "system",
-            content: "🚫 이 쿠폰은 만료되었습니다. (유효기간: 2025년 09월 26일 오후 12시까지)",
+            content: "🚫 이 쿠폰은 만료되었습니다. (유효기간: 2025년 10월 06일 오후 12시까지)",
             timestamp: new Date().toISOString()
           });
           return;

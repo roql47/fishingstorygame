@@ -13,8 +13,8 @@ class RaidSystem {
 
     this.raidBoss = {
       name: "마르가글레슘",
-      hp: 12000,
-      maxHp: 12000,
+      hp: 8000,
+      maxHp: 8000,
       isActive: true,
       participants: new Map(),
       startTime: Date.now()
