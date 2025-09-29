@@ -2197,6 +2197,116 @@ io.on("connection", (socket) => {
       }
     }
 
+    // 🎁 HAPPY MONDAY 쿠폰 코드 처리
+    if (trimmed === "HAPPY MONDAY") {
+      try {
+        // 쿠폰 만료일 체크 (한국시간 기준 2025년 09월 26일 오후 12시)
+        const now = new Date();
+        const kstOffset = 9 * 60 * 60 * 1000; // 9시간을 밀리초로
+        const kstNow = new Date(now.getTime() + kstOffset);
+        const expiryDate = new Date('2025-09-26T12:00:00+09:00'); // 한국시간 기준
+        
+        if (kstNow > expiryDate) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 이 쿠폰은 만료되었습니다. (유효기간: 2025년 09월 26일 오후 12시까지)",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // Guest 사용자 체크 - DB에서 사용자 정보 조회
+        const dbUser = await UserUuidModel.findOne({ userUuid: user.userUuid });
+        
+        if (!dbUser || (!dbUser.originalGoogleId && !dbUser.originalKakaoId)) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 쿠폰은 구글 또는 카카오 소셜 로그인 후에만 사용할 수 있습니다.",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // 이미 사용한 쿠폰인지 확인
+        const existingUsage = await CouponUsageModel.findOne({
+          userUuid: user.userUuid,
+          couponCode: "HAPPY MONDAY"
+        });
+
+        if (existingUsage) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 이미 사용한 쿠폰입니다. 쿠폰은 계정당 한 번만 사용할 수 있습니다.",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // 호박석 100개 지급
+        const amberRewardAmount = 100;
+        const queryResult = await getUserQuery('user', user.username, user.userUuid);
+        let query;
+        if (queryResult.userUuid) {
+          query = { userUuid: queryResult.userUuid };
+        } else {
+          query = queryResult;
+        }
+
+        let userAmber = await UserAmberModel.findOne(query);
+        
+        if (!userAmber) {
+          // 새 사용자인 경우 생성
+          const createData = {
+            userId: query.userId || 'user',
+            username: query.username || user.username,
+            userUuid: query.userUuid || user.userUuid,
+            amber: amberRewardAmount
+          };
+          userAmber = new UserAmberModel(createData);
+        } else {
+          userAmber.amber = (userAmber.amber || 0) + amberRewardAmount;
+        }
+
+        await userAmber.save();
+
+        // 쿠폰 사용 기록 저장
+        const couponUsage = new CouponUsageModel({
+          userUuid: user.userUuid,
+          username: user.username,
+          couponCode: "HAPPY MONDAY",
+          reward: `amber:${amberRewardAmount}`
+        });
+        await couponUsage.save();
+
+        // 성공 메시지 전송
+        socket.emit("chat:message", {
+          system: true,
+          username: "system",
+          content: `🎉 축하합니다! HAPPY MONDAY 쿠폰이 성공적으로 사용되었습니다!\n💎 호박석 ${amberRewardAmount}개를 받았습니다! (총 ${userAmber.amber}개)`,
+          timestamp: new Date().toISOString()
+        });
+
+        // 사용자 데이터 업데이트 전송
+        sendUserDataUpdate(socket, user.userUuid, user.username);
+
+        console.log(`🎁 HAPPY MONDAY Coupon used: ${user.username} (${user.userUuid}) - amber +${amberRewardAmount}`);
+        return;
+
+      } catch (error) {
+        console.error("HAPPY MONDAY 쿠폰 처리 중 오류:", error);
+        socket.emit("chat:message", {
+          system: true,
+          username: "system",
+          content: "🚫 쿠폰 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+    }
+
     if (trimmed === "낚시하기") {
       try {
         // 사용자 쿼리 생성

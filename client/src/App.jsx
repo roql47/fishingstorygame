@@ -509,6 +509,37 @@ function App() {
           triggerDamageEffect(damage, isCritical, "내 공격");
         }
         
+        // 레이드 공격 성공 후 쿨타임 설정 (10초)
+        const raidCooldownSeconds = 10;
+        setAttackCooldown(raidCooldownSeconds);
+        
+        // localStorage에 레이드 쿨타임 저장
+        const raidEndTime = new Date(Date.now() + (raidCooldownSeconds * 1000));
+        localStorage.setItem('raidCooldownEnd', raidEndTime.toISOString());
+        console.log('💾 Saved raid cooldown to localStorage:', raidEndTime.toISOString());
+        
+        // 기존 interval 정리
+        if (cooldownIntervalRef.current) {
+          clearInterval(cooldownIntervalRef.current);
+        }
+        
+        // 레이드 쿨타임 interval 시작
+        cooldownIntervalRef.current = setInterval(() => {
+          setAttackCooldown(prev => {
+            const newValue = prev - 1;
+            console.log(`⚔️ 레이드 쿨타임: ${newValue}초 남음`);
+            
+            if (newValue <= 0) {
+              clearInterval(cooldownIntervalRef.current);
+              cooldownIntervalRef.current = null;
+              localStorage.removeItem('raidCooldownEnd');
+              console.log("✅ 레이드 쿨타임 완료!");
+              return 0;
+            }
+            return newValue;
+          });
+        }, 1000);
+        
         // 서버에서 쿨타임 상태 다시 가져오기 (서버에서 설정한 쿨타임 반영)
         setTimeout(() => {
           fetchCooldownStatus(username, userUuid);
@@ -651,6 +682,40 @@ function App() {
       }
     } else {
       setCooldownLoaded(true);
+    }
+
+    // 🚀 페이지 로드 시 localStorage에서 레이드 쿨타임 복원
+    const storedRaidCooldownEnd = localStorage.getItem('raidCooldownEnd');
+    if (storedRaidCooldownEnd) {
+      const raidCooldownEndTime = new Date(storedRaidCooldownEnd);
+      const now = new Date();
+      const remainingRaidTime = Math.max(0, raidCooldownEndTime.getTime() - now.getTime());
+      
+      if (remainingRaidTime > 0) {
+        const raidCooldownSeconds = Math.ceil(remainingRaidTime / 1000);
+        console.log("Restoring raid cooldown from localStorage:", raidCooldownSeconds, "seconds");
+        setAttackCooldown(raidCooldownSeconds);
+        
+        // 레이드 쿨타임 interval 시작
+        cooldownIntervalRef.current = setInterval(() => {
+          setAttackCooldown(prev => {
+            const newValue = prev - 1;
+            console.log(`⚔️ 레이드 쿨타임: ${newValue}초 남음`);
+            
+            if (newValue <= 0) {
+              clearInterval(cooldownIntervalRef.current);
+              cooldownIntervalRef.current = null;
+              localStorage.removeItem('raidCooldownEnd');
+              console.log("✅ 레이드 쿨타임 완료!");
+              return 0;
+            }
+            return newValue;
+          });
+        }, 1000);
+      } else {
+        // 쿨타임이 이미 만료된 경우 localStorage에서 제거
+        localStorage.removeItem('raidCooldownEnd');
+      }
     }
   }, []);
 
@@ -987,6 +1052,19 @@ function App() {
         return 0;
       })();
 
+      // localStorage 레이드 쿨타임 확인
+      const storedRaidCooldownEnd = localStorage.getItem('raidCooldownEnd');
+      const localRaidRemainingTime = (() => {
+        if (storedRaidCooldownEnd) {
+          const raidCooldownEndTime = new Date(storedRaidCooldownEnd);
+          const now = new Date();
+          const remaining = Math.max(0, raidCooldownEndTime.getTime() - now.getTime());
+          console.log('📱 localStorage raid cooldown:', remaining);
+          return remaining;
+        }
+        return 0;
+      })();
+
       const userId = idToken ? 'user' : 'null';
       const params = { username: tempUsername, userUuid: tempUserUuid };
       const response = await axios.get(`${serverUrl}/api/cooldown/${userId}`, { params });
@@ -1003,9 +1081,13 @@ function App() {
       const maxCooldown = Math.max(localRemainingTime, serverCooldown);
       console.log('⏰ Final cooldown (max of local/server):', maxCooldown);
       
-      // 레이드 공격 쿨타임 설정 (서버 기준)
-      if (serverRaidCooldown > 0) {
-        const raidCooldownSeconds = Math.ceil(serverRaidCooldown / 1000);
+      // 레이드 쿨타임도 localStorage와 서버 중 더 긴 것 사용
+      const maxRaidCooldown = Math.max(localRaidRemainingTime, serverRaidCooldown);
+      console.log('⚔️ Final raid cooldown (max of local/server):', maxRaidCooldown);
+      
+      // 레이드 공격 쿨타임 설정
+      if (maxRaidCooldown > 0) {
+        const raidCooldownSeconds = Math.ceil(maxRaidCooldown / 1000);
         setAttackCooldown(raidCooldownSeconds);
         console.log(`⚔️ 레이드 쿨타임 설정: ${raidCooldownSeconds}초`);
         
@@ -1023,6 +1105,7 @@ function App() {
             if (newValue <= 0) {
               clearInterval(cooldownIntervalRef.current);
               cooldownIntervalRef.current = null;
+              localStorage.removeItem('raidCooldownEnd');
               console.log("✅ 레이드 쿨타임 완료!");
               return 0;
             }
@@ -1044,6 +1127,16 @@ function App() {
       } else {
         localStorage.removeItem('fishingCooldownEnd');
         console.log('🗑️ Removed expired cooldown from localStorage');
+      }
+      
+      // 레이드 쿨타임도 localStorage에 저장
+      if (maxRaidCooldown > 0) {
+        const raidEndTime = new Date(Date.now() + maxRaidCooldown);
+        localStorage.setItem('raidCooldownEnd', raidEndTime.toISOString());
+        console.log('💾 Updated localStorage with raid cooldown:', raidEndTime.toISOString());
+      } else {
+        localStorage.removeItem('raidCooldownEnd');
+        console.log('🗑️ Removed expired raid cooldown from localStorage');
       }
       
       return maxCooldown;
@@ -2052,6 +2145,30 @@ function App() {
     socket.on('data:materials', handleMaterialsUpdate);
     socket.on('users:update', handleUsersUpdate);
     
+    // 🚀 원정 보상 등으로 인한 인벤토리 업데이트 알림 처리
+    socket.on('inventoryUpdated', async (data) => {
+      console.log('🔄 Received inventory update notification:', data);
+      
+      // 현재 사용자의 인벤토리 업데이트인지 확인
+      if (data.userUuid === userUuid) {
+        console.log('🔄 Refreshing inventory due to:', data.reason);
+        
+        // 인벤토리 새로고침
+        try {
+          const userId = idToken ? 'user' : 'null';
+          const params = { username, userUuid };
+          const res = await axios.get(`${serverUrl}/api/inventory/${userId}`, { params });
+          const safeInventory = Array.isArray(res.data) ? res.data : [];
+          setInventory(safeInventory);
+          const totalCount = safeInventory.reduce((sum, item) => sum + item.count, 0);
+          setMyCatches(totalCount);
+          console.log('✅ Inventory auto-refreshed:', safeInventory.length, 'types, total:', totalCount);
+        } catch (error) {
+          console.error('❌ Failed to auto-refresh inventory:', error);
+        }
+      }
+    });
+    
     // 개별 데이터 업데이트 이벤트 처리
     socket.on('data:companions', (data) => {
       console.log('🔄 Received companions update via WebSocket:', data);
@@ -2741,6 +2858,7 @@ function App() {
         localStorage.removeItem("explorationCooldown");
         localStorage.removeItem("fishingCooldownEnd");
         localStorage.removeItem("explorationCooldownEnd");
+        localStorage.removeItem("raidCooldownEnd");
         
         // 페이지 새로고침으로 완전 초기화
         window.location.reload();
@@ -6174,6 +6292,21 @@ function App() {
                 userData={{ username, userUuid }}
                 socket={socket}
                 isDarkMode={isDarkMode}
+                refreshInventory={async () => {
+                  // 인벤토리 새로고침 함수
+                  try {
+                    const userId = idToken ? 'user' : 'null';
+                    const params = { username, userUuid };
+                    const res = await axios.get(`${serverUrl}/api/inventory/${userId}`, { params });
+                    const safeInventory = Array.isArray(res.data) ? res.data : [];
+                    setInventory(safeInventory);
+                    const totalCount = safeInventory.reduce((sum, item) => sum + item.count, 0);
+                    setMyCatches(totalCount);
+                    console.log('✅ Inventory refreshed after expedition rewards:', safeInventory.length, 'types, total:', totalCount);
+                  } catch (error) {
+                    console.error('❌ Failed to refresh inventory after expedition:', error);
+                  }
+                }}
               />
             </div>
           )}

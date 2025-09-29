@@ -324,15 +324,13 @@ class ExpeditionSystem {
         ];
 
         room.players.forEach(player => {
-            // 실제 플레이어의 데이터 사용 (악세사리 레벨 + 낚시 실력 기반 체력)
+            // 실제 플레이어의 데이터 사용 (악세사리 레벨 기반 체력)
             const playerData = room.playerData?.[player.id];
             const accessoryLevel = playerData?.accessoryLevel || 1;
             const fishingSkill = playerData?.fishingSkill || 1;
             
-            // 체력 계산: 악세사리 기본 + 낚시 실력 보너스
-            const baseHp = this.calculatePlayerMaxHp(accessoryLevel);
-            const skillBonus = Math.floor(fishingSkill * 0.5); // 낚시 실력 1당 0.5 체력 보너스
-            const maxHp = baseHp + skillBonus;
+            // 체력 계산: 내정보 탭과 동일하게 악세사리 레벨만 사용
+            const maxHp = this.calculatePlayerMaxHp(accessoryLevel);
             
             playerHp[player.id] = maxHp;
             playerMaxHp[player.id] = maxHp;
@@ -421,11 +419,11 @@ class ExpeditionSystem {
         };
     }
     
-    // 플레이어 최대 체력 계산 (탐사전투와 동일)
+    // 플레이어 최대 체력 계산 (내정보 탭과 동일한 공식)
     calculatePlayerMaxHp(accessoryLevel) {
-        const baseHp = 100;
-        const hpPerLevel = 20;
-        return baseHp + (accessoryLevel * hpPerLevel);
+        // 내정보 탭과 동일한 체력 계산 공식 사용
+        if (accessoryLevel === 0) return 50; // 기본 체력
+        return Math.floor(Math.pow(accessoryLevel, 1.325) + 50 * accessoryLevel + 5 * accessoryLevel);
     }
 
     // 동료 능력치 계산 (탐사전투와 동일)
@@ -954,7 +952,7 @@ class ExpeditionSystem {
                 
                 room.players.forEach(player => {
                     const currentHp = battleState.playerHp[player.id] || 0;
-                    const maxHp = this.calculatePlayerMaxHp(room.playerData[player.id]?.accessoryLevel || 0, room.playerData[player.id]?.fishingSkill || 1);
+                    const maxHp = this.calculatePlayerMaxHp(room.playerData[player.id]?.accessoryLevel || 0);
                     const hpRatio = currentHp / maxHp;
                     
                     if (currentHp > 0 && hpRatio < lowestHpRatio) {

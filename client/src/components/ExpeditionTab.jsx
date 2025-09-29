@@ -18,7 +18,7 @@ import {
   Plus
 } from 'lucide-react';
 
-const ExpeditionTab = ({ userData, socket, isDarkMode = true }) => {
+const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory }) => {
   // 접두어에 따른 색상 반환 (탐사와 동일)
   const getPrefixColor = (prefixName, isDark) => {
     switch (prefixName) {
@@ -72,6 +72,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true }) => {
   const [forceUpdateCounter, setForceUpdateCounter] = useState(0); // 강제 리렌더링용
   const [speedBars, setSpeedBars] = useState({}); // 각 캐릭터의 속도바 상태
   const [showDefeatModal, setShowDefeatModal] = useState(false); // 패배 모달 표시 상태
+  const [playersCompanions, setPlayersCompanions] = useState({}); // 각 플레이어의 동료 정보
   const progressIntervalRef = useRef(null);
   const speedBarIntervalsRef = useRef({});
   const battleLogRef = useRef(null);
@@ -123,10 +124,14 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true }) => {
      // 캐릭터 타입에 따라 최대치 결정
      const maxProgress = characterId.startsWith('companion_') ? 250 : characterId.startsWith('monster_') ? 100 : 200;
     
-    const interval = (250 / speed) * 1000; // 250/속도 초 (속도 50 = 5초, 속도 25 = 10초)
-    let progress = 0;
+    // 올바른 속도바 계산: 속도 = 초당 증가량, 공격시간 = maxProgress / 속도
+    const interval = 50; // 50ms마다 업데이트
+    const increment = (speed * interval) / 1000; // 50ms당 증가량 (속도 × 0.05초)
     
+    let progress = 0;
     setSpeedBars(prev => ({ ...prev, [characterId]: 0 }));
+
+    console.log(`[SPEED] Starting ${characterId}: speed=${speed}, maxProgress=${maxProgress}, increment=${increment.toFixed(2)}, expectedTime=${(maxProgress/speed).toFixed(2)}s`);
 
     speedBarIntervalsRef.current[characterId] = setInterval(() => {
       // 아군 전멸 체크 - 전멸 시 속도바 중단
@@ -136,8 +141,14 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true }) => {
         return;
       }
       
-      progress += 1;
-      setSpeedBars(prev => ({ ...prev, [characterId]: progress }));
+      progress += increment;
+      const newProgress = Math.min(progress, maxProgress);
+      setSpeedBars(prev => ({ ...prev, [characterId]: newProgress }));
+      
+      // 디버깅용 로그 (처음 몇 번만)
+      if (progress < increment * 5) {
+        console.log(`[SPEED] ${characterId}: progress=${newProgress.toFixed(2)}/${maxProgress}, ${((newProgress/maxProgress)*100).toFixed(1)}%`);
+      }
       
       if (progress >= maxProgress) {
         // 속도바가 다 차면 잠시 대기 후 자동 리셋
@@ -167,7 +178,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true }) => {
         
         return;
       }
-    }, interval / maxProgress);
+    }, interval);
   };
 
   // 모든 속도바 정리 함수
@@ -513,6 +524,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true }) => {
         
         setCurrentRoom(null);
         setCurrentView('lobby');
+        setPlayersCompanions({}); // 동료 정보 초기화
         loadAvailableRooms();
       }
     } catch (error) {
@@ -569,6 +581,69 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true }) => {
     }
   };
 
+  // 플레이어의 전투 참전 동료 정보 가져오기
+  const fetchPlayerCompanions = async (playerUuid, playerName) => {
+    try {
+      console.log(`[EXPEDITION] Fetching companions for ${playerName} (${playerUuid})`);
+      
+      const response = await fetch(`/api/companion-stats/user?userUuid=${playerUuid}&username=${playerName}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`[EXPEDITION] Companion data for ${playerName}:`, data);
+        
+        // 서버 응답 형식에 맞게 수정: companionStats 객체에서 isInBattle: true인 것들만 추출
+        const battleCompanions = [];
+        if (data.companionStats) {
+          Object.entries(data.companionStats).forEach(([companionName, stats]) => {
+            if (stats.isInBattle) {
+              battleCompanions.push({
+                companionName: companionName,
+                level: stats.level,
+                experience: stats.experience,
+                isInBattle: stats.isInBattle
+              });
+            }
+          });
+        }
+        
+        console.log(`[EXPEDITION] Battle companions for ${playerName}:`, battleCompanions);
+        return battleCompanions;
+      } else {
+        console.error(`[EXPEDITION] Failed to fetch companions for ${playerName}:`, response.status);
+      }
+    } catch (error) {
+      console.error(`Failed to fetch companions for ${playerName}:`, error);
+    }
+    return [];
+  };
+
+  // 모든 파티 멤버의 동료 정보 로드
+  const loadAllPlayersCompanions = async () => {
+    if (!currentRoom?.players) return;
+    
+    console.log(`[EXPEDITION] Loading companions for ${currentRoom.players.length} players`);
+    const companionsData = {};
+    
+    for (const player of currentRoom.players) {
+      const companions = await fetchPlayerCompanions(player.id, player.name);
+      companionsData[player.id] = companions;
+    }
+    
+    console.log(`[EXPEDITION] All players companions loaded:`, companionsData);
+    setPlayersCompanions(companionsData);
+  };
+
+  // 방 정보가 변경될 때마다 동료 정보 로드
+  useEffect(() => {
+    if (currentRoom && currentView === 'room') {
+      loadAllPlayersCompanions();
+    }
+  }, [currentRoom?.players?.length, currentView]);
+
   // 자동 전투이므로 공격 함수 제거됨
 
   const claimRewards = async () => {
@@ -592,6 +667,12 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true }) => {
       
       if (data.success) {
         alert(`${data.message}\n보상: ${data.rewards.map(r => `${r.fishName} x${r.quantity}`).join(', ')}`);
+        
+        // 🚀 인벤토리 즉시 새로고침 (보상 물고기 반영)
+        if (refreshInventory) {
+          console.log('🔄 Refreshing inventory after expedition rewards...');
+          await refreshInventory();
+        }
         
         // 소켓에서 방 나가기
         if (socket && currentRoom) {
@@ -723,7 +804,8 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true }) => {
           // 몬스터 속도바 시작
           updateData.room?.monsters?.forEach(monster => {
             if (monster.isAlive) {
-              startSpeedBar(`monster_${monster.id}`, monster.speed || 80);
+              console.log(`[EXPEDITION] Starting speed bar for ${monster.name} with speed:`, monster.speed);
+              startSpeedBar(`monster_${monster.id}`, monster.speed || 30);
             }
           });
           
@@ -1364,6 +1446,35 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true }) => {
                         </div>
                       )}
                     </div>
+                    
+                    {/* 전투 참전 동료 정보 - 컴팩트 버전 */}
+                    <div className="mt-2 pt-2 border-t border-gray-300/20">
+                      {playersCompanions[player.id] && playersCompanions[player.id].length > 0 ? (
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <span className={`text-xs ${
+                            isDarkMode ? "text-gray-400" : "text-gray-500"
+                          }`}>
+                            ⚔️
+                          </span>
+                          {playersCompanions[player.id].map((companion, idx) => (
+                            <span key={idx} className={`text-xs px-1.5 py-0.5 rounded-full ${
+                              isDarkMode 
+                                ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" 
+                                : "bg-blue-500/10 text-blue-600 border border-blue-500/30"
+                            }`}>
+                              {companion.companionName} Lv.{companion.level}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className={`text-xs flex items-center gap-1 ${
+                          isDarkMode ? "text-gray-500" : "text-gray-400"
+                        }`}>
+                          <span>⚔️</span>
+                          <span>참전 동료 없음</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1709,7 +1820,16 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true }) => {
                               const baseAttack = 0.00225 * Math.pow(fishingSkill, 3) + 0.165 * Math.pow(fishingSkill, 2) + 2 * fishingSkill + 3;
                               return Math.floor(baseAttack);
                             })()} | 
-                            🛡️ 악세사리: Lv.{playerData?.accessoryLevel || 1}
+                            🛡️ 악세사리: {(() => {
+                              const accessoryLevel = playerData?.accessoryLevel || 0;
+                              const accessories = [
+                                '없음', '오래된반지', '은목걸이', '금귀걸이', '마법의펜던트', '에메랄드브로치',
+                                '토파즈이어링', '자수정팔찌', '백금티아라', '만드라고라허브', '에테르나무묘목',
+                                '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
+                              ];
+                              const accessoryName = accessories[accessoryLevel] || '없음';
+                              return accessoryLevel === 0 ? '없음' : `Lv.${accessoryLevel} ${accessoryName}`;
+                            })()}
                           </div>
                           
                           {/* HP 바 */}
@@ -1739,7 +1859,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true }) => {
                           }`}>
                             <div
                               className="h-1.5 rounded-full transition-all duration-100 bg-gradient-to-r from-orange-500 to-orange-600"
-                              style={{ width: `${((speedBars[`player_${player.id}`] || 0) / 500) * 100}%` }}
+                              style={{ width: `${((speedBars[`player_${player.id}`] || 0) / 200) * 100}%` }}
                             ></div>
                           </div>
                         </div>

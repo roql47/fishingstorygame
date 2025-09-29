@@ -189,6 +189,18 @@ router.post('/rooms/start', authenticateJWT, async (req, res) => {
 
         // 모든 플레이어의 동료, 낚시 실력, 장비 정보 가져오기
         const allPlayerData = {};
+        
+        // 업적 시스템 인스턴스 가져오기 (index.js에서 정의된 것과 동일)
+        const mongoose = require('mongoose');
+        const AchievementSystem = require('../modules/achievementSystem').AchievementSystem;
+        const achievementSystem = new AchievementSystem(
+            mongoose.model('Catch'),
+            FishingSkillModel,
+            mongoose.model('UserUuid'),
+            mongoose.model('RaidDamage'),
+            mongoose.model('RareFishCount')
+        );
+        
         for (const player of room.players) {
             const [companions, fishingSkillData, userEquipment] = await Promise.all([
                 CompanionStatsModel.find({ userUuid: player.id, isInBattle: true }).lean(),
@@ -196,9 +208,28 @@ router.post('/rooms/start', authenticateJWT, async (req, res) => {
                 UserEquipmentModel.findOne({ userUuid: player.id }).lean()
             ]);
 
-            const fishingSkill = fishingSkillData?.skill || 1;
-            const accessoryLevel = userEquipment?.accessory ? 
-                (parseInt(userEquipment.accessory.match(/\d+/)?.[0]) || 0) + 1 : 1;
+            // 기본 낚시실력 + 업적 보너스 계산 (내정보 탭과 동일)
+            const baseFishingSkill = fishingSkillData?.skill || 1;
+            let achievementBonus = 0;
+            try {
+                achievementBonus = await achievementSystem.calculateAchievementBonus(player.id);
+            } catch (error) {
+                console.error(`Failed to calculate achievement bonus for ${player.name}:`, error);
+            }
+            const fishingSkill = baseFishingSkill + achievementBonus;
+            // 악세사리 레벨 계산 (내정보 탭과 동일한 방식)
+            const getAccessoryLevel = (accessoryName) => {
+                if (!accessoryName) return 0;
+                const accessories = [
+                    '오래된반지', '은목걸이', '금귀걸이', '마법의펜던트', '에메랄드브로치',
+                    '토파즈이어링', '자수정팔찌', '백금티아라', '만드라고라허브', '에테르나무묘목',
+                    '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
+                ];
+                const level = accessories.indexOf(accessoryName);
+                return level >= 0 ? level + 1 : 0;
+            };
+            
+            const accessoryLevel = getAccessoryLevel(userEquipment?.accessory) || 1;
             
             allPlayerData[player.id] = {
                 companions: companions,
@@ -207,7 +238,10 @@ router.post('/rooms/start', authenticateJWT, async (req, res) => {
             };
             
             console.log(`[EXPEDITION] Player ${player.name} data:`, {
-                fishingSkill: fishingSkill,
+                baseFishingSkill: baseFishingSkill,
+                achievementBonus: achievementBonus,
+                finalFishingSkill: fishingSkill,
+                accessoryName: userEquipment?.accessory || 'none',
                 accessoryLevel: accessoryLevel,
                 companions: companions.length
             });
@@ -327,6 +361,16 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
 
         // 보상 수령 완료 표시
         expeditionSystem.markRewardsClaimed(userUuid);
+        
+        // 🚀 소켓을 통해 해당 플레이어에게 인벤토리 업데이트 알림
+        if (req.io) {
+            console.log(`🔄 Sending inventory update notification to ${username} (${userUuid})`);
+            req.io.emit('inventoryUpdated', { 
+                userUuid: userUuid,
+                reason: 'expedition_rewards',
+                rewards: playerRewards 
+            });
+        }
         
         // 플레이어를 방에서 제거하고 방 정리
         const leaveResult = await expeditionSystem.leaveExpeditionRoom(userUuid);
