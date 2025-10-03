@@ -84,10 +84,11 @@ const checkJWTAdminStatus = () => {
   return false;
 };
 
-// Axios 응답 인터셉터 설정 (차단된 IP/계정 처리)
+// Axios 응답 인터셉터 설정 (차단된 IP/계정 처리 + JWT 토큰 만료 처리)
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
+    // 차단된 IP/계정 처리
     if (error.response?.status === 403 && error.response?.data?.blocked) {
       const blockInfo = error.response.data;
       alert(`🚫 ${blockInfo.message}`);
@@ -98,6 +99,28 @@ axios.interceptors.response.use(
         window.location.reload();
       }
     }
+    
+    // 🔐 JWT 토큰 만료 처리 (401, 403 에러)
+    if (error.response?.status === 401 || 
+        (error.response?.status === 403 && 
+         (error.response?.data?.code === "JWT_EXPIRED" || 
+          error.response?.data?.code === "JWT_INVALID" || 
+          error.response?.data?.error?.includes("expired") ||
+          error.response?.data?.error?.includes("Invalid")))) {
+      
+      console.log("🚨 JWT 토큰 만료 또는 무효 감지:", error.response?.data);
+      
+      // JWT 토큰 관련 데이터 정리
+      localStorage.removeItem("jwtToken");
+      localStorage.removeItem("jwtExpiresIn");
+      
+      // 사용자에게 재로그인 안내
+      alert("🔐 사용자 인증이 필요합니다.\n\n보안을 위해 다시 로그인해 주세요.");
+      
+      // 페이지 새로고침으로 로그인 화면으로 이동
+      window.location.reload();
+    }
+    
     return Promise.reject(error);
   }
 );
@@ -740,6 +763,56 @@ function App() {
       console.error('❌ Failed to refresh all data:', error);
     }
   };
+
+  // 🔐 JWT 토큰 자동 갱신 시스템
+  useEffect(() => {
+    if (!jwtToken) return;
+
+    // 토큰 만료 시간 확인 및 자동 갱신
+    const checkTokenExpiry = () => {
+      const token = jwtToken || localStorage.getItem("jwtToken");
+      if (!token) return;
+
+      try {
+        const payload = safeParseJWT(token);
+        if (!payload || !payload.exp) return;
+
+        const now = Math.floor(Date.now() / 1000);
+        const timeUntilExpiry = payload.exp - now;
+        
+        // 토큰이 10분 이내에 만료될 예정이면 갱신 요청
+        if (timeUntilExpiry <= 600 && timeUntilExpiry > 0) {
+          console.log("🔄 JWT 토큰 자동 갱신 요청 (만료 10분 전)");
+          
+          // 소켓을 통해 토큰 갱신 요청
+          const socket = getSocket();
+          if (socket && socket.connected) {
+            socket.emit("auth:refresh-token", { userUuid, username });
+          }
+        }
+        // 토큰이 이미 만료되었으면 로그아웃 처리
+        else if (timeUntilExpiry <= 0) {
+          console.log("🚨 JWT 토큰이 만료되었습니다.");
+          localStorage.removeItem("jwtToken");
+          localStorage.removeItem("jwtExpiresIn");
+          alert("🔐 세션이 만료되었습니다.\n\n다시 로그인해 주세요.");
+          window.location.reload();
+        }
+      } catch (error) {
+        console.error("토큰 만료 시간 확인 중 오류:", error);
+      }
+    };
+
+    // 5분마다 토큰 상태 확인
+    const tokenCheckInterval = setInterval(checkTokenExpiry, 5 * 60 * 1000);
+    
+    // 즉시 한 번 확인
+    checkTokenExpiry();
+
+    return () => {
+      clearInterval(tokenCheckInterval);
+    };
+  }, [jwtToken, userUuid, username]);
 
   // 페이지 로드 시 저장된 토큰들 및 게스트 상태 복원
   useEffect(() => {
@@ -1953,17 +2026,27 @@ function App() {
       }
     });
     
-    // 중복 로그인 알림 처리
+    // 중복 로그인 알림 처리 (개선된 버전)
     const onDuplicateLogin = (data) => {
       alert(data.message);
       // 로그아웃 처리
       localStorage.removeItem("idToken");
       localStorage.removeItem("nickname");
       localStorage.removeItem("userUuid");
+      // JWT 토큰은 제거하지 않음 (세션 전환이므로)
       window.location.reload();
     };
     
+    // 🔄 새로운 세션 전환 처리 (부드러운 전환)
+    const onSessionTransition = (data) => {
+      console.log("🔄 세션 전환:", data);
+      // 사용자에게 알림 (선택적)
+      // alert(data.message);
+      // JWT 토큰은 유지하고 소켓만 재연결
+    };
+    
     socket.on("duplicate_login", onDuplicateLogin);
+    socket.on("session:transition", onSessionTransition);
     
     // 레이드 이벤트 리스너 등록
     socket.on("raid:boss:update", onRaidBossUpdate);
@@ -6503,6 +6586,9 @@ function App() {
                 userData={{ username, userUuid }}
                 socket={socket}
                 isDarkMode={isDarkMode}
+                syncBattleCompanionsToServer={syncBattleCompanionsToServer}
+                battleCompanions={battleCompanions}
+                companionStats={companionStats}
                 refreshInventory={async () => {
                   // 인벤토리 새로고침 함수
                   try {

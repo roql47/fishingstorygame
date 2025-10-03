@@ -1925,11 +1925,16 @@ class ExpeditionSystem {
             if (room.players.some(player => player.id === userUuid)) {
                 // 해당 플레이어의 보상을 수령 완료로 표시
                 if (room.rewards) {
-                    room.rewards = room.rewards.filter(reward => reward.playerId !== userUuid);
+                    const originalCount = room.rewards.length;
+                    // 문자열 비교를 확실히 하기 위해 String() 변환
+                    room.rewards = room.rewards.filter(reward => String(reward.playerId) !== String(userUuid));
+                    const newCount = room.rewards.length;
+                    
+                    console.log(`[EXPEDITION] markRewardsClaimed: ${userUuid}, removed ${originalCount - newCount} rewards`);
                     
                     // 모든 플레이어가 보상을 수령했는지 확인
                     const remainingRewards = room.rewards.filter(reward => 
-                        room.players.some(player => player.id === reward.playerId)
+                        room.players.some(player => String(player.id) === String(reward.playerId))
                     );
                     
                     // 모든 보상이 수령되었으면 방 상태를 'reward_claimed'로 변경

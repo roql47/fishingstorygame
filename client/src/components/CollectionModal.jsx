@@ -13,44 +13,79 @@ const CollectionModal = ({
 
   if (!showCollectionModal) return null;
 
-  // 낚시대 목록 (상점에서 구매 가능한 순서)
+  // 낚시대 목록 (실제 상점 데이터 기반 - 전체 24개)
   const fishingRods = [
-    { name: '나무낚시대', price: 0, description: '기본 낚시대' },
-    { name: '대나무낚시대', price: 500, description: '가벼운 대나무로 만든 낚시대' },
-    { name: '철제낚시대', price: 2000, description: '튼튼한 철로 만든 낚시대' },
-    { name: '강화낚시대', price: 8000, description: '특수 강화된 낚시대' },
-    { name: '마법낚시대', price: 25000, description: '마법의 힘이 깃든 낚시대' },
-    { name: '전설낚시대', price: 80000, description: '전설 속의 낚시대' },
-    { name: '신화낚시대', price: 250000, description: '신화급 낚시대' },
-    { name: '초월낚시대', price: 750000, description: '모든 것을 초월한 낚시대' },
-    { name: '무한낚시대', price: 2000000, description: '무한한 가능성의 낚시대' },
-    { name: '창조낚시대', price: 6000000, description: '창조의 힘을 가진 낚시대' }
+    { name: '나무낚시대', price: 0, description: '기본 낚시대', currency: 'gold' },
+    { name: '낡은낚시대', price: 10000, description: '오래된 낚시대입니다', currency: 'gold' },
+    { name: '기본낚시대', price: 50000, description: '기본적인 낚시대입니다', currency: 'gold' },
+    { name: '단단한낚시대', price: 140000, description: '견고한 낚시대입니다', currency: 'gold' },
+    { name: '은낚시대', price: 370000, description: '은으로 만든 고급 낚시대입니다', currency: 'gold' },
+    { name: '금낚시대', price: 820000, description: '금으로 만든 최고급 낚시대입니다', currency: 'gold' },
+    { name: '강철낚시대', price: 2390000, description: '강철로 제련된 견고한 낚시대입니다', currency: 'gold' },
+    { name: '사파이어낚시대', price: 6100000, description: '사파이어가 박힌 신비로운 낚시대입니다', currency: 'gold' },
+    { name: '루비낚시대', price: 15000000, description: '루비의 힘이 깃든 화려한 낚시대입니다', currency: 'gold' },
+    { name: '다이아몬드낚시대', price: 45000000, description: '다이아몬드의 광채가 빛나는 낚시대입니다', currency: 'gold' },
+    { name: '레드다이아몬드낚시대', price: 100000000, description: '희귀한 레드다이아몬드로 만든 전설적인 낚시대입니다', currency: 'gold' },
+    { name: '벚꽃낚시대', price: 300000000, description: '벚꽃의 아름다움을 담은 환상적인 낚시대입니다', currency: 'gold' },
+    { name: '꽃망울낚시대', price: 732000000, description: '꽃망울처럼 생긴 신비한 낚시대입니다', currency: 'gold' },
+    { name: '호롱불낚시대', price: 1980000000, description: '호롱불처럼 따뜻한 빛을 내는 낚시대입니다', currency: 'gold' },
+    { name: '산고등낚시대', price: 4300000000, description: '바다 깊은 곳의 산고로 만든 낚시대입니다', currency: 'gold' },
+    { name: '피크닉', price: 8800000000, description: '즐거운 피크닉 분위기의 특별한 낚시대입니다', currency: 'gold' },
+    { name: '마녀빗자루', price: 25000000000, description: '마녀의 마법이 깃든 신비로운 빗자루 낚시대입니다', currency: 'gold' },
+    { name: '에테르낚시대', price: 64800000000, description: '에테르의 힘으로 만들어진 초월적인 낚시대입니다', currency: 'gold' },
+    { name: '별조각낚시대', price: 147600000000, description: '별의 조각으로 만든 우주적인 낚시대입니다', currency: 'gold' },
+    { name: '여우꼬리낚시대', price: 320000000000, description: '여우의 꼬리처럼 유연한 신비한 낚시대입니다', currency: 'gold' },
+    { name: '초콜릿롤낚시대', price: 780000000000, description: '달콤한 초콜릿롤 모양의 귀여운 낚시대입니다', currency: 'gold' },
+    { name: '호박유령낚시대', price: 2800000000000, description: '호박 속 유령의 힘이 깃든 무서운 낚시대입니다', currency: 'gold' },
+    { name: '핑크버니낚시대', price: 6100000000000, description: '핑크빛 토끼의 귀여움이 담긴 낚시대입니다', currency: 'gold' },
+    { name: '할로우낚시대', price: 15100000000000, description: '할로윈의 신비로운 힘이 깃든 낚시대입니다', currency: 'gold' },
+    { name: '여우불낚시대', price: 40400000000000, description: '여우불의 환상적인 힘을 지닌 최고급 낚시대입니다', currency: 'gold' }
   ];
 
-  // 악세사리 목록 (순차적 구매 순서)
+  // 악세사리 목록 (실제 상점 데이터 기반)
   const accessories = [
-    { name: '오래된반지', price: 1000, description: '오래된 반지' },
-    { name: '은목걸이', price: 3000, description: '은으로 만든 목걸이' },
-    { name: '금귀걸이', price: 8000, description: '금으로 만든 귀걸이' },
-    { name: '마법의펜던트', price: 20000, description: '마법의 힘이 깃든 펜던트' },
-    { name: '에메랄드브로치', price: 50000, description: '에메랄드가 박힌 브로치' },
-    { name: '토파즈이어링', price: 120000, description: '토파즈가 박힌 이어링' },
-    { name: '자수정팔찌', price: 280000, description: '자수정으로 만든 팔찌' },
-    { name: '백금티아라', price: 650000, description: '백금으로 만든 티아라' },
-    { name: '만드라고라허브', price: 1500000, description: '신비한 만드라고라 허브' },
-    { name: '에테르나무묘목', price: 3500000, description: '에테르 나무의 묘목' },
-    { name: '몽마의조각상', price: 8000000, description: '몽마의 힘이 깃든 조각상' },
-    { name: '마카롱훈장', price: 18000000, description: '달콤한 마카롱 훈장' },
-    { name: '빛나는마력순환체', price: 40000000, description: '빛나는 마력 순환체' }
+    { name: '오래된반지', price: 10, description: '낡았지만 의미있는 반지입니다', currency: 'amber' },
+    { name: '은목걸이', price: 25, description: '은으로 만든 아름다운 목걸이입니다', currency: 'amber' },
+    { name: '금귀걸이', price: 50, description: '금으로 만든 화려한 귀걸이입니다', currency: 'amber' },
+    { name: '마법의펜던트', price: 80, description: '마법의 힘이 깃든 신비한 펜던트입니다', currency: 'amber' },
+    { name: '에메랄드브로치', price: 120, description: '에메랄드가 박힌 고급스러운 브로치입니다', currency: 'amber' },
+    { name: '토파즈이어링', price: 180, description: '토파즈의 빛이 아름다운 이어링입니다', currency: 'amber' },
+    { name: '자수정팔찌', price: 250, description: '자수정으로 만든 우아한 팔찌입니다', currency: 'amber' },
+    { name: '백금티아라', price: 465, description: '백금으로 제작된 고귀한 티아라입니다', currency: 'amber' },
+    { name: '만드라고라허브', price: 700, description: '신비한 만드라고라 허브입니다', currency: 'amber' },
+    { name: '에테르나무묘목', price: 1000, description: '에테르 나무의 신비한 묘목입니다', currency: 'amber' },
+    { name: '몽마의조각상', price: 1800, description: '몽마의 힘이 깃든 신비한 조각상입니다', currency: 'amber' },
+    { name: '마카롱훈장', price: 3200, description: '달콤한 마카롱 모양의 특별한 훈장입니다', currency: 'amber' },
+    { name: '빛나는마력순환체', price: 5000, description: '마력이 순환하는 빛나는 신비한 구슬입니다', currency: 'amber' }
   ];
 
   // 보유 여부 확인 함수
   const hasItem = (itemName, type) => {
     if (type === 'fishingRod') {
-      return userEquipment?.fishingRod === itemName;
+      // 낚시대는 현재 장착된 것만 보유한 것으로 간주하지 않고,
+      // 해당 낚시대의 인덱스까지의 모든 낚시대를 보유한 것으로 간주
+      const rodIndex = fishingRods.findIndex(rod => rod.name === itemName);
+      const currentRodIndex = fishingRods.findIndex(rod => rod.name === userEquipment?.fishingRod);
+      
+      // 현재 장착된 낚시대가 없거나 null이면 기본 낚시대(나무낚시대)만 보유한 것으로 간주
+      if (currentRodIndex === -1 || !userEquipment?.fishingRod) {
+        return rodIndex === 0; // 나무낚시대(인덱스 0)만 보유
+      }
+      
+      return rodIndex <= currentRodIndex;
     } else if (type === 'accessory') {
-      return userEquipment?.accessory === itemName;
+      // 악세사리도 마찬가지로 현재 장착된 것의 인덱스까지 모든 악세사리를 보유한 것으로 간주
+      const accessoryIndex = accessories.findIndex(acc => acc.name === itemName);
+      const currentAccessoryIndex = accessories.findIndex(acc => acc.name === userEquipment?.accessory);
+      
+      // 현재 장착된 악세사리가 없으면 아무것도 보유하지 않은 것으로 간주
+      if (currentAccessoryIndex === -1) {
+        return false;
+      }
+      
+      return accessoryIndex <= currentAccessoryIndex;
     } else if (type === 'fish') {
+      // 물고기는 한번이라도 낚았으면 발견된 것으로 간주
       return inventory?.some(item => item.fish === itemName) || false;
     }
     return false;
@@ -69,7 +104,8 @@ const CollectionModal = ({
 
     if (type === 'fish') {
       total = allFishTypes?.length || 0;
-      collected = allFishTypes?.filter(fish => hasItem(fish.name, 'fish')).length || 0;
+      // 물고기는 한번이라도 낚은 것을 기준으로 계산
+      collected = allFishTypes?.filter(fish => getFishCount(fish.name) > 0).length || 0;
     } else if (type === 'fishingRod') {
       total = fishingRods.length;
       collected = fishingRods.filter(rod => hasItem(rod.name, 'fishingRod')).length;
@@ -166,12 +202,13 @@ const CollectionModal = ({
               {allFishTypes?.map((fish, index) => {
                 const collected = hasItem(fish.name, 'fish');
                 const count = getFishCount(fish.name);
+                const everCaught = count > 0; // 한번이라도 낚았는지 확인
                 
                 return (
                   <div
                     key={index}
                     className={`p-4 rounded-lg border transition-all duration-300 ${
-                      collected
+                      everCaught
                         ? isDarkMode
                           ? "bg-blue-500/10 border-blue-400/30 hover:bg-blue-500/20"
                           : "bg-blue-50 border-blue-300/50 hover:bg-blue-100"
@@ -182,18 +219,18 @@ const CollectionModal = ({
                   >
                     <div className="text-center">
                       <div className={`text-2xl mb-2 ${
-                        collected ? "" : "filter grayscale brightness-50"
+                        everCaught ? "" : "filter grayscale brightness-50"
                       }`}>
                         🐟
                       </div>
                       <h3 className={`font-medium text-sm mb-1 ${
-                        collected
+                        everCaught
                           ? isDarkMode ? "text-white" : "text-gray-800"
                           : isDarkMode ? "text-gray-500" : "text-gray-400"
                       }`}>
-                        {collected ? fish.name : "???"}
+                        {everCaught ? fish.name : "???"}
                       </h3>
-                      {collected && (
+                      {everCaught && (
                         <>
                           <p className={`text-xs mb-1 ${
                             isDarkMode ? "text-blue-400" : "text-blue-600"
@@ -207,7 +244,7 @@ const CollectionModal = ({
                           </p>
                         </>
                       )}
-                      {!collected && (
+                      {!everCaught && (
                         <p className={`text-xs ${
                           isDarkMode ? "text-gray-600" : "text-gray-500"
                         }`}>
@@ -321,7 +358,7 @@ const CollectionModal = ({
                             <p className={`text-sm mb-1 ${
                               isDarkMode ? "text-purple-400" : "text-purple-600"
                             }`}>
-                              Lv.{index + 1} • {accessory.price.toLocaleString()}골드
+                              Lv.{index + 1} • {accessory.price.toLocaleString()}호박석
                             </p>
                             <p className={`text-xs ${
                               isDarkMode ? "text-gray-400" : "text-gray-600"

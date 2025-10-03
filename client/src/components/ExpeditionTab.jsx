@@ -18,7 +18,7 @@ import {
   Plus
 } from 'lucide-react';
 
-const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory }) => {
+const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, syncBattleCompanionsToServer, battleCompanions, companionStats }) => {
   // 접두어에 따른 색상 반환 (탐사와 동일)
   const getPrefixColor = (prefixName, isDark) => {
     switch (prefixName) {
@@ -414,6 +414,12 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory }
     
     setLoading(true);
     try {
+      // 🔧 원정 방 생성 전에 동료 전투 상태를 서버와 동기화
+      console.log('[EXPEDITION] Syncing companion battle status before creating room...');
+      if (syncBattleCompanionsToServer) {
+        await syncBattleCompanionsToServer();
+      }
+      
       const token = localStorage.getItem('jwtToken');
       const response = await fetch('/api/expedition/rooms/create', {
         method: 'POST',
@@ -430,6 +436,12 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory }
       if (data.success) {
         setCurrentRoom(data.room);
         setCurrentView('room');
+        
+        // 🔧 방 생성 후 동료 정보 즉시 새로고침 (동기화 확인)
+        setTimeout(async () => {
+          console.log('[EXPEDITION] Reloading companions after creating room...');
+          await loadAllPlayersCompanions();
+        }, 1000);
       } else {
         alert(data.error || '방 생성에 실패했습니다.');
       }
@@ -445,6 +457,12 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory }
     
     setLoading(true);
     try {
+      // 🔧 원정 방 참여 전에 동료 전투 상태를 서버와 동기화
+      console.log('[EXPEDITION] Syncing companion battle status before joining room...');
+      if (syncBattleCompanionsToServer) {
+        await syncBattleCompanionsToServer();
+      }
+      
       const token = localStorage.getItem('jwtToken');
       const response = await fetch(`/api/expedition/rooms/${roomId}/join`, {
         method: 'POST',
@@ -468,6 +486,12 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory }
         
         // 강제 리렌더링
         setForceUpdateCounter(prev => prev + 1);
+        
+        // 🔧 방 참여 후 동료 정보 즉시 새로고침 (동기화 확인)
+        setTimeout(async () => {
+          console.log('[EXPEDITION] Reloading companions after joining room...');
+          await loadAllPlayersCompanions();
+        }, 1000);
         
         // 즉시 최신 방 정보 가져오기
         setTimeout(async () => {
@@ -685,9 +709,16 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory }
           console.log('[EXPEDITION] Updated room state after claiming rewards, remaining rewards:', updatedRoom.rewards.length);
         }
         
-        // 보상 수령 후에는 자동으로 방을 나가지 않음
-        // 다른 플레이어들도 보상을 수령할 수 있도록 방에 남아있음
-        console.log('[EXPEDITION] Rewards claimed, staying in room for other players');
+        // 보상 수령 후 방 나가기 및 로비로 돌아가기
+        console.log('[EXPEDITION] Rewards claimed, leaving room and returning to lobby');
+        
+        // 서버에 방 나가기 요청
+        if (socket && currentRoom) {
+          socket.emit('expedition-leave-room', currentRoom.id);
+        }
+        
+        setCurrentView('lobby');
+        setCurrentRoom(null);
         
         // 방 정보 새로고침 (보상 상태 업데이트)
         loadAvailableRooms();
@@ -1457,31 +1488,77 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory }
                     
                     {/* 전투 참전 동료 정보 - 컴팩트 버전 */}
                     <div className="mt-2 pt-2 border-t border-gray-300/20">
-                      {playersCompanions[player.id] && playersCompanions[player.id].length > 0 ? (
-                        <div className="flex items-center gap-1 flex-wrap">
-                          <span className={`text-xs ${
-                            isDarkMode ? "text-gray-400" : "text-gray-500"
-                          }`}>
-                            ⚔️
-                          </span>
-                          {playersCompanions[player.id].map((companion, idx) => (
-                            <span key={idx} className={`text-xs px-1.5 py-0.5 rounded-full ${
-                              isDarkMode 
-                                ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" 
-                                : "bg-blue-500/10 text-blue-600 border border-blue-500/30"
+                      {(() => {
+                        // 본인인 경우 클라이언트의 실제 battleCompanions 사용
+                        if (player.id === userData?.userUuid && battleCompanions && companionStats) {
+                          const myBattleCompanions = battleCompanions.map(companionName => ({
+                            companionName,
+                            level: companionStats[companionName]?.level || 1
+                          }));
+                          
+                          if (myBattleCompanions.length > 0) {
+                            return (
+                              <div className="flex items-center gap-1 flex-wrap">
+                                <span className={`text-xs ${
+                                  isDarkMode ? "text-gray-400" : "text-gray-500"
+                                }`}>
+                                  ⚔️
+                                </span>
+                                {myBattleCompanions.map((companion, idx) => (
+                                  <span key={idx} className={`text-xs px-1.5 py-0.5 rounded-full ${
+                                    isDarkMode 
+                                      ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" 
+                                      : "bg-blue-500/10 text-blue-600 border border-blue-500/30"
+                                  }`}>
+                                    {companion.companionName} Lv.{companion.level}
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          } else {
+                            return (
+                              <div className={`text-xs flex items-center gap-1 ${
+                                isDarkMode ? "text-gray-500" : "text-gray-400"
+                              }`}>
+                                <span>⚔️</span>
+                                <span>참전 동료 없음</span>
+                              </div>
+                            );
+                          }
+                        }
+                        
+                        // 다른 플레이어인 경우 서버에서 가져온 데이터 사용
+                        const companions = playersCompanions[player.id] || [];
+                        if (companions.length > 0) {
+                          return (
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className={`text-xs ${
+                                isDarkMode ? "text-gray-400" : "text-gray-500"
+                              }`}>
+                                ⚔️
+                              </span>
+                              {companions.map((companion, idx) => (
+                                <span key={idx} className={`text-xs px-1.5 py-0.5 rounded-full ${
+                                  isDarkMode 
+                                    ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" 
+                                    : "bg-blue-500/10 text-blue-600 border border-blue-500/30"
+                                }`}>
+                                  {companion.companionName} Lv.{companion.level}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        } else {
+                          return (
+                            <div className={`text-xs flex items-center gap-1 ${
+                              isDarkMode ? "text-gray-500" : "text-gray-400"
                             }`}>
-                              {companion.companionName} Lv.{companion.level}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className={`text-xs flex items-center gap-1 ${
-                          isDarkMode ? "text-gray-500" : "text-gray-400"
-                        }`}>
-                          <span>⚔️</span>
-                          <span>참전 동료 없음</span>
-                        </div>
-                      )}
+                              <span>⚔️</span>
+                              <span>참전 동료 없음</span>
+                            </div>
+                          );
+                        }
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -2164,7 +2241,8 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory }
         )}
 
         {/* 승리 시 보상 수령 버튼 */}
-        {currentRoom?.status === 'completed' && currentRoom?.rewards && (
+        {currentRoom?.status === 'completed' && currentRoom?.rewards && 
+         currentRoom.rewards.some(reward => reward.playerId === userData?.userUuid) && (
           <div className="mb-8">
             <div className={`rounded-2xl border p-6 text-center ${
               isDarkMode 
@@ -2179,7 +2257,9 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory }
               }`}>
                 <p className="mb-2">획득 보상:</p>
                 <div className="flex flex-wrap justify-center gap-2">
-                  {currentRoom.rewards.map((reward, index) => (
+                  {currentRoom.rewards
+                    .filter(reward => reward.playerId === userData?.userUuid) // 내 보상만 필터링
+                    .map((reward, index) => (
                     <span key={index} className={`px-3 py-1 rounded-full text-sm font-medium ${
                       isDarkMode 
                         ? "bg-white/10 text-white" 

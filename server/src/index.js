@@ -638,6 +638,48 @@ io.on('connection', (socket) => {
     }
   });
   
+  // 🔐 JWT 토큰 자동 갱신 요청 처리
+  socket.on("auth:refresh-token", async ({ userUuid, username }) => {
+    try {
+      console.log(`🔄 JWT 토큰 갱신 요청: ${username} (${userUuid})`);
+      
+      // 사용자 정보 확인
+      if (!userUuid || !username) {
+        console.error("❌ 토큰 갱신 실패: 사용자 정보 누락");
+        return;
+      }
+      
+      // 관리자 상태 확인
+      let isUserAdmin = false;
+      try {
+        const adminRecord = await AdminModel.findOne({ userUuid });
+        isUserAdmin = adminRecord ? adminRecord.isAdmin : false;
+      } catch (e) {
+        console.warn('토큰 갱신 중 관리자 상태 확인 실패:', e);
+      }
+      
+      // 새 JWT 토큰 생성
+      const newJwtToken = generateJWT({
+        userUuid,
+        username,
+        isAdmin: isUserAdmin
+      });
+      
+      if (newJwtToken) {
+        // 새 토큰을 클라이언트에 전송
+        socket.emit("auth:token", { 
+          token: newJwtToken,
+          expiresIn: JWT_EXPIRES_IN
+        });
+        console.log(`✅ JWT 토큰 갱신 완료: ${username}`);
+      } else {
+        console.error("❌ JWT 토큰 생성 실패");
+      }
+    } catch (error) {
+      console.error("🚨 JWT 토큰 갱신 중 오류:", error);
+    }
+  });
+  
   // 연결 유지 확인 (heartbeat)
   socket.on('ping', () => {
     socket.emit('pong');
@@ -1056,6 +1098,14 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
             termsAccepted: false,
             darkMode: true
           });
+          
+          // 새 사용자 초기 장비 설정
+          await UserEquipmentModel.create({
+            userUuid: user.userUuid,
+            username: user.username,
+            fishingRod: '나무낚시대',
+            accessory: null
+          });
         } else {
           const userUuid = await generateNextUuid();
           user = await UserUuidModel.create({
@@ -1066,6 +1116,14 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
             isGuest: false,
             termsAccepted: false,
             darkMode: true
+          });
+          
+          // 새 사용자 초기 장비 설정
+          await UserEquipmentModel.create({
+            userUuid: user.userUuid,
+            username: user.username,
+            fishingRod: '나무낚시대',
+            accessory: null
           });
         }
         console.log(`Created new Google user: ${user.userUuid} (username: ${user.username})`);
@@ -1107,6 +1165,14 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
             termsAccepted: false,
             darkMode: true
           });
+          
+          // 새 사용자 초기 장비 설정
+          await UserEquipmentModel.create({
+            userUuid: user.userUuid,
+            username: user.username,
+            fishingRod: '나무낚시대',
+            accessory: null
+          });
         } else {
           const userUuid = await generateNextUuid();
           user = await UserUuidModel.create({
@@ -1117,6 +1183,14 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
             isGuest: false,
             termsAccepted: false,
             darkMode: true
+          });
+          
+          // 새 사용자 초기 장비 설정
+          await UserEquipmentModel.create({
+            userUuid: user.userUuid,
+            username: user.username,
+            fishingRod: '나무낚시대',
+            accessory: null
           });
         }
         console.log(`Created new Kakao user: ${user.userUuid} (username: ${user.username})`);
@@ -1154,6 +1228,15 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
           termsAccepted: false,
           darkMode: true
         });
+        
+        // 새 사용자 초기 장비 설정
+        await UserEquipmentModel.create({
+          userUuid: user.userUuid,
+          username: user.username,
+          fishingRod: '나무낚시대',
+          accessory: null
+        });
+        
         console.log(`Created new guest user: ${userUuid} (${username})`);
       } else if (user.username !== username && username) {
         // 게스트 사용자의 닉네임이 변경된 경우 중복 체크 후 업데이트
@@ -1889,20 +1972,34 @@ io.on("connection", (socket) => {
         
         if (existingSocialConnection) {
           const [existingSocketId, existingUserData] = existingSocialConnection;
-          console.log(`🚨 Duplicate ${provider} login detected! Disconnecting previous session: ${existingUserData.username} (${existingSocketId})`);
+          console.log(`🔄 Same ${provider} user reconnecting: ${existingUserData.username} (${existingSocketId})`);
           
-          // 기존 연결에 중복 로그인 알림 전송
+          // 기존 연결이 실제로 활성 상태인지 확인
           const existingSocket = io.sockets.sockets.get(existingSocketId);
-          if (existingSocket) {
-            existingSocket.emit("duplicate_login", {
-              message: "다른 기기에서 로그인되어 연결이 해제됩니다."
+          if (existingSocket && existingSocket.connected) {
+            // 기존 연결이 살아있는 경우 - 부드러운 전환
+            console.log(`📱 Graceful session transition for ${existingUserData.username}`);
+            
+            // 기존 연결에 세션 전환 알림 (강제 해제 대신)
+            existingSocket.emit("session:transition", {
+              message: "새 창에서 접속하여 세션이 전환됩니다.",
+              newSessionId: socket.id
             });
-            existingSocket.disconnect(true);
+            
+            // 잠시 후 기존 연결 정리 (사용자가 메시지를 볼 수 있도록)
+            setTimeout(() => {
+              if (existingSocket.connected) {
+                existingSocket.disconnect(true);
+                console.log(`🔄 Previous session gracefully disconnected: ${existingSocketId}`);
+              }
+            }, 2000); // 2초 후 정리
+          } else {
+            // 기존 연결이 이미 끊어진 경우
+            console.log(`🧹 Cleaning up stale connection: ${existingSocketId}`);
           }
           
-          // 기존 연결 제거
+          // 기존 연결 정보 제거
           connectedUsers.delete(existingSocketId);
-          console.log(`Previous session disconnected: ${existingSocketId}`);
         }
       }
       
@@ -5898,9 +5995,9 @@ app.get("/api/user-equipment/:userId", optionalJWT, async (req, res) => {
     } : "None");
     
     if (!userEquipment) {
-      // 새 사용자인 경우 빈 장비로 생성
+      // 새 사용자인 경우 기본 낚시대로 생성
       const createData = {
-        fishingRod: null,
+        fishingRod: '나무낚시대',
         accessory: null,
         ...query
       };
@@ -6857,7 +6954,7 @@ app.post("/api/reset-account", authenticateJWT, async (req, res) => {
     const initialEquipment = await UserEquipmentModel.create({
       userUuid,
       username: user.username,
-      fishingRod: null,
+      fishingRod: '나무낚시대',
       accessory: null
     });
     
@@ -6984,7 +7081,7 @@ app.post("/api/admin/reset-user-account", authenticateJWT, async (req, res) => {
     // 기본값으로 재설정
     const initialData = [
       UserMoneyModel.create({ userUuid: targetUser.userUuid, username: targetUsername, money: 100 }),
-      UserEquipmentModel.create({ userUuid: targetUser.userUuid, username: targetUsername, fishingRod: null, accessory: null }),
+      UserEquipmentModel.create({ userUuid: targetUser.userUuid, username: targetUsername, fishingRod: '나무낚시대', accessory: null }),
       FishingSkillModel.create({ userUuid: targetUser.userUuid, username: targetUsername, skill: 0 })
     ];
     
@@ -7730,7 +7827,7 @@ const PORT = Number(process.env.PORT || 4000);
 
 // 🔐 JWT 설정
 const JWT_SECRET = process.env.JWT_SECRET || "fishing_game_jwt_secret_key_2024";
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d"; // 다시 7일로 복원
 
 // 🔐 비밀번호 암호화 유틸리티 함수들
 const SALT_ROUNDS = 12; // bcrypt 솔트 라운드 (보안성과 성능의 균형)
