@@ -798,6 +798,15 @@ const companionStatsSchema = new mongoose.Schema({
 
 const CompanionStatsModel = mongoose.model("CompanionStats", companionStatsSchema);
 
+// 레이드 보스 처치 횟수 추적 스키마
+const raidKillCountSchema = new mongoose.Schema({
+  totalKills: { type: Number, default: 0 }, // 총 처치 횟수
+  lastKillTime: { type: Date, default: Date.now }, // 마지막 처치 시간
+  currentHpMultiplier: { type: Number, default: 1.0 } // 현재 체력 배율
+}, { timestamps: true });
+
+const RaidKillCountModel = mongoose.model("RaidKillCount", raidKillCountSchema);
+
 // Ether Key Schema (에테르 열쇠 - 파티던전 입장권)
 const etherKeySchema = new mongoose.Schema({
   userId: { type: String, required: true },
@@ -3499,6 +3508,39 @@ app.get("/api/companion-stats/:userId", async (req, res) => {
   }
 });
 
+// 원정용 동료 능력치 조회 API (쿼리 파라미터 방식)
+app.get("/api/companion-stats/user", async (req, res) => {
+  try {
+    const { username, userUuid } = req.query;
+    
+    console.log("Expedition companion stats request:", { username, userUuid });
+    
+    if (!userUuid || !username) {
+      return res.status(400).json({ error: "userUuid와 username이 필요합니다." });
+    }
+    
+    const query = { userUuid: userUuid };
+    const companionStats = await CompanionStatsModel.find(query);
+    
+    // 동료별로 정리
+    const statsMap = {};
+    companionStats.forEach(stat => {
+      statsMap[stat.companionName] = {
+        level: stat.level,
+        experience: stat.experience,
+        isInBattle: stat.isInBattle
+      };
+    });
+    
+    console.log(`Expedition companion stats for ${username}:`, statsMap);
+    res.json({ companionStats: statsMap });
+    
+  } catch (error) {
+    console.error("Failed to fetch expedition companion stats:", error);
+    res.status(500).json({ error: "동료 능력치를 가져올 수 없습니다." });
+  }
+});
+
 // 동료 능력치 조회 API
 app.get("/api/companion-stats", authenticateJWT, async (req, res) => {
   try {
@@ -3528,13 +3570,94 @@ app.get("/api/companion-stats", authenticateJWT, async (req, res) => {
   }
 });
 
-// 동료 능력치 업데이트 API
+// 🔧 관리자용 동료 레벨 롤백 모니터링 API
+app.get("/api/admin/companion-rollback-logs", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid: adminUserUuid, username: adminUsername } = req.user;
+    
+    // 관리자 권한 확인
+    const adminUser = await UserModel.findOne({ userUuid: adminUserUuid });
+    if (!adminUser || !adminUser.isAdmin) {
+      return res.status(403).json({ error: "관리자 권한이 필요합니다." });
+    }
+    
+    // 최근 동료 능력치 변경 이력 조회 (레벨 하락 중심)
+    const recentStats = await CompanionStatsModel.find({})
+      .sort({ updatedAt: -1 })
+      .limit(100)
+      .select('username companionName level experience updatedAt');
+    
+    // 사용자별 동료 레벨 변화 분석
+    const rollbackSuspects = [];
+    const userStats = {};
+    
+    recentStats.forEach(stat => {
+      const key = `${stat.username}_${stat.companionName}`;
+      if (!userStats[key]) {
+        userStats[key] = [];
+      }
+      userStats[key].push({
+        level: stat.level,
+        experience: stat.experience,
+        timestamp: stat.updatedAt
+      });
+    });
+    
+    // 레벨 하락 감지
+    Object.entries(userStats).forEach(([key, history]) => {
+      if (history.length >= 2) {
+        history.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        for (let i = 1; i < history.length; i++) {
+          if (history[i-1].level < history[i].level) {
+            const [username, companionName] = key.split('_');
+            rollbackSuspects.push({
+              username,
+              companionName,
+              levelDrop: `${history[i].level} → ${history[i-1].level}`,
+              timestamp: history[i-1].timestamp,
+              severity: history[i].level - history[i-1].level // 하락 정도
+            });
+          }
+        }
+      }
+    });
+    
+    // 심각도 순으로 정렬
+    rollbackSuspects.sort((a, b) => b.severity - a.severity);
+    
+    res.json({
+      success: true,
+      rollbackSuspects: rollbackSuspects.slice(0, 20), // 상위 20개만
+      totalSuspects: rollbackSuspects.length,
+      monitoringPeriod: "최근 100개 변경사항"
+    });
+    
+  } catch (error) {
+    console.error("Failed to get rollback logs:", error);
+    res.status(500).json({ error: "롤백 로그 조회에 실패했습니다." });
+  }
+});
+
+// 동료 능력치 업데이트 API (롤백 방지 강화)
 app.post("/api/update-companion-stats", authenticateJWT, async (req, res) => {
   try {
     const { companionName, level, experience, isInBattle } = req.body;
     const { userUuid, username } = req.user;
     
     console.log("Update companion stats:", { companionName, level, experience, isInBattle, username });
+    
+    // 🔧 입력값 검증 강화
+    if (!companionName || typeof companionName !== 'string') {
+      return res.status(400).json({ error: "유효한 동료 이름이 필요합니다." });
+    }
+    
+    if (level !== undefined && (typeof level !== 'number' || level < 1 || level > 100)) {
+      return res.status(400).json({ error: "레벨은 1-100 사이의 숫자여야 합니다." });
+    }
+    
+    if (experience !== undefined && (typeof experience !== 'number' || experience < 0)) {
+      return res.status(400).json({ error: "경험치는 0 이상의 숫자여야 합니다." });
+    }
     
     const queryResult = await getUserQuery('user', username, userUuid);
     let query;
@@ -3551,21 +3674,41 @@ app.post("/api/update-companion-stats", authenticateJWT, async (req, res) => {
     });
     
     if (!companionStat) {
-      // 새로운 동료 능력치 생성
+      // 🔧 새로운 동료 능력치 생성 시 안전한 기본값 사용
       companionStat = new CompanionStatsModel({
         userId: query.userId || 'user',
         username: query.username || username,
         userUuid: query.userUuid || userUuid,
         companionName: companionName,
-        level: level || 1,
-        experience: experience || 0,
+        level: Math.max(level || 1, 1), // 최소 레벨 1 보장
+        experience: Math.max(experience || 0, 0), // 최소 경험치 0 보장
         isInBattle: isInBattle || false
       });
+      
+      console.log(`🔧 새 동료 능력치 생성: ${companionName} (레벨 ${companionStat.level})`);
     } else {
-      // 기존 능력치 업데이트
-      if (level !== undefined) companionStat.level = level;
-      if (experience !== undefined) companionStat.experience = experience;
-      if (isInBattle !== undefined) companionStat.isInBattle = isInBattle;
+      // 🔧 기존 능력치 업데이트 시 롤백 방지
+      const oldLevel = companionStat.level;
+      const oldExp = companionStat.experience;
+      
+      if (level !== undefined) {
+        // 레벨이 기존보다 낮아지는 경우 경고 로그
+        if (level < oldLevel) {
+          console.warn(`⚠️ [ROLLBACK WARNING] ${companionName} 레벨 하락: ${oldLevel} → ${level} (사용자: ${username})`);
+          // 레벨 하락을 허용하되 로그 남김 (관리자 모니터링용)
+        }
+        companionStat.level = Math.max(level, 1); // 최소 레벨 1 보장
+      }
+      
+      if (experience !== undefined) {
+        companionStat.experience = Math.max(experience, 0); // 최소 경험치 0 보장
+      }
+      
+      if (isInBattle !== undefined) {
+        companionStat.isInBattle = isInBattle;
+      }
+      
+      console.log(`🔧 동료 능력치 업데이트: ${companionName} (${oldLevel}→${companionStat.level}, ${oldExp}→${companionStat.experience})`);
     }
     
     await companionStat.save();
@@ -6659,21 +6802,33 @@ app.post("/api/reset-account", authenticateJWT, async (req, res) => {
     
     console.log(`🔄 [SECURITY] Authorized reset for user: ${user.username} (${userUuid}) from IP: ${clientIP}`);
     
-    // 모든 관련 데이터 삭제
+    // 모든 관련 데이터 삭제 (동료 능력치 포함)
     const deleteResults = await Promise.all([
       CatchModel.deleteMany({ userUuid }),
       UserMoneyModel.deleteMany({ userUuid }),
+      UserAmberModel.deleteMany({ userUuid }),
       UserEquipmentModel.deleteMany({ userUuid }),
       MaterialModel.deleteMany({ userUuid }),
-      FishingSkillModel.deleteMany({ userUuid })
+      FishingSkillModel.deleteMany({ userUuid }),
+      StarPieceModel.deleteMany({ userUuid }),
+      CompanionModel.deleteMany({ userUuid }),
+      CompanionStatsModel.deleteMany({ userUuid }), // 🔧 동료 능력치 데이터도 삭제
+      CooldownModel.deleteMany({ userUuid }),
+      EtherKeyModel.deleteMany({ userUuid })
     ]);
     
     console.log("Deleted data:", {
       catches: deleteResults[0].deletedCount,
       money: deleteResults[1].deletedCount,
-      equipment: deleteResults[2].deletedCount,
-      materials: deleteResults[3].deletedCount,
-      fishingSkill: deleteResults[4].deletedCount
+      amber: deleteResults[2].deletedCount,
+      equipment: deleteResults[3].deletedCount,
+      materials: deleteResults[4].deletedCount,
+      fishingSkill: deleteResults[5].deletedCount,
+      starPieces: deleteResults[6].deletedCount,
+      companions: deleteResults[7].deletedCount,
+      companionStats: deleteResults[8].deletedCount, // 🔧 동료 능력치 삭제 로그
+      cooldowns: deleteResults[9].deletedCount,
+      etherKeys: deleteResults[10].deletedCount
     });
     
     // 초기 데이터 생성
@@ -7805,7 +7960,7 @@ function authenticateJWT(req, res, next) {
 }
 
 // 레이드 라우터 등록
-  const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel, CooldownModel, StarPieceModel, RaidDamageModel, RareFishCountModel, CatchModel);
+  const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel, CooldownModel, StarPieceModel, RaidDamageModel, RareFishCountModel, CatchModel, RaidKillCountModel);
   app.use("/api/raid", raidRouter);
 
 // 원정 라우터 등록

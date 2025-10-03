@@ -193,8 +193,13 @@ class ExpeditionSystem {
              }
          }
 
-        // 방이 비었거나 호스트가 나간 경우 또는 보상 수령 완료 상태인 경우 방 삭제
-        if (room.players.length === 0 || !room.players.some(p => p.isHost) || room.status === 'reward_claimed') {
+        // 방 삭제 조건 개선: 방이 비었거나, (호스트가 없고 보상도 없는 경우), 또는 보상 수령 완료 상태인 경우에만 방 삭제
+        const hasRemainingRewards = room.rewards && room.rewards.length > 0;
+        const shouldDeleteRoom = room.players.length === 0 || 
+                                (!room.players.some(p => p.isHost) && !hasRemainingRewards) || 
+                                room.status === 'reward_claimed';
+        
+        if (shouldDeleteRoom) {
             // 모든 타이머 정리
             this.clearAllTimers(room);
             
@@ -202,8 +207,17 @@ class ExpeditionSystem {
             // 남은 플레이어들을 방에서 제거
             room.players.forEach(p => this.playerRooms.delete(p.id));
             
-            console.log(`[EXPEDITION] Room ${roomId} deleted. Reason: ${room.players.length === 0 ? 'empty' : !room.players.some(p => p.isHost) ? 'no host' : 'rewards claimed'}`);
+            const reason = room.players.length === 0 ? 'empty' : 
+                          (!room.players.some(p => p.isHost) && !hasRemainingRewards) ? 'no host and no rewards' : 
+                          'rewards claimed';
+            console.log(`[EXPEDITION] Room ${roomId} deleted. Reason: ${reason}`);
             return { roomDeleted: true };
+        }
+
+        // 방장이 나갔지만 보상이 남아있는 경우, 다른 플레이어를 새 방장으로 지정
+        if (!room.players.some(p => p.isHost) && room.players.length > 0) {
+            room.players[0].isHost = true;
+            console.log(`[EXPEDITION] New host assigned: ${room.players[0].name} in room ${roomId}`);
         }
 
         return { room, roomDeleted: false };

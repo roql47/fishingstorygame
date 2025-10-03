@@ -372,17 +372,37 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
             });
         }
         
-        // 플레이어를 방에서 제거하고 방 정리
-        const leaveResult = await expeditionSystem.leaveExpeditionRoom(userUuid);
-        
-        // 소켓을 통해 방 업데이트 또는 삭제 알림
-        if (req.io) {
-            if (leaveResult && leaveResult.roomDeleted) {
-                req.io.emit('expeditionRoomDeleted', { playerId: userUuid });
-                req.io.emit('expeditionRoomsRefresh');
-            } else if (leaveResult && leaveResult.room) {
-                req.io.emit('expeditionRoomUpdated', leaveResult.room);
-                req.io.emit('expeditionRoomsRefresh');
+        // 보상 수령 후 방 상태 확인 (즉시 나가지 않음)
+        const room = expeditionSystem.getRoomInfo(userUuid);
+        if (room) {
+            // 모든 보상이 수령되었는지 확인
+            const remainingRewards = room.rewards ? room.rewards.filter(reward => 
+                room.players.some(player => player.id === reward.playerId)
+            ) : [];
+            
+            console.log(`[EXPEDITION] Remaining rewards after ${username} claimed: ${remainingRewards.length}`);
+            
+            // 모든 보상이 수령되었으면 방 정리
+            if (remainingRewards.length === 0) {
+                console.log(`[EXPEDITION] All rewards claimed, cleaning up room for ${username}`);
+                const leaveResult = await expeditionSystem.leaveExpeditionRoom(userUuid);
+                
+                // 소켓을 통해 방 업데이트 또는 삭제 알림
+                if (req.io) {
+                    if (leaveResult && leaveResult.roomDeleted) {
+                        req.io.emit('expeditionRoomDeleted', { playerId: userUuid });
+                        req.io.emit('expeditionRoomsRefresh');
+                    } else if (leaveResult && leaveResult.room) {
+                        req.io.emit('expeditionRoomUpdated', leaveResult.room);
+                        req.io.emit('expeditionRoomsRefresh');
+                    }
+                }
+            } else {
+                // 아직 보상을 받지 않은 플레이어가 있으면 방 상태만 업데이트
+                if (req.io) {
+                    req.io.emit('expeditionRoomUpdated', room);
+                    req.io.emit('expeditionRoomsRefresh');
+                }
             }
         }
 

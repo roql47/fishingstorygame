@@ -586,6 +586,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory }
     try {
       console.log(`[EXPEDITION] Fetching companions for ${playerName} (${playerUuid})`);
       
+      // 올바른 API 엔드포인트 사용 - 서버의 실제 API 구조에 맞춤
       const response = await fetch(`/api/companion-stats/user?userUuid=${playerUuid}&username=${playerName}`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' }
@@ -674,14 +675,11 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory }
           await refreshInventory();
         }
         
-        // 소켓에서 방 나가기
-        if (socket && currentRoom) {
-          socket.emit('expedition-leave-room', currentRoom.id);
-        }
+        // 보상 수령 후에는 자동으로 방을 나가지 않음
+        // 다른 플레이어들도 보상을 수령할 수 있도록 방에 남아있음
+        console.log('[EXPEDITION] Rewards claimed, staying in room for other players');
         
-        // 상태 초기화 및 로비로 돌아가기
-        setCurrentView('lobby');
-        setCurrentRoom(null);
+        // 방 정보 새로고침 (보상 상태 업데이트)
         loadAvailableRooms();
       } else {
         alert(data.error || '보상 수령에 실패했습니다.');
@@ -2182,16 +2180,35 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory }
                   ))}
                 </div>
               </div>
-              <button
-                onClick={claimRewards}
-                className={`px-8 py-3 rounded-xl font-medium transition-all duration-200 transform hover:scale-105 ${
-                  isDarkMode
-                    ? "bg-gradient-to-r from-green-500/80 to-emerald-500/80 hover:from-green-500 hover:to-emerald-500 text-white"
-                    : "bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
-                }`}
-              >
-                보상 수령하기
-              </button>
+              <div className="flex gap-4 justify-center">
+                <button
+                  onClick={claimRewards}
+                  className={`px-8 py-3 rounded-xl font-medium transition-all duration-200 transform hover:scale-105 ${
+                    isDarkMode
+                      ? "bg-gradient-to-r from-green-500/80 to-emerald-500/80 hover:from-green-500 hover:to-emerald-500 text-white"
+                      : "bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
+                  }`}
+                >
+                  보상 수령하기
+                </button>
+                <button
+                  onClick={() => {
+                    if (socket && currentRoom) {
+                      socket.emit('expedition-leave-room', currentRoom.id);
+                    }
+                    setCurrentView('lobby');
+                    setCurrentRoom(null);
+                    loadAvailableRooms();
+                  }}
+                  className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 ${
+                    isDarkMode
+                      ? "bg-gray-600/80 hover:bg-gray-600 text-white"
+                      : "bg-gray-500 hover:bg-gray-600 text-white"
+                  }`}
+                >
+                  방 나가기
+                </button>
+              </div>
             </div>
           </div>
         )}

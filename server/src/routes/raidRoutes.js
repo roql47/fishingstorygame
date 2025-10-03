@@ -7,7 +7,7 @@ const { AchievementSystem } = require('../modules/achievementSystem');
 const raidSystem = new RaidSystem();
 
 // 레이드 라우트 설정 함수
-function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, oldAchievementSystem, AdminModel, CooldownModel, StarPieceModel, RaidDamageModel, RareFishCountModel, CatchModel) {
+function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, oldAchievementSystem, AdminModel, CooldownModel, StarPieceModel, RaidDamageModel, RareFishCountModel, CatchModel, RaidKillCountModel) {
   
   // 🏆 레이드 라우트 전용 업적 시스템 인스턴스 생성 (모든 모델 포함)
   const achievementSystem = new AchievementSystem(
@@ -68,8 +68,8 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         return res.status(403).json({ error: "관리자만 레이드 보스를 소환할 수 있습니다." });
       }
       
-      // 레이드 보스 소환
-      const boss = raidSystem.summonBoss();
+      // 레이드 보스 소환 (비동기 처리)
+      const boss = await raidSystem.summonBoss();
       
       // 클라이언트 전송용 보스 정보 (Map을 객체로 변환)
       const bossForClient = {
@@ -82,11 +82,21 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       // 모든 클라이언트에게 레이드 보스 정보 전송
       io.emit("raid:boss:update", { boss: bossForClient });
       
-      // 채팅에 레이드 시작 알림
+      // 채팅에 레이드 시작 알림 (처치 횟수 및 체력 정보 포함)
+      const hpFormatted = boss.maxHp.toLocaleString();
+      const killCount = boss.killCount || 0;
+      let summonMessage = `🐉 레이드 보스 '마르가글레슘'이 나타났습니다! (체력: ${hpFormatted})`;
+      
+      if (killCount > 0) {
+        summonMessage += ` | 처치 횟수: ${killCount}회, 체력 증가율: ${((boss.maxHp / 8000 - 1) * 100).toFixed(1)}%`;
+      }
+      
+      summonMessage += ` 모든 플레이어는 전투에 참여하세요!`;
+      
       io.emit("chat:message", {
         system: true,
         username: "system",
-        content: "🐉 레이드 보스 '마르가글레슘'이 나타났습니다! 모든 플레이어는 전투에 참여하세요!",
+        content: summonMessage,
         timestamp: new Date().toISOString()
       });
       
@@ -293,6 +303,9 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
     try {
       console.log("[Raid] 레이드 보스 처치됨!");
       
+      // 🔧 처치 횟수 증가 (다음 보스 체력 계산용)
+      const killCountResult = await raidSystem.incrementKillCount();
+      
       // 보상 계산
       const rewards = raidSystem.calculateRewards();
       
@@ -388,10 +401,18 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         const topPlayerData = await UserUuidModel.findOne({ userUuid: topPlayer.userUuid }).lean();
         const lastAttackerData = await UserUuidModel.findOne({ userUuid: lastAttacker?.userUuid }).lean();
         
+        // 🔧 다음 보스 정보 포함한 알림
+        let defeatMessage = `🎉 레이드 보스 '마르가글레슘'이 처치되었습니다! MVP: ${topPlayerData?.displayName || topPlayerData?.username} (${topPlayer.damage} 데미지), 막타: ${lastAttackerData?.displayName || lastAttackerData?.username} (별조각 +1)`;
+        
+        if (killCountResult) {
+          const nextHpFormatted = killCountResult.nextHp.toLocaleString();
+          defeatMessage += ` | 다음 보스 체력: ${nextHpFormatted} (처치 횟수: ${killCountResult.totalKills})`;
+        }
+        
         io.emit("chat:message", {
           system: true,
           username: "system",
-          content: `🎉 레이드 보스 '마르가글레슘'이 처치되었습니다! MVP: ${topPlayerData?.displayName || topPlayerData?.username} (${topPlayer.damage} 데미지), 막타: ${lastAttackerData?.displayName || lastAttackerData?.username} (별조각 +1)`,
+          content: defeatMessage,
           timestamp: new Date().toISOString()
         });
       }

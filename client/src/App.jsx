@@ -259,24 +259,48 @@ function App() {
     }
   }, [jwtToken, userUuid, companions]);
 
-  // 🔄 동료 능력치 서버 저장 함수
+  // 🔄 동료 능력치 서버 저장 함수 (검증 강화)
   const saveCompanionStatsToServer = async (companionName, stats) => {
     if (!jwtToken) return;
     
     try {
-      await axios.post(`${serverUrl}/api/update-companion-stats`, {
+      // 🔧 클라이언트 측 검증
+      const validatedStats = {
         companionName,
-        level: stats.level,
-        experience: stats.exp || stats.experience || 0, // exp 필드를 experience로 전송
-        isInBattle: stats.isInBattle || false
-      }, {
+        level: Math.max(Math.floor(stats.level || 1), 1), // 최소 레벨 1, 정수로 변환
+        experience: Math.max(Math.floor(stats.exp || stats.experience || 0), 0), // 최소 경험치 0, 정수로 변환
+        isInBattle: Boolean(stats.isInBattle || false)
+      };
+      
+      // 레벨 범위 검증 (1-100)
+      if (validatedStats.level > 100) {
+        console.warn(`⚠️ ${companionName} 레벨이 100을 초과하여 100으로 제한: ${stats.level} → 100`);
+        validatedStats.level = 100;
+      }
+      
+      // 경험치 범위 검증 (음수 방지)
+      if (validatedStats.experience < 0) {
+        console.warn(`⚠️ ${companionName} 경험치가 음수여서 0으로 수정: ${stats.exp || stats.experience} → 0`);
+        validatedStats.experience = 0;
+      }
+      
+      console.log(`💾 ${companionName} 능력치 서버 저장:`, validatedStats);
+      
+      await axios.post(`${serverUrl}/api/update-companion-stats`, validatedStats, {
         headers: {
           'Authorization': `Bearer ${jwtToken}`
         }
       });
-      console.log(`✅ Saved companion stats to server: ${companionName}`, stats);
+      
+      console.log(`✅ Saved companion stats to server: ${companionName}`, validatedStats);
+      
     } catch (e) {
       console.error(`❌ Failed to save companion stats to server: ${companionName}`, e);
+      
+      // 서버 오류 시 로컬 데이터 보호 (롤백 방지)
+      if (e.response?.status === 400) {
+        console.warn(`⚠️ ${companionName} 잘못된 데이터로 인한 서버 거부 - 로컬 데이터 유지`);
+      }
     }
   };
 
@@ -640,6 +664,78 @@ function App() {
       
     } catch (e) {
       console.error('❌ Failed to refresh companions:', e);
+    }
+  };
+
+  // 🔄 모든 데이터 새로고침 함수
+  const refreshAllData = async () => {
+    if (!username || !userUuid) return;
+    
+    console.log('🔄 Refreshing all user data...');
+    
+    try {
+      const userId = idToken ? 'user' : 'null';
+      const params = { username, userUuid };
+      
+      // WebSocket으로 모든 데이터 요청
+      if (socket) {
+        socket.emit('data:request', { type: 'all', userUuid, username });
+        socket.emit('data:request', { type: 'companions', userUuid, username });
+        socket.emit('data:request', { type: 'etherKeys', userUuid, username });
+      }
+      
+      // 화폐 데이터 직접 로드
+      const currencyPromises = [];
+      
+      // 호박석
+      currencyPromises.push(
+        axios.get(`${serverUrl}/api/user-amber/${userId}`, { 
+          params,
+          headers: { Authorization: `Bearer ${localStorage.getItem('jwtToken')}` }
+        }).then(res => setUserAmber(res.data.amber || 0)).catch(e => console.error("Failed to refresh amber:", e))
+      );
+      
+      // 별조각
+      currencyPromises.push(
+        axios.get(`${serverUrl}/api/user-star-pieces/${userId}`, { 
+          params,
+          headers: { Authorization: `Bearer ${localStorage.getItem('jwtToken')}` }
+        }).then(res => setUserStarPieces(res.data.starPieces || 0)).catch(e => console.error("Failed to refresh starPieces:", e))
+      );
+      
+      // 돈
+      currencyPromises.push(
+        axios.get(`${serverUrl}/api/user-money/${userId}`, { 
+          params,
+          headers: { Authorization: `Bearer ${localStorage.getItem('jwtToken')}` }
+        }).then(res => setUserMoney(res.data.money || 0)).catch(e => console.error("Failed to refresh money:", e))
+      );
+      
+      // 인벤토리
+      currencyPromises.push(
+        axios.get(`${serverUrl}/api/inventory/${userId}`, { params }).then(res => {
+          const safeInventory = Array.isArray(res.data) ? res.data : [];
+          setInventory(safeInventory);
+          const totalCount = safeInventory.reduce((sum, item) => sum + item.count, 0);
+          setMyCatches(totalCount);
+        }).catch(e => console.error("Failed to refresh inventory:", e))
+      );
+      
+      // 재료
+      currencyPromises.push(
+        axios.get(`${serverUrl}/api/materials/${userId}`, { params }).then(res => {
+          setMaterials(res.data || []);
+        }).catch(e => console.error("Failed to refresh materials:", e))
+      );
+      
+      // 동료 데이터
+      currencyPromises.push(refreshCompanions());
+      
+      await Promise.all(currencyPromises);
+      console.log('✅ All data refreshed successfully');
+      
+    } catch (error) {
+      console.error('❌ Failed to refresh all data:', error);
     }
   };
 
@@ -2063,6 +2159,54 @@ function App() {
       console.log('🔄 Requesting etherKeys via WebSocket...');
       socket.emit('data:request', { type: 'etherKeys', userUuid, username });
       
+      // 🚀 화폐 데이터 직접 요청 (호박석, 별조각, 돈)
+      const fetchCurrencyData = async () => {
+        try {
+          const userId = idToken ? 'user' : 'null';
+          const params = { username, userUuid };
+          
+          // 호박석 데이터 로드
+          try {
+            const amberRes = await axios.get(`${serverUrl}/api/user-amber/${userId}`, { 
+              params,
+              headers: { Authorization: `Bearer ${localStorage.getItem('jwtToken')}` }
+            });
+            setUserAmber(amberRes.data.amber || 0);
+            console.log('✅ Direct amber loaded:', amberRes.data.amber);
+          } catch (e) {
+            console.error("❌ Failed to fetch amber directly:", e);
+          }
+          
+          // 별조각 데이터 로드
+          try {
+            const starRes = await axios.get(`${serverUrl}/api/user-star-pieces/${userId}`, { 
+              params,
+              headers: { Authorization: `Bearer ${localStorage.getItem('jwtToken')}` }
+            });
+            setUserStarPieces(starRes.data.starPieces || 0);
+            console.log('✅ Direct starPieces loaded:', starRes.data.starPieces);
+          } catch (e) {
+            console.error("❌ Failed to fetch starPieces directly:", e);
+          }
+          
+          // 돈 데이터 로드
+          try {
+            const moneyRes = await axios.get(`${serverUrl}/api/user-money/${userId}`, { 
+              params,
+              headers: { Authorization: `Bearer ${localStorage.getItem('jwtToken')}` }
+            });
+            setUserMoney(moneyRes.data.money || 0);
+            console.log('✅ Direct money loaded:', moneyRes.data.money);
+          } catch (e) {
+            console.error("❌ Failed to fetch money directly:", e);
+          }
+          
+        } catch (error) {
+          console.error("❌ Failed to fetch currency data:", error);
+        }
+      };
+      fetchCurrencyData();
+      
     }, 1000); // 연결 안정화 후 요청
 
     // 실시간 데이터 업데이트 리스너
@@ -3283,8 +3427,8 @@ function App() {
           // 서버에서 최신 동료 목록을 새로고침 (DB와 동기화)
           await refreshCompanions();
           
-          // 새 동료 능력치 초기화
-          initializeCompanionStats(response.data.companion);
+          // 새 동료 능력치 초기화 (서버 우선)
+          await initializeCompanionStats(response.data.companion);
           setMessages(prev => [...prev, {
             system: true,
             username: "system",
@@ -3353,55 +3497,107 @@ function App() {
     }
   };
 
-  // 동료 능력치 초기화 함수
-  const initializeCompanionStats = (companionName) => {
+  // 동료 능력치 초기화 함수 (서버 데이터 우선)
+  const initializeCompanionStats = async (companionName) => {
     if (!companionStats[companionName]) {
       console.log(`🔧 ${companionName} 능력치 초기화 중...`);
       
-      // localStorage에서 저장된 능력치 확인
-      const savedStats = localStorage.getItem(`companionStats_${userUuid || username}`);
-      const allStats = (() => {
-        if (savedStats) {
-          try {
-            return JSON.parse(savedStats);
-          } catch (e) {
-            console.error('Failed to parse companion stats from localStorage:', e);
-            return {};
+      try {
+        // 🔧 먼저 서버에서 동료 능력치 확인
+        const userId = idToken ? 'user' : 'null';
+        const params = { username, userUuid };
+        
+        try {
+          const serverResponse = await axios.get(`${serverUrl}/api/companion-stats/${userId}`, { params });
+          const serverStats = serverResponse.data.companionStats || {};
+          
+          if (serverStats[companionName]) {
+            console.log(`✅ ${companionName} 서버에서 기존 능력치 발견:`, serverStats[companionName]);
+            
+            const serverData = serverStats[companionName];
+            const newStats = {
+              level: serverData.level || 1,
+              exp: serverData.experience || 0,
+              expToNext: calculateExpToNextLevel((serverData.level || 1) + 1),
+              hp: calculateCompanionStats(companionName, serverData.level || 1)?.hp || 100,
+              maxHp: calculateCompanionStats(companionName, serverData.level || 1)?.hp || 100,
+              isInBattle: serverData.isInBattle || false
+            };
+            
+            setCompanionStats(prev => {
+              const updated = {
+                ...prev,
+                [companionName]: newStats
+              };
+              
+              // localStorage에 저장
+              localStorage.setItem(`companionStats_${userUuid || username}`, JSON.stringify(updated));
+              return updated;
+            });
+            return;
           }
+        } catch (serverError) {
+          console.warn(`⚠️ 서버에서 ${companionName} 능력치 조회 실패:`, serverError.message);
         }
-        return {};
-      })();
-      
-      const defaultLevel = 1;
-      const defaultExp = 0;
-      const defaultExpToNext = calculateExpToNextLevel(2); // 새로운 경험치 공식
-      
-      const newStats = allStats[companionName] || {
-        level: defaultLevel,
-        exp: defaultExp,
-        expToNext: defaultExpToNext,
-        hp: calculateCompanionStats(companionName, defaultLevel)?.hp || 100,
-        maxHp: calculateCompanionStats(companionName, defaultLevel)?.hp || 100
-      };
-      
-      // expToNext가 NaN이거나 유효하지 않으면 새로운 공식으로 재계산
-      if (!newStats.expToNext || isNaN(newStats.expToNext)) {
-        const currentLevel = newStats.level || 1;
-        newStats.expToNext = calculateExpToNextLevel(currentLevel + 1);
-      }
-      
-      console.log(`✅ ${companionName} 초기화된 능력치:`, newStats);
-      
-      setCompanionStats(prev => {
-        const updated = {
-          ...prev,
-          [companionName]: newStats
+        
+        // 서버에 데이터가 없으면 localStorage 확인
+        const savedStats = localStorage.getItem(`companionStats_${userUuid || username}`);
+        const allStats = (() => {
+          if (savedStats) {
+            try {
+              return JSON.parse(savedStats);
+            } catch (e) {
+              console.error('Failed to parse companion stats from localStorage:', e);
+              return {};
+            }
+          }
+          return {};
+        })();
+        
+        const defaultLevel = 1;
+        const defaultExp = 0;
+        const defaultExpToNext = calculateExpToNextLevel(2);
+        
+        const newStats = allStats[companionName] || {
+          level: defaultLevel,
+          exp: defaultExp,
+          expToNext: defaultExpToNext,
+          hp: calculateCompanionStats(companionName, defaultLevel)?.hp || 100,
+          maxHp: calculateCompanionStats(companionName, defaultLevel)?.hp || 100,
+          isInBattle: false
         };
         
-        // localStorage에 저장
-        localStorage.setItem(`companionStats_${userUuid || username}`, JSON.stringify(updated));
-        return updated;
-      });
+        // expToNext가 NaN이거나 유효하지 않으면 새로운 공식으로 재계산
+        if (!newStats.expToNext || isNaN(newStats.expToNext)) {
+          const currentLevel = newStats.level || 1;
+          newStats.expToNext = calculateExpToNextLevel(currentLevel + 1);
+        }
+        
+        console.log(`✅ ${companionName} 초기화된 능력치:`, newStats);
+        
+        setCompanionStats(prev => {
+          const updated = {
+            ...prev,
+            [companionName]: newStats
+          };
+          
+          // localStorage에 저장
+          localStorage.setItem(`companionStats_${userUuid || username}`, JSON.stringify(updated));
+          return updated;
+        });
+        
+        // 🔧 서버에도 초기 능력치 저장 (동기화)
+        if (jwtToken) {
+          try {
+            await saveCompanionStatsToServer(companionName, newStats);
+          } catch (saveError) {
+            console.warn(`⚠️ ${companionName} 서버 저장 실패:`, saveError.message);
+          }
+        }
+        
+      } catch (error) {
+        console.error(`❌ ${companionName} 능력치 초기화 실패:`, error);
+      }
     }
   };
 
@@ -6324,6 +6520,7 @@ function App() {
               // 함수
               recruitCompanion={recruitCompanion}
               toggleBattleCompanion={toggleBattleCompanion}
+              refreshAllData={refreshAllData}
             />
           )}
 

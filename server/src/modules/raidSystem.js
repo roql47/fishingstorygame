@@ -3,24 +3,60 @@ class RaidSystem {
   constructor() {
     this.raidBoss = null; // { name, hp, maxHp, isActive, participants: Map<userUuid, damage> }
     this.raidLogs = [];
+    this.baseHp = 8000; // 기본 체력
+    this.hpMultiplier = 1.02; // 처치마다 증가하는 배율
   }
 
-  // 레이드 보스 소환
-  summonBoss() {
+  // 현재 레이드 보스 체력 계산 (처치 횟수 기반)
+  async calculateCurrentBossHp() {
+    try {
+      const mongoose = require('mongoose');
+      const RaidKillCountModel = mongoose.model('RaidKillCount');
+      
+      // 전역 처치 횟수 조회 (단일 문서로 관리)
+      let killData = await RaidKillCountModel.findOne();
+      if (!killData) {
+        // 첫 번째 레이드인 경우 초기 데이터 생성
+        killData = new RaidKillCountModel({
+          totalKills: 0,
+          currentHpMultiplier: 1.0
+        });
+        await killData.save();
+      }
+      
+      // 현재 체력 = 기본체력 × (1.02^처치횟수)
+      const currentHp = Math.floor(this.baseHp * Math.pow(this.hpMultiplier, killData.totalKills));
+      
+      console.log(`[Raid] 레이드 보스 체력 계산: 기본 ${this.baseHp} × ${this.hpMultiplier}^${killData.totalKills} = ${currentHp}`);
+      
+      return { hp: currentHp, killCount: killData.totalKills };
+    } catch (error) {
+      console.error('[Raid] 보스 체력 계산 실패:', error);
+      return { hp: this.baseHp, killCount: 0 }; // 기본값 반환
+    }
+  }
+
+  // 레이드 보스 소환 (동적 체력 적용)
+  async summonBoss() {
     if (this.raidBoss && this.raidBoss.isActive) {
       throw new Error("레이드 보스가 이미 활성화되어 있습니다.");
     }
 
+    // 현재 처치 횟수에 따른 체력 계산
+    const { hp: currentHp, killCount } = await this.calculateCurrentBossHp();
+
     this.raidBoss = {
       name: "마르가글레슘",
-      hp: 8000,
-      maxHp: 8000,
+      hp: currentHp,
+      maxHp: currentHp,
       isActive: true,
       participants: new Map(),
-      startTime: Date.now()
+      startTime: Date.now(),
+      killCount: killCount // 현재 처치 횟수 정보 포함
     };
 
     this.raidLogs = [];
+    console.log(`[Raid] 레이드 보스 소환 - 체력: ${currentHp} (처치 횟수: ${killCount})`);
     return this.raidBoss;
   }
 
@@ -106,6 +142,41 @@ class RaidSystem {
     }
 
     return rewards;
+  }
+
+  // 레이드 보스 처치 시 처치 횟수 증가
+  async incrementKillCount() {
+    try {
+      const mongoose = require('mongoose');
+      const RaidKillCountModel = mongoose.model('RaidKillCount');
+      
+      // 전역 처치 횟수 업데이트
+      let killData = await RaidKillCountModel.findOne();
+      if (!killData) {
+        killData = new RaidKillCountModel({
+          totalKills: 1,
+          lastKillTime: new Date(),
+          currentHpMultiplier: this.hpMultiplier
+        });
+      } else {
+        killData.totalKills += 1;
+        killData.lastKillTime = new Date();
+        killData.currentHpMultiplier = Math.pow(this.hpMultiplier, killData.totalKills);
+      }
+      
+      await killData.save();
+      
+      console.log(`[Raid] 레이드 보스 처치 횟수 업데이트: ${killData.totalKills}회 (다음 보스 체력 배율: ${killData.currentHpMultiplier.toFixed(2)})`);
+      
+      return {
+        totalKills: killData.totalKills,
+        nextHpMultiplier: killData.currentHpMultiplier,
+        nextHp: Math.floor(this.baseHp * killData.currentHpMultiplier)
+      };
+    } catch (error) {
+      console.error('[Raid] 처치 횟수 업데이트 실패:', error);
+      return null;
+    }
   }
 
   // 레이드 상태 초기화
