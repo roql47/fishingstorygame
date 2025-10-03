@@ -373,11 +373,11 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
         }
         
         // 보상 수령 후 방 상태 확인 (즉시 나가지 않음)
-        const room = expeditionSystem.getRoomInfo(userUuid);
-        if (room) {
+        const updatedRoom = expeditionSystem.getRoomInfo(userUuid);
+        if (updatedRoom) {
             // 모든 보상이 수령되었는지 확인
-            const remainingRewards = room.rewards ? room.rewards.filter(reward => 
-                room.players.some(player => player.id === reward.playerId)
+            const remainingRewards = updatedRoom.rewards ? updatedRoom.rewards.filter(reward => 
+                updatedRoom.players.some(player => player.id === reward.playerId)
             ) : [];
             
             console.log(`[EXPEDITION] Remaining rewards after ${username} claimed: ${remainingRewards.length}`);
@@ -400,7 +400,7 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
             } else {
                 // 아직 보상을 받지 않은 플레이어가 있으면 방 상태만 업데이트
                 if (req.io) {
-                    req.io.emit('expeditionRoomUpdated', room);
+                    req.io.emit('expeditionRoomUpdated', updatedRoom);
                     req.io.emit('expeditionRoomsRefresh');
                 }
             }
