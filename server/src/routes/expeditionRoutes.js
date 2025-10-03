@@ -360,7 +360,13 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
         }
 
         // 보상 수령 완료 표시
+        console.log(`[EXPEDITION] Before markRewardsClaimed - Room rewards count: ${room.rewards?.length}`);
         expeditionSystem.markRewardsClaimed(userUuid);
+        
+        // 보상 제거 후 상태 확인
+        const roomAfterClaim = expeditionSystem.getRoomInfo(userUuid);
+        console.log(`[EXPEDITION] After markRewardsClaimed - Room rewards count: ${roomAfterClaim?.rewards?.length}`);
+        console.log(`[EXPEDITION] Remaining rewards:`, roomAfterClaim?.rewards?.map(r => `${r.playerId}: ${r.fishName}`));
         
         // 🚀 소켓을 통해 해당 플레이어에게 인벤토리 업데이트 알림
         if (req.io) {

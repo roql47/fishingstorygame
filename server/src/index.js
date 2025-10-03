@@ -5052,7 +5052,7 @@ app.get("/api/total-catches/:userId", async (req, res) => {
   }
 });
 
-// Ranking API (랭킹 시스템)
+// Ranking API (랭킹 시스템) - 업적 보너스 반영
 app.get("/api/ranking", async (req, res) => {
   try {
     console.log("Ranking request");
@@ -5079,12 +5079,28 @@ app.get("/api/ranking", async (req, res) => {
       }
     });
     
-    // 낚시 스킬 데이터 추가
-    fishingSkills.forEach(skill => {
+    // 🏆 낚시 스킬 데이터 추가 (업적 보너스 포함)
+    for (const skill of fishingSkills) {
       if (skill.userUuid && userRankingData.has(skill.userUuid)) {
-        userRankingData.get(skill.userUuid).fishingSkill = skill.skill || 0;
+        const baseSkill = skill.skill || 0;
+        
+        // 업적 보너스 계산
+        let achievementBonus = 0;
+        try {
+          achievementBonus = await achievementSystem.calculateAchievementBonus(skill.userUuid);
+        } catch (error) {
+          console.error(`Failed to calculate achievement bonus for ranking user ${skill.userUuid}:`, error);
+        }
+        
+        const finalSkill = baseSkill + achievementBonus;
+        userRankingData.get(skill.userUuid).fishingSkill = finalSkill;
+        
+        // 디버깅용 로그 (상위 사용자만)
+        if (finalSkill > 50) {
+          console.log(`🏆 Ranking skill calculation for ${skill.userUuid}: base ${baseSkill} + achievement ${achievementBonus} = ${finalSkill}`);
+        }
       }
-    });
+    }
     
     // 랭킹 배열로 변환 및 정렬 (게스트 제외)
     const rankings = Array.from(userRankingData.values())
@@ -5098,7 +5114,7 @@ app.get("/api/ranking", async (req, res) => {
         if (b.totalFishCaught !== a.totalFishCaught) {
           return b.totalFishCaught - a.totalFishCaught;
         }
-        // 2차 정렬: 낚시 스킬 (내림차순)
+        // 2차 정렬: 낚시 스킬 (내림차순) - 업적 보너스 포함
         return b.fishingSkill - a.fishingSkill;
       })
       .map((user, index) => ({
@@ -5106,11 +5122,11 @@ app.get("/api/ranking", async (req, res) => {
         userUuid: user.userUuid,
         username: user.username, // 소셜 계정 이름
         displayName: user.displayName, // 게임 닉네임
-        fishingSkill: user.fishingSkill,
+        fishingSkill: user.fishingSkill, // 업적 보너스 포함된 최종 낚시실력
         totalFishCaught: user.totalFishCaught // 새로운 총 물고기 카운트
       }));
     
-    console.log(`Sending ranking data for ${rankings.length} users`);
+    console.log(`Sending ranking data for ${rankings.length} users (with achievement bonuses)`);
     
     res.json({ 
       rankings,

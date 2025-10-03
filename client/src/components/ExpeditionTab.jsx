@@ -675,6 +675,16 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory }
           await refreshInventory();
         }
         
+        // 🔧 중요: 현재 방 상태에서 내 보상 제거 (UI 즉시 업데이트)
+        if (currentRoom && currentRoom.rewards) {
+          const updatedRoom = {
+            ...currentRoom,
+            rewards: currentRoom.rewards.filter(reward => reward.playerId !== userData.userUuid)
+          };
+          setCurrentRoom(updatedRoom);
+          console.log('[EXPEDITION] Updated room state after claiming rewards, remaining rewards:', updatedRoom.rewards.length);
+        }
+        
         // 보상 수령 후에는 자동으로 방을 나가지 않음
         // 다른 플레이어들도 보상을 수령할 수 있도록 방에 남아있음
         console.log('[EXPEDITION] Rewards claimed, staying in room for other players');

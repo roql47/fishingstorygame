@@ -9,6 +9,7 @@ import { useGameData } from "./hooks/useGameData";
 import ChatTab from "./components/ChatTab";
 import NoticeModal from "./components/NoticeModal";
 import TutorialModal from "./components/TutorialModal";
+import CollectionModal from './components/CollectionModal';
 import { CompanionTab, processCompanionSkill, canUseCompanionSkill } from './components/companions';
 import ExpeditionTab from './components/ExpeditionTab';
 import ShopTab from './components/ShopTab';
@@ -211,6 +212,7 @@ function App() {
   const [isProcessingFishing, setIsProcessingFishing] = useState(false); // 🛡️ 낚시 처리 중 상태
   const [showNoticeModal, setShowNoticeModal] = useState(false); // 공지사항 모달
   const [showTutorialModal, setShowTutorialModal] = useState(false); // 튜토리얼 모달
+  const [showCollectionModal, setShowCollectionModal] = useState(false); // 도감 모달
   
   // 레이드 관련 상태
   const [raidBoss, setRaidBoss] = useState(null); // { name, hp, maxHp, isActive }
@@ -5434,6 +5436,19 @@ function App() {
           <div className="flex items-center gap-4">
             {/* 유틸리티 버튼들 */}
             <div className="flex items-center gap-2">
+              {/* 도감 버튼 */}
+              <button
+                onClick={() => setShowCollectionModal(true)}
+                className={`p-2 rounded-full hover:glow-effect transition-all duration-300 ${
+                  isDarkMode 
+                    ? "glass-input text-amber-400 hover:text-amber-300" 
+                    : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-amber-600 hover:text-amber-500"
+                }`}
+                title="수집 도감"
+              >
+                <Package className="w-4 h-4" />
+              </button>
+              
               {/* 공지사항 버튼 */}
               <button
                 onClick={() => setShowNoticeModal(true)}
@@ -6532,24 +6547,36 @@ function App() {
             
             {/* 데미지 숫자 애니메이션 */}
             {damageNumbers.map(dmg => {
-              // 소스별 스타일 결정
+              // 소스별 스타일 결정 (동료는 크리티컬이어도 파란색 유지)
               let textColor = "text-red-500";
               let icon = "⚔️ ";
               let textShadow = "2px 2px 4px rgba(0,0,0,0.5)";
               let additionalClasses = "";
               
-              if (dmg.isCritical) {
+              if (dmg.isCompanion) {
+                // 동료 공격 - 크리티컬이어도 파란색 유지
+                textColor = "text-blue-400";
+                icon = "⚔️ ";
+                textShadow = dmg.isCritical 
+                  ? "0 0 30px #60a5fa, 0 0 60px #3b82f6, 0 0 90px #60a5fa, 0 0 120px #60a5fa"
+                  : "0 0 15px #60a5fa, 2px 2px 4px rgba(0,0,0,0.5)";
+                if (dmg.isCritical) {
+                  additionalClasses = "drop-shadow-2xl animate-pulse scale-150";
+                }
+              } else if (dmg.isPlayer) {
+                // 플레이어 공격
+                textColor = dmg.isCritical ? "text-yellow-400" : "text-red-500";
+                icon = dmg.isCritical ? "💥 " : "⚔️ ";
+                if (dmg.isCritical) {
+                  textShadow = "0 0 30px #fbbf24, 0 0 60px #f59e0b, 0 0 90px #fbbf24, 0 0 120px #fbbf24";
+                  additionalClasses = "drop-shadow-2xl animate-pulse scale-150";
+                }
+              } else if (dmg.isCritical) {
+                // 기타 크리티컬 (fallback)
                 textColor = "text-yellow-400";
                 icon = "💥 ";
                 textShadow = "0 0 30px #fbbf24, 0 0 60px #f59e0b, 0 0 90px #fbbf24, 0 0 120px #fbbf24";
                 additionalClasses = "drop-shadow-2xl animate-pulse scale-150";
-              } else if (dmg.isCompanion) {
-                textColor = "text-blue-400";
-                icon = "⚔️ ";
-                textShadow = "0 0 15px #60a5fa, 2px 2px 4px rgba(0,0,0,0.5)";
-              } else if (dmg.isPlayer) {
-                textColor = "text-red-500";
-                icon = "⚔️ ";
               }
               
               return (
@@ -9215,6 +9242,16 @@ function App() {
         showTutorialModal={showTutorialModal}
         setShowTutorialModal={setShowTutorialModal}
         isDarkMode={isDarkMode}
+      />
+
+      {/* 수집 도감 모달 */}
+      <CollectionModal 
+        showCollectionModal={showCollectionModal}
+        setShowCollectionModal={setShowCollectionModal}
+        isDarkMode={isDarkMode}
+        inventory={inventory}
+        userEquipment={userEquipment}
+        allFishTypes={allFishTypes}
       />
     </div>
   );
