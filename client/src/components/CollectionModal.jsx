@@ -23,18 +23,31 @@ const CollectionModal = ({
         const username = localStorage.getItem('nickname') || '';
         const userUuid = localStorage.getItem('userUuid') || '';
         
-        const response = await fetch(`${serverUrl}/api/fish-discoveries/${userId}?username=${encodeURIComponent(username)}&userUuid=${encodeURIComponent(userUuid)}`);
+        console.log('🔍 CollectionModal - Fetching discovered fish with:', { 
+          serverUrl, 
+          userId, 
+          username, 
+          userUuid,
+          hasIdToken: !!localStorage.getItem('idToken')
+        });
+        
+        const url = `${serverUrl}/api/fish-discoveries/${userId}?username=${encodeURIComponent(username)}&userUuid=${encodeURIComponent(userUuid)}`;
+        console.log('🔍 Request URL:', url);
+        
+        const response = await fetch(url);
+        console.log('🔍 Response status:', response.status, response.statusText);
         
         if (response.ok) {
           const fishNames = await response.json();
           setDiscoveredFish(fishNames);
-          console.log('Discovered fish loaded:', fishNames.length);
+          console.log('✅ Discovered fish loaded:', fishNames.length, 'fish:', fishNames);
         } else {
-          console.error('Failed to fetch discovered fish');
+          const errorText = await response.text();
+          console.error('❌ Failed to fetch discovered fish:', response.status, errorText);
           setDiscoveredFish([]);
         }
       } catch (error) {
-        console.error('Error fetching discovered fish:', error);
+        console.error('❌ Error fetching discovered fish:', error);
         setDiscoveredFish([]);
       }
     };

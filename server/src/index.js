@@ -6220,10 +6220,22 @@ app.get("/api/fish-discoveries/:userId", optionalJWT, async (req, res) => {
     
     console.log("Fish discoveries query:", query);
     
+    // FishDiscoveryModel에서 먼저 조회
     const discoveries = await FishDiscoveryModel.find(query).select('fishName firstCaughtAt');
-    const discoveredFishNames = discoveries.map(d => d.fishName);
+    let discoveredFishNames = discoveries.map(d => d.fishName);
     
-    console.log(`Found ${discoveredFishNames.length} discovered fish for user`);
+    console.log(`Found ${discoveredFishNames.length} fish in FishDiscovery collection`);
+    
+    // FishDiscoveryModel에 없으면 CatchModel에서도 조회 (레거시 데이터 호환)
+    if (discoveredFishNames.length === 0) {
+      console.log("No fish in FishDiscovery, checking CatchModel...");
+      const catchAggregation = await CatchModel.aggregate([
+        { $match: query },
+        { $group: { _id: "$fish" } }
+      ]);
+      discoveredFishNames = catchAggregation.map(c => c._id).filter(name => name); // null 제거
+      console.log(`Found ${discoveredFishNames.length} fish in Catch collection`);
+    }
     
     res.json(discoveredFishNames);
   } catch (error) {
@@ -8720,7 +8732,7 @@ function authenticateJWT(req, res, next) {
 }
 
 // 레이드 라우터 등록
-  const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel, CooldownModel, StarPieceModel, RaidDamageModel, RareFishCountModel, CatchModel, RaidKillCountModel);
+  const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel, CooldownModel, StarPieceModel, RaidDamageModel, RareFishCountModel, CatchModel, RaidKillCountModel, UserEquipmentModel);
   app.use("/api/raid", raidRouter);
 
 // 원정 라우터 등록
