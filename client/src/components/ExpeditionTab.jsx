@@ -605,7 +605,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
     }
   };
 
-  // 플레이어의 전투 참전 동료 정보 가져오기
+  // 플레이어의 전투 참전 동료 정보 가져오기 (전투 참여 중인 동료만)
   const fetchPlayerCompanions = async (playerUuid, playerName) => {
     try {
       console.log(`[EXPEDITION] Fetching companions for ${playerName} (${playerUuid})`);
@@ -620,11 +620,12 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
         const data = await response.json();
         console.log(`[EXPEDITION] Companion data for ${playerName}:`, data);
         
-        // 서버 응답 형식에 맞게 수정: companionStats 객체에서 isInBattle: true인 것들만 추출
+        // 🔧 서버 응답에서 isInBattle: true인 동료들만 엄격하게 필터링
         const battleCompanions = [];
         if (data.companionStats) {
           Object.entries(data.companionStats).forEach(([companionName, stats]) => {
-            if (stats.isInBattle) {
+            // isInBattle이 명시적으로 true인 경우만 포함
+            if (stats.isInBattle === true) {
               battleCompanions.push({
                 companionName: companionName,
                 level: stats.level,
@@ -635,7 +636,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
           });
         }
         
-        console.log(`[EXPEDITION] Battle companions for ${playerName}:`, battleCompanions);
+        console.log(`[EXPEDITION] Filtered battle companions for ${playerName}:`, battleCompanions);
         return battleCompanions;
       } else {
         console.error(`[EXPEDITION] Failed to fetch companions for ${playerName}:`, response.status);

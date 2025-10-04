@@ -10,6 +10,7 @@ import ChatTab from "./components/ChatTab";
 import NoticeModal from "./components/NoticeModal";
 import TutorialModal from "./components/TutorialModal";
 import CollectionModal from './components/CollectionModal';
+import EnhancementModal from './components/EnhancementModal';
 import { CompanionTab, processCompanionSkill, canUseCompanionSkill } from './components/companions';
 import ExpeditionTab from './components/ExpeditionTab';
 import ShopTab from './components/ShopTab';
@@ -45,7 +46,8 @@ import {
   X,
   Bell,
   BookOpen,
-  Info
+  Info,
+  Zap
 } from "lucide-react";
 import "./App.css";
 
@@ -85,9 +87,14 @@ const checkJWTAdminStatus = () => {
 };
 
 // Axios 응답 인터셉터 설정 (차단된 IP/계정 처리 + JWT 토큰 만료 처리)
+let isRefreshingToken = false;
+let refreshPromise = null;
+
 axios.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+    
     // 차단된 IP/계정 처리
     if (error.response?.status === 403 && error.response?.data?.blocked) {
       const blockInfo = error.response.data;
@@ -98,27 +105,84 @@ axios.interceptors.response.use(
         localStorage.clear();
         window.location.reload();
       }
+      return Promise.reject(error);
     }
     
     // 🔐 JWT 토큰 만료 처리 (401, 403 에러)
-    if (error.response?.status === 401 || 
+    if ((error.response?.status === 401 || 
         (error.response?.status === 403 && 
          (error.response?.data?.code === "JWT_EXPIRED" || 
           error.response?.data?.code === "JWT_INVALID" || 
           error.response?.data?.error?.includes("expired") ||
-          error.response?.data?.error?.includes("Invalid")))) {
+          error.response?.data?.error?.includes("Invalid")))) &&
+        !originalRequest._retry) {
       
       console.log("🚨 JWT 토큰 만료 또는 무효 감지:", error.response?.data);
       
-      // JWT 토큰 관련 데이터 정리
-      localStorage.removeItem("jwtToken");
-      localStorage.removeItem("jwtExpiresIn");
-      
-      // 사용자에게 재로그인 안내
-      alert("🔐 사용자 인증이 필요합니다.\n\n보안을 위해 다시 로그인해 주세요.");
-      
-      // 페이지 새로고침으로 로그인 화면으로 이동
-      window.location.reload();
+      // 토큰 갱신 재시도 (한 번만)
+      if (!isRefreshingToken) {
+        isRefreshingToken = true;
+        originalRequest._retry = true;
+        
+        try {
+          // 소켓을 통한 토큰 갱신 시도
+          const socket = getSocket();
+          if (socket && socket.connected) {
+            console.log("🔄 토큰 갱신 재시도 중...");
+            
+            refreshPromise = new Promise((resolve, reject) => {
+              const timeout = setTimeout(() => {
+                reject(new Error("토큰 갱신 타임아웃"));
+              }, 10000); // 10초 타임아웃
+              
+              socket.once("auth:token", (data) => {
+                clearTimeout(timeout);
+                if (data.token) {
+                  localStorage.setItem("jwtToken", data.token);
+                  localStorage.setItem("jwtExpiresIn", data.expiresIn);
+                  console.log("✅ 토큰 갱신 성공");
+                  resolve(data.token);
+                } else {
+                  reject(new Error("토큰 갱신 실패"));
+                }
+              });
+              
+              const userUuid = localStorage.getItem("userUuid");
+              const username = localStorage.getItem("nickname");
+              socket.emit("auth:refresh-token", { userUuid, username });
+            });
+            
+            const newToken = await refreshPromise;
+            
+            // 원래 요청에 새 토큰으로 재시도
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            isRefreshingToken = false;
+            return axios(originalRequest);
+            
+          } else {
+            throw new Error("소켓 연결 없음");
+          }
+        } catch (refreshError) {
+          console.error("🚨 토큰 갱신 실패:", refreshError);
+          isRefreshingToken = false;
+          
+          // 토큰 갱신 실패 시 로그아웃 처리
+          localStorage.removeItem("jwtToken");
+          localStorage.removeItem("jwtExpiresIn");
+          alert("🔐 사용자 인증이 필요합니다.\n\n보안을 위해 다시 로그인해 주세요.");
+          window.location.reload();
+          return Promise.reject(error);
+        }
+      } else if (refreshPromise) {
+        // 이미 토큰 갱신 중이면 기다렸다가 재시도
+        try {
+          const newToken = await refreshPromise;
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return axios(originalRequest);
+        } catch {
+          return Promise.reject(error);
+        }
+      }
     }
     
     return Promise.reject(error);
@@ -190,10 +254,18 @@ function App() {
   const [inventoryCategory, setInventoryCategory] = useState("fish");
   const [showProfile, setShowProfile] = useState(false);
   const [selectedUserProfile, setSelectedUserProfile] = useState(null); // 선택된 사용자 프로필 정보
+  const [showEquipmentModal, setShowEquipmentModal] = useState(false);
+  const [selectedEquipment, setSelectedEquipment] = useState(null);
+  const [showEnhancementModal, setShowEnhancementModal] = useState(false);
+  const [enhancementEquipment, setEnhancementEquipment] = useState({ name: '', type: '' });
   const [otherUserData, setOtherUserData] = useState(null); // 다른 사용자의 실제 데이터
   const [userEquipment, setUserEquipment] = useState({
     fishingRod: null,
-    accessory: null
+    accessory: null,
+    fishingRodEnhancement: 0,
+    accessoryEnhancement: 0,
+    fishingRodFailCount: 0,
+    accessoryFailCount: 0
   });
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [fishingSkill, setFishingSkill] = useState(0);
@@ -722,7 +794,7 @@ function App() {
       
       // 별조각
       currencyPromises.push(
-        axios.get(`${serverUrl}/api/user-star-pieces/${userId}`, { 
+        axios.get(`${serverUrl}/api/star-pieces/${userId}`, { 
           params,
           headers: { Authorization: `Bearer ${localStorage.getItem('jwtToken')}` }
         }).then(res => setUserStarPieces(res.data.starPieces || 0)).catch(e => console.error("Failed to refresh starPieces:", e))
@@ -775,10 +847,17 @@ function App() {
 
       try {
         const payload = safeParseJWT(token);
-        if (!payload || !payload.exp) return;
+        if (!payload || !payload.exp) {
+          console.warn("🚨 JWT 토큰에 만료 시간 정보가 없습니다:", payload);
+          return;
+        }
 
         const now = Math.floor(Date.now() / 1000);
         const timeUntilExpiry = payload.exp - now;
+        const hoursLeft = Math.floor(timeUntilExpiry / 3600);
+        const minutesLeft = Math.floor((timeUntilExpiry % 3600) / 60);
+        
+        console.log(`🔐 JWT 토큰 상태 확인: ${hoursLeft}시간 ${minutesLeft}분 남음 (총 ${timeUntilExpiry}초)`);
         
         // 토큰이 10분 이내에 만료될 예정이면 갱신 요청
         if (timeUntilExpiry <= 600 && timeUntilExpiry > 0) {
@@ -788,6 +867,8 @@ function App() {
           const socket = getSocket();
           if (socket && socket.connected) {
             socket.emit("auth:refresh-token", { userUuid, username });
+          } else {
+            console.warn("🚨 소켓이 연결되지 않아 토큰 갱신 요청을 보낼 수 없습니다.");
           }
         }
         // 토큰이 이미 만료되었으면 로그아웃 처리
@@ -800,6 +881,7 @@ function App() {
         }
       } catch (error) {
         console.error("토큰 만료 시간 확인 중 오류:", error);
+        console.error("문제가 된 토큰:", token ? token.substring(0, 50) + "..." : "없음");
       }
     };
 
@@ -2264,7 +2346,7 @@ function App() {
           
           // 별조각 데이터 로드
           try {
-            const starRes = await axios.get(`${serverUrl}/api/user-star-pieces/${userId}`, { 
+            const starRes = await axios.get(`${serverUrl}/api/star-pieces/${userId}`, { 
               params,
               headers: { Authorization: `Bearer ${localStorage.getItem('jwtToken')}` }
             });
@@ -2712,7 +2794,14 @@ function App() {
           axios.get(`${serverUrl}/api/fishing-skill/${userId}`, { params })
         ]);
         
-        setUserEquipment(equipmentRes.data || { fishingRod: null, accessory: null });
+        setUserEquipment(equipmentRes.data || { 
+          fishingRod: null, 
+          accessory: null,
+          fishingRodEnhancement: 0,
+          accessoryEnhancement: 0,
+          fishingRodFailCount: 0,
+          accessoryFailCount: 0
+        });
         const skillData = skillRes.data;
         const totalSkill = skillData.skill || 0;
         const baseSkill = skillData.baseSkill || 0;
@@ -2726,7 +2815,14 @@ function App() {
         });
       } catch (e) {
         console.error('Failed to fetch user game data:', e);
-        setUserEquipment({ fishingRod: null, accessory: null });
+        setUserEquipment({ 
+          fishingRod: null, 
+          accessory: null,
+          fishingRodEnhancement: 0,
+          accessoryEnhancement: 0,
+          fishingRodFailCount: 0,
+          accessoryFailCount: 0
+        });
         setFishingSkill(0);
       }
     };
@@ -2814,7 +2910,14 @@ function App() {
 
         // 클라이언트 상태 초기화
         setUserMoney(100);
-        setUserEquipment({ fishingRod: null, accessory: null });
+        setUserEquipment({ 
+          fishingRod: null, 
+          accessory: null,
+          fishingRodEnhancement: 0,
+          accessoryEnhancement: 0,
+          fishingRodFailCount: 0,
+          accessoryFailCount: 0
+        });
         setFishingSkill(0);
         setInventory([]);
         setMaterials([]);
@@ -3296,23 +3399,27 @@ function App() {
 
   // 🔧 getMaterialToFish는 useGameData 훅에서 제공됨
 
-  // 낚시실력 기반 공격력 계산 (3차방정식)
-  const calculatePlayerAttack = (skill) => {
+  // 낚시실력 기반 공격력 계산 (3차방정식) + 강화 보너스 (퍼센트)
+  const calculatePlayerAttack = (skill, enhancementBonusPercent = 0) => {
     // 3차방정식: 0.00225 * skill³ + 0.165 * skill² + 2 * skill + 3
     const baseAttack = 0.00225 * Math.pow(skill, 3) + 0.165 * Math.pow(skill, 2) + 2 * skill + 3;
+    // 강화 보너스 퍼센트 적용
+    const totalAttack = baseAttack + (baseAttack * enhancementBonusPercent / 100);
     // 랜덤 요소 추가 (±20%)
     const randomFactor = 0.8 + Math.random() * 0.4;
-    return Math.floor(baseAttack * randomFactor);
+    return Math.floor(totalAttack * randomFactor);
   };
 
-  // 공격력 범위 계산 (최소/최대) - 3차방정식 기반
-  const getAttackRange = (skill) => {
+  // 공격력 범위 계산 (최소/최대) - 3차방정식 기반 + 강화 보너스 (퍼센트)
+  const getAttackRange = (skill, enhancementBonusPercent = 0) => {
     // 3차방정식으로 기본 공격력 계산: 0.00225 * skill³ + 0.165 * skill² + 2 * skill + 3
     const baseAttack = 0.00225 * Math.pow(skill, 3) + 0.165 * Math.pow(skill, 2) + 2 * skill + 3;
+    // 강화 보너스 퍼센트 적용
+    const totalAttack = baseAttack + (baseAttack * enhancementBonusPercent / 100);
     // ±20% 범위 계산 (소수점 제거)
-    const minAttack = Math.floor(baseAttack * 0.8);
-    const maxAttack = Math.floor(baseAttack * 1.2);
-    return { min: minAttack, max: maxAttack, base: Math.floor(baseAttack) };
+    const minAttack = Math.floor(totalAttack * 0.8);
+    const maxAttack = Math.floor(totalAttack * 1.2);
+    return { min: minAttack, max: maxAttack, base: Math.floor(totalAttack) };
   };
 
   // 악세사리 단계 계산 함수
@@ -3329,10 +3436,12 @@ function App() {
     return level >= 0 ? level + 1 : 0; // 1부터 시작
   };
 
-  // 사용자 체력 계산 함수 (악세사리 단계 기반)
-  const calculatePlayerMaxHp = (accessoryLevel) => {
-    if (accessoryLevel === 0) return 50; // 기본 체력
-    return Math.floor(Math.pow(accessoryLevel, 1.325) + 50 * accessoryLevel + 5 * accessoryLevel);
+  // 사용자 체력 계산 함수 (악세사리 단계 기반) + 강화 보너스 (퍼센트)
+  const calculatePlayerMaxHp = (accessoryLevel, enhancementBonusPercent = 0) => {
+    if (accessoryLevel === 0 && enhancementBonusPercent === 0) return 50; // 기본 체력
+    const baseHp = accessoryLevel === 0 ? 50 : Math.floor(Math.pow(accessoryLevel, 1.325) + 50 * accessoryLevel + 5 * accessoryLevel);
+    // 강화 보너스 퍼센트 적용
+    return baseHp + (baseHp * enhancementBonusPercent / 100);
   };
 
   // 물고기 공격력 계산 함수 (물고기 단계 기반)
@@ -3360,6 +3469,228 @@ function App() {
       return { damage: criticalDamage, isCritical: true };
     }
     return { damage: baseDamage, isCritical: false };
+  };
+
+  // 낚시대 레벨 계산 함수
+  const getFishingRodLevel = (fishingRodName) => {
+    if (!fishingRodName) return 0;
+    
+    const fishingRods = [
+      '나무낚시대', '낡은낚시대', '기본낚시대', '단단한낚시대', '은낚시대', '금낚시대',
+      '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대', '레드다이아몬드낚시대',
+      '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산고등낚시대', '피크닉', '마녀빗자루',
+      '에테르낚시대', '별조각낚시대', '여우꼬리낚시대', '초콜릿롤낚시대', '호박유령낚시대',
+      '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
+    ];
+    
+    const level = fishingRods.indexOf(fishingRodName);
+    return level >= 0 ? level : 0;
+  };
+
+  // 낚시대 공격력 계산 함수
+  const getFishingRodAttack = (fishingRodLevel) => {
+    if (fishingRodLevel === 0) return 10; // 기본 공격력
+    return Math.floor(Math.pow(fishingRodLevel, 1.4) + fishingRodLevel * 2 + 10);
+  };
+
+  // 장비 효과 계산 함수들
+  const getEquipmentEffects = (equipmentName, equipmentType) => {
+    if (!equipmentName) return null;
+
+    if (equipmentType === 'fishingRod') {
+      const fishingRodLevel = getFishingRodLevel(equipmentName);
+      const skillBonus = fishingRodLevel + 1; // 레벨 + 1
+      const baseAttackPower = getFishingRodAttack(fishingRodLevel);
+      
+      // 강화 보너스 계산
+      const enhancementLevel = userEquipment.fishingRodEnhancement || 0;
+      const enhancementBonus = calculateTotalEnhancementBonus(enhancementLevel);
+      const totalAttackPower = baseAttackPower + (baseAttackPower * enhancementBonus / 100);
+
+      const effects = [
+        { label: '낚시실력', value: `+${skillBonus}`, description: '낚시 성공률과 희귀 물고기 확률 증가' }
+      ];
+
+      // 공격력 표시 (강화 보너스 포함)
+      if (enhancementBonus > 0) {
+        effects.push({
+          label: '공격력',
+          value: `${totalAttackPower} (+${enhancementBonus.toFixed(1)}%)`,
+          description: `탐사 전투에서의 공격력입니다 (기본: ${baseAttackPower}, 강화: +${enhancementBonus.toFixed(1)}%)`
+        });
+      } else {
+        effects.push({
+          label: '공격력',
+          value: `${baseAttackPower}`,
+          description: '탐사 전투에서의 공격력입니다'
+        });
+      }
+
+      return {
+        type: '낚시대',
+        name: equipmentName,
+        level: fishingRodLevel,
+        enhancementLevel: enhancementLevel,
+        effects: effects
+      };
+    } else if (equipmentType === 'accessory') {
+      const accessoryLevel = getAccessoryLevel(equipmentName);
+      const priceBonus = accessoryLevel * 8;
+      const cooldownReduction = accessoryLevel * 15;
+      
+      // 강화 보너스 계산
+      const enhancementLevel = userEquipment.accessoryEnhancement || 0;
+      const enhancementBonus = calculateTotalEnhancementBonus(enhancementLevel);
+      const baseMaxHp = calculatePlayerMaxHp(accessoryLevel, 0);
+      const totalMaxHp = calculatePlayerMaxHp(accessoryLevel, enhancementBonus);
+      const baseHp = calculatePlayerMaxHp(0, 0); // 악세사리 없을 때 기본 체력 (50)
+      const baseHpIncrease = baseMaxHp - baseHp; // 기본 증가량
+
+      const effects = [];
+
+      // 체력 표시 (강화 보너스 포함)
+      if (enhancementBonus > 0) {
+        effects.push({
+          label: '체력증가',
+          value: `+${totalMaxHp - baseHp} (+${enhancementBonus.toFixed(1)}%)`,
+          description: `탐사 전투에서의 추가 체력입니다 (기본: +${baseHpIncrease}, 강화: +${enhancementBonus.toFixed(1)}%)`
+        });
+      } else {
+        effects.push({
+          label: '체력증가',
+          value: `+${baseHpIncrease}`,
+          description: '탐사 전투에서의 추가 체력입니다'
+        });
+      }
+
+      effects.push(
+        { label: '물고기 판매가격', value: `+${priceBonus}%`, description: '물고기를 더 비싸게 판매할 수 있습니다' },
+        { label: '낚시 쿨타임', value: `-${cooldownReduction}초`, description: '낚시 대기시간이 줄어듭니다' }
+      );
+
+      return {
+        type: '악세사리',
+        name: equipmentName,
+        level: accessoryLevel,
+        enhancementLevel: enhancementLevel,
+        effects: effects
+      };
+    }
+    return null;
+  };
+
+  // 장비 클릭 핸들러
+  const handleEquipmentClick = (equipmentName, equipmentType) => {
+    const effects = getEquipmentEffects(equipmentName, equipmentType);
+    if (effects) {
+      setSelectedEquipment(effects);
+      setShowEquipmentModal(true);
+    }
+  };
+
+  // 강화 모달 열기 (최신 장비 정보 동기화)
+  const handleEnhancementClick = async (equipmentName, equipmentType) => {
+    try {
+      // 최신 장비 정보를 서버에서 가져와서 동기화
+      const userId = idToken ? 'user' : 'null';
+      const params = { username, userUuid };
+      const response = await axios.get(`${serverUrl}/api/user-equipment/${userId}`, { 
+        params,
+        headers: { Authorization: `Bearer ${localStorage.getItem('jwtToken')}` }
+      });
+      
+      if (response.data) {
+        console.log('🔄 장비 정보 동기화:', response.data);
+        setUserEquipment(prev => ({
+          ...prev,
+          ...response.data
+        }));
+      }
+      
+      setEnhancementEquipment({ name: equipmentName, type: equipmentType });
+      setShowEnhancementModal(true);
+    } catch (error) {
+      console.error('장비 정보 동기화 실패:', error);
+      // 동기화 실패해도 모달은 열기
+      setEnhancementEquipment({ name: equipmentName, type: equipmentType });
+      setShowEnhancementModal(true);
+    }
+  };
+
+  // 장비 강화 함수
+  const handleEnhanceEquipment = async (equipmentType, targetLevel, amberCost) => {
+    try {
+      console.log(`🔨 장비 강화 시도: ${equipmentType} +${targetLevel}, 비용: ${amberCost} 호박석`);
+      
+      const response = await authenticatedRequest.post(`${serverUrl}/api/enhance-equipment`, {
+        equipmentType,
+        targetLevel,
+        amberCost
+      });
+
+      if (response.data.success) {
+        // 장비 정보 업데이트
+        setUserEquipment(prev => ({
+          ...prev,
+          ...response.data.equipment
+        }));
+
+        // 호박석 업데이트
+        setUserAmber(response.data.amber);
+
+        const { enhancementSuccess, successRateInfo } = response.data;
+        
+        if (enhancementSuccess) {
+          console.log(`✅ 장비 강화 성공: ${equipmentType} +${targetLevel}`);
+        } else {
+          console.log(`❌ 장비 강화 실패: ${equipmentType} (확률: ${successRateInfo.finalRate}%)`);
+        }
+        
+        return enhancementSuccess;
+      } else {
+        console.error('장비 강화 실패:', response.data.error);
+        alert(`강화 실패: ${response.data.error}`);
+        return false;
+      }
+    } catch (error) {
+      console.error('장비 강화 오류:', error);
+      console.error('오류 상세 정보:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message
+      });
+      
+      // JWT 토큰 관련 오류 처리
+      if (error.response?.status === 401) {
+        alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
+      } else if (error.response?.status === 400) {
+        const errorMsg = error.response?.data?.error || '잘못된 요청입니다.';
+        const details = error.response?.data?.details;
+        console.log('400 오류 세부사항:', details);
+        alert(`강화 실패: ${errorMsg}`);
+      } else if (error.response?.data?.error) {
+        alert(`강화 실패: ${error.response.data.error}`);
+      } else {
+        alert('장비 강화 중 오류가 발생했습니다.');
+      }
+      return false;
+    }
+  };
+
+  // 강화 보너스 계산 함수 (퍼센트)
+  const calculateEnhancementBonus = (level) => {
+    if (level <= 0) return 0;
+    return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
+  };
+
+  // 누적 강화 보너스 계산 (퍼센트)
+  const calculateTotalEnhancementBonus = (level) => {
+    let totalBonus = 0;
+    for (let i = 1; i <= level; i++) {
+      totalBonus += calculateEnhancementBonus(i);
+    }
+    return totalBonus; // 퍼센트이므로 소수점 유지
   };
 
   // 악세사리에 따른 낚시 쿨타임 계산 (낚시실력은 쿨타임에 영향 없음)
@@ -4343,9 +4674,10 @@ function App() {
     const baseHp = fishHealthMap[baseFish] || 100;
     const enemyMaxHp = Math.floor(baseHp * selectedPrefix.hpMultiplier);
 
-    // 사용자 체력 계산 (악세사리 단계 기반)
+    // 사용자 체력 계산 (악세사리 단계 기반) + 강화 보너스
     const accessoryLevel = getAccessoryLevel(userEquipment.accessory);
-    const playerMaxHp = calculatePlayerMaxHp(accessoryLevel);
+    const accessoryEnhancementBonus = calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement || 0);
+    const playerMaxHp = calculatePlayerMaxHp(accessoryLevel, accessoryEnhancementBonus);
     
     // 전투 참여 동료들의 체력 및 사기 초기화
     const companionHpData = {};
@@ -4754,7 +5086,8 @@ function App() {
     setBattleState(prevState => {
       if (!prevState || prevState.turn !== 'player') return prevState;
 
-      const baseDamage = calculatePlayerAttack(fishingSkill); // 낚시실력 기반 공격력
+      const fishingRodEnhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
+      const baseDamage = calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus); // 낚시실력 기반 공격력 + 강화 보너스
       const { damage, isCritical } = calculateCriticalHit(baseDamage); // 크리티컬 계산
       const newEnemyHp = Math.max(0, prevState.enemyHp - damage);
       
@@ -5289,7 +5622,14 @@ function App() {
             const userId = idToken ? 'user' : 'null';
             const params = { username };
             const equipmentRes = await axios.get(`${serverUrl}/api/user-equipment/${userId}`, { params });
-            setUserEquipment(equipmentRes.data || { fishingRod: null, accessory: null });
+            setUserEquipment(equipmentRes.data || { 
+              fishingRod: null, 
+              accessory: null,
+              fishingRodEnhancement: 0,
+              accessoryEnhancement: 0,
+              fishingRodFailCount: 0,
+              accessoryFailCount: 0
+            });
             
             // 낚시실력도 새로고침
             const skillRes = await axios.get(`${serverUrl}/api/fishing-skill/${userId}`, { params });
@@ -5997,72 +6337,92 @@ function App() {
                 </div>
               </div>
               
-              {/* 전체 판매/분해 버튼 */}
-              {inventory.length > 0 && (
+              {/* 카테고리 탭과 전체 판매/분해 버튼 */}
+              <div className="flex items-center justify-between mt-4">
+                {/* 카테고리 탭 */}
                 <div className="flex gap-2">
                   <button
-                    onClick={sellAllFish}
-                    disabled={isProcessingSellAll || isProcessingDecomposeAll}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
-                      (isProcessingSellAll || isProcessingDecomposeAll)
-                        ? "opacity-50 cursor-not-allowed"
-                        : "hover:scale-105"
-                    } ${
-                      isDarkMode 
-                        ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30" 
-                        : "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20"
+                    onClick={() => setInventoryCategory("fish")}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 font-medium ${
+                      inventoryCategory === "fish"
+                        ? isDarkMode
+                          ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
+                          : "bg-blue-500/10 text-blue-600 border border-blue-500/30"
+                        : isDarkMode
+                          ? "text-gray-400 hover:text-gray-300"
+                          : "text-gray-600 hover:text-gray-800"
                     }`}
                   >
-                    <Coins className="w-4 h-4" />
-                    <span className="text-sm">
-                      {isProcessingSellAll ? "판매 중..." : "전체 판매"}
-                    </span>
+                    <Fish className="w-4 h-4" />
+                    <span className="text-sm">인벤토리</span>
                   </button>
                   <button
-                    onClick={decomposeAllFish}
-                    disabled={isProcessingSellAll || isProcessingDecomposeAll}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
-                      (isProcessingSellAll || isProcessingDecomposeAll)
-                        ? "opacity-50 cursor-not-allowed"
-                        : "hover:scale-105"
-                    } ${
-                      isDarkMode 
-                        ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30" 
-                        : "bg-purple-500/10 text-purple-600 hover:bg-purple-500/20"
+                    onClick={() => setInventoryCategory("equipment")}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 font-medium ${
+                      inventoryCategory === "equipment"
+                        ? isDarkMode
+                          ? "bg-emerald-500/20 text-emerald-400 border border-emerald-400/30"
+                          : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/30"
+                        : isDarkMode
+                          ? "text-gray-400 hover:text-gray-300"
+                          : "text-gray-600 hover:text-gray-800"
                     }`}
                   >
-                    <Trash2 className="w-4 h-4" />
-                    <span className="text-sm">
-                      {isProcessingDecomposeAll ? "분해 중..." : "전체 분해"}
-                    </span>
+                    <Sword className="w-4 h-4" />
+                    <span className="text-sm">착용 장비</span>
                   </button>
                 </div>
-              )}
-              
-              {/* 카테고리 탭 */}
-              <div className="flex gap-2 mt-4">
-                <button
-                  onClick={() => setInventoryCategory("fish")}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 font-medium ${
-                    inventoryCategory === "fish"
-                      ? isDarkMode
-                        ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
-                        : "bg-blue-500/10 text-blue-600 border border-blue-500/30"
-                      : isDarkMode
-                        ? "text-gray-400 hover:text-gray-300"
-                        : "text-gray-600 hover:text-gray-800"
-                  }`}
-                >
-                  <Fish className="w-4 h-4" />
-                  <span className="text-sm">물고기</span>
-                </button>
+
+                {/* 전체 판매/분해 버튼 - 인벤토리 탭에서만 표시 */}
+                {inventoryCategory === "fish" && inventory.length > 0 && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={sellAllFish}
+                      disabled={isProcessingSellAll || isProcessingDecomposeAll}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
+                        (isProcessingSellAll || isProcessingDecomposeAll)
+                          ? "opacity-50 cursor-not-allowed"
+                          : "hover:scale-105"
+                      } ${
+                        isDarkMode 
+                          ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30" 
+                          : "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20"
+                      }`}
+                    >
+                      <Coins className="w-4 h-4" />
+                      <span className="text-sm">
+                        {isProcessingSellAll ? "판매 중..." : "전체 판매"}
+                      </span>
+                    </button>
+                    <button
+                      onClick={decomposeAllFish}
+                      disabled={isProcessingSellAll || isProcessingDecomposeAll}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
+                        (isProcessingSellAll || isProcessingDecomposeAll)
+                          ? "opacity-50 cursor-not-allowed"
+                          : "hover:scale-105"
+                      } ${
+                        isDarkMode 
+                          ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30" 
+                          : "bg-purple-500/10 text-purple-600 hover:bg-purple-500/20"
+                      }`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span className="text-sm">
+                        {isProcessingDecomposeAll ? "분해 중..." : "전체 분해"}
+                      </span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
             
             {/* 인벤토리 목록 */}
             <div className="flex-1 p-4">
               {/* 물고기 인벤토리 */}
-              {inventory.length === 0 ? (
+              {inventoryCategory === "fish" && (
+                <>
+                  {inventory.length === 0 ? (
                   <div className="text-center py-12">
                     <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 mb-4 bounce-slow">
                       <Fish className={`w-8 h-8 ${
@@ -6235,6 +6595,175 @@ function App() {
                       </div>
                     </div>
                   </div>
+                </>
+              )}
+
+              {/* 착용 장비 인벤토리 */}
+              {inventoryCategory === "equipment" && (
+                <div className="space-y-4">
+                  {/* 낚시대 섹션 */}
+                  <div className={`p-4 rounded-xl ${
+                    isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+                  }`}>
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-blue-500/20 to-cyan-500/20">
+                        <Waves className={`w-5 h-5 ${
+                          isDarkMode ? "text-blue-400" : "text-blue-600"
+                        }`} />
+                      </div>
+                      <h3 className={`text-lg font-semibold ${
+                        isDarkMode ? "text-white" : "text-gray-800"
+                      }`}>낚시대</h3>
+                    </div>
+                    
+                    {userEquipment.fishingRod ? (
+                      <div 
+                        onClick={() => handleEquipmentClick(userEquipment.fishingRod, 'fishingRod')}
+                        className={`p-4 rounded-lg hover:glow-effect transition-all duration-300 group cursor-pointer ${
+                          isDarkMode ? "bg-gray-800/50 border border-gray-700/30 hover:border-blue-400/50" : "bg-gray-100/80 border border-gray-300/30 hover:border-blue-500/50"
+                        }`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-blue-500/20 to-cyan-500/20">
+                              <Waves className={`w-6 h-6 group-hover:scale-110 transition-transform ${
+                                isDarkMode ? "text-blue-400" : "text-blue-600"
+                              }`} />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <div className={`font-medium text-base ${
+                                  isDarkMode ? "text-white" : "text-gray-800"
+                                }`}>{userEquipment.fishingRod}</div>
+                                {userEquipment.fishingRodEnhancement > 0 && (
+                                  <span className={`text-xs font-bold ${
+                                    isDarkMode ? "text-blue-400" : "text-blue-600"
+                                  }`}>
+                                    +{userEquipment.fishingRodEnhancement}
+                                  </span>
+                                )}
+                              </div>
+                              <div className={`text-xs ${
+                                isDarkMode ? "text-green-400" : "text-green-600"
+                              }`}>
+                                장착됨 • 클릭하여 효과 보기
+                                {userEquipment.fishingRodEnhancement > 0 && (
+                                  <span className={`ml-2 ${
+                                    isDarkMode ? "text-blue-400" : "text-blue-600"
+                                  }`}>
+                                    • 추가 공격력 +{calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                            isDarkMode 
+                              ? "bg-green-500/20 text-green-400 border border-green-400/30" 
+                              : "bg-green-500/10 text-green-600 border border-green-500/30"
+                          }`}>
+                            장착됨
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-gray-500/20 to-gray-600/20 mb-4">
+                          <Waves className={`w-8 h-8 ${
+                            isDarkMode ? "text-gray-500" : "text-gray-600"
+                          }`} />
+                        </div>
+                        <p className={`text-sm font-medium mb-2 ${
+                          isDarkMode ? "text-gray-400" : "text-gray-600"
+                        }`}>장착된 낚시대가 없습니다</p>
+                        <p className={`text-xs ${
+                          isDarkMode ? "text-gray-500" : "text-gray-600"
+                        }`}>상점에서 낚시대를 구매해보세요!</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 악세사리 섹션 */}
+                  <div className={`p-4 rounded-xl ${
+                    isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+                  }`}>
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20">
+                        <Gem className={`w-5 h-5 ${
+                          isDarkMode ? "text-purple-400" : "text-purple-600"
+                        }`} />
+                      </div>
+                      <h3 className={`text-lg font-semibold ${
+                        isDarkMode ? "text-white" : "text-gray-800"
+                      }`}>악세사리</h3>
+                    </div>
+                    
+                    {userEquipment.accessory ? (
+                      <div 
+                        onClick={() => handleEquipmentClick(userEquipment.accessory, 'accessory')}
+                        className={`p-4 rounded-lg hover:glow-effect transition-all duration-300 group cursor-pointer ${
+                          isDarkMode ? "bg-gray-800/50 border border-gray-700/30 hover:border-purple-400/50" : "bg-gray-100/80 border border-gray-300/30 hover:border-purple-500/50"
+                        }`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20">
+                              <Gem className={`w-6 h-6 group-hover:scale-110 transition-transform ${
+                                isDarkMode ? "text-purple-400" : "text-purple-600"
+                              }`} />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <div className={`font-medium text-base ${
+                                  isDarkMode ? "text-white" : "text-gray-800"
+                                }`}>{userEquipment.accessory}</div>
+                                {userEquipment.accessoryEnhancement > 0 && (
+                                  <span className={`text-xs font-bold ${
+                                    isDarkMode ? "text-purple-400" : "text-purple-600"
+                                  }`}>
+                                    +{userEquipment.accessoryEnhancement}
+                                  </span>
+                                )}
+                              </div>
+                              <div className={`text-xs ${
+                                isDarkMode ? "text-green-400" : "text-green-600"
+                              }`}>
+                                장착됨 • 클릭하여 효과 보기
+                                {userEquipment.accessoryEnhancement > 0 && (
+                                  <span className={`ml-2 ${
+                                    isDarkMode ? "text-purple-400" : "text-purple-600"
+                                  }`}>
+                                    • 추가 체력 +{calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                            isDarkMode 
+                              ? "bg-green-500/20 text-green-400 border border-green-400/30" 
+                              : "bg-green-500/10 text-green-600 border border-green-500/30"
+                          }`}>
+                            장착됨
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-gray-500/20 to-gray-600/20 mb-4">
+                          <Gem className={`w-8 h-8 ${
+                            isDarkMode ? "text-gray-500" : "text-gray-600"
+                          }`} />
+                        </div>
+                        <p className={`text-sm font-medium mb-2 ${
+                          isDarkMode ? "text-gray-400" : "text-gray-600"
+                        }`}>장착된 악세사리가 없습니다</p>
+                        <p className={`text-xs ${
+                          isDarkMode ? "text-gray-500" : "text-gray-600"
+                        }`}>상점에서 악세사리를 구매해보세요!</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           )}
@@ -6589,6 +7118,9 @@ function App() {
                 syncBattleCompanionsToServer={syncBattleCompanionsToServer}
                 battleCompanions={battleCompanions}
                 companionStats={companionStats}
+                userEquipment={userEquipment}
+                fishingSkill={fishingSkill}
+                calculateTotalEnhancementBonus={calculateTotalEnhancementBonus}
                 refreshInventory={async () => {
                   // 인벤토리 새로고침 함수
                   try {
@@ -7198,8 +7730,12 @@ function App() {
                         isDarkMode ? "text-green-400" : "text-green-600"
                       }`}>{(() => {
                         const accessoryLevel = getAccessoryLevel(userEquipment.accessory);
-                        const maxHp = calculatePlayerMaxHp(accessoryLevel);
-                        return `${maxHp} / ${maxHp}`;
+                        const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement || 0);
+                        const maxHp = calculatePlayerMaxHp(accessoryLevel, enhancementBonus);
+                        const baseHp = calculatePlayerMaxHp(accessoryLevel, 0);
+                        return enhancementBonus > 0 ? 
+                          `${maxHp} / ${maxHp} (+${enhancementBonus.toFixed(1)}%)` : 
+                          `${maxHp} / ${maxHp}`;
                       })()}</span>
                     </div>
                     <div className={`w-full h-3 rounded-full ${
@@ -7220,7 +7756,13 @@ function App() {
                       }`}>기본 공격력</span>
                       <span className={`text-sm font-medium ${
                         isDarkMode ? "text-orange-400" : "text-orange-600"
-                      }`}>{getAttackRange(fishingSkill).base}</span>
+                      }`}>{(() => {
+                        const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
+                        const attackRange = getAttackRange(fishingSkill, enhancementBonus);
+                        return enhancementBonus > 0 ? 
+                          `${attackRange.base} (+${enhancementBonus.toFixed(1)}%)` : 
+                          attackRange.base;
+                      })()}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className={`text-xs ${
@@ -7228,7 +7770,11 @@ function App() {
                       }`}>데미지 범위 (±20%)</span>
                       <span className={`text-xs font-medium ${
                         isDarkMode ? "text-red-400" : "text-red-600"
-                      }`}>{getAttackRange(fishingSkill).min} - {getAttackRange(fishingSkill).max}</span>
+                      }`}>{(() => {
+                        const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
+                        const attackRange = getAttackRange(fishingSkill, enhancementBonus);
+                        return `${attackRange.min} - ${attackRange.max}`;
+                      })()}</span>
                     </div>
                   </div>
                 </div>
@@ -7807,8 +8353,27 @@ function App() {
                   <div className={`text-sm ${
                     isDarkMode ? "text-gray-300" : "text-gray-700"
                   }`}>
-                    <div className="font-medium text-blue-500">
-                      {selectedUserProfile ? otherUserData?.equipment?.fishingRod : userEquipment.fishingRod}
+                    <div className="flex items-center gap-2">
+                      <div className="font-medium text-blue-500">
+                        {selectedUserProfile ? otherUserData?.equipment?.fishingRod : userEquipment.fishingRod}
+                      </div>
+                      {selectedUserProfile ? (
+                        otherUserData?.equipment?.fishingRodEnhancement > 0 && (
+                          <span className={`text-xs font-bold ${
+                            isDarkMode ? "text-blue-400" : "text-blue-600"
+                          }`}>
+                            +{otherUserData.equipment.fishingRodEnhancement}
+                          </span>
+                        )
+                      ) : (
+                        userEquipment.fishingRodEnhancement > 0 && (
+                          <span className={`text-xs font-bold ${
+                            isDarkMode ? "text-blue-400" : "text-blue-600"
+                          }`}>
+                            +{userEquipment.fishingRodEnhancement}
+                          </span>
+                        )
+                      )}
                     </div>
                     <div className={`text-xs mt-1 ${
                       isDarkMode ? "text-gray-500" : "text-gray-600"
@@ -7839,8 +8404,27 @@ function App() {
                   <div className={`text-sm ${
                     isDarkMode ? "text-gray-300" : "text-gray-700"
                   }`}>
-                    <div className="font-medium text-purple-500">
-                      {selectedUserProfile ? otherUserData?.equipment?.accessory : userEquipment.accessory}
+                    <div className="flex items-center gap-2">
+                      <div className="font-medium text-purple-500">
+                        {selectedUserProfile ? otherUserData?.equipment?.accessory : userEquipment.accessory}
+                      </div>
+                      {selectedUserProfile ? (
+                        otherUserData?.equipment?.accessoryEnhancement > 0 && (
+                          <span className={`text-xs font-bold ${
+                            isDarkMode ? "text-purple-400" : "text-purple-600"
+                          }`}>
+                            +{otherUserData.equipment.accessoryEnhancement}
+                          </span>
+                        )
+                      ) : (
+                        userEquipment.accessoryEnhancement > 0 && (
+                          <span className={`text-xs font-bold ${
+                            isDarkMode ? "text-purple-400" : "text-purple-600"
+                          }`}>
+                            +{userEquipment.accessoryEnhancement}
+                          </span>
+                        )
+                      )}
                     </div>
                     <div className={`text-xs mt-1 ${
                       isDarkMode ? "text-gray-500" : "text-gray-600"
@@ -7928,6 +8512,80 @@ function App() {
                     <div className={`text-xs ${
                       isDarkMode ? "text-gray-500" : "text-gray-600"
                     }`}>낚시실력</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 전투 정보 섹션 */}
+              <div className={`p-4 rounded-xl ${
+                isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+              }`}>
+                <div className="flex items-center gap-3 mb-3">
+                  <Zap className={`w-5 h-5 ${
+                    isDarkMode ? "text-red-400" : "text-red-600"
+                  }`} />
+                  <h3 className={`font-medium ${
+                    isDarkMode ? "text-white" : "text-gray-800"
+                  }`}>전투 정보</h3>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="text-center">
+                    <div className={`font-bold text-lg ${
+                      isDarkMode ? "text-red-400" : "text-red-600"
+                    }`}>
+                      {(() => {
+                        if (selectedUserProfile) {
+                          // 다른 사용자의 공격력 계산
+                          const fishingSkill = otherUserData?.fishingSkill || 0;
+                          const fishingRodEnhancement = otherUserData?.equipment?.fishingRodEnhancement || 0;
+                          const enhancementBonus = calculateTotalEnhancementBonus(fishingRodEnhancement);
+                          const baseAttack = 0.00225 * Math.pow(fishingSkill, 3) + 0.165 * Math.pow(fishingSkill, 2) + 2 * fishingSkill + 3;
+                          const totalAttack = Math.floor(baseAttack + (baseAttack * enhancementBonus / 100));
+                          return enhancementBonus > 0 ? `${totalAttack} (+${enhancementBonus.toFixed(1)}%)` : totalAttack;
+                        } else {
+                          // 내 공격력 계산
+                          const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
+                          const attackRange = getAttackRange(fishingSkill, enhancementBonus);
+                          return enhancementBonus > 0 ? `${attackRange.base} (+${enhancementBonus.toFixed(1)}%)` : attackRange.base;
+                        }
+                      })()}
+                    </div>
+                    <div className={`text-xs ${
+                      isDarkMode ? "text-gray-500" : "text-gray-600"
+                    }`}>기본 공격력</div>
+                  </div>
+                  <div className="text-center">
+                    <div className={`font-bold text-lg ${
+                      isDarkMode ? "text-green-400" : "text-green-600"
+                    }`}>
+                      {(() => {
+                        if (selectedUserProfile) {
+                          // 다른 사용자의 체력 계산
+                          const accessoryName = otherUserData?.equipment?.accessory;
+                          const accessoryEnhancement = otherUserData?.equipment?.accessoryEnhancement || 0;
+                          const enhancementBonus = calculateTotalEnhancementBonus(accessoryEnhancement);
+                          
+                          // 악세사리 레벨 계산
+                          const accessories = [
+                            '오래된반지', '은목걸이', '금귀걸이', '마법의펜던트', '에메랄드브로치',
+                            '토파즈이어링', '자수정팔찌', '백금티아라', '만드라고라허브', '에테르나무묘목',
+                            '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
+                          ];
+                          const accessoryLevel = accessoryName ? accessories.indexOf(accessoryName) + 1 : 0;
+                          const maxHp = calculatePlayerMaxHp(accessoryLevel, enhancementBonus);
+                          return enhancementBonus > 0 ? `${maxHp} (+${enhancementBonus.toFixed(1)}%)` : maxHp;
+                        } else {
+                          // 내 체력 계산
+                          const accessoryLevel = getAccessoryLevel(userEquipment.accessory);
+                          const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement || 0);
+                          const maxHp = calculatePlayerMaxHp(accessoryLevel, enhancementBonus);
+                          return enhancementBonus > 0 ? `${maxHp} (+${enhancementBonus.toFixed(1)}%)` : maxHp;
+                        }
+                      })()}
+                    </div>
+                    <div className={`text-xs ${
+                      isDarkMode ? "text-gray-500" : "text-gray-600"
+                    }`}>최대 체력</div>
                   </div>
                 </div>
               </div>
@@ -9339,6 +9997,175 @@ function App() {
         userEquipment={userEquipment}
         allFishTypes={allFishTypes}
       />
+
+      {/* 장비 강화 모달 */}
+      <EnhancementModal
+        showModal={showEnhancementModal}
+        setShowModal={setShowEnhancementModal}
+        isDarkMode={isDarkMode}
+        equipment={enhancementEquipment.name}
+        equipmentType={enhancementEquipment.type}
+        userAmber={userAmber}
+        onEnhance={handleEnhanceEquipment}
+        currentEnhancementLevel={
+          enhancementEquipment.type === 'fishingRod' 
+            ? userEquipment.fishingRodEnhancement || 0
+            : userEquipment.accessoryEnhancement || 0
+        }
+        currentFailCount={
+          enhancementEquipment.type === 'fishingRod' 
+            ? (userEquipment.fishingRodFailCount !== undefined ? userEquipment.fishingRodFailCount : 0)
+            : (userEquipment.accessoryFailCount !== undefined ? userEquipment.accessoryFailCount : 0)
+        }
+      />
+
+      {/* 장비 효과 모달 */}
+      {showEquipmentModal && selectedEquipment && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className={`w-full max-w-md rounded-2xl shadow-2xl max-h-[90vh] overflow-hidden ${
+            isDarkMode ? "glass-card" : "bg-white/95 backdrop-blur-md border border-gray-300/30"
+          }`}>
+            {/* 모달 헤더 */}
+            <div className={`p-6 border-b ${
+              isDarkMode ? "border-white/10" : "border-gray-300/20"
+            }`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`flex items-center justify-center w-10 h-10 rounded-full ${
+                    selectedEquipment.type === '낚시대' 
+                      ? "bg-gradient-to-br from-blue-500/20 to-cyan-500/20"
+                      : "bg-gradient-to-br from-purple-500/20 to-pink-500/20"
+                  }`}>
+                    {selectedEquipment.type === '낚시대' ? (
+                      <Waves className={`w-5 h-5 ${
+                        isDarkMode ? "text-blue-400" : "text-blue-600"
+                      }`} />
+                    ) : (
+                      <Gem className={`w-5 h-5 ${
+                        isDarkMode ? "text-purple-400" : "text-purple-600"
+                      }`} />
+                    )}
+                  </div>
+                  <div>
+                    <h2 className={`text-lg font-semibold ${
+                      isDarkMode ? "text-white" : "text-gray-800"
+                    }`}>{selectedEquipment.name}</h2>
+                    <p className={`text-sm ${
+                      isDarkMode ? "text-gray-400" : "text-gray-600"
+                    }`}>{selectedEquipment.type} 효과</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowEquipmentModal(false)}
+                  className={`p-2 rounded-lg transition-colors ${
+                    isDarkMode 
+                      ? "hover:bg-white/10 text-gray-400 hover:text-white" 
+                      : "hover:bg-gray-100 text-gray-600 hover:text-gray-800"
+                  }`}
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* 모달 콘텐츠 */}
+            <div className="p-6 space-y-4">
+              {selectedEquipment.level && (
+                <div className={`p-3 rounded-lg ${
+                  isDarkMode ? "bg-gray-800/50" : "bg-gray-100/80"
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className={`text-sm font-medium ${
+                      isDarkMode ? "text-gray-300" : "text-gray-700"
+                    }`}>
+                      레벨: {selectedEquipment.level}
+                    </div>
+                    {selectedEquipment.enhancementLevel > 0 && (
+                      <span className={`text-xs font-bold ${
+                        selectedEquipment.type === '낚시대'
+                          ? isDarkMode ? "text-blue-400" : "text-blue-600"
+                          : isDarkMode ? "text-purple-400" : "text-purple-600"
+                      }`}>
+                        +{selectedEquipment.enhancementLevel}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {selectedEquipment.effects.map((effect, index) => (
+                  <div key={index} className={`p-4 rounded-xl ${
+                    isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+                  }`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`font-medium ${
+                        isDarkMode ? "text-white" : "text-gray-800"
+                      }`}>{effect.label}</span>
+                      <span className={`font-bold text-lg ${
+                        effect.value.includes('%')
+                          ? isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                          : effect.value.startsWith('+') 
+                          ? isDarkMode ? "text-green-400" : "text-green-600"
+                          : effect.value.startsWith('-')
+                          ? isDarkMode ? "text-blue-400" : "text-blue-600"
+                          : isDarkMode ? "text-gray-400" : "text-gray-600"
+                      }`}>{effect.value}</span>
+                    </div>
+                    <p className={`text-sm ${
+                      isDarkMode ? "text-gray-400" : "text-gray-600"
+                    }`}>{effect.description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 모달 하단 */}
+            <div className={`p-6 border-t ${
+              isDarkMode ? "border-white/10" : "border-gray-300/20"
+            }`}>
+              <div className="flex gap-3">
+                {/* 강화하기 버튼 */}
+                <button
+                  onClick={() => {
+                    const equipmentType = selectedEquipment.type === '낚시대' ? 'fishingRod' : 'accessory';
+                    handleEnhancementClick(selectedEquipment.name, equipmentType);
+                    setShowEquipmentModal(false);
+                  }}
+                  className={`flex-1 py-3 px-6 rounded-lg font-medium transition-all duration-300 flex items-center justify-center gap-2 ${
+                    selectedEquipment.type === '낚시대'
+                      ? isDarkMode
+                        ? "bg-gradient-to-r from-blue-500/20 to-cyan-500/20 hover:from-blue-500/30 hover:to-cyan-500/30 text-blue-400 border border-blue-400/30 hover:border-blue-400/50"
+                        : "bg-gradient-to-r from-blue-500/10 to-cyan-500/10 hover:from-blue-500/20 hover:to-cyan-500/20 text-blue-600 border border-blue-500/30 hover:border-blue-500/50"
+                      : isDarkMode
+                        ? "bg-gradient-to-r from-purple-500/20 to-pink-500/20 hover:from-purple-500/30 hover:to-pink-500/30 text-purple-400 border border-purple-400/30 hover:border-purple-400/50"
+                        : "bg-gradient-to-r from-purple-500/10 to-pink-500/10 hover:from-purple-500/20 hover:to-pink-500/20 text-purple-600 border border-purple-500/30 hover:border-purple-500/50"
+                  }`}
+                >
+                  {selectedEquipment.type === '낚시대' ? (
+                    <Zap className="w-4 h-4" />
+                  ) : (
+                    <Gem className="w-4 h-4" />
+                  )}
+                  강화하기
+                </button>
+                
+                {/* 닫기 버튼 */}
+                <button
+                  onClick={() => setShowEquipmentModal(false)}
+                  className={`flex-1 py-3 px-6 rounded-lg font-medium transition-all duration-300 ${
+                    isDarkMode 
+                      ? "bg-gray-700/50 text-white hover:bg-gray-700/70" 
+                      : "bg-gray-200 text-gray-800 hover:bg-gray-300"
+                  }`}
+                >
+                  닫기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

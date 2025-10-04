@@ -579,13 +579,15 @@ class ExpeditionSystem {
         return this.prefixData[0]; // 기본값
     }
 
-    // 플레이어 공격력 계산 함수 (탐사와 동일)
-    calculatePlayerAttack(fishingSkill) {
+    // 플레이어 공격력 계산 함수 (탐사와 동일) + 강화 보너스 (퍼센트)
+    calculatePlayerAttack(fishingSkill, enhancementBonusPercent = 0) {
         // 3차방정식: 0.00225 * skill³ + 0.165 * skill² + 2 * skill + 3
         const baseAttack = 0.00225 * Math.pow(fishingSkill, 3) + 0.165 * Math.pow(fishingSkill, 2) + 2 * fishingSkill + 3;
+        // 강화 보너스 퍼센트 적용
+        const totalAttack = baseAttack + (baseAttack * enhancementBonusPercent / 100);
         // 랜덤 요소 추가 (±20%)
         const randomFactor = 0.8 + Math.random() * 0.4;
-        return Math.floor(baseAttack * randomFactor);
+        return Math.floor(totalAttack * randomFactor);
     }
 
     // 동료 기본 데이터 가져오기

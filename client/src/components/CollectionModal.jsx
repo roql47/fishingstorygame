@@ -10,6 +10,37 @@ const CollectionModal = ({
   allFishTypes
 }) => {
   const [activeCollectionTab, setActiveCollectionTab] = useState('fish');
+  const [discoveredFish, setDiscoveredFish] = useState([]);
+
+  // 발견한 물고기 목록 가져오기
+  React.useEffect(() => {
+    if (!showCollectionModal) return;
+    
+    const fetchDiscoveredFish = async () => {
+      try {
+        const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+        const userId = localStorage.getItem('idToken') ? 'user' : 'null';
+        const username = localStorage.getItem('nickname') || '';
+        const userUuid = localStorage.getItem('userUuid') || '';
+        
+        const response = await fetch(`${serverUrl}/api/fish-discoveries/${userId}?username=${encodeURIComponent(username)}&userUuid=${encodeURIComponent(userUuid)}`);
+        
+        if (response.ok) {
+          const fishNames = await response.json();
+          setDiscoveredFish(fishNames);
+          console.log('Discovered fish loaded:', fishNames.length);
+        } else {
+          console.error('Failed to fetch discovered fish');
+          setDiscoveredFish([]);
+        }
+      } catch (error) {
+        console.error('Error fetching discovered fish:', error);
+        setDiscoveredFish([]);
+      }
+    };
+    
+    fetchDiscoveredFish();
+  }, [showCollectionModal]);
 
   if (!showCollectionModal) return null;
 
@@ -104,8 +135,8 @@ const CollectionModal = ({
 
     if (type === 'fish') {
       total = allFishTypes?.length || 0;
-      // 물고기는 한번이라도 낚은 것을 기준으로 계산
-      collected = allFishTypes?.filter(fish => getFishCount(fish.name) > 0).length || 0;
+      // 물고기는 발견 기록을 기준으로 계산
+      collected = allFishTypes?.filter(fish => discoveredFish.includes(fish.name)).length || 0;
     } else if (type === 'fishingRod') {
       total = fishingRods.length;
       collected = fishingRods.filter(rod => hasItem(rod.name, 'fishingRod')).length;
@@ -202,7 +233,7 @@ const CollectionModal = ({
               {allFishTypes?.map((fish, index) => {
                 const collected = hasItem(fish.name, 'fish');
                 const count = getFishCount(fish.name);
-                const everCaught = count > 0; // 한번이라도 낚았는지 확인
+                const everCaught = discoveredFish.includes(fish.name); // 발견 기록으로 확인
                 
                 return (
                   <div

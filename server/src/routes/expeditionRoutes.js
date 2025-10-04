@@ -344,8 +344,24 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
         // 인벤토리에 물고기 추가 - index.js에서 정의된 모델 사용
         const mongoose = require('mongoose');
         const CatchModel = mongoose.model('Catch');
+        const FishDiscoveryModel = mongoose.model('FishDiscovery');
         
         for (const reward of playerRewards) {
+            // 물고기 발견 기록 저장 (중복 방지)
+            try {
+                await FishDiscoveryModel.create({
+                    userUuid: userUuid,
+                    username: username,
+                    fishName: reward.fishName
+                });
+                console.log(`🎣 New fish discovered from expedition: ${reward.fishName} by ${username}`);
+            } catch (error) {
+                // 이미 발견한 물고기인 경우 무시 (unique index 에러)
+                if (error.code !== 11000) {
+                    console.error("Failed to save fish discovery from expedition:", error);
+                }
+            }
+            
             // CatchModel 스키마에 맞게 각 물고기를 개별적으로 추가
             for (let i = 0; i < reward.quantity; i++) {
                 const newCatch = new CatchModel({

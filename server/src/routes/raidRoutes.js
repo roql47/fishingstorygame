@@ -167,16 +167,37 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         동료_목록: allCompanions.map(c => ({ name: c.companionName, isInBattle: c.isInBattle, level: c.level }))
       });
       
-      // 탐사 전투와 동일한 calculatePlayerAttack 함수 로직
-      const calculatePlayerAttack = (skill) => {
-        // 3차방정식: 0.00225 * skill³ + 0.165 * skill² + 2 * skill + 3
-        const baseAttack = 0.00225 * Math.pow(skill, 3) + 0.165 * Math.pow(skill, 2) + 2 * skill + 3;
-        // 랜덤 요소 추가 (±20%)
-        const randomFactor = 0.8 + Math.random() * 0.4;
-        return Math.floor(baseAttack * randomFactor);
+      // 사용자 장비 정보 조회 (강화 보너스 계산용)
+      const userEquipment = await UserEquipmentModel.findOne({ userUuid }).lean();
+      
+      // 강화 보너스 계산 함수 (퍼센트)
+      const calculateEnhancementBonus = (level) => {
+        if (level <= 0) return 0;
+        return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
       };
       
-      const playerDamage = calculatePlayerAttack(fishingSkill);
+      const calculateTotalEnhancementBonus = (level) => {
+        let totalBonus = 0;
+        for (let i = 1; i <= level; i++) {
+          totalBonus += calculateEnhancementBonus(i);
+        }
+        return totalBonus; // 퍼센트이므로 소수점 유지
+      };
+      
+      // 탐사 전투와 동일한 calculatePlayerAttack 함수 로직 + 강화 보너스 (퍼센트)
+      const calculatePlayerAttack = (skill, enhancementBonusPercent = 0) => {
+        // 3차방정식: 0.00225 * skill³ + 0.165 * skill² + 2 * skill + 3
+        const baseAttack = 0.00225 * Math.pow(skill, 3) + 0.165 * Math.pow(skill, 2) + 2 * skill + 3;
+        // 강화 보너스 퍼센트 적용
+        const totalAttack = baseAttack + (baseAttack * enhancementBonusPercent / 100);
+        // 랜덤 요소 추가 (±20%)
+        const randomFactor = 0.8 + Math.random() * 0.4;
+        return Math.floor(totalAttack * randomFactor);
+      };
+      
+      // 낚시대 강화 보너스 계산
+      const fishingRodEnhancementBonus = calculateTotalEnhancementBonus(userEquipment?.fishingRodEnhancement || 0);
+      const playerDamage = calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus);
       
       // 동료 공격력 계산
       let companionDamage = 0;

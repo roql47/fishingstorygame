@@ -646,6 +646,10 @@ io.on('connection', (socket) => {
       // 사용자 정보 확인
       if (!userUuid || !username) {
         console.error("❌ 토큰 갱신 실패: 사용자 정보 누락");
+        socket.emit("auth:refresh-error", { 
+          error: "사용자 정보가 누락되었습니다.",
+          code: "USER_INFO_MISSING"
+        });
         return;
       }
       
@@ -654,6 +658,7 @@ io.on('connection', (socket) => {
       try {
         const adminRecord = await AdminModel.findOne({ userUuid });
         isUserAdmin = adminRecord ? adminRecord.isAdmin : false;
+        console.log(`🔍 관리자 상태 확인: ${username} - ${isUserAdmin ? '관리자' : '일반 사용자'}`);
       } catch (e) {
         console.warn('토큰 갱신 중 관리자 상태 확인 실패:', e);
       }
@@ -671,12 +676,21 @@ io.on('connection', (socket) => {
           token: newJwtToken,
           expiresIn: JWT_EXPIRES_IN
         });
-        console.log(`✅ JWT 토큰 갱신 완료: ${username}`);
+        console.log(`✅ JWT 토큰 갱신 완료: ${username} (만료 시간: ${JWT_EXPIRES_IN})`);
       } else {
         console.error("❌ JWT 토큰 생성 실패");
+        socket.emit("auth:refresh-error", { 
+          error: "토큰 생성에 실패했습니다.",
+          code: "TOKEN_GENERATION_FAILED"
+        });
       }
     } catch (error) {
       console.error("🚨 JWT 토큰 갱신 중 오류:", error);
+      socket.emit("auth:refresh-error", { 
+        error: "토큰 갱신 중 서버 오류가 발생했습니다.",
+        code: "SERVER_ERROR",
+        details: error.message
+      });
     }
   });
   
@@ -768,6 +782,12 @@ const userEquipmentSchema = new mongoose.Schema(
     userId: { type: String, index: true },
     fishingRod: { type: String, default: null },
     accessory: { type: String, default: null },
+    // 강화 레벨 정보
+    fishingRodEnhancement: { type: Number, default: 0 }, // 낚시대 강화 레벨
+    accessoryEnhancement: { type: Number, default: 0 }, // 악세사리 강화 레벨
+    // 강화 실패 횟수 정보
+    fishingRodFailCount: { type: Number, default: 0 }, // 낚시대 강화 실패 횟수
+    accessoryFailCount: { type: Number, default: 0 }, // 악세사리 강화 실패 횟수
   },
   { timestamps: { createdAt: true, updatedAt: true } }
 );
@@ -874,6 +894,22 @@ const couponUsageSchema = new mongoose.Schema(
 couponUsageSchema.index({ userUuid: 1, couponCode: 1 }, { unique: true }); // 사용자당 쿠폰 중복 사용 방지
 
 const CouponUsageModel = mongoose.model("CouponUsage", couponUsageSchema);
+
+// Fish Discovery Schema (물고기 발견 기록)
+const fishDiscoverySchema = new mongoose.Schema(
+  {
+    userUuid: { type: String, required: true, index: true },
+    username: { type: String, required: true },
+    fishName: { type: String, required: true },
+    firstCaughtAt: { type: Date, default: Date.now }
+  },
+  { timestamps: true }
+);
+
+// 사용자당 물고기별 중복 방지
+fishDiscoverySchema.index({ userUuid: 1, fishName: 1 }, { unique: true });
+
+const FishDiscoveryModel = mongoose.model("FishDiscovery", fishDiscoverySchema);
 
 // Admin Schema (관리자 시스템)
 const adminSchema = new mongoose.Schema(
@@ -2361,6 +2397,15 @@ io.on("connection", (socket) => {
           query = queryResult;
         }
 
+        // 먼저 쿠폰 사용 기록을 저장하여 중복 사용 방지
+        const couponUsage = new CouponUsageModel({
+          userUuid: user.userUuid,
+          username: user.username,
+          couponCode: "HAPPY MONDAY",
+          reward: "amber:100"
+        });
+        await couponUsage.save();
+
         let userAmber = await UserAmberModel.findOne(query);
         
         if (!userAmber) {
@@ -2378,15 +2423,6 @@ io.on("connection", (socket) => {
 
         await userAmber.save();
 
-        // 쿠폰 사용 기록 저장
-        const couponUsage = new CouponUsageModel({
-          userUuid: user.userUuid,
-          username: user.username,
-          couponCode: "HAPPY MONDAY",
-          reward: `amber:${amberRewardAmount}`
-        });
-        await couponUsage.save();
-
         // 성공 메시지 전송
         socket.emit("chat:message", {
           system: true,
@@ -2403,6 +2439,165 @@ io.on("connection", (socket) => {
 
       } catch (error) {
         console.error("HAPPY MONDAY 쿠폰 처리 중 오류:", error);
+        socket.emit("chat:message", {
+          system: true,
+          username: "system",
+          content: "🚫 쿠폰 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+    }
+
+    // 🎁 한가위 특별 쿠폰 코드 처리
+    if (trimmed === "즐거운 한가위 되세요~!") {
+      try {
+        // 쿠폰 만료일 체크 (한국시간 기준 2025년 10월 19일 오후 12시)
+        const now = new Date();
+        const kstOffset = 9 * 60 * 60 * 1000; // 9시간을 밀리초로
+        const kstNow = new Date(now.getTime() + kstOffset);
+        const expiryDate = new Date('2025-10-19T12:00:00+09:00'); // 한국시간 기준
+        
+        if (kstNow > expiryDate) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 이 쿠폰은 만료되었습니다. (유효기간: 2025년 10월 19일 오후 12시까지)",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // Guest 사용자 체크 - DB에서 사용자 정보 조회
+        const dbUser = await UserUuidModel.findOne({ userUuid: user.userUuid });
+        
+        if (!dbUser || (!dbUser.originalGoogleId && !dbUser.originalKakaoId)) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 쿠폰은 구글 또는 카카오 소셜 로그인 후에만 사용할 수 있습니다.",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // 이미 사용한 쿠폰인지 확인
+        const existingUsage = await CouponUsageModel.findOne({
+          userUuid: user.userUuid,
+          couponCode: "즐거운 한가위 되세요~!"
+        });
+
+        if (existingUsage) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 이미 사용한 쿠폰입니다. 쿠폰은 계정당 한 번만 사용할 수 있습니다.",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        const queryResult = await getUserQuery('user', user.username, user.userUuid);
+        let query;
+        if (queryResult.userUuid) {
+          query = { userUuid: queryResult.userUuid };
+        } else {
+          query = queryResult;
+        }
+
+        // 먼저 쿠폰 사용 기록을 저장하여 중복 사용 방지
+        const couponUsage = new CouponUsageModel({
+          userUuid: user.userUuid,
+          username: user.username,
+          couponCode: "즐거운 한가위 되세요~!",
+          reward: "gold:1000000,amber:300,starPieces:3,etherKeys:5"
+        });
+        await couponUsage.save();
+
+        // 1. 골드 100만 지급
+        const goldRewardAmount = 1000000;
+        let userMoney = await UserMoneyModel.findOne(query);
+        
+        if (!userMoney) {
+          const createData = {
+            userId: query.userId || 'user',
+            username: query.username || user.username,
+            userUuid: query.userUuid || user.userUuid,
+            money: goldRewardAmount
+          };
+          userMoney = new UserMoneyModel(createData);
+        } else {
+          userMoney.money = (userMoney.money || 0) + goldRewardAmount;
+        }
+        await userMoney.save();
+
+        // 2. 호박석 300개 지급
+        const amberRewardAmount = 300;
+        let userAmber = await UserAmberModel.findOne(query);
+        
+        if (!userAmber) {
+          const createData = {
+            userId: query.userId || 'user',
+            username: query.username || user.username,
+            userUuid: query.userUuid || user.userUuid,
+            amber: amberRewardAmount
+          };
+          userAmber = new UserAmberModel(createData);
+        } else {
+          userAmber.amber = (userAmber.amber || 0) + amberRewardAmount;
+        }
+        await userAmber.save();
+
+        // 3. 별조각 3개 지급
+        const starPiecesRewardAmount = 3;
+        let userStarPieces = await StarPieceModel.findOne(query);
+        
+        if (!userStarPieces) {
+          const createData = {
+            userId: query.userId || 'user',
+            username: query.username || user.username,
+            userUuid: query.userUuid || user.userUuid,
+            starPieces: starPiecesRewardAmount
+          };
+          userStarPieces = new StarPieceModel(createData);
+        } else {
+          userStarPieces.starPieces = (userStarPieces.starPieces || 0) + starPiecesRewardAmount;
+        }
+        await userStarPieces.save();
+
+        // 4. 에테르 열쇠 5개 지급
+        const etherKeysRewardAmount = 5;
+        let userEtherKeys = await EtherKeyModel.findOne(query);
+        
+        if (!userEtherKeys) {
+          const createData = {
+            userId: query.userId || 'user',
+            username: query.username || user.username,
+            userUuid: query.userUuid || user.userUuid,
+            etherKeys: etherKeysRewardAmount
+          };
+          userEtherKeys = new EtherKeyModel(createData);
+        } else {
+          userEtherKeys.etherKeys = (userEtherKeys.etherKeys || 0) + etherKeysRewardAmount;
+        }
+        await userEtherKeys.save();
+
+        // 성공 메시지 전송
+        socket.emit("chat:message", {
+          system: true,
+          username: "system",
+          content: `🎉 축하합니다! 한가위 특별 쿠폰이 성공적으로 사용되었습니다!\n💰 골드 ${goldRewardAmount.toLocaleString()}개\n💎 호박석 ${amberRewardAmount}개\n⭐ 별조각 ${starPiecesRewardAmount}개\n🗝️ 에테르 열쇠 ${etherKeysRewardAmount}개를 받았습니다!`,
+          timestamp: new Date().toISOString()
+        });
+
+        // 사용자 데이터 업데이트 전송
+        sendUserDataUpdate(socket, user.userUuid, user.username);
+
+        console.log(`🎁 한가위 쿠폰 사용: ${user.username} (${user.userUuid}) - gold +${goldRewardAmount}, amber +${amberRewardAmount}, starPieces +${starPiecesRewardAmount}, etherKeys +${etherKeysRewardAmount}`);
+        return;
+
+      } catch (error) {
+        console.error("한가위 쿠폰 처리 중 오류:", error);
         socket.emit("chat:message", {
           system: true,
           username: "system",
@@ -2470,6 +2665,23 @@ io.on("connection", (socket) => {
         
         // 물고기 저장
         await CatchModel.create(catchData);
+
+        // 물고기 발견 기록 저장 (중복 방지)
+        if (socket.data.userUuid) {
+          try {
+            await FishDiscoveryModel.create({
+              userUuid: socket.data.userUuid,
+              username: socket.data.username || "사용자",
+              fishName: selectedFish.name
+            });
+            console.log(`🎣 New fish discovered: ${selectedFish.name} by ${socket.data.username}`);
+          } catch (error) {
+            // 이미 발견한 물고기인 경우 무시 (unique index 에러)
+            if (error.code !== 11000) {
+              console.error("Failed to save fish discovery:", error);
+            }
+          }
+        }
 
         // 사용자의 총 물고기 카운트 증가
         if (socket.data.userUuid) {
@@ -2758,7 +2970,11 @@ async function sendUserDataUpdate(socket, userUuid, username) {
           adminStatus: { isAdmin: Boolean(adminStatus?.isAdmin) },
           equipment: { 
             fishingRod: equipment?.fishingRod ? String(equipment.fishingRod) : null, 
-            accessory: equipment?.accessory ? String(equipment.accessory) : null 
+            accessory: equipment?.accessory ? String(equipment.accessory) : null,
+            fishingRodEnhancement: Number(equipment?.fishingRodEnhancement || 0),
+            accessoryEnhancement: Number(equipment?.accessoryEnhancement || 0),
+            fishingRodFailCount: Number(equipment?.fishingRodFailCount || 0),
+            accessoryFailCount: Number(equipment?.accessoryFailCount || 0)
           }
         };
       } catch (error) {
@@ -5868,6 +6084,10 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
       const createData = {
         fishingRod: category === 'fishing_rod' ? itemName : null,
         accessory: category === 'accessories' ? itemName : null,
+        fishingRodEnhancement: 0,
+        accessoryEnhancement: 0,
+        fishingRodFailCount: 0,
+        accessoryFailCount: 0,
         ...query
       };
       
@@ -5890,10 +6110,16 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
       
       if (category === 'fishing_rod') {
         userEquipment.fishingRod = itemName;
-        console.log(`Fishing rod: ${oldFishingRod} → ${itemName}`);
+        // 낚시대 구매 시 강화 수치 리셋
+        userEquipment.fishingRodEnhancement = 0;
+        userEquipment.fishingRodFailCount = 0;
+        console.log(`Fishing rod: ${oldFishingRod} → ${itemName} (강화 수치 리셋)`);
       } else if (category === 'accessories') {
         userEquipment.accessory = itemName;
-        console.log(`Accessory: ${oldAccessory} → ${itemName}`);
+        // 악세사리 구매 시 강화 수치 리셋
+        userEquipment.accessoryEnhancement = 0;
+        userEquipment.accessoryFailCount = 0;
+        console.log(`Accessory: ${oldAccessory} → ${itemName} (강화 수치 리셋)`);
         
         // 🚀 악세사리 구매 시 캐시 무효화 (성능 최적화)
         const cacheKey = userUuid || username;
@@ -5957,6 +6183,314 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
   }
 });
 
+// Fish Discovery API (발견한 물고기 목록 조회)
+app.get("/api/fish-discoveries/:userId", optionalJWT, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { username, userUuid } = req.query;
+    
+    console.log("=== FISH DISCOVERIES API ===");
+    console.log("Request params:", { userId, username, userUuid });
+    
+    const queryResult = await getUserQuery(userId, username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    console.log("Fish discoveries query:", query);
+    
+    const discoveries = await FishDiscoveryModel.find(query).select('fishName firstCaughtAt');
+    const discoveredFishNames = discoveries.map(d => d.fishName);
+    
+    console.log(`Found ${discoveredFishNames.length} discovered fish for user`);
+    
+    res.json(discoveredFishNames);
+  } catch (error) {
+    console.error("Failed to fetch fish discoveries:", error);
+    res.status(500).json({ error: "Failed to fetch fish discoveries" });
+  }
+});
+
+// Equipment Enhancement API (장비 강화)
+app.post("/api/enhance-equipment", authenticateJWT, async (req, res) => {
+  try {
+    const { equipmentType, targetLevel, amberCost } = req.body;
+    const { userUuid, username } = req.user;
+    
+    console.log("=== EQUIPMENT ENHANCEMENT REQUEST (No Transaction) ===");
+    console.log("Equipment Type:", equipmentType);
+    console.log("Target Level:", targetLevel);
+    console.log("Amber Cost:", amberCost);
+    console.log("User:", username, userUuid);
+    console.log("Request body:", req.body);
+    console.log("Request headers:", req.headers.authorization ? "JWT Present" : "No JWT");
+    
+    // 기본 검증
+    if (!userUuid || !username) {
+      console.error("❌ Missing user authentication data");
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    
+    // 입력 검증
+    if (!equipmentType || !['fishingRod', 'accessory'].includes(equipmentType)) {
+      return res.status(400).json({ error: "Invalid equipment type" });
+    }
+    
+    // targetLevel은 참고용으로만 사용, 실제로는 서버에서 현재 레벨 + 1로 계산
+    if (!targetLevel || targetLevel < 1 || targetLevel > 50) {
+      return res.status(400).json({ error: "Invalid target level" });
+    }
+    
+    if (!amberCost || amberCost < 0) {
+      return res.status(400).json({ error: "Invalid amber cost" });
+    }
+    
+    // 강화 공식: f(x) = 0.2x³ - 0.4x² + 1.6x
+    const calculateEnhancementBonus = (level) => {
+      if (level <= 0) return 0;
+      return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
+    };
+    
+    // 강화에 필요한 호박석 계산: 공식 * 10 (80% 할인)
+    const calculateRequiredAmber = (level) => {
+      if (level <= 0) return 0;
+      return Math.ceil(calculateEnhancementBonus(level) * 10);
+    };
+    
+    // 누적 호박석 비용 계산
+    const calculateTotalAmberCost = (fromLevel, toLevel) => {
+      let totalCost = 0;
+      for (let i = fromLevel + 1; i <= toLevel; i++) {
+        totalCost += calculateRequiredAmber(i);
+      }
+      return totalCost;
+    };
+    
+    // 강화 성공 확률 계산
+    const calculateEnhancementSuccessRate = (currentLevel, failCount = 0) => {
+      let baseRate;
+      
+      if (currentLevel === 0) {
+        baseRate = 100; // 0강 → 1강: 100%
+      } else {
+        // 1강부터: 95%, 90%, 85%, 80%, ... (최소 5%)
+        baseRate = Math.max(5, 100 - (currentLevel * 5));
+      }
+      
+      // 실패 횟수에 따른 확률 증가: 원래확률 + (기본확률 * 0.01 * 실패횟수)
+      const bonusRate = baseRate * 0.01 * failCount;
+      const finalRate = Math.min(100, baseRate + bonusRate);
+      
+      return {
+        baseRate,
+        bonusRate,
+        finalRate
+      };
+    };
+    
+    // 사용자 장비 정보 조회
+    const query = { userUuid };
+    let userEquipment = await UserEquipmentModel.findOne(query);
+    
+    if (!userEquipment) {
+      return res.status(404).json({ error: "User equipment not found" });
+    }
+    
+    // 기존 데이터에 새 필드가 없는 경우 기본값으로 초기화
+    const needsUpdate = userEquipment.fishingRodFailCount === undefined || 
+                       userEquipment.accessoryFailCount === undefined ||
+                       userEquipment.fishingRodEnhancement === undefined ||
+                       userEquipment.accessoryEnhancement === undefined;
+    
+    if (needsUpdate) {
+      console.log("Initializing missing enhancement fields for user:", userUuid);
+      try {
+        await UserEquipmentModel.updateOne(
+          { userUuid },
+          { 
+            $set: {
+              fishingRodFailCount: userEquipment.fishingRodFailCount || 0,
+              accessoryFailCount: userEquipment.accessoryFailCount || 0,
+              fishingRodEnhancement: userEquipment.fishingRodEnhancement || 0,
+              accessoryEnhancement: userEquipment.accessoryEnhancement || 0
+            }
+          }
+        );
+        // 업데이트된 데이터 다시 조회
+        userEquipment = await UserEquipmentModel.findOne(query);
+        console.log("✅ Enhancement fields initialized successfully");
+      } catch (updateError) {
+        console.error("❌ Failed to initialize enhancement fields:", updateError);
+        return res.status(500).json({ error: "Failed to initialize user equipment data" });
+      }
+    }
+    
+    // 현재 강화 레벨 확인
+    const currentLevel = equipmentType === 'fishingRod' 
+      ? userEquipment.fishingRodEnhancement || 0
+      : userEquipment.accessoryEnhancement || 0;
+    
+    // 서버에서 안전하게 다음 레벨로 설정 (클라이언트 값 무시)
+    const actualTargetLevel = currentLevel + 1;
+    
+    console.log(`📊 레벨 설정: 현재=${currentLevel}, 클라이언트목표=${targetLevel}, 실제목표=${actualTargetLevel}`);
+    
+    if (actualTargetLevel > 50) {
+      return res.status(400).json({ error: "Maximum enhancement level reached" });
+    }
+    
+    // 해당 장비가 장착되어 있는지 확인
+    const equippedItem = equipmentType === 'fishingRod' 
+      ? userEquipment.fishingRod 
+      : userEquipment.accessory;
+    
+    if (!equippedItem) {
+      return res.status(400).json({ error: "No equipment equipped to enhance" });
+    }
+    
+    // 서버에서 호박석 비용 재계산 (실제 목표 레벨 기준)
+    const serverAmberCost = calculateRequiredAmber(actualTargetLevel);
+    
+    if (Math.abs(serverAmberCost - amberCost) > 1) { // 소수점 오차 허용
+      console.log("Amber cost mismatch:", { client: amberCost, server: serverAmberCost });
+      return res.status(400).json({ error: "Invalid amber cost calculation" });
+    }
+    
+    // 사용자 호박석 확인
+    let userAmber = await UserAmberModel.findOne(query);
+    if (!userAmber) {
+      userAmber = await UserAmberModel.create({
+        userUuid,
+        username,
+        userId: 'user',
+        amber: 0
+      });
+    }
+    
+    if (userAmber.amber < serverAmberCost) {
+      return res.status(400).json({ error: "Insufficient amber" });
+    }
+    
+    // 현재 실패 횟수 확인 (기본값 0으로 안전하게 처리)
+    const currentFailCount = equipmentType === 'fishingRod' 
+      ? (userEquipment.fishingRodFailCount !== undefined ? userEquipment.fishingRodFailCount : 0)
+      : (userEquipment.accessoryFailCount !== undefined ? userEquipment.accessoryFailCount : 0);
+    
+    // 강화 성공 확률 계산
+    const successRateInfo = calculateEnhancementSuccessRate(currentLevel, currentFailCount);
+    const { baseRate, bonusRate, finalRate } = successRateInfo;
+    
+    console.log(`🎲 Enhancement attempt: ${equipmentType} ${currentLevel}→${actualTargetLevel}`);
+    console.log(`📊 Success rate: ${finalRate}% (base: ${baseRate}%, bonus: ${bonusRate.toFixed(1)}%, fails: ${currentFailCount})`);
+    
+    // 강화 시도 (확률 판정)
+    const randomValue = Math.random() * 100;
+    const isSuccess = randomValue < finalRate;
+    
+    console.log(`🎯 Roll: ${randomValue.toFixed(2)}% vs ${finalRate}% = ${isSuccess ? 'SUCCESS' : 'FAIL'}`);
+    
+    // 트랜잭션 없이 순차적으로 업데이트 (로컬 MongoDB 호환)
+    try {
+      // 호박석 차감 (성공/실패 관계없이)
+      const amberUpdateResult = await UserAmberModel.updateOne(
+        { userUuid },
+        { $inc: { amber: -serverAmberCost } }
+      );
+      
+      if (amberUpdateResult.matchedCount === 0) {
+        throw new Error("User amber record not found");
+      }
+      
+      if (isSuccess) {
+        // 강화 성공: 레벨 업 + 실패 횟수 초기화
+        const updateField = equipmentType === 'fishingRod' 
+          ? { 
+              fishingRodEnhancement: actualTargetLevel,
+              fishingRodFailCount: 0
+            }
+          : { 
+              accessoryEnhancement: actualTargetLevel,
+              accessoryFailCount: 0
+            };
+        
+        const equipmentUpdateResult = await UserEquipmentModel.updateOne(
+          { userUuid },
+          { $set: updateField }
+        );
+        
+        if (equipmentUpdateResult.matchedCount === 0) {
+          throw new Error("User equipment record not found");
+        }
+        
+        console.log(`✅ Enhancement SUCCESS: ${equipmentType} to level ${actualTargetLevel}`);
+      } else {
+        // 강화 실패: 실패 횟수 증가
+        const updateField = equipmentType === 'fishingRod' 
+          ? { $inc: { fishingRodFailCount: 1 } }
+          : { $inc: { accessoryFailCount: 1 } };
+        
+        const equipmentUpdateResult = await UserEquipmentModel.updateOne(
+          { userUuid },
+          updateField
+        );
+        
+        if (equipmentUpdateResult.matchedCount === 0) {
+          throw new Error("User equipment record not found");
+        }
+        
+        console.log(`❌ Enhancement FAILED: ${equipmentType} fail count: ${currentFailCount + 1}`);
+      }
+      
+      // 업데이트된 데이터 반환
+      const updatedEquipment = await UserEquipmentModel.findOne(query);
+      const updatedAmber = await UserAmberModel.findOne(query);
+      
+      res.json({
+        success: true,
+        enhancementSuccess: isSuccess,
+        equipment: {
+          fishingRod: updatedEquipment.fishingRod,
+          accessory: updatedEquipment.accessory,
+          fishingRodEnhancement: updatedEquipment.fishingRodEnhancement || 0,
+          accessoryEnhancement: updatedEquipment.accessoryEnhancement || 0,
+          fishingRodFailCount: updatedEquipment.fishingRodFailCount !== undefined ? updatedEquipment.fishingRodFailCount : 0,
+          accessoryFailCount: updatedEquipment.accessoryFailCount !== undefined ? updatedEquipment.accessoryFailCount : 0
+        },
+        amber: updatedAmber.amber,
+        successRateInfo: {
+          baseRate,
+          bonusRate: Math.round(bonusRate * 10) / 10,
+          finalRate: Math.round(finalRate * 10) / 10,
+          failCount: isSuccess ? 0 : currentFailCount + 1
+        }
+      });
+      
+    } catch (updateError) {
+      console.error("❌ Database update error:", updateError);
+      throw updateError;
+    }
+    
+  } catch (error) {
+    console.error("❌ Equipment enhancement error:", error);
+    console.error("Error stack:", error.stack);
+    console.error("Error details:", {
+      message: error.message,
+      name: error.name,
+      code: error.code
+    });
+    
+    
+    res.status(500).json({ 
+      error: "Failed to enhance equipment",
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
 // User Equipment API
 app.get("/api/user-equipment/:userId", optionalJWT, async (req, res) => {
   try {
@@ -5990,6 +6524,10 @@ app.get("/api/user-equipment/:userId", optionalJWT, async (req, res) => {
       username: userEquipment.username,
       fishingRod: userEquipment.fishingRod,
       accessory: userEquipment.accessory,
+      fishingRodEnhancement: userEquipment.fishingRodEnhancement || 0,
+      accessoryEnhancement: userEquipment.accessoryEnhancement || 0,
+      fishingRodFailCount: userEquipment.fishingRodFailCount || 0,
+      accessoryFailCount: userEquipment.accessoryFailCount || 0,
       createdAt: userEquipment.createdAt,
       updatedAt: userEquipment.updatedAt
     } : "None");
@@ -6016,9 +6554,31 @@ app.get("/api/user-equipment/:userId", optionalJWT, async (req, res) => {
       });
     }
     
+    // 기존 데이터에 강화 필드가 없는 경우 기본값으로 초기화
+    if (userEquipment.fishingRodEnhancement === undefined || userEquipment.accessoryEnhancement === undefined) {
+      console.log("Initializing missing enhancement fields for equipment API");
+      await UserEquipmentModel.updateOne(
+        query,
+        { 
+          $set: {
+            fishingRodEnhancement: userEquipment.fishingRodEnhancement || 0,
+            accessoryEnhancement: userEquipment.accessoryEnhancement || 0,
+            fishingRodFailCount: userEquipment.fishingRodFailCount || 0,
+            accessoryFailCount: userEquipment.accessoryFailCount || 0
+          }
+        }
+      );
+      // 업데이트된 데이터 다시 조회
+      userEquipment = await UserEquipmentModel.findOne(query);
+    }
+    
     const response = {
       fishingRod: userEquipment.fishingRod,
-      accessory: userEquipment.accessory
+      accessory: userEquipment.accessory,
+      fishingRodEnhancement: userEquipment.fishingRodEnhancement || 0,
+      accessoryEnhancement: userEquipment.accessoryEnhancement || 0,
+      fishingRodFailCount: userEquipment.fishingRodFailCount || 0,
+      accessoryFailCount: userEquipment.accessoryFailCount || 0
     };
     
     console.log("Sending equipment response:", response);
@@ -6710,9 +7270,11 @@ async function getUserProfileHandler(req, res) {
         isGuest: user.isGuest,
         money: userMoney?.money || 0, // 보유 골드 공개
         amber: userAmber?.amber || 0, // 보유 호박석 공개
-        equipment: { // 장착 장비 공개
+        equipment: { // 장착 장비 공개 (강화 레벨 포함)
           fishingRod: userEquipment?.fishingRod || null,
-          accessory: userEquipment?.accessory || null
+          accessory: userEquipment?.accessory || null,
+          fishingRodEnhancement: userEquipment?.fishingRodEnhancement || 0,
+          accessoryEnhancement: userEquipment?.accessoryEnhancement || 0
         },
         fishingSkill: (fishingSkillData?.skill || 0) + (achievementBonus || 0), // 낚시실력 공개 (업적 보너스 포함)
         fishingSkillDetails: { // 낚시실력 상세 정보
@@ -6748,7 +7310,9 @@ async function getUserProfileHandler(req, res) {
       amber: userAmber?.amber || 0,
       equipment: {
         fishingRod: userEquipment?.fishingRod || null,
-        accessory: userEquipment?.accessory || null
+        accessory: userEquipment?.accessory || null,
+        fishingRodEnhancement: userEquipment?.fishingRodEnhancement || 0,
+        accessoryEnhancement: userEquipment?.accessoryEnhancement || 0
       },
       fishingSkill: (fishingSkillData?.skill || 0) + (achievementBonus || 0),
       fishingSkillDetails: { // 낚시실력 상세 정보
@@ -8034,10 +8598,27 @@ function generateJWT(user) {
 function verifyJWT(token) {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    console.log(`🔐 JWT verified for user: ${decoded.username} (${decoded.userUuid})`);
+    
+    // 토큰 만료 시간 상세 로깅
+    const now = Math.floor(Date.now() / 1000);
+    const timeUntilExpiry = decoded.exp - now;
+    console.log(`🔐 JWT 검증 성공: ${decoded.username} (${decoded.userUuid}), 만료까지 ${Math.floor(timeUntilExpiry / 3600)}시간 ${Math.floor((timeUntilExpiry % 3600) / 60)}분 남음`);
+    
     return decoded;
   } catch (error) {
     console.error("🚨 JWT verification failed:", error.message);
+    
+    // 상세한 에러 정보 로깅
+    if (error.name === 'TokenExpiredError') {
+      console.error(`🚨 JWT 토큰 만료: ${error.expiredAt}`);
+    } else if (error.name === 'JsonWebTokenError') {
+      console.error(`🚨 JWT 토큰 형식 오류: ${error.message}`);
+    } else if (error.name === 'NotBeforeError') {
+      console.error(`🚨 JWT 토큰 아직 유효하지 않음: ${error.date}`);
+    } else {
+      console.error(`🚨 JWT 검증 알 수 없는 오류: ${error.name} - ${error.message}`);
+    }
+    
     return null;
   }
 }
