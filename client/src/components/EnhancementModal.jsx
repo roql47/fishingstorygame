@@ -29,52 +29,26 @@ const EnhancementModal = ({
   const getEquipmentGradeMultiplier = (equipmentName, equipmentType) => {
     if (equipmentType === 'fishingRod') {
       const fishingRodOrder = [
-        '나무낚시대', '낡은낚시대', '기본낚시대', '단단한낚시대', '은낚시대',
-        '금낚시대', '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대',
-        '레드다이아몬드낚시대', '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산고등낚시대',
-        '피크닉', '마녀빗자루', '에테르낚시대', '별조각낚시대', '여우꼬리낚시대',
-        '초콜릿롤낚시대', '호박유령낚시대', '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
+        '낡은낚시대', '기본낚시대', '단단한낚시대', '은낚시대', '금낚시대',
+        '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대', '레드다이아몬드낚시대',
+        '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산고등낚시대', '피크닉',
+        '마녀빗자루', '에테르낚시대', '별조각낚시대', '여우꼬리낚시대', '초콜릿롤낚시대',
+        '호박유령낚시대', '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
       ];
-      
-      // 디버깅: 전체 배열 출력
-      console.log('🎣 전체 낚시대 순서:', fishingRodOrder);
       const grade = fishingRodOrder.indexOf(equipmentName);
-      console.log('🎣 낚시대 등급 계산:', { equipmentName, grade, equipmentType });
-      if (grade === -1) {
-        console.log('❌ 낚시대를 찾을 수 없음:', equipmentName);
-        return 1.0;
-      }
+      if (grade === -1) return 1.0;
       // 3차방정식: f(x) = 0.1x³ - 0.35x² + 1.7x + 0.4
-      const multiplier = Math.max(1.0, 0.1 * Math.pow(grade, 3) - 0.35 * Math.pow(grade, 2) + 1.7 * grade + 0.4);
-      console.log('🔢 등급 배율 계산 상세:', {
-        grade,
-        term1: 0.1 * Math.pow(grade, 3),
-        term2: -0.35 * Math.pow(grade, 2),
-        term3: 1.7 * grade,
-        term4: 0.4,
-        rawResult: 0.1 * Math.pow(grade, 3) - 0.35 * Math.pow(grade, 2) + 1.7 * grade + 0.4,
-        finalMultiplier: multiplier
-      });
-      console.log('📊 낚시대 배율:', multiplier);
-      return multiplier;
+      return Math.max(1.0, 0.1 * Math.pow(grade, 3) - 0.35 * Math.pow(grade, 2) + 1.7 * grade + 0.4);
     } else if (equipmentType === 'accessory') {
       const accessoryOrder = [
-        '나무목걸이', '구리목걸이', '은목걸이', '금목걸이', '강철목걸이',
-        '사파이어목걸이', '루비목걸이', '다이아몬드목걸이', '레드다이아몬드목걸이', '벚꽃목걸이',
-        '꽃망울목걸이', '호롱불목걸이', '산고등목걸이', '피크닉목걸이', '마녀빗자루목걸이',
-        '에테르나무묘목', '별조각목걸이', '여우꼬리목걸이', '초콜릿롤목걸이', '호박유령목걸이',
-        '핑크버니목걸이', '할로우목걸이', '여우불목걸이', '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
+        '오래된반지', '은목걸이', '금귀걸이', '마법의펜던트', '에메랄드브로치',
+        '토파즈이어링', '자수정팔찌', '백금티아라', '만드라고라허브', '에테르나무묘목',
+        '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
       ];
       const grade = accessoryOrder.indexOf(equipmentName);
-      console.log('💎 악세사리 등급 계산:', { equipmentName, grade, equipmentType });
-      if (grade === -1) {
-        console.log('❌ 악세사리를 찾을 수 없음:', equipmentName);
-        return 1.0;
-      }
+      if (grade === -1) return 1.0;
       // 3차방정식: f(x) = 0.1x³ - 0.35x² + 1.7x + 0.4
-      const multiplier = Math.max(1.0, 0.1 * Math.pow(grade, 3) - 0.35 * Math.pow(grade, 2) + 1.7 * grade + 0.4);
-      console.log('📊 악세사리 배율:', multiplier);
-      return multiplier;
+      return Math.max(1.0, 0.1 * Math.pow(grade, 3) - 0.35 * Math.pow(grade, 2) + 1.7 * grade + 0.4);
     }
     return 1.0;
   };
@@ -120,18 +94,6 @@ const EnhancementModal = ({
 
   const amberCost = calculateRequiredAmber(targetLevel, equipment.name, equipmentType);
   
-  // 디버깅용 로그 추가
-  console.log('🔍 강화 비용 계산 디버깅:', {
-    equipmentName: equipment.name,
-    equipmentNameLength: equipment.name.length,
-    equipmentNameChars: equipment.name.split('').map((char, i) => `${i}:${char}`),
-    equipmentType,
-    targetLevel,
-    enhancementBonus: calculateEnhancementBonus(targetLevel),
-    gradeMultiplier: getEquipmentGradeMultiplier(equipment.name, equipmentType),
-    baseCost: calculateEnhancementBonus(targetLevel) * 1,
-    finalCost: amberCost
-  });
   const currentTotalBonus = calculateTotalBonus(currentEnhancementLevel);
   const targetTotalBonus = calculateTotalBonus(targetLevel);
   const bonusIncrease = targetTotalBonus - currentTotalBonus;

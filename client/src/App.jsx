@@ -6655,7 +6655,7 @@ function App() {
                                   <span className={`ml-2 ${
                                     isDarkMode ? "text-blue-400" : "text-blue-600"
                                   }`}>
-                                    • 추가 공격력 +{calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement)}
+                                    • 추가 공격력 +{Math.floor(calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement))}
                                   </span>
                                 )}
                               </div>
@@ -6736,7 +6736,7 @@ function App() {
                                   <span className={`ml-2 ${
                                     isDarkMode ? "text-purple-400" : "text-purple-600"
                                   }`}>
-                                    • 추가 체력 +{calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement)}
+                                    • 추가 체력 +{Math.floor(calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement))}
                                   </span>
                                 )}
                               </div>
