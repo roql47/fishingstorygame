@@ -5660,11 +5660,21 @@ function App() {
         
         // 장비 자동 장착
         if (category === 'fishing_rod') {
-          setUserEquipment(prev => ({ ...prev, fishingRod: itemName }));
+          setUserEquipment(prev => ({ 
+            ...prev, 
+            fishingRod: itemName,
+            fishingRodEnhancement: 0,
+            fishingRodFailCount: 0
+          }));
           // 낚시대 구매 시에만 낚시실력 +1
           setFishingSkill(prev => prev + 1);
         } else if (category === 'accessories') {
-          setUserEquipment(prev => ({ ...prev, accessory: itemName }));
+          setUserEquipment(prev => ({ 
+            ...prev, 
+            accessory: itemName,
+            accessoryEnhancement: 0,
+            accessoryFailCount: 0
+          }));
           // 악세사리 구매 시에는 낚시실력 증가 안함
           // 🛡️ [FIX] 악세사리 구매 시 서버에서 쿨타임 재계산 요청
           try {
@@ -5686,7 +5696,7 @@ function App() {
         setTimeout(async () => {
           try {
             const userId = idToken ? 'user' : 'null';
-            const params = { username };
+            const params = { username, userUuid };
             const equipmentRes = await axios.get(`${serverUrl}/api/user-equipment/${userId}`, { params });
             setUserEquipment(equipmentRes.data || { 
               fishingRod: null, 
