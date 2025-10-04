@@ -36,21 +36,33 @@ const EnhancementModal = ({
         '초콜릿롤낚시대', '호박유령낚시대', '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
       ];
       const grade = fishingRodOrder.indexOf(equipmentName);
-      if (grade === -1) return 1.0;
+      console.log('🎣 낚시대 등급 계산:', { equipmentName, grade, equipmentType });
+      if (grade === -1) {
+        console.log('❌ 낚시대를 찾을 수 없음:', equipmentName);
+        return 1.0;
+      }
       // 3차방정식: f(x) = 0.1x³ - 0.35x² + 1.7x + 0.4
-      return Math.max(1.0, 0.1 * Math.pow(grade, 3) - 0.35 * Math.pow(grade, 2) + 1.7 * grade + 0.4);
+      const multiplier = Math.max(1.0, 0.1 * Math.pow(grade, 3) - 0.35 * Math.pow(grade, 2) + 1.7 * grade + 0.4);
+      console.log('📊 낚시대 배율:', multiplier);
+      return multiplier;
     } else if (equipmentType === 'accessory') {
       const accessoryOrder = [
         '나무목걸이', '구리목걸이', '은목걸이', '금목걸이', '강철목걸이',
         '사파이어목걸이', '루비목걸이', '다이아몬드목걸이', '레드다이아몬드목걸이', '벚꽃목걸이',
         '꽃망울목걸이', '호롱불목걸이', '산고등목걸이', '피크닉목걸이', '마녀빗자루목걸이',
-        '에테르목걸이', '별조각목걸이', '여우꼬리목걸이', '초콜릿롤목걸이', '호박유령목걸이',
+        '에테르나무묘목', '별조각목걸이', '여우꼬리목걸이', '초콜릿롤목걸이', '호박유령목걸이',
         '핑크버니목걸이', '할로우목걸이', '여우불목걸이', '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
       ];
       const grade = accessoryOrder.indexOf(equipmentName);
-      if (grade === -1) return 1.0;
+      console.log('💎 악세사리 등급 계산:', { equipmentName, grade, equipmentType });
+      if (grade === -1) {
+        console.log('❌ 악세사리를 찾을 수 없음:', equipmentName);
+        return 1.0;
+      }
       // 3차방정식: f(x) = 0.1x³ - 0.35x² + 1.7x + 0.4
-      return Math.max(1.0, 0.1 * Math.pow(grade, 3) - 0.35 * Math.pow(grade, 2) + 1.7 * grade + 0.4);
+      const multiplier = Math.max(1.0, 0.1 * Math.pow(grade, 3) - 0.35 * Math.pow(grade, 2) + 1.7 * grade + 0.4);
+      console.log('📊 악세사리 배율:', multiplier);
+      return multiplier;
     }
     return 1.0;
   };
@@ -95,6 +107,17 @@ const EnhancementModal = ({
   };
 
   const amberCost = calculateRequiredAmber(targetLevel, equipment.name, equipmentType);
+  
+  // 디버깅용 로그 추가
+  console.log('🔍 강화 비용 계산 디버깅:', {
+    equipmentName: equipment.name,
+    equipmentType,
+    targetLevel,
+    enhancementBonus: calculateEnhancementBonus(targetLevel),
+    gradeMultiplier: getEquipmentGradeMultiplier(equipment.name, equipmentType),
+    baseCost: calculateEnhancementBonus(targetLevel) * 1,
+    finalCost: amberCost
+  });
   const currentTotalBonus = calculateTotalBonus(currentEnhancementLevel);
   const targetTotalBonus = calculateTotalBonus(targetLevel);
   const bonusIncrease = targetTotalBonus - currentTotalBonus;

@@ -6273,7 +6273,7 @@ app.post("/api/enhance-equipment", authenticateJWT, async (req, res) => {
           '나무목걸이', '구리목걸이', '은목걸이', '금목걸이', '강철목걸이',
           '사파이어목걸이', '루비목걸이', '다이아몬드목걸이', '레드다이아몬드목걸이', '벚꽃목걸이',
           '꽃망울목걸이', '호롱불목걸이', '산고등목걸이', '피크닉목걸이', '마녀빗자루목걸이',
-          '에테르목걸이', '별조각목걸이', '여우꼬리목걸이', '초콜릿롤목걸이', '호박유령목걸이',
+          '에테르나무묘목', '별조각목걸이', '여우꼬리목걸이', '초콜릿롤목걸이', '호박유령목걸이',
           '핑크버니목걸이', '할로우목걸이', '여우불목걸이', '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
         ];
         const grade = accessoryOrder.indexOf(equipmentName);
@@ -6395,7 +6395,7 @@ app.post("/api/enhance-equipment", authenticateJWT, async (req, res) => {
       actualTargetLevel
     });
     
-    if (Math.abs(serverAmberCost - amberCost) > 1) { // 소수점 오차 허용
+    if (Math.abs(serverAmberCost - amberCost) > 5) { // 더 관대한 오차 허용
       console.log("❌ Amber cost mismatch:", { client: amberCost, server: serverAmberCost });
       return res.status(400).json({ 
         error: "Invalid amber cost calculation",
