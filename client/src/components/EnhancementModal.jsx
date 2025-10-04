@@ -120,7 +120,14 @@ const EnhancementModal = ({
     
     try {
       console.log(`🔨 강화 시도: ${equipmentType} ${currentEnhancementLevel} → ${targetLevel}, 비용: ${amberCost}`);
-      console.log(`📊 전송 데이터:`, { equipmentType, targetLevel, amberCost, currentEnhancementLevel });
+      console.log(`📊 전송 데이터:`, { 
+        equipmentType, 
+        targetLevel, 
+        amberCost, 
+        currentEnhancementLevel,
+        equipmentName: equipment.name,
+        gradeMultiplier: getEquipmentGradeMultiplier(equipment.name, equipmentType)
+      });
       console.log(`💎 호박석 체크: 보유=${userAmber}, 필요=${amberCost}, 충분=${canAfford}`);
       
       // 먼저 강화 요청을 보내고 응답을 기다림 (호박석 부족 등 즉시 체크)
@@ -355,7 +362,7 @@ const EnhancementModal = ({
                 <span className={`text-sm font-bold ${
                   isDarkMode ? "text-green-400" : "text-green-600"
                 }`}>
-                  +{bonusIncrease}
+                  +{Math.floor(bonusIncrease)}
                 </span>
               </div>
             </div>

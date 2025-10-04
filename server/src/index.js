@@ -6386,9 +6386,27 @@ app.post("/api/enhance-equipment", authenticateJWT, async (req, res) => {
     // 서버에서 호박석 비용 재계산 (실제 목표 레벨 기준 + 장비 등급 배율)
     const serverAmberCost = calculateRequiredAmber(actualTargetLevel, equippedItem, equipmentType);
     
+    console.log("💰 비용 검증:", { 
+      client: amberCost, 
+      server: serverAmberCost, 
+      difference: Math.abs(serverAmberCost - amberCost),
+      equippedItem,
+      equipmentType,
+      actualTargetLevel
+    });
+    
     if (Math.abs(serverAmberCost - amberCost) > 1) { // 소수점 오차 허용
-      console.log("Amber cost mismatch:", { client: amberCost, server: serverAmberCost });
-      return res.status(400).json({ error: "Invalid amber cost calculation" });
+      console.log("❌ Amber cost mismatch:", { client: amberCost, server: serverAmberCost });
+      return res.status(400).json({ 
+        error: "Invalid amber cost calculation",
+        details: {
+          clientCost: amberCost,
+          serverCost: serverAmberCost,
+          equippedItem,
+          equipmentType,
+          targetLevel: actualTargetLevel
+        }
+      });
     }
     
     // 사용자 호박석 확인

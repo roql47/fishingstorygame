@@ -3515,7 +3515,7 @@ function App() {
       if (enhancementBonus > 0) {
         effects.push({
           label: '공격력',
-          value: `${totalAttackPower} (+${enhancementBonus.toFixed(1)}%)`,
+          value: `${Math.floor(totalAttackPower)} (+${enhancementBonus.toFixed(1)}%)`,
           description: `탐사 전투에서의 공격력입니다 (기본: ${baseAttackPower}, 강화: +${enhancementBonus.toFixed(1)}%)`
         });
       } else {
@@ -3552,7 +3552,7 @@ function App() {
       if (enhancementBonus > 0) {
         effects.push({
           label: '체력증가',
-          value: `+${totalMaxHp - baseHp} (+${enhancementBonus.toFixed(1)}%)`,
+          value: `+${Math.floor(totalMaxHp - baseHp)} (+${enhancementBonus.toFixed(1)}%)`,
           description: `탐사 전투에서의 추가 체력입니다 (기본: +${baseHpIncrease}, 강화: +${enhancementBonus.toFixed(1)}%)`
         });
       } else {
@@ -3660,6 +3660,11 @@ function App() {
         data: error.response?.data,
         message: error.message
       });
+      
+      // 400 에러의 경우 상세 정보 출력
+      if (error.response?.status === 400 && error.response?.data?.details) {
+        console.error('400 에러 상세 정보:', error.response.data.details);
+      }
       
       // JWT 토큰 관련 오류 처리
       if (error.response?.status === 401) {
@@ -7734,7 +7739,7 @@ function App() {
                         const maxHp = calculatePlayerMaxHp(accessoryLevel, enhancementBonus);
                         const baseHp = calculatePlayerMaxHp(accessoryLevel, 0);
                         return enhancementBonus > 0 ? 
-                          `${maxHp} / ${maxHp} (+${enhancementBonus.toFixed(1)}%)` : 
+                          `${Math.floor(maxHp)} / ${Math.floor(maxHp)} (+${enhancementBonus.toFixed(1)}%)` : 
                           `${maxHp} / ${maxHp}`;
                       })()}</span>
                     </div>
@@ -7760,7 +7765,7 @@ function App() {
                         const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
                         const attackRange = getAttackRange(fishingSkill, enhancementBonus);
                         return enhancementBonus > 0 ? 
-                          `${attackRange.base} (+${enhancementBonus.toFixed(1)}%)` : 
+                          `${Math.floor(attackRange.base)} (+${enhancementBonus.toFixed(1)}%)` : 
                           attackRange.base;
                       })()}</span>
                     </div>
@@ -8541,12 +8546,12 @@ function App() {
                           const enhancementBonus = calculateTotalEnhancementBonus(fishingRodEnhancement);
                           const baseAttack = 0.00225 * Math.pow(fishingSkill, 3) + 0.165 * Math.pow(fishingSkill, 2) + 2 * fishingSkill + 3;
                           const totalAttack = Math.floor(baseAttack + (baseAttack * enhancementBonus / 100));
-                          return enhancementBonus > 0 ? `${totalAttack} (+${enhancementBonus.toFixed(1)}%)` : totalAttack;
+                          return enhancementBonus > 0 ? `${Math.floor(totalAttack)} (+${enhancementBonus.toFixed(1)}%)` : Math.floor(totalAttack);
                         } else {
                           // 내 공격력 계산
                           const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
                           const attackRange = getAttackRange(fishingSkill, enhancementBonus);
-                          return enhancementBonus > 0 ? `${attackRange.base} (+${enhancementBonus.toFixed(1)}%)` : attackRange.base;
+                          return enhancementBonus > 0 ? `${Math.floor(attackRange.base)} (+${enhancementBonus.toFixed(1)}%)` : Math.floor(attackRange.base);
                         }
                       })()}
                     </div>
@@ -8573,13 +8578,13 @@ function App() {
                           ];
                           const accessoryLevel = accessoryName ? accessories.indexOf(accessoryName) + 1 : 0;
                           const maxHp = calculatePlayerMaxHp(accessoryLevel, enhancementBonus);
-                          return enhancementBonus > 0 ? `${maxHp} (+${enhancementBonus.toFixed(1)}%)` : maxHp;
+                          return enhancementBonus > 0 ? `${Math.floor(maxHp)} (+${enhancementBonus.toFixed(1)}%)` : Math.floor(maxHp);
                         } else {
                           // 내 체력 계산
                           const accessoryLevel = getAccessoryLevel(userEquipment.accessory);
                           const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement || 0);
                           const maxHp = calculatePlayerMaxHp(accessoryLevel, enhancementBonus);
-                          return enhancementBonus > 0 ? `${maxHp} (+${enhancementBonus.toFixed(1)}%)` : maxHp;
+                          return enhancementBonus > 0 ? `${Math.floor(maxHp)} (+${enhancementBonus.toFixed(1)}%)` : Math.floor(maxHp);
                         }
                       })()}
                     </div>
