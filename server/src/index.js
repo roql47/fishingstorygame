@@ -851,12 +851,16 @@ const CompanionModel = mongoose.model("Companion", companionSchema);
 const companionStatsSchema = new mongoose.Schema({
   userId: { type: String, required: true },
   username: { type: String, required: true },
-  userUuid: { type: String, index: true },
+  userUuid: { type: String, index: true }, // UUID 기반 식별자
   companionName: { type: String, required: true }, // 동료 이름
   level: { type: Number, default: 1 }, // 레벨
   experience: { type: Number, default: 0 }, // 경험치
   isInBattle: { type: Boolean, default: false }, // 전투 참여 여부
 }, { timestamps: true });
+
+// 🔧 복합 유니크 인덱스: 같은 사용자의 같은 동료는 하나만 존재
+// userUuid가 존재하는 경우에만 유니크 제약 적용
+companionStatsSchema.index({ userUuid: 1, companionName: 1 }, { unique: true, sparse: true });
 
 const CompanionStatsModel = mongoose.model("CompanionStats", companionStatsSchema);
 
