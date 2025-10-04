@@ -6254,10 +6254,42 @@ app.post("/api/enhance-equipment", authenticateJWT, async (req, res) => {
       return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
     };
     
-    // 강화에 필요한 호박석 계산: 공식 * 10 (80% 할인)
-    const calculateRequiredAmber = (level) => {
+    // 장비 등급별 강화 비용 배율 (3차방정식: f(x) = 0.1x³ - 0.5x² + 2x + 0.4)
+    const getEquipmentGradeMultiplier = (equipmentName, equipmentType) => {
+      if (equipmentType === 'fishingRod') {
+        const fishingRodOrder = [
+          '나무낚시대', '낡은낚시대', '기본낚시대', '단단한낚시대', '은낚시대',
+          '금낚시대', '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대',
+          '레드다이아몬드낚시대', '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산고등낚시대',
+          '피크닉', '마녀빗자루', '에테르낚시대', '별조각낚시대', '여우꼬리낚시대',
+          '초콜릿롤낚시대', '호박유령낚시대', '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
+        ];
+        const grade = fishingRodOrder.indexOf(equipmentName);
+        if (grade === -1) return 1.0;
+        // 3차방정식: f(x) = 0.1x³ - 0.35x² + 1.7x + 0.4
+        return Math.max(1.0, 0.1 * Math.pow(grade, 3) - 0.35 * Math.pow(grade, 2) + 1.7 * grade + 0.4);
+      } else if (equipmentType === 'accessory') {
+        const accessoryOrder = [
+          '나무목걸이', '구리목걸이', '은목걸이', '금목걸이', '강철목걸이',
+          '사파이어목걸이', '루비목걸이', '다이아몬드목걸이', '레드다이아몬드목걸이', '벚꽃목걸이',
+          '꽃망울목걸이', '호롱불목걸이', '산고등목걸이', '피크닉목걸이', '마녀빗자루목걸이',
+          '에테르목걸이', '별조각목걸이', '여우꼬리목걸이', '초콜릿롤목걸이', '호박유령목걸이',
+          '핑크버니목걸이', '할로우목걸이', '여우불목걸이', '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
+        ];
+        const grade = accessoryOrder.indexOf(equipmentName);
+        if (grade === -1) return 1.0;
+        // 3차방정식: f(x) = 0.1x³ - 0.35x² + 1.7x + 0.4
+        return Math.max(1.0, 0.1 * Math.pow(grade, 3) - 0.35 * Math.pow(grade, 2) + 1.7 * grade + 0.4);
+      }
+      return 1.0;
+    };
+
+    // 강화에 필요한 호박석 계산: 공식 * 1 * 장비등급배율 (90% 할인)
+    const calculateRequiredAmber = (level, equipmentName, equipmentType) => {
       if (level <= 0) return 0;
-      return Math.ceil(calculateEnhancementBonus(level) * 10);
+      const baseCost = calculateEnhancementBonus(level) * 1; // 90% 할인 (10 → 1)
+      const gradeMultiplier = getEquipmentGradeMultiplier(equipmentName, equipmentType);
+      return Math.ceil(baseCost * gradeMultiplier);
     };
     
     // 누적 호박석 비용 계산
@@ -6351,8 +6383,8 @@ app.post("/api/enhance-equipment", authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: "No equipment equipped to enhance" });
     }
     
-    // 서버에서 호박석 비용 재계산 (실제 목표 레벨 기준)
-    const serverAmberCost = calculateRequiredAmber(actualTargetLevel);
+    // 서버에서 호박석 비용 재계산 (실제 목표 레벨 기준 + 장비 등급 배율)
+    const serverAmberCost = calculateRequiredAmber(actualTargetLevel, equippedItem, equipmentType);
     
     if (Math.abs(serverAmberCost - amberCost) > 1) { // 소수점 오차 허용
       console.log("Amber cost mismatch:", { client: amberCost, server: serverAmberCost });
