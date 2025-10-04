@@ -35,6 +35,9 @@ const EnhancementModal = ({
         '피크닉', '마녀빗자루', '에테르낚시대', '별조각낚시대', '여우꼬리낚시대',
         '초콜릿롤낚시대', '호박유령낚시대', '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
       ];
+      
+      // 디버깅: 전체 배열 출력
+      console.log('🎣 전체 낚시대 순서:', fishingRodOrder);
       const grade = fishingRodOrder.indexOf(equipmentName);
       console.log('🎣 낚시대 등급 계산:', { equipmentName, grade, equipmentType });
       if (grade === -1) {
@@ -43,6 +46,15 @@ const EnhancementModal = ({
       }
       // 3차방정식: f(x) = 0.1x³ - 0.35x² + 1.7x + 0.4
       const multiplier = Math.max(1.0, 0.1 * Math.pow(grade, 3) - 0.35 * Math.pow(grade, 2) + 1.7 * grade + 0.4);
+      console.log('🔢 등급 배율 계산 상세:', {
+        grade,
+        term1: 0.1 * Math.pow(grade, 3),
+        term2: -0.35 * Math.pow(grade, 2),
+        term3: 1.7 * grade,
+        term4: 0.4,
+        rawResult: 0.1 * Math.pow(grade, 3) - 0.35 * Math.pow(grade, 2) + 1.7 * grade + 0.4,
+        finalMultiplier: multiplier
+      });
       console.log('📊 낚시대 배율:', multiplier);
       return multiplier;
     } else if (equipmentType === 'accessory') {
@@ -111,6 +123,8 @@ const EnhancementModal = ({
   // 디버깅용 로그 추가
   console.log('🔍 강화 비용 계산 디버깅:', {
     equipmentName: equipment.name,
+    equipmentNameLength: equipment.name.length,
+    equipmentNameChars: equipment.name.split('').map((char, i) => `${i}:${char}`),
     equipmentType,
     targetLevel,
     enhancementBonus: calculateEnhancementBonus(targetLevel),
