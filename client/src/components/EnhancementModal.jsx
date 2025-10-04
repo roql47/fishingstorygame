@@ -53,10 +53,10 @@ const EnhancementModal = ({
     return 1.0;
   };
 
-  // 강화에 필요한 호박석 계산: 공식 * 0.2 * 장비등급배율 (80% 할인)
+  // 강화에 필요한 호박석 계산: 공식 * 1 * 장비등급배율 (90% 할인)
   const calculateRequiredAmber = (level, equipmentName, equipmentType) => {
     if (level <= 0) return 0;
-    const baseCost = calculateEnhancementBonus(level) * 0.2; // 80% 할인
+    const baseCost = calculateEnhancementBonus(level) * 1; // 90% 할인 (서버와 동일)
     const gradeMultiplier = getEquipmentGradeMultiplier(equipmentName, equipmentType);
     return Math.ceil(baseCost * gradeMultiplier);
   };
