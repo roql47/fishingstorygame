@@ -755,6 +755,13 @@ function App() {
         
         console.log('✅ Processed refreshed companion stats:', processedStats);
         setCompanionStats(processedStats);
+        
+        // 🔧 새로고침 시에도 battleCompanions 초기화
+        const battleCompanionsFromServer = Object.entries(processedStats)
+          .filter(([_, stats]) => stats.isInBattle)
+          .map(([companionName, _]) => companionName);
+        console.log('✅ Refreshed battleCompanions from server:', battleCompanionsFromServer);
+        setBattleCompanions(battleCompanionsFromServer);
       } catch (e) {
         console.warn('⚠️ Failed to refresh companion stats:', e);
       }
@@ -2522,6 +2529,20 @@ function App() {
       }
     });
 
+    socket.on('data:money', (data) => {
+      console.log('🔄 Received money update via WebSocket:', data);
+      if (data && typeof data.money === 'number') {
+        setUserMoney(data.money);
+      }
+    });
+
+    socket.on('data:amber', (data) => {
+      console.log('🔄 Received amber update via WebSocket:', data);
+      if (data && typeof data.amber === 'number') {
+        setUserAmber(data.amber);
+      }
+    });
+
     return () => {
       socket.off('data:update', handleDataUpdate);
       socket.off('data:inventory', handleInventoryUpdate);
@@ -2530,6 +2551,8 @@ function App() {
       socket.off('data:companions');
       socket.off('data:starPieces');
       socket.off('data:etherKeys');
+      socket.off('data:money');
+      socket.off('data:amber');
       socket.off('achievement:granted');
       // 데이터 구독 해제
       socket.emit('data:unsubscribe', { userUuid, username });
@@ -2589,6 +2612,13 @@ function App() {
           
           console.log('✅ Processed companion stats:', processedStats);
           setCompanionStats(processedStats);
+          
+          // 🔧 서버에서 로드한 isInBattle 정보를 기반으로 battleCompanions 초기화
+          const battleCompanionsFromServer = Object.entries(processedStats)
+            .filter(([_, stats]) => stats.isInBattle)
+            .map(([companionName, _]) => companionName);
+          console.log('✅ Initialized battleCompanions from server:', battleCompanionsFromServer);
+          setBattleCompanions(battleCompanionsFromServer);
         } catch (e) {
           console.warn('⚠️ Failed to load companion stats from server, using localStorage fallback:', e);
           // 서버 실패 시 localStorage 폴백
@@ -2598,6 +2628,13 @@ function App() {
               const parsedStats = JSON.parse(savedStats);
               console.log('✅ Restored companion stats from localStorage:', parsedStats);
               setCompanionStats(parsedStats);
+              
+              // 🔧 localStorage에서 복원 시에도 battleCompanions 초기화
+              const battleCompanionsFromCache = Object.entries(parsedStats)
+                .filter(([_, stats]) => stats.isInBattle)
+                .map(([companionName, _]) => companionName);
+              console.log('✅ Initialized battleCompanions from localStorage:', battleCompanionsFromCache);
+              setBattleCompanions(battleCompanionsFromCache);
             } catch (e) {
               console.error('❌ Failed to parse companion stats from localStorage:', e);
             }
@@ -4168,6 +4205,18 @@ function App() {
         // 전투에서 제외
         const newBattleCompanions = prev.filter(name => name !== companionName);
         
+        // 🔧 companionStats의 isInBattle도 업데이트
+        setCompanionStats(prevStats => {
+          if (!prevStats[companionName]) return prevStats; // 아직 초기화되지 않은 경우 스킵
+          return {
+            ...prevStats,
+            [companionName]: {
+              ...prevStats[companionName],
+              isInBattle: false
+            }
+          };
+        });
+        
         // 서버에 isInBattle: false 업데이트
         updateCompanionBattleStatus(companionName, false);
         
@@ -4178,6 +4227,18 @@ function App() {
           alert('전투 참여는 최대 3명까지 가능합니다!');
           return prev;
         }
+        
+        // 🔧 companionStats의 isInBattle도 업데이트
+        setCompanionStats(prevStats => {
+          if (!prevStats[companionName]) return prevStats; // 아직 초기화되지 않은 경우 스킵
+          return {
+            ...prevStats,
+            [companionName]: {
+              ...prevStats[companionName],
+              isInBattle: true
+            }
+          };
+        });
         
         // 서버에 isInBattle: true 업데이트
         updateCompanionBattleStatus(companionName, true);

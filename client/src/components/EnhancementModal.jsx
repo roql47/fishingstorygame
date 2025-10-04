@@ -92,7 +92,7 @@ const EnhancementModal = ({
     return Math.floor(totalBonus);
   };
 
-  const amberCost = calculateRequiredAmber(targetLevel, equipment.name, equipmentType);
+  const amberCost = calculateRequiredAmber(targetLevel, equipment, equipmentType);
   
   const currentTotalBonus = calculateTotalBonus(currentEnhancementLevel);
   const targetTotalBonus = calculateTotalBonus(targetLevel);
@@ -124,8 +124,8 @@ const EnhancementModal = ({
         targetLevel, 
         amberCost, 
         currentEnhancementLevel,
-        equipmentName: equipment.name,
-        gradeMultiplier: getEquipmentGradeMultiplier(equipment.name, equipmentType)
+        equipmentName: equipment,
+        gradeMultiplier: getEquipmentGradeMultiplier(equipment, equipmentType)
       });
       console.log(`💎 호박석 체크: 보유=${userAmber}, 필요=${amberCost}, 충분=${canAfford}`);
       
@@ -374,7 +374,7 @@ const EnhancementModal = ({
             <div className="flex items-center justify-between mb-2">
               <span className={`text-sm font-medium ${
                 isDarkMode ? "text-gray-300" : "text-gray-700"
-              }`}>필요한 호박석 {getEquipmentGradeMultiplier(equipment.name, equipmentType) > 1.0 ? `(등급배율: ${getEquipmentGradeMultiplier(equipment.name, equipmentType)}x)` : ''}</span>
+              }`}>필요한 호박석 {getEquipmentGradeMultiplier(equipment, equipmentType) > 1.0 ? `(등급배율: ${getEquipmentGradeMultiplier(equipment, equipmentType).toFixed(1)}x)` : ''}</span>
               <div className="flex items-center gap-2">
                 <Gem className={`w-4 h-4 ${
                   isDarkMode ? "text-orange-400" : "text-orange-600"

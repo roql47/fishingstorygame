@@ -2932,7 +2932,7 @@ io.on("connection", (socket) => {
 // WebSocket 데이터 조회 함수들
 async function sendUserDataUpdate(socket, userUuid, username) {
   try {
-    const [inventory, materials, money, amber, starPieces, cooldown, totalCatches, companions, adminStatus, equipment] = await Promise.all([
+    const [inventory, materials, money, amber, starPieces, cooldown, totalCatches, companions, adminStatus, equipment, etherKeys] = await Promise.all([
       getInventoryData(userUuid),
       getMaterialsData(userUuid),
       getMoneyData(userUuid),
@@ -2942,7 +2942,8 @@ async function sendUserDataUpdate(socket, userUuid, username) {
       getTotalCatchesData(userUuid),
       getCompanionsData(userUuid),
       getAdminStatusData(userUuid),
-      getEquipmentData(userUuid)
+      getEquipmentData(userUuid),
+      getEtherKeysData(userUuid)
     ]);
     
     // 완전히 안전한 데이터 직렬화 (순환 참조 완전 제거)
@@ -2962,6 +2963,7 @@ async function sendUserDataUpdate(socket, userUuid, username) {
           money: { money: Number(money?.money || 0) },
           amber: { amber: Number(amber?.amber || 0) },
           starPieces: { starPieces: Number(starPieces?.starPieces || 0) },
+          etherKeys: { etherKeys: Number(etherKeys?.etherKeys || 0) },
           cooldown: { 
             fishingCooldown: Math.max(0, Number(cooldown?.fishingCooldown || 0))
           },
@@ -2985,6 +2987,7 @@ async function sendUserDataUpdate(socket, userUuid, username) {
           money: { money: 0 },
           amber: { amber: 0 },
           starPieces: { starPieces: 0 },
+          etherKeys: { etherKeys: 0 },
           cooldown: { fishingCooldown: 0 },
           totalCatches: { totalFishCaught: 0 },
           companions: { companions: [] },
@@ -2998,6 +3001,11 @@ async function sendUserDataUpdate(socket, userUuid, username) {
     
     try {
       socket.emit('data:update', safeData);
+      // 개별 이벤트도 emit (쿠폰 사용 등 즉시 반영되도록)
+      socket.emit('data:money', safeData.money);
+      socket.emit('data:amber', safeData.amber);
+      socket.emit('data:starPieces', safeData.starPieces);
+      socket.emit('data:etherKeys', safeData.etherKeys);
     } catch (emitError) {
       console.error(`Socket emit failed for ${username}:`, emitError.message);
       // 최후의 수단: 기본 데이터만 전송
@@ -3008,6 +3016,7 @@ async function sendUserDataUpdate(socket, userUuid, username) {
           money: { money: 0 },
           amber: { amber: 0 },
           starPieces: { starPieces: 0 },
+          etherKeys: { etherKeys: 0 },
           cooldown: { fishingCooldown: 0 },
           totalCatches: { totalFishCaught: 0 },
           companions: { companions: [] },
@@ -3174,6 +3183,11 @@ async function getEquipmentData(userUuid) {
     fishingRod: equipment?.fishingRod || null,
     accessory: equipment?.accessory || null
   };
+}
+
+async function getEtherKeysData(userUuid) {
+  const etherKeys = await EtherKeyModel.findOne({ userUuid });
+  return { etherKeys: etherKeys?.etherKeys || 0 };
 }
 
 // 데이터 변경 시 모든 해당 사용자에게 업데이트 전송
