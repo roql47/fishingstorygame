@@ -6274,7 +6274,7 @@ app.post("/api/enhance-equipment", authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: "Invalid target level" });
     }
     
-    if (!amberCost || amberCost < 0) {
+    if (amberCost === undefined || amberCost === null || amberCost < 0) {
       return res.status(400).json({ error: "Invalid amber cost" });
     }
     

@@ -14,12 +14,44 @@ const TutorialModal = ({ showTutorialModal, setShowTutorialModal, isDarkMode }) 
         text: isDarkMode ? "text-green-400" : "text-green-600", 
         bg: isDarkMode ? "glass-input" : `bg-gradient-to-br ${section.gradient}`
       },
+      emerald: {
+        text: isDarkMode ? "text-emerald-400" : "text-emerald-600", 
+        bg: isDarkMode ? "glass-input" : `bg-gradient-to-br ${section.gradient}`
+      },
       orange: {
         text: isDarkMode ? "text-orange-400" : "text-orange-600",
         bg: isDarkMode ? "glass-input" : `bg-gradient-to-br ${section.gradient}`
       },
       purple: {
         text: isDarkMode ? "text-purple-400" : "text-purple-600",
+        bg: isDarkMode ? "glass-input" : `bg-gradient-to-br ${section.gradient}`
+      },
+      teal: {
+        text: isDarkMode ? "text-teal-400" : "text-teal-600",
+        bg: isDarkMode ? "glass-input" : `bg-gradient-to-br ${section.gradient}`
+      },
+      red: {
+        text: isDarkMode ? "text-red-400" : "text-red-600",
+        bg: isDarkMode ? "glass-input" : `bg-gradient-to-br ${section.gradient}`
+      },
+      yellow: {
+        text: isDarkMode ? "text-yellow-400" : "text-yellow-600",
+        bg: isDarkMode ? "glass-input" : `bg-gradient-to-br ${section.gradient}`
+      },
+      indigo: {
+        text: isDarkMode ? "text-indigo-400" : "text-indigo-600",
+        bg: isDarkMode ? "glass-input" : `bg-gradient-to-br ${section.gradient}`
+      },
+      amber: {
+        text: isDarkMode ? "text-amber-400" : "text-amber-600",
+        bg: isDarkMode ? "glass-input" : `bg-gradient-to-br ${section.gradient}`
+      },
+      pink: {
+        text: isDarkMode ? "text-pink-400" : "text-pink-600",
+        bg: isDarkMode ? "glass-input" : `bg-gradient-to-br ${section.gradient}`
+      },
+      cyan: {
+        text: isDarkMode ? "text-cyan-400" : "text-cyan-600",
         bg: isDarkMode ? "glass-input" : `bg-gradient-to-br ${section.gradient}`
       }
     };
@@ -38,7 +70,7 @@ const TutorialModal = ({ showTutorialModal, setShowTutorialModal, isDarkMode }) 
           <div className="flex items-center gap-3">
             <BookOpen className={`w-5 h-5 ${isDarkMode ? "text-green-400" : "text-green-600"}`} />
             <h2 className={`text-xl font-bold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
-              📚 게임 가이드
+              게임 가이드
             </h2>
           </div>
           <button
