@@ -302,6 +302,8 @@ function App() {
   const [isProcessingDecomposeAll, setIsProcessingDecomposeAll] = useState(false);
   const [showExplorationModal, setShowExplorationModal] = useState(false);
   const [selectedMaterial, setSelectedMaterial] = useState(null);
+  const [selectedExplorationMaterial, setSelectedExplorationMaterial] = useState(null); // 탐사용 선택된 재료
+  const [selectedMaterialQuantity, setSelectedMaterialQuantity] = useState(1); // 재료 소모 수량 (1~5)
   const [battleState, setBattleState] = useState(null); // { enemy, playerHp, enemyHp, turn, log }
   const [showBattleModal, setShowBattleModal] = useState(false);
   const [isProcessingFishing, setIsProcessingFishing] = useState(false); // 🛡️ 낚시 처리 중 상태
@@ -331,6 +333,134 @@ function App() {
   
   // 레이드 로그 스크롤 참조
   const raidLogScrollRef = useRef(null);
+  
+  // 탐사 전투 속도바 관련
+  const [speedBars, setSpeedBars] = useState({}); // 각 캐릭터의 속도바 상태
+  const speedBarIntervalsRef = useRef({});
+
+  // 호박석 지급 함수 (TDZ 문제 해결을 위해 상단에 선언)
+  const addAmber = async (amount) => {
+    try {
+      console.log('Adding amber reward');
+      const response = await authenticatedRequest.post(`${serverUrl}/api/add-amber`, {
+        amount
+      });
+      
+      console.log('Add amber response:', response.data);
+      
+      if (response.data.success) {
+        console.log(`Added ${amount} amber. New total: ${response.data.newAmber}`);
+        setUserAmber(response.data.newAmber);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("Failed to add amber:", error);
+      console.error("Error response:", error.response?.data);
+      return false;
+    }
+  };
+
+  // 일일 퀘스트 데이터 로드 함수 (TDZ 문제 해결을 위해 상단에 선언)
+  const loadDailyQuests = async () => {
+    try {
+      const userId = idToken ? 'user' : 'null';
+      const params = { username, userUuid };
+      const response = await axios.get(`${serverUrl}/api/daily-quests/${userId}`, { params });
+      
+      if (response.data) {
+        setDailyQuests(response.data);
+        console.log('Daily quests loaded:', response.data);
+      }
+    } catch (error) {
+      console.error('Failed to load daily quests:', error);
+    }
+  };
+
+  // 동료 경험치 추가 함수 (TDZ 문제 해결을 위해 상단에 선언)
+  const addCompanionExp = (companionName, expAmount) => {
+    console.log(`📈 addCompanionExp 호출: ${companionName}에게 경험치 ${expAmount} 추가`);
+    setCompanionStats(prev => {
+      const current = prev[companionName] || {
+        level: 1,
+        exp: 0,
+        expToNext: calculateExpToNextLevel(2), // 레벨 2까지 필요한 경험치
+        hp: calculateCompanionStats(companionName, 1)?.hp || 100,
+        maxHp: calculateCompanionStats(companionName, 1)?.hp || 100
+      };
+      console.log(`📊 ${companionName} 현재 상태:`, current);
+      
+      const expCalc = (() => {
+        let newExp = current.exp + expAmount;
+        let newLevel = current.level;
+        let newExpToNext = current.expToNext;
+        
+        return { newExp, newLevel, newExpToNext };
+      })();
+      
+      let { newExp, newLevel, newExpToNext } = expCalc;
+      
+      // 레벨업 체크
+      while (newExp >= newExpToNext) {
+        newExp -= newExpToNext;
+        newLevel++;
+        // 새로운 경험치 공식 사용
+        newExpToNext = calculateExpToNextLevel(newLevel + 1);
+        console.log(`🎉 ${companionName} 레벨업! ${newLevel-1} → ${newLevel} (다음 레벨까지: ${newExpToNext})`);
+      }
+      
+      console.log(`📊 ${companionName} 최종 능력치: 레벨 ${newLevel}, 경험치 ${newExp}/${newExpToNext}`);
+      
+      // 레벨업 시 능력치 재계산
+      const newStats = calculateCompanionStats(companionName, newLevel);
+      
+      const updated = {
+        ...prev,
+        [companionName]: {
+          level: newLevel,
+          exp: newExp,
+          expToNext: newExpToNext,
+          hp: newStats?.hp || current.hp,
+          maxHp: newStats?.hp || current.maxHp
+        }
+      };
+      
+      // localStorage에 저장
+      localStorage.setItem(`companionStats_${userUuid || username}`, JSON.stringify(updated));
+      
+      // 서버에 즉시 저장 (경험치 변경 시)
+      const updatedStats = updated[companionName];
+      if (jwtToken) {
+        setTimeout(() => {
+          saveCompanionStatsToServer(companionName, updatedStats);
+        }, 100); // 상태 업데이트 후 저장
+      }
+      
+      // 레벨업 알림
+      if (newLevel > current.level) {
+        setTimeout(() => {
+          alert(`${companionName}이(가) 레벨 ${newLevel}로 레벨업했습니다!`);
+        }, 500);
+      }
+      
+      return updated;
+    });
+  };
+
+  // 퀘스트 진행도 업데이트 함수 (TDZ 문제 해결을 위해 상단에 선언)
+  const updateQuestProgress = async (questType, amount = 1) => {
+    try {
+      await authenticatedRequest.post(`${serverUrl}/api/update-quest-progress`, {
+        questType,
+        amount
+      });
+      
+      // 퀘스트 데이터 새로고침
+      await loadDailyQuests();
+    } catch (error) {
+      console.error('Failed to update quest progress:', error);
+    }
+  };
 
   // 컴포넌트 언마운트 시 interval 정리
   useEffect(() => {
@@ -342,6 +472,42 @@ function App() {
     };
   }, []);
 
+  // 🔄 탭 활성화 시 소켓 연결 자동 복구 (모든 브라우저 대응)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && username && userUuid) {
+        const socket = getSocket();
+        
+        // 연결이 끊어졌으면 재연결 시도
+        if (!socket.connected) {
+          console.log('👁️ 탭 활성화 - 소켓 재연결 시도...');
+          socket.connect();
+        } else {
+          // 연결은 되어있지만 인증이 안 되어있을 수 있음 - 자동 복구 시도
+          console.log('👁️ 탭 활성화 - 연결 상태 확인 중...');
+          const nickname = localStorage.getItem("nickname");
+          const storedUserUuid = localStorage.getItem("userUuid");
+          const idToken = localStorage.getItem("idToken");
+          
+          if (nickname && storedUserUuid) {
+            console.log('🔄 탭 활성화 - 인증 상태 복구 시도...');
+            socket.emit("chat:join", { 
+              username: nickname, 
+              idToken, 
+              userUuid: storedUserUuid 
+            });
+          }
+        }
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [username, userUuid]);
+
   // 레이드 로그 자동 스크롤
   useEffect(() => {
     if (raidLogScrollRef.current && raidLogs.length > 0) {
@@ -349,12 +515,508 @@ function App() {
     }
   }, [raidLogs]);
 
+  // 순수 계산 함수들 (TDZ 문제 해결을 위해 최상단에 선언)
+  
+  // 누적 강화 보너스 계산 (퍼센트)
+  const calculateTotalEnhancementBonus = (level) => {
+    let totalBonus = 0;
+    for (let i = 1; i <= level; i++) {
+      totalBonus += 2 + Math.floor(i / 10);
+    }
+    return totalBonus;
+  };
+
+  // 낚시실력 기반 공격력 계산 (3차방정식) + 강화 보너스 (퍼센트)
+  const calculatePlayerAttack = (skill, enhancementBonusPercent = 0) => {
+    const baseAttack = 0.00225 * Math.pow(skill, 3) + 0.165 * Math.pow(skill, 2) + 2 * skill + 3;
+    const totalAttack = baseAttack + (baseAttack * enhancementBonusPercent / 100);
+    const randomFactor = 0.8 + Math.random() * 0.4;
+    return Math.floor(totalAttack * randomFactor);
+  };
+
+  // 물고기 공격력 계산 함수 (물고기 단계 기반)
+  const calculateEnemyAttack = (fishRank) => {
+    if (fishRank === 0) return Math.floor(Math.random() * 3) + 8;
+    return Math.floor(Math.pow(fishRank, 1.65) + fishRank * 1.3 + 10 + Math.random() * 5);
+  };
+
+  // 크리티컬 히트 계산 함수
+  const calculateCriticalHit = (baseDamage, criticalChance = 0.05, companionName = null, companionBuffs = {}) => {
+    const finalCriticalChance = (() => {
+      let chance = criticalChance;
+      if (companionName && companionBuffs[companionName]?.critical) {
+        chance += companionBuffs[companionName].critical / 100;
+      }
+      return Math.min(chance, 1);
+    })();
+
+    if (Math.random() < finalCriticalChance) {
+      return { damage: Math.floor(baseDamage * 1.5), isCritical: true };
+    }
+    return { damage: baseDamage, isCritical: false };
+  };
+
+  // 전투 로그 자동 스크롤 함수
+  const scrollBattleLogToBottom = useCallback(() => {
+    if (battleLogRef.current) {
+      setTimeout(() => {
+        if (battleLogRef.current) {
+          battleLogRef.current.scrollTop = battleLogRef.current.scrollHeight;
+        }
+      }, 100);
+    }
+  }, []);
+
+  // 모든 속도바 정리 함수 (TDZ 문제 해결을 위해 startSpeedBar 전에 선언)
+  const clearAllSpeedBars = useCallback(() => {
+    Object.values(speedBarIntervalsRef.current).forEach(interval => {
+      clearInterval(interval);
+    });
+    speedBarIntervalsRef.current = {};
+    setSpeedBars({});
+  }, []);
+
+  // 속도바 시작 함수 (원정 전투와 동일한 방식)
+  const startSpeedBar = useCallback((characterId, speed, characterType) => {
+    // 기존 타이머가 있으면 정리
+    if (speedBarIntervalsRef.current[characterId]) {
+      clearInterval(speedBarIntervalsRef.current[characterId]);
+    }
+
+    // 원정 전투와 동일하게 계산
+    const maxProgress = 250; // 고정값
+    const interval = 50; // 50ms마다 업데이트
+    const increment = (speed * interval) / 1000; // 초당 speed만큼 증가
+    
+    let progress = 0;
+    setSpeedBars(prev => ({ ...prev, [characterId]: { current: 0, max: maxProgress } }));
+
+    console.log(`[SPEED] Starting ${characterId}: speed=${speed}, maxProgress=${maxProgress}, increment=${increment.toFixed(2)}, expectedTime=${(maxProgress/speed).toFixed(2)}s`);
+
+    speedBarIntervalsRef.current[characterId] = setInterval(() => {
+      progress += increment;
+      const newProgress = Math.min(progress, maxProgress);
+      setSpeedBars(prev => ({ ...prev, [characterId]: { current: newProgress, max: maxProgress } }));
+      
+      if (progress >= maxProgress) {
+        // 속도바가 다 차면 공격 실행
+        clearInterval(speedBarIntervalsRef.current[characterId]);
+        delete speedBarIntervalsRef.current[characterId];
+        setSpeedBars(prev => ({ ...prev, [characterId]: { current: maxProgress, max: maxProgress } }));
+        
+        console.log(`[SPEED] ${characterId} 속도바 완료 - 공격 실행`);
+        
+        // 100ms 후 공격 실행 및 리셋
+        setTimeout(() => {
+          console.log(`[SPEED] ${characterId} 공격 실행 시작 - type: ${characterType}`);
+          setSpeedBars(prev => ({ ...prev, [characterId]: { current: 0, max: maxProgress } }));
+          
+          // 공격 실행 - 직접 처리
+          if (characterType === 'player') {
+            console.log('[SPEED] 플레이어 공격 실행');
+            // 플레이어 공격
+            setBattleState(currentState => {
+              console.log('[SPEED] setBattleState 실행됨', currentState);
+              
+              // 플레이어가 죽었으면 공격 안 함
+              if (currentState.playerHp <= 0) {
+                console.log('[SPEED] 플레이어 사망 - 공격 불가');
+                return currentState;
+              }
+              
+              if (!currentState?.enemies) {
+                console.log('[SPEED] enemies 없음');
+                return currentState;
+              }
+              const aliveEnemies = currentState.enemies.filter(e => e.isAlive);
+              console.log(`[SPEED] 살아있는 적: ${aliveEnemies.length}`);
+              if (aliveEnemies.length > 0) {
+                // 랜덤 적 선택
+                const targetEnemy = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+                console.log(`[SPEED] 랜덤 대상 선택: ${targetEnemy.name}`);
+                const fishingRodEnhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
+                const baseDamage = calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus);
+                const { damage, isCritical } = calculateCriticalHit(baseDamage);
+                
+                const newEnemies = [...currentState.enemies];
+                const enemy = newEnemies.find(e => e.id === targetEnemy.id);
+                enemy.hp = Math.max(0, enemy.hp - damage);
+                
+                const attackMessage = isCritical 
+                  ? `💥 크리티컬! 플레이어가 ${enemy.name}에게 ${damage} 데미지!`
+                  : `플레이어가 ${enemy.name}에게 ${damage} 데미지!`;
+                
+                const newLog = [...currentState.log, `${attackMessage} (${enemy.hp}/${enemy.maxHp})`];
+                
+                if (enemy.hp <= 0) {
+                  enemy.isAlive = false;
+                  newLog.push(`${enemy.name}을(를) 물리쳤습니다!`);
+                  if (speedBarIntervalsRef.current[`enemy_${enemy.id}`]) {
+                    clearInterval(speedBarIntervalsRef.current[`enemy_${enemy.id}`]);
+                    delete speedBarIntervalsRef.current[`enemy_${enemy.id}`];
+                  }
+                }
+                
+                // 플레이어 속도바 재시작 (살아있을 때만)
+                setTimeout(() => {
+                  setBattleState(state => {
+                    if (state && state.playerHp > 0) {
+                      startSpeedBar('player', 100, 'player');
+                    }
+                    return state;
+                  });
+                }, 100);
+                
+                // 승리 체크
+                const remainingEnemies = newEnemies.filter(e => e.isAlive);
+                if (remainingEnemies.length === 0) {
+                  clearAllSpeedBars();
+                  let totalAmberReward = 0;
+                  let totalExpReward = 0;
+                  newEnemies.forEach(e => {
+                    const baseReward = Math.floor(e.maxHp / 10) + Math.floor(Math.random() * 5) + 1;
+                    const amberReward = Math.floor(baseReward * (e.prefix?.amberMultiplier || 1));
+                    totalAmberReward += amberReward;
+                    totalExpReward += Math.floor(e.maxHp / 5) + 10;
+                    newLog.push(`${e.name}: 호박석 ${amberReward}개`);
+                  });
+                  newLog.push(`승리! 총 호박석 ${totalAmberReward}개!`);
+                  
+                  setTimeout(async () => {
+                    await addAmber(totalAmberReward);
+                    updateQuestProgress('exploration_win', 1);
+                    if (currentState.companions) {
+                      currentState.companions.forEach(c => addCompanionExp(c, totalExpReward));
+                    }
+                    setTimeout(() => {
+                      setShowBattleModal(false);
+                      setBattleState(null);
+                      alert(`승리! 총 호박석 ${totalAmberReward}개!`);
+                    }, 1000);
+                  }, 1000);
+                  
+                  return { ...currentState, enemies: newEnemies, log: newLog, turn: 'victory', amberReward: totalAmberReward };
+                }
+                
+                return { ...currentState, enemies: newEnemies, log: newLog };
+              }
+              return currentState;
+            });
+          } else if (characterType === 'enemy') {
+            // 적 공격
+            setBattleState(currentState => {
+              if (!currentState?.enemies) return currentState;
+              
+              const enemyId = characterId.replace('enemy_', '');
+              const enemy = currentState.enemies.find(e => e.id === enemyId);
+              
+              // 적이 죽었으면 공격 안 함
+              if (!enemy || !enemy.isAlive || enemy.hp <= 0) {
+                console.log(`[SPEED] 적 ${enemyId} 사망 - 공격 불가`);
+                return currentState;
+              }
+              
+              const aliveTargets = ['player'];
+              if (currentState.companions) {
+                currentState.companions.forEach(c => {
+                  if (currentState.companionHp?.[c]?.hp > 0) aliveTargets.push(c);
+                });
+              }
+              
+              const target = aliveTargets[Math.floor(Math.random() * aliveTargets.length)];
+              const fishData = allFishTypes.find(f => f.name === enemy.baseFish);
+              const damage = calculateEnemyAttack(fishData?.rank || 1);
+              
+              const newLog = [...currentState.log];
+              let newPlayerHp = currentState.playerHp;
+              let newCompanionHp = { ...currentState.companionHp };
+              let newCompanionMorale = { ...currentState.companionMorale };
+              
+              if (target === 'player') {
+                newPlayerHp = Math.max(0, newPlayerHp - damage);
+                newLog.push(`${enemy.name}이(가) 플레이어에게 ${damage} 데미지!`);
+                if (newPlayerHp <= 0) newLog.push(`플레이어가 쓰러졌습니다!`);
+              } else {
+                const oldHp = newCompanionHp[target]?.hp || 0;
+                const newHp = Math.max(0, oldHp - damage);
+                newCompanionHp[target] = { ...newCompanionHp[target], hp: newHp };
+                newLog.push(`${enemy.name}이(가) ${target}에게 ${damage} 데미지!`);
+                if (newHp <= 0) {
+                  newLog.push(`${target}이(가) 쓰러졌습니다!`);
+                  if (speedBarIntervalsRef.current[`companion_${target}`]) {
+                    clearInterval(speedBarIntervalsRef.current[`companion_${target}`]);
+                    delete speedBarIntervalsRef.current[`companion_${target}`];
+                  }
+                } else if (newCompanionMorale[target]) {
+                  newCompanionMorale[target] = { ...newCompanionMorale[target], morale: Math.min(100, newCompanionMorale[target].morale + 25) };
+                }
+              }
+              
+              // 적 속도바 재시작 (살아있을 때만)
+              setTimeout(() => {
+                setBattleState(state => {
+                  if (state && state.enemies) {
+                    const currentEnemy = state.enemies.find(e => e.id === enemyId);
+                    if (currentEnemy && currentEnemy.isAlive && currentEnemy.hp > 0) {
+                      startSpeedBar(characterId, enemy.speed, 'enemy');
+                    }
+                  }
+                  return state;
+                });
+              }, 100);
+              
+              // 패배 체크
+              const allCompanionsDown = currentState.companions?.every(c => newCompanionHp[c]?.hp <= 0) ?? true;
+              if (newPlayerHp <= 0 && allCompanionsDown) {
+                clearAllSpeedBars();
+                newLog.push(`패배했습니다...`);
+                setTimeout(() => {
+                  setShowBattleModal(false);
+                  setBattleState(null);
+                  alert("패배했습니다...");
+                }, 2000);
+                return { ...currentState, playerHp: newPlayerHp, companionHp: newCompanionHp, companionMorale: newCompanionMorale, log: newLog, turn: 'defeat' };
+              }
+              
+              return { ...currentState, playerHp: newPlayerHp, companionHp: newCompanionHp, companionMorale: newCompanionMorale, log: newLog };
+            });
+          } else if (characterType === 'companion') {
+            // 동료 공격
+            setBattleState(currentState => {
+              if (!currentState?.enemies) return currentState;
+              
+              const companionName = characterId.replace('companion_', '');
+              
+              // 동료가 죽었으면 공격 안 함
+              if (currentState.companionHp?.[companionName]?.hp <= 0) {
+                console.log(`[SPEED] ${companionName} 사망 - 공격 불가`);
+                return currentState;
+              }
+              
+              const aliveEnemies = currentState.enemies.filter(e => e.isAlive);
+              
+              if (aliveEnemies.length === 0) return currentState;
+              
+              const companionStat = companionStats[companionName];
+              const companionData = calculateCompanionStats(companionName, companionStat?.level || 1);
+              const currentMorale = currentState.companionMorale?.[companionName]?.morale || 0;
+              const canUseSkill = companionData.skill && currentMorale >= 100;
+              
+              let damage = 0;
+              let isSkillUsed = false;
+              const newLog = [...currentState.log];
+              const newEnemies = [...currentState.enemies];
+              const newCompanionMorale = { ...currentState.companionMorale };
+              const newCompanionBuffs = { ...currentState.companionBuffs };
+              
+              if (canUseSkill) {
+                // 스킬 사용
+                const skill = companionData.skill;
+                isSkillUsed = true;
+                
+                // 사기 소모
+                if (newCompanionMorale[companionName]) {
+                  newCompanionMorale[companionName] = { ...newCompanionMorale[companionName], morale: 0 };
+                }
+                
+                if (skill.skillType === 'heal') {
+                  // 클로에의 힐 스킬
+                  const healAmount = Math.floor(companionData.attack * skill.healMultiplier);
+                  
+                  // 체력이 가장 낮은 아군 찾기 (살아있는 대상만)
+                  let lowestHpTarget = null;
+                  let lowestHpRatio = 1;
+                  
+                  // 플레이어 체크 (살아있을 때만)
+                  if (currentState.playerHp > 0) {
+                    const playerHpRatio = currentState.playerHp / currentState.playerMaxHp;
+                    if (playerHpRatio < lowestHpRatio) {
+                      lowestHpRatio = playerHpRatio;
+                      lowestHpTarget = { type: 'player', currentHp: currentState.playerHp, maxHp: currentState.playerMaxHp };
+                    }
+                  }
+                  
+                  // 동료들 체크 (살아있을 때만)
+                  if (currentState.companions) {
+                    currentState.companions.forEach(c => {
+                      const hp = currentState.companionHp?.[c];
+                      if (hp && hp.hp > 0) {
+                        const hpRatio = hp.hp / hp.maxHp;
+                        if (hpRatio < lowestHpRatio) {
+                          lowestHpRatio = hpRatio;
+                          lowestHpTarget = { type: 'companion', name: c, currentHp: hp.hp, maxHp: hp.maxHp };
+                        }
+                      }
+                    });
+                  }
+                  
+                  if (lowestHpTarget) {
+                    if (lowestHpTarget.type === 'player') {
+                      const newHp = Math.min(currentState.playerMaxHp, currentState.playerHp + healAmount);
+                      currentState.playerHp = newHp;
+                      newLog.push(`✨ ${companionName}이(가) ${skill.name}을(를) 사용!`);
+                      newLog.push(`💚 플레이어의 체력이 ${healAmount} 회복! (${newHp}/${currentState.playerMaxHp})`);
+                    } else {
+                      const newHp = Math.min(lowestHpTarget.maxHp, lowestHpTarget.currentHp + healAmount);
+                      currentState.companionHp[lowestHpTarget.name].hp = newHp;
+                      newLog.push(`✨ ${companionName}이(가) ${skill.name}을(를) 사용!`);
+                      newLog.push(`💚 ${lowestHpTarget.name}의 체력이 ${healAmount} 회복! (${newHp}/${lowestHpTarget.maxHp})`);
+                    }
+                  }
+                } else if (skill.buffType) {
+                  // 버프 스킬 (피에나의 무의태세, 애비게일의 집중포화)
+                  const baseDamage = Math.floor(companionData.attack * (skill.damageMultiplier || 1.0));
+                  damage = Math.floor(baseDamage * (0.8 + Math.random() * 0.4));
+                  
+                  // 버프 적용
+                  if (!newCompanionBuffs[companionName]) {
+                    newCompanionBuffs[companionName] = {};
+                  }
+                  
+                  newCompanionBuffs[companionName][skill.buffType] = {
+                    multiplier: skill.buffMultiplier,
+                    duration: skill.buffDuration,
+                    turnsLeft: skill.buffDuration
+                  };
+                  
+                  newLog.push(`✨ ${companionName}이(가) ${skill.name}을(를) 사용!`);
+                  
+                  if (skill.buffType === 'attack') {
+                    newLog.push(`🔥 3턴 동안 공격력이 25% 상승!`);
+                  } else if (skill.buffType === 'critical') {
+                    newLog.push(`🎯 3턴 동안 크리티컬 확률이 20% 상승!`);
+                  }
+                  
+                  // 데미지 처리
+                  if (damage > 0) {
+                    const targetEnemy = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+                    const enemy = newEnemies.find(e => e.id === targetEnemy.id);
+                    enemy.hp = Math.max(0, enemy.hp - damage);
+                    newLog.push(`${enemy.name}에게 ${damage} 데미지! (${enemy.hp}/${enemy.maxHp})`);
+                    
+                    if (enemy.hp <= 0) {
+                      enemy.isAlive = false;
+                      newLog.push(`${enemy.name}을(를) 물리쳤습니다!`);
+                      if (speedBarIntervalsRef.current[`enemy_${enemy.id}`]) {
+                        clearInterval(speedBarIntervalsRef.current[`enemy_${enemy.id}`]);
+                        delete speedBarIntervalsRef.current[`enemy_${enemy.id}`];
+                      }
+                    }
+                  }
+                } else {
+                  // 데미지 스킬 (실의 폭격)
+                  const baseDamage = Math.floor(companionData.attack * skill.damageMultiplier);
+                  damage = Math.floor(baseDamage * (0.8 + Math.random() * 0.4));
+                  
+                  const targetEnemy = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+                  const enemy = newEnemies.find(e => e.id === targetEnemy.id);
+                  enemy.hp = Math.max(0, enemy.hp - damage);
+                  
+                  newLog.push(`✨ ${companionName}이(가) ${skill.name}을(를) 사용!`);
+                  newLog.push(`${enemy.name}에게 ${damage} 데미지! (${enemy.hp}/${enemy.maxHp})`);
+                  
+                  if (enemy.hp <= 0) {
+                    enemy.isAlive = false;
+                    newLog.push(`${enemy.name}을(를) 물리쳤습니다!`);
+                    if (speedBarIntervalsRef.current[`enemy_${enemy.id}`]) {
+                      clearInterval(speedBarIntervalsRef.current[`enemy_${enemy.id}`]);
+                      delete speedBarIntervalsRef.current[`enemy_${enemy.id}`];
+                    }
+                  }
+                }
+              } else {
+                // 일반 공격
+                const targetEnemy = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+                damage = Math.floor(companionData.attack * (0.8 + Math.random() * 0.4));
+                
+                const enemy = newEnemies.find(e => e.id === targetEnemy.id);
+                enemy.hp = Math.max(0, enemy.hp - damage);
+                
+                newLog.push(`${companionName}이(가) ${enemy.name}에게 ${damage} 데미지! (${enemy.hp}/${enemy.maxHp})`);
+                
+                if (enemy.hp <= 0) {
+                  enemy.isAlive = false;
+                  newLog.push(`${enemy.name}을(를) 물리쳤습니다!`);
+                  if (speedBarIntervalsRef.current[`enemy_${enemy.id}`]) {
+                    clearInterval(speedBarIntervalsRef.current[`enemy_${enemy.id}`]);
+                    delete speedBarIntervalsRef.current[`enemy_${enemy.id}`];
+                  }
+                }
+                
+                // 일반 공격 시 사기 증가
+                if (newCompanionMorale[companionName]) {
+                  newCompanionMorale[companionName] = { ...newCompanionMorale[companionName], morale: Math.min(100, newCompanionMorale[companionName].morale + 15) };
+                }
+              }
+              
+              // 동료 속도바 재시작 (살아있을 때만)
+              const finalCompanionHp = currentState.companionHp?.[companionName]?.hp || 0;
+              setTimeout(() => {
+                setBattleState(state => {
+                  if (state && state.companionHp?.[companionName]?.hp > 0) {
+                    startSpeedBar(characterId, companionData.speed, 'companion');
+                  }
+                  return state;
+                });
+              }, 100);
+              
+              // 승리 체크
+              const remainingEnemies = newEnemies.filter(e => e.isAlive);
+              if (remainingEnemies.length === 0) {
+                clearAllSpeedBars();
+                let totalAmberReward = 0;
+                let totalExpReward = 0;
+                newEnemies.forEach(e => {
+                  const baseReward = Math.floor(e.maxHp / 10) + Math.floor(Math.random() * 5) + 1;
+                  const amberReward = Math.floor(baseReward * (e.prefix?.amberMultiplier || 1));
+                  totalAmberReward += amberReward;
+                  totalExpReward += Math.floor(e.maxHp / 5) + 10;
+                  newLog.push(`${e.name}: 호박석 ${amberReward}개`);
+                });
+                newLog.push(`승리! 총 호박석 ${totalAmberReward}개!`);
+                
+                setTimeout(async () => {
+                  await addAmber(totalAmberReward);
+                  updateQuestProgress('exploration_win', 1);
+                  if (currentState.companions) currentState.companions.forEach(c => addCompanionExp(c, totalExpReward));
+                  setTimeout(() => {
+                    setShowBattleModal(false);
+                    setBattleState(null);
+                    alert(`승리! 총 호박석 ${totalAmberReward}개!`);
+                  }, 1000);
+                }, 1000);
+                
+                return { ...currentState, enemies: newEnemies, companionMorale: newCompanionMorale, companionBuffs: newCompanionBuffs, log: newLog, turn: 'victory', amberReward: totalAmberReward };
+              }
+              
+              return { ...currentState, enemies: newEnemies, companionMorale: newCompanionMorale, companionBuffs: newCompanionBuffs, log: newLog };
+            });
+          }
+          
+          // 전투 로그 스크롤
+          setTimeout(() => scrollBattleLogToBottom(), 200);
+        }, 100);
+        
+        return;
+      }
+    }, interval);
+  }, [setBattleState, companionStats, userEquipment, fishingSkill, allFishTypes, addAmber, updateQuestProgress, addCompanionExp, clearAllSpeedBars, calculateTotalEnhancementBonus, calculatePlayerAttack, calculateCriticalHit, calculateEnemyAttack, calculateCompanionStats, scrollBattleLogToBottom]);
+
   // 동료 전투 상태 동기화 (로그인 후)
   useEffect(() => {
     if (jwtToken && userUuid && companions.length > 0) {
       syncCompanionBattleStatus();
     }
   }, [jwtToken, userUuid, companions]);
+
+  // 전투 종료 시 속도바 정리
+  useEffect(() => {
+    // 전투 모달이 닫히면 모든 속도바 정리
+    if (!showBattleModal) {
+      console.log('[SPEED] 전투 종료 - 속도바 정리');
+      clearAllSpeedBars();
+    }
+  }, [showBattleModal, clearAllSpeedBars]);
 
   // 🔄 동료 능력치 서버 저장 함수 (검증 강화)
   const saveCompanionStatsToServer = async (companionName, stats) => {
@@ -909,6 +1571,18 @@ function App() {
     const storedIsGuest = localStorage.getItem("isGuest");
     const storedJwtToken = localStorage.getItem("jwtToken"); // 🔐 JWT 토큰 복원
     
+    // 🔄 대기 중인 업데이트 확인
+    const pendingUpdate = sessionStorage.getItem('pendingUpdate');
+    const pendingVersion = sessionStorage.getItem('pendingVersion');
+    if (pendingUpdate === 'true' && pendingVersion) {
+      console.log('🔄 대기 중인 업데이트 발견, 새로고침 실행');
+      localStorage.setItem('appVersion', pendingVersion);
+      sessionStorage.removeItem('pendingUpdate');
+      sessionStorage.removeItem('pendingVersion');
+      window.location.reload();
+      return;
+    }
+    
     if (storedIdToken && !idToken) {
       console.log("Restoring Google token from localStorage:", storedIdToken);
       setIdToken(storedIdToken);
@@ -976,15 +1650,6 @@ function App() {
         // 쿨타임이 이미 만료된 경우 localStorage에서 제거
         localStorage.removeItem('raidCooldownEnd');
       }
-    }
-  }, []);
-
-  // 전투 로그 자동 스크롤 함수
-  const scrollBattleLogToBottom = useCallback(() => {
-    if (battleLogRef.current) {
-      setTimeout(() => {
-        battleLogRef.current.scrollTop = battleLogRef.current.scrollHeight;
-      }, 0);
     }
   }, []);
 
@@ -2293,6 +2958,50 @@ function App() {
     return getAvailableFish(fishingSkill);
   }, [fishingSkill, allFishTypes, probabilityTemplate]);
 
+  // 🔄 앱 버전 체크 및 자동 새로고침 시스템
+  useEffect(() => {
+    if (!socket) return;
+
+    // 로컬에 저장된 버전 확인
+    const localVersion = localStorage.getItem('appVersion');
+    console.log('📱 로컬 앱 버전:', localVersion);
+
+    // 서버에서 현재 버전 수신
+    socket.on('app:version', ({ version, timestamp }) => {
+      console.log('📱 서버 앱 버전:', version);
+      
+      if (localVersion && localVersion !== version) {
+        // 버전이 다르면 즉시 새로고침
+        console.log('🔄 새 버전 감지, 새로고침 중...');
+        localStorage.setItem('appVersion', version);
+        window.location.reload();
+      } else if (!localVersion) {
+        // 첫 접속 시 버전 저장
+        localStorage.setItem('appVersion', version);
+      }
+    });
+
+    // 실시간 업데이트 알림 수신
+    socket.on('app:update-available', ({ version, message, timestamp }) => {
+      console.log('📢 업데이트 알림:', message);
+      
+      // 사용자에게 알림 표시
+      if (confirm(`${message}\n\n지금 새로고침하시겠습니까?`)) {
+        localStorage.setItem('appVersion', version);
+        window.location.reload();
+      } else {
+        // 다음 페이지 이동 시 새로고침하도록 플래그 설정
+        sessionStorage.setItem('pendingUpdate', 'true');
+        sessionStorage.setItem('pendingVersion', version);
+      }
+    });
+
+    return () => {
+      socket.off('app:version');
+      socket.off('app:update-available');
+    };
+  }, [socket]);
+
   // WebSocket을 통한 실시간 데이터 동기화
   useEffect(() => {
     if (!username || !userUuid || !socket) return;
@@ -3436,17 +4145,6 @@ function App() {
 
   // 🔧 getMaterialToFish는 useGameData 훅에서 제공됨
 
-  // 낚시실력 기반 공격력 계산 (3차방정식) + 강화 보너스 (퍼센트)
-  const calculatePlayerAttack = (skill, enhancementBonusPercent = 0) => {
-    // 3차방정식: 0.00225 * skill³ + 0.165 * skill² + 2 * skill + 3
-    const baseAttack = 0.00225 * Math.pow(skill, 3) + 0.165 * Math.pow(skill, 2) + 2 * skill + 3;
-    // 강화 보너스 퍼센트 적용
-    const totalAttack = baseAttack + (baseAttack * enhancementBonusPercent / 100);
-    // 랜덤 요소 추가 (±20%)
-    const randomFactor = 0.8 + Math.random() * 0.4;
-    return Math.floor(totalAttack * randomFactor);
-  };
-
   // 공격력 범위 계산 (최소/최대) - 3차방정식 기반 + 강화 보너스 (퍼센트)
   const getAttackRange = (skill, enhancementBonusPercent = 0) => {
     // 3차방정식으로 기본 공격력 계산: 0.00225 * skill³ + 0.165 * skill² + 2 * skill + 3
@@ -3481,32 +4179,6 @@ function App() {
     return baseHp + (baseHp * enhancementBonusPercent / 100);
   };
 
-  // 물고기 공격력 계산 함수 (물고기 단계 기반)
-  const calculateEnemyAttack = (fishRank) => {
-    if (fishRank === 0) return Math.floor(Math.random() * 3) + 8; // 스타피쉬 특별 처리
-    return Math.floor(Math.pow(fishRank, 1.65) + fishRank * 1.3 + 10 + Math.random() * 5);
-  };
-
-  // 크리티컬 히트 계산 함수
-  const calculateCriticalHit = (baseDamage, criticalChance = 0.05, companionName = null, companionBuffs = {}) => {
-    const finalCriticalChance = (() => {
-      let chance = criticalChance;
-      
-      // 동료의 크리티컬 버프 적용
-      if (companionName && companionBuffs[companionName]?.critical) {
-        chance += companionBuffs[companionName].critical.multiplier;
-      }
-      
-      return chance;
-    })();
-    
-    const isCritical = Math.random() < finalCriticalChance;
-    if (isCritical) {
-      const criticalDamage = Math.floor(baseDamage * 1.5); // 50% 추가 데미지
-      return { damage: criticalDamage, isCritical: true };
-    }
-    return { damage: baseDamage, isCritical: false };
-  };
 
   // 낚시대 레벨 계산 함수
   const getFishingRodLevel = (fishingRodName) => {
@@ -3726,14 +4398,6 @@ function App() {
     return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
   };
 
-  // 누적 강화 보너스 계산 (퍼센트)
-  const calculateTotalEnhancementBonus = (level) => {
-    let totalBonus = 0;
-    for (let i = 1; i <= level; i++) {
-      totalBonus += calculateEnhancementBonus(i);
-    }
-    return totalBonus; // 퍼센트이므로 소수점 유지
-  };
 
   // 악세사리에 따른 낚시 쿨타임 계산 (낚시실력은 쿨타임에 영향 없음)
   const getFishingCooldownTime = () => {
@@ -3761,36 +4425,7 @@ function App() {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  // [퀘스트] 일일 퀘스트 데이터 로드
-  const loadDailyQuests = async () => {
-    try {
-      const userId = idToken ? 'user' : 'null';
-      const params = { username, userUuid };
-      const response = await axios.get(`${serverUrl}/api/daily-quests/${userId}`, { params });
-      
-      if (response.data) {
-        setDailyQuests(response.data);
-        console.log('Daily quests loaded:', response.data);
-      }
-    } catch (error) {
-      console.error('Failed to load daily quests:', error);
-    }
-  };
   
-  // 퀘스트 진행도 업데이트 (JWT 인증 필수)
-  const updateQuestProgress = async (questType, amount = 1) => {
-    try {
-      await authenticatedRequest.post(`${serverUrl}/api/update-quest-progress`, {
-        questType,
-        amount
-      });
-      
-      // 퀘스트 데이터 새로고침
-      await loadDailyQuests();
-    } catch (error) {
-      console.error('Failed to update quest progress:', error);
-    }
-  };
   
   // 퀘스트 보상 수령 (JWT 인증 필수)
   const claimQuestReward = async (questId) => {
@@ -3831,28 +4466,6 @@ function App() {
     }
   }, [activeTab, username, userUuid]);
 
-  // 호박석 지급 함수
-  const addAmber = async (amount) => {
-    try {
-      console.log('Adding amber reward');
-      const response = await authenticatedRequest.post(`${serverUrl}/api/add-amber`, {
-        amount
-      });
-      
-      console.log('Add amber response:', response.data);
-      
-      if (response.data.success) {
-        console.log(`Added ${amount} amber. New total: ${response.data.newAmber}`);
-        setUserAmber(response.data.newAmber);
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error("Failed to add amber:", error);
-      console.error("Error response:", error.response?.data);
-      return false;
-    }
-  };
 
   // 동료 모집 함수
   const recruitCompanion = async () => {
@@ -4123,75 +4736,6 @@ function App() {
     };
   }, [userUuid, username]);
 
-  // 동료 경험치 추가 함수
-  const addCompanionExp = (companionName, expAmount) => {
-    console.log(`📈 addCompanionExp 호출: ${companionName}에게 경험치 ${expAmount} 추가`);
-    setCompanionStats(prev => {
-      const current = prev[companionName] || {
-        level: 1,
-        exp: 0,
-        expToNext: calculateExpToNextLevel(2), // 레벨 2까지 필요한 경험치
-        hp: calculateCompanionStats(companionName, 1)?.hp || 100,
-        maxHp: calculateCompanionStats(companionName, 1)?.hp || 100
-      };
-      console.log(`📊 ${companionName} 현재 상태:`, current);
-      
-      const expCalc = (() => {
-        let newExp = current.exp + expAmount;
-        let newLevel = current.level;
-        let newExpToNext = current.expToNext;
-        
-        return { newExp, newLevel, newExpToNext };
-      })();
-      
-      let { newExp, newLevel, newExpToNext } = expCalc;
-      
-      // 레벨업 체크
-      while (newExp >= newExpToNext) {
-        newExp -= newExpToNext;
-        newLevel++;
-        // 새로운 경험치 공식 사용
-        newExpToNext = calculateExpToNextLevel(newLevel + 1);
-        console.log(`🎉 ${companionName} 레벨업! ${newLevel-1} → ${newLevel} (다음 레벨까지: ${newExpToNext})`);
-      }
-      
-      console.log(`📊 ${companionName} 최종 능력치: 레벨 ${newLevel}, 경험치 ${newExp}/${newExpToNext}`);
-      
-      // 레벨업 시 능력치 재계산
-      const newStats = calculateCompanionStats(companionName, newLevel);
-      
-      const updated = {
-        ...prev,
-        [companionName]: {
-          level: newLevel,
-          exp: newExp,
-          expToNext: newExpToNext,
-          hp: newStats?.hp || current.hp,
-          maxHp: newStats?.hp || current.maxHp
-        }
-      };
-      
-      // localStorage에 저장
-      localStorage.setItem(`companionStats_${userUuid || username}`, JSON.stringify(updated));
-      
-      // 서버에 즉시 저장 (경험치 변경 시)
-      const updatedStats = updated[companionName];
-      if (jwtToken) {
-        setTimeout(() => {
-          saveCompanionStatsToServer(companionName, updatedStats);
-        }, 100); // 상태 업데이트 후 저장
-      }
-      
-      // 레벨업 알림
-      if (newLevel > current.level) {
-        setTimeout(() => {
-          alert(`${companionName}이(가) 레벨 ${newLevel}로 레벨업했습니다!`);
-        }, 500);
-      }
-      
-      return updated;
-    });
-  };
 
   // 전투 참여 동료 토글 함수
   const toggleBattleCompanion = (companionName) => {
@@ -4695,55 +5239,57 @@ function App() {
   };
 
   // 탐사 시작 함수
-  const startExploration = async (material) => {
+  const startExploration = async (material, materialQuantity = 1) => {
     const baseFish = getMaterialToFish(material.material);
     if (!baseFish) {
       alert("해당 재료로는 탐사할 수 없습니다.");
       return;
     }
 
+    // 재료 수량 검증 (1~5개)
+    if (materialQuantity < 1 || materialQuantity > 5) {
+      alert("재료 수량은 1~5개 사이여야 합니다.");
+      return;
+    }
+
     // 재료 부족 체크 (소모 전에 미리 확인)
-    if (material.count < 1) {
-      alert("재료가 부족합니다.");
+    if (material.count < materialQuantity) {
+      alert(`재료가 부족합니다. (필요: ${materialQuantity}개, 보유: ${material.count}개)`);
       return;
     }
 
     // 탐사 시작 전에 동료 전투 상태를 서버에 동기화
     await syncBattleCompanionsToServer();
 
-    // 서버에 탐사 시작 쿨타임 설정 요청 - JWT 인증 사용
-    // 탐사 쿨타임 제거됨
-
-    console.log(`Starting exploration with ${material.material}, current count: ${material.count}`);
+    console.log(`Starting exploration with ${material.material} x${materialQuantity}, current count: ${material.count}`);
 
     // 먼저 재료 소모를 시도하고, 성공한 후에만 전투 시작
     try {
-      const consumed = await consumeMaterial(material.material, 1);
+      const consumed = await consumeMaterial(material.material, materialQuantity);
       if (!consumed) {
         console.error("Failed to consume material");
         alert("재료 소모에 실패했습니다.");
         return;
       }
-      console.log(`Successfully consumed ${material.material}`);
+      console.log(`Successfully consumed ${material.material} x${materialQuantity}`);
     } catch (error) {
       console.error("Error consuming material:", error);
       alert("재료 소모 중 오류가 발생했습니다.");
       return;
     }
 
-    // 재료 소모 성공 후 전투 준비
-    // 접두어 선택
-    const selectedPrefix = selectFishPrefix();
-    const enemyFish = `${selectedPrefix.name} ${baseFish}`;
-    
-    // 물고기 체력 계산 (접두어 배율 적용)
-    const baseHp = fishHealthMap[baseFish] || 100;
-    const enemyMaxHp = Math.floor(baseHp * selectedPrefix.hpMultiplier);
+    // 재료 소모 성공 후 서버에 전투 시작 요청
+    try {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/start-battle`, {
+        material: material.material,
+        baseFish: baseFish,
+        selectedPrefix: null, // 서버에서 랜덤 선택
+        materialQuantity: materialQuantity
+      });
 
-    // 사용자 체력 계산 (악세사리 단계 기반) + 강화 보너스
-    const accessoryLevel = getAccessoryLevel(userEquipment.accessory);
-    const accessoryEnhancementBonus = calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement || 0);
-    const playerMaxHp = calculatePlayerMaxHp(accessoryLevel, accessoryEnhancementBonus);
+      if (response.data.success) {
+        const serverBattleState = response.data.battleState;
+        const battleLog = response.data.log || [];
     
     // 전투 참여 동료들의 체력 및 사기 초기화
     const companionHpData = {};
@@ -4766,36 +5312,6 @@ function App() {
         maxMorale: 100
       };
     });
-
-    // 턴 순서 계산 (속도 기반) - 새로운 공식 적용
-    const fishIndex = allFishTypes.findIndex(fish => fish.name === baseFish) + 1; // 1부터 시작
-    const baseSpeed = 25 + (fishIndex * 0.5);
-    const prefixMultiplier = getPrefixSpeedMultiplier(selectedPrefix.name);
-    const enemySpeed = baseSpeed * prefixMultiplier;
-    const turnOrder = ['player']; // 플레이어는 항상 첫 번째
-    
-    // 동료들과 적의 속도 비교하여 턴 순서 결정
-    const combatants = [
-      { type: 'enemy', speed: enemySpeed },
-      ...battleCompanions.map(companion => {
-        const companionStat = companionStats[companion];
-        const companionLevel = companionStat?.level || 1;
-        const companionData = calculateCompanionStats(companion, companionLevel);
-        return { type: 'companion', name: companion, speed: companionData?.speed || 30 };
-      })
-    ];
-    
-    // 속도 순으로 정렬 (높은 속도가 먼저)
-    combatants.sort((a, b) => b.speed - a.speed);
-    
-    // 플레이어 다음 턴 순서 배치
-    combatants.forEach(combatant => {
-      if (combatant.type === 'enemy') {
-        turnOrder.push('enemy');
-      } else if (combatant.type === 'companion') {
-        turnOrder.push(`companion_${combatant.name}`);
-      }
-    });
     
     // 동료 버프 초기화
     const companionBuffs = {};
@@ -4803,88 +5319,62 @@ function App() {
       companionBuffs[companion] = {};
     });
     
-    // 전투 상태 먼저 초기화 (재료 소모 전에)
-    const newBattleState = {
-      enemy: enemyFish,
-      baseFish: baseFish,
-      prefix: selectedPrefix,
-      playerHp: playerMaxHp,
-      playerMaxHp: playerMaxHp,
-      enemyHp: enemyMaxHp,
-      enemyMaxHp: enemyMaxHp,
-      enemySpeed: enemySpeed,
-      turn: 'player',
-      turnOrder: turnOrder, // 턴 순서 배열
-      currentTurnIndex: 0, // 현재 턴 인덱스
-      log: [
-        `${material.material}을(를) 사용하여 ${enemyFish}(HP: ${enemyMaxHp}, 속도: ${enemySpeed})와의 전투가 시작되었습니다!`,
-        ...(battleCompanions.length > 0 
-          ? [`동료 ${battleCompanions.join(', ')}가 함께 전투에 참여합니다!`]
-          : []
-        ),
-        `턴 순서: ${turnOrder.map(turn => {
-          if (turn === 'player') return '플레이어';
-          if (turn === 'enemy') return '적';
-          if (turn.startsWith('companion_')) return turn.replace('companion_', '');
-          return turn;
-        }).join(' → ')}`,
-        `전투를 시작하거나 도망갈 수 있습니다.`
-      ],
-      material: material.material,
-      round: 1,
-      materialConsumed: true, // 재료는 이미 소모됨
-      autoMode: false, // 자동 전투 모드
-      canFlee: true, // 도망 가능 여부 (첫 턴에만 가능)
-      companions: [...battleCompanions], // 전투 참여 동료 목록
-      companionHp: companionHpData, // 동료별 체력 정보
-      companionMorale: companionMoraleData, // 동료별 사기 정보
-      companionBuffs: companionBuffs // 동료별 버프 정보
-    };
-
-    setBattleState(newBattleState);
-    setSelectedMaterial(material);
-    setShowExplorationModal(false);
-    setShowBattleModal(true);
-  };
-
-  // 도망가기 함수
-  const fleeFromBattle = async () => {
-    if (!battleState || !battleState.canFlee) return;
-    
-    try {
-      // 재료 소모 (이미 소모되었다면 스킵)
-      if (!battleState.materialConsumed) {
-        const consumed = await consumeMaterial(battleState.material, 1);
-        if (!consumed) {
-          alert("재료 소모에 실패했습니다.");
-          return;
+        // 동료 참여 로그 추가
+        if (battleCompanions.length > 0) {
+          battleLog.push(`동료 ${battleCompanions.join(', ')}가 함께 전투에 참여합니다!`);
         }
+        
+        // 클라이언트 전투 상태 설정
+        const newBattleState = {
+          ...serverBattleState,
+          materialConsumed: true, // 재료는 이미 소모됨
+          autoMode: false, // 자동 전투 모드
+          canFlee: false, // 도망가기 불가
+          companions: [...battleCompanions], // 전투 참여 동료 목록
+          companionHp: companionHpData, // 동료별 체력 정보
+          companionMorale: companionMoraleData, // 동료별 사기 정보
+          companionBuffs: companionBuffs, // 동료별 버프 정보
+          log: battleLog
+        };
+
+        setBattleState(newBattleState);
+        setSelectedMaterial(material);
+        setShowExplorationModal(false);
+        setShowBattleModal(true);
+        
+        // 전투 시작 직후 속도바 시작
+        console.log('[SPEED] startExploration - 속도바 시작');
+        setTimeout(() => {
+          // 플레이어 속도바
+          startSpeedBar('player', 100, 'player');
+          
+          // 적들의 속도바
+          newBattleState.enemies.forEach(enemy => {
+            if (enemy.isAlive && enemy.speed) {
+              console.log(`[SPEED] 적 ${enemy.id} 속도바 시작: speed ${enemy.speed}`);
+              startSpeedBar(`enemy_${enemy.id}`, enemy.speed, 'enemy');
+            }
+          });
+          
+          // 동료들의 속도바
+          battleCompanions.forEach(companion => {
+            const companionStat = companionStats[companion];
+            const companionLevel = companionStat?.level || 1;
+            const companionData = calculateCompanionStats(companion, companionLevel);
+            const speed = companionData?.speed || 50;
+            console.log(`[SPEED] 동료 ${companion} 속도바 시작: speed ${speed}`);
+            startSpeedBar(`companion_${companion}`, speed, 'companion');
+          });
+        }, 100);
+      } else {
+        alert("전투 시작에 실패했습니다.");
       }
-      
-      // 탐사 쿨타임 제거됨
-      
-      // 도망 메시지 추가
-      const fleeLog = [...battleState.log, `${battleState.enemy}에게서 도망쳤습니다!`];
-      
-      setBattleState(prev => prev ? {
-        ...prev,
-        log: fleeLog,
-        turn: 'fled',
-        materialConsumed: true
-      } : null);
-      
-      // 2초 후 모달 닫기
-      setTimeout(() => {
-        setShowBattleModal(false);
-        setBattleState(null);
-        alert("도망쳤습니다! 재료는 소모되었지만 탐사 쿨타임이 절반으로 줄었습니다.");
-      }, 2000);
-      
     } catch (error) {
-      console.error("Failed to flee from battle:", error);
-      alert("도망가기에 실패했습니다.");
+      console.error("Failed to start battle:", error);
+      alert("전투 시작 중 오류가 발생했습니다.");
     }
   };
+
 
   // 다음 턴으로 넘어가는 함수
   const nextTurn = (currentBattleState) => {
@@ -5147,14 +5637,104 @@ function App() {
     });
   };
 
-  // 플레이어 공격
-  const playerAttack = () => {
+  // 플레이어 공격 (다중 물고기 지원)
+  const playerAttack = (targetEnemyId = null) => {
     setBattleState(prevState => {
       if (!prevState || prevState.turn !== 'player') return prevState;
 
+      // 다중 물고기 전투 지원
+      if (prevState.enemies && prevState.enemies.length > 0) {
+        const newEnemies = [...prevState.enemies];
+        const aliveEnemies = newEnemies.filter(e => e.isAlive);
+        
+        if (aliveEnemies.length === 0) return prevState;
+
+        // 랜덤 적 선택
+        const targetEnemy = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+
       const fishingRodEnhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
-      const baseDamage = calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus); // 낚시실력 기반 공격력 + 강화 보너스
-      const { damage, isCritical } = calculateCriticalHit(baseDamage); // 크리티컬 계산
+        const baseDamage = calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus);
+        const { damage, isCritical } = calculateCriticalHit(baseDamage);
+        
+        targetEnemy.hp = Math.max(0, targetEnemy.hp - damage);
+        
+        const attackMessage = isCritical 
+          ? `💥 크리티컬! 플레이어가 ${targetEnemy.name}에게 ${damage} 데미지를 입혔습니다!`
+          : `플레이어가 ${targetEnemy.name}에게 ${damage} 데미지를 입혔습니다!`;
+
+        const newLog = [...prevState.log, `${attackMessage} (${targetEnemy.hp}/${targetEnemy.maxHp})`];
+
+        if (targetEnemy.hp <= 0) {
+          targetEnemy.isAlive = false;
+          newLog.push(`${targetEnemy.name}을(를) 물리쳤습니다!`);
+        }
+
+        // 모든 적이 죽었는지 확인
+        const remainingEnemies = newEnemies.filter(e => e.isAlive);
+        
+        if (remainingEnemies.length === 0) {
+          // 승리 - 각 적마다 보상 계산
+          let totalAmberReward = 0;
+          let totalExpReward = 0;
+
+          newEnemies.forEach(enemy => {
+            const baseReward = Math.floor(enemy.maxHp / 10) + Math.floor(Math.random() * 5) + 1;
+            const amberReward = Math.floor(baseReward * (enemy.prefix?.amberMultiplier || 1));
+            totalAmberReward += amberReward;
+            totalExpReward += Math.floor(enemy.maxHp / 5) + 10;
+
+            const prefixBonus = enemy.prefix?.amberMultiplier > 1 
+              ? ` (${enemy.prefix.name} 보너스 x${enemy.prefix.amberMultiplier})` 
+              : '';
+            
+            newLog.push(`${enemy.name}: 호박석 ${amberReward}개 획득!${prefixBonus}`);
+          });
+
+          newLog.push(`전투 승리! 총 호박석 ${totalAmberReward}개를 획득했습니다!`);
+
+          // 호박석 지급
+          setTimeout(async () => {
+            await addAmber(totalAmberReward);
+            updateQuestProgress('exploration_win', 1);
+            
+            // 동료들에게 경험치 지급
+            if (prevState.companions && prevState.companions.length > 0) {
+              console.log(`🎯 다중 전투 승리! 동료들에게 경험치 ${totalExpReward} 지급:`, prevState.companions);
+              prevState.companions.forEach(companion => {
+                addCompanionExp(companion, totalExpReward);
+              });
+            }
+            
+            setTimeout(() => {
+              setShowBattleModal(false);
+              setBattleState(null);
+              alert(`승리! 총 호박석 ${totalAmberReward}개를 획득했습니다!`);
+            }, 1000);
+          }, 1000);
+
+          return {
+            ...prevState,
+            enemies: newEnemies,
+            log: newLog,
+            turn: 'victory',
+            amberReward: totalAmberReward,
+            autoMode: true,
+            canFlee: false
+          };
+        } else {
+          // 속도바 기반이므로 적의 반격은 각 적의 속도바가 차면 자동으로 실행됨
+          // 여기서는 상태만 업데이트
+          return {
+            ...prevState,
+            enemies: newEnemies,
+            log: newLog
+          };
+        }
+      } else {
+        // 기존 단일 적 전투 로직 (하위 호환성)
+        const fishingRodEnhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
+        const baseDamage = calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus);
+        const { damage, isCritical } = calculateCriticalHit(baseDamage);
       const newEnemyHp = Math.max(0, prevState.enemyHp - damage);
       
       const attackMessage = isCritical 
@@ -5164,7 +5744,6 @@ function App() {
       const newLog = [...prevState.log, `${attackMessage} (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`];
 
       if (newEnemyHp <= 0) {
-        // 승리 - 호박석 보상 계산 (접두어 배율 적용)
         const baseReward = Math.floor(prevState.enemyMaxHp / 10) + Math.floor(Math.random() * 5) + 1;
         const amberReward = Math.floor(baseReward * (prevState.prefix?.amberMultiplier || 1));
         
@@ -5174,26 +5753,18 @@ function App() {
         
         newLog.push(`${prevState.enemy}를 물리쳤습니다! 호박석 ${amberReward}개를 획득했습니다!${prefixBonus}`);
         
-        // 호박석 지급
         setTimeout(async () => {
           await addAmber(amberReward);
-          // [퀘스트] 탐사 승리 퀘스트 진행도 업데이트
           updateQuestProgress('exploration_win', 1);
           
-          // 동료들에게 경험치 지급
           if (prevState.companions && prevState.companions.length > 0) {
-            const expReward = Math.floor(prevState.enemyMaxHp / 5) + 10; // 적 체력 기반 경험치
-            console.log(`🎯 자동전투 승리! 동료들에게 경험치 ${expReward} 지급:`, prevState.companions);
+              const expReward = Math.floor(prevState.enemyMaxHp / 5) + 10;
             prevState.companions.forEach(companion => {
-              console.log(`📈 ${companion}에게 경험치 ${expReward} 지급 중...`);
               addCompanionExp(companion, expReward);
             });
           }
           
-          setTimeout(async () => {
-            // 서버에 승리 쿨타임 설정 요청 - JWT 인증 사용
-            // 탐사 쿨타임 제거됨
-          
+            setTimeout(() => {
             setShowBattleModal(false);
             setBattleState(null);
             alert(`승리! 호박석 ${amberReward}개를 획득했습니다!${prefixBonus}`);
@@ -5210,18 +5781,17 @@ function App() {
           canFlee: false
         };
       } else {
-        // 다음 턴으로 넘어가기 (첫 공격 후 자동모드 활성화)
         return nextTurn({
           ...prevState,
           enemyHp: newEnemyHp,
           log: newLog,
-          autoMode: true, // 첫 공격 후 자동 모드 활성화
-          canFlee: false // 공격 후에는 도망 불가능
+            autoMode: true,
+            canFlee: false
         });
+        }
       }
     });
     
-    // 전투 로그 스크롤
     setTimeout(() => scrollBattleLogToBottom(), 200);
   };
 
@@ -9549,10 +10119,11 @@ function App() {
               }`}>탐사 재료 선택</h3>
               <p className={`text-sm ${
                 isDarkMode ? "text-gray-400" : "text-gray-600"
-              }`}>사용할 재료를 선택하세요</p>
+              }`}>{selectedExplorationMaterial ? "사용할 재료 수량을 선택하세요" : "사용할 재료를 선택하세요"}</p>
             </div>
             
             <div className="p-4 max-h-[60vh] overflow-y-auto">
+              {!selectedExplorationMaterial ? (
               <div className="space-y-3">
                 {materials
                   .sort((a, b) => {
@@ -9568,7 +10139,10 @@ function App() {
                   return (
                     <div
                       key={index}
-                      onClick={() => startExploration(material)}
+                        onClick={() => {
+                          setSelectedExplorationMaterial(material);
+                          setSelectedMaterialQuantity(1);
+                        }}
                       className={`p-4 rounded-lg cursor-pointer transition-all duration-300 hover:scale-105 ${
                         isDarkMode ? "hover:bg-white/5 border border-white/10 hover:border-orange-400/30" : "hover:bg-gray-100/50 border border-gray-300/30 hover:border-orange-500/30"
                       }`}
@@ -9593,20 +10167,129 @@ function App() {
                           }`}>vs {enemyFish}</p>
                           <p className={`text-xs ${
                             isDarkMode ? "text-gray-500" : "text-gray-600"
-                          }`}>전투 시작</p>
+                            }`}>선택하기</p>
                         </div>
                       </div>
                     </div>
                   );
                 })}
               </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* 선택된 재료 정보 */}
+                  <div className={`p-4 rounded-lg ${
+                    isDarkMode ? "bg-white/5 border border-white/10" : "bg-gray-100/50 border border-gray-300/30"
+                  }`}>
+                    <div className="flex items-center gap-3 mb-3">
+                      <Diamond className={`w-5 h-5 ${
+                        isDarkMode ? "text-purple-400" : "text-purple-600"
+                      }`} />
+                      <div>
+                        <p className={`font-medium ${
+                          isDarkMode ? "text-white" : "text-gray-800"
+                        }`}>{selectedExplorationMaterial.material}</p>
+                        <p className={`text-sm ${
+                          isDarkMode ? "text-gray-400" : "text-gray-600"
+                        }`}>{selectedExplorationMaterial.count}개 보유</p>
+                      </div>
+                    </div>
+                    
+                    {/* 수량 선택 */}
+                    <div>
+                      <p className={`text-sm font-medium mb-2 ${
+                        isDarkMode ? "text-gray-300" : "text-gray-700"
+                      }`}>소모할 수량 선택:</p>
+                      <div className="flex gap-2">
+                        {[1, 2, 3, 4, 5].map(qty => (
+                          <button
+                            key={qty}
+                            onClick={() => setSelectedMaterialQuantity(qty)}
+                            disabled={selectedExplorationMaterial.count < qty}
+                            className={`flex-1 py-2 rounded-lg font-bold transition-all duration-300 ${
+                              selectedMaterialQuantity === qty
+                                ? isDarkMode
+                                  ? "bg-orange-500/30 text-orange-300 border-2 border-orange-400 scale-105"
+                                  : "bg-orange-500/20 text-orange-700 border-2 border-orange-500 scale-105"
+                                : selectedExplorationMaterial.count >= qty
+                                  ? isDarkMode
+                                    ? "bg-white/10 text-gray-300 hover:bg-white/20 border border-white/20"
+                                    : "bg-gray-200/50 text-gray-700 hover:bg-gray-300/50 border border-gray-300"
+                                  : isDarkMode
+                                    ? "bg-gray-500/10 text-gray-600 cursor-not-allowed border border-gray-600/20"
+                                    : "bg-gray-200/30 text-gray-400 cursor-not-allowed border border-gray-300/30"
+                            }`}
+                          >
+                            {qty}
+                          </button>
+                        ))}
+                      </div>
+                      <p className={`text-xs mt-2 ${
+                        isDarkMode ? "text-gray-500" : "text-gray-600"
+                      }`}>
+                        {selectedMaterialQuantity}마리의 {getMaterialToFish(selectedExplorationMaterial.material)}와(과) 전투합니다
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 뒤로가기 버튼 */}
+                  <button
+                    onClick={() => {
+                      setSelectedExplorationMaterial(null);
+                      setSelectedMaterialQuantity(1);
+                    }}
+                    className={`w-full py-2 px-4 rounded-lg font-medium transition-all duration-300 ${
+                      isDarkMode 
+                        ? "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30" 
+                        : "bg-gray-300/30 text-gray-600 hover:bg-gray-300/50"
+                    }`}
+                  >
+                    다른 재료 선택
+                  </button>
+                </div>
+              )}
             </div>
             
             <div className={`border-t p-4 ${
               isDarkMode ? "border-white/10" : "border-gray-300/20"
             }`}>
+              {selectedExplorationMaterial ? (
+                <div className="flex gap-3">
               <button
-                onClick={() => setShowExplorationModal(false)}
+                    onClick={() => {
+                      setShowExplorationModal(false);
+                      setSelectedExplorationMaterial(null);
+                      setSelectedMaterialQuantity(1);
+                    }}
+                    className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-300 ${
+                      isDarkMode 
+                        ? "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30" 
+                        : "bg-gray-300/30 text-gray-600 hover:bg-gray-300/50"
+                    }`}
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={() => {
+                      startExploration(selectedExplorationMaterial, selectedMaterialQuantity);
+                      setSelectedExplorationMaterial(null);
+                      setSelectedMaterialQuantity(1);
+                    }}
+                    className={`flex-1 py-2 px-4 rounded-lg font-bold transition-all duration-300 ${
+                      isDarkMode
+                        ? "bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 hover:scale-105"
+                        : "bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 hover:scale-105"
+                    }`}
+                  >
+                    탐사 시작
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    setShowExplorationModal(false);
+                    setSelectedExplorationMaterial(null);
+                    setSelectedMaterialQuantity(1);
+                  }}
                 className={`w-full py-2 px-4 rounded-lg font-medium transition-all duration-300 ${
                   isDarkMode 
                     ? "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30" 
@@ -9615,6 +10298,7 @@ function App() {
               >
                 취소
               </button>
+              )}
             </div>
           </div>
         </div>
@@ -9631,11 +10315,11 @@ function App() {
             }`}>
               <h3 className={`text-lg font-semibold ${
                 isDarkMode ? "text-white" : "text-gray-800"
-              }`}>전투: vs <span className={battleState && battleState.prefix ? getPrefixColor(battleState.prefix.name, isDarkMode) : ''}>{battleState && battleState.enemy}</span></h3>
+              }`}>전투: {battleState && battleState.enemies ? `vs ${battleState.enemies.length}마리의 적` : battleState && battleState.enemy ? `vs ${battleState.enemy}` : ''}</h3>
               <div className="flex items-center gap-2">
                 <p className={`text-sm ${
                   isDarkMode ? "text-gray-400" : "text-gray-600"
-                }`}>재료: {battleState && battleState.material}</p>
+                }`}>재료: {battleState && battleState.material} {battleState && battleState.materialQuantity ? `x${battleState.materialQuantity}` : ''}</p>
                 {battleState && battleState.materialConsumed ? (
                   <span className={`text-xs px-2 py-1 rounded-full ${
                     isDarkMode ? "bg-green-500/20 text-green-400" : "bg-green-500/10 text-green-600"
@@ -9676,6 +10360,18 @@ function App() {
                       className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full transition-all duration-500"
                       style={{ width: `${battleState ? (battleState.playerHp / battleState.playerMaxHp) * 100 : 0}%` }}
                     ></div>
+                  </div>
+                  
+                  {/* 플레이어 속도바 */}
+                  <div className="mt-1">
+                    <div className={`w-full h-1.5 rounded-full ${
+                      isDarkMode ? "bg-gray-700" : "bg-gray-200"
+                    }`}>
+                      <div 
+                        className="h-full bg-gradient-to-r from-cyan-500 to-cyan-400 rounded-full transition-all duration-100"
+                        style={{ width: `${speedBars['player'] ? ((speedBars['player'].current / speedBars['player'].max) * 100) : 0}%` }}
+                      ></div>
+                    </div>
                   </div>
                   
                   {/* 동료 정보 */}
@@ -9741,6 +10437,19 @@ function App() {
                                     {companionMorale?.morale || 50}
                                   </span>
                                 </div>
+                                {/* 동료 속도바 */}
+                                {!isDown && (
+                                  <div className="flex items-center gap-1">
+                                    <div className={`flex-1 h-1 rounded-full ${
+                                      isDarkMode ? "bg-gray-700" : "bg-gray-200"
+                                    }`}>
+                                      <div 
+                                        className="h-full bg-gradient-to-r from-purple-500 to-purple-400 rounded-full transition-all duration-100"
+                                        style={{ width: `${speedBars[`companion_${companion}`] ? ((speedBars[`companion_${companion}`].current / speedBars[`companion_${companion}`].max) * 100) : 0}%` }}
+                                      ></div>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           );
@@ -9750,6 +10459,66 @@ function App() {
                   )}
                 </div>
                 
+                {/* 다중 적 표시 */}
+                {battleState && battleState.enemies && battleState.enemies.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className={`text-sm font-medium ${isDarkMode ? "text-red-400" : "text-red-600"}`}>
+                      적 목록
+                    </div>
+                    {battleState.enemies.map((enemy) => (
+                      <div
+                        key={enemy.id}
+                        className={`transition-all duration-300 ${
+                          !enemy.isAlive ? 'opacity-50' : ''
+                        }`}
+                      >
+                        <div className="flex justify-between items-center mb-2">
+                          <span className={`text-sm font-medium ${
+                            enemy.prefix ? getPrefixColor(enemy.prefix.name, isDarkMode) : (isDarkMode ? "text-red-400" : "text-red-600")
+                          }`}>
+                            {enemy.isAlive ? '' : '💀 '}{enemy.name}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-sm ${
+                              isDarkMode ? "text-white" : "text-gray-800"
+                            }`}>{enemy.hp}/{enemy.maxHp}</span>
+                            <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                              (enemy.hp / enemy.maxHp) >= 0.8 
+                                ? isDarkMode ? "bg-green-500/20 text-green-400" : "bg-green-500/10 text-green-600"
+                                : (enemy.hp / enemy.maxHp) >= 0.5 
+                                ? isDarkMode ? "bg-yellow-500/20 text-yellow-400" : "bg-yellow-500/10 text-yellow-600"
+                                : isDarkMode ? "bg-red-500/20 text-red-400" : "bg-red-500/10 text-red-600"
+                            }`}>{Math.round((enemy.hp / enemy.maxHp) * 100)}%</span>
+                          </div>
+                        </div>
+                        <div className={`w-full h-3 rounded-full ${
+                          isDarkMode ? "bg-gray-700" : "bg-gray-200"
+                        }`}>
+                          <div 
+                            className={`h-full bg-gradient-to-r rounded-full transition-all duration-500 ${
+                              enemy.isAlive ? "from-red-500 to-red-400" : "from-gray-500 to-gray-400"
+                            }`}
+                            style={{ width: `${(enemy.hp / enemy.maxHp) * 100}%` }}
+                          ></div>
+                        </div>
+                        
+                        {/* 적 속도바 */}
+                        {enemy.isAlive && (
+                          <div className="mt-1">
+                            <div className={`w-full h-1.5 rounded-full ${
+                              isDarkMode ? "bg-gray-700" : "bg-gray-200"
+                            }`}>
+                              <div 
+                                className="h-full bg-gradient-to-r from-orange-500 to-orange-400 rounded-full transition-all duration-100"
+                                style={{ width: `${speedBars[`enemy_${enemy.id}`] ? ((speedBars[`enemy_${enemy.id}`].current / speedBars[`enemy_${enemy.id}`].max) * 100) : 0}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
                 <div>
                   <div className="flex justify-between items-center mb-2">
                     <span className={`text-sm font-medium ${
@@ -9777,6 +10546,7 @@ function App() {
                     ></div>
                   </div>
                 </div>
+                )}
               </div>
 
               {/* 전투 로그 */}
@@ -9811,81 +10581,17 @@ function App() {
 
               {/* 액션 버튼 */}
               <div className="flex gap-4">
-                {battleState && battleState.turn === 'player' && !battleState.autoMode && (
-                  <div className="flex gap-3 w-full">
-                  <button
-                    onClick={playerAttack}
-                    className={`flex-1 py-3 px-6 rounded-lg font-bold text-lg transition-all duration-300 hover:scale-105 ${
-                      isDarkMode
-                        ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 glow-effect"
-                        : "bg-red-500/10 text-red-600 hover:bg-red-500/20"
-                    }`}
-                  >
-                    공격하기
-                    </button>
-                    {battleState && battleState.canFlee && (
-                      <button
-                        onClick={fleeFromBattle}
-                        className={`flex-1 py-3 px-6 rounded-lg font-bold text-lg transition-all duration-300 hover:scale-105 ${
-                          isDarkMode
-                            ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30"
-                            : "bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20"
-                        }`}
-                      >
-                        도망가기
-                  </button>
-                    )}
-                  </div>
-                )}
-
-                {battleState && battleState.turn === 'player' && battleState.autoMode && (
-                  <div className="flex gap-2 w-full">
-                    <div className={`flex-1 py-3 px-6 rounded-lg text-center font-medium flex items-center justify-center gap-2 ${
-                      isDarkMode ? "bg-yellow-500/20 text-yellow-400" : "bg-yellow-500/10 text-yellow-600"
-                    }`}>
-                      <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></div>
-                      <span>자동 공격 중...</span>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setBattleState(prev => prev ? { ...prev, autoMode: false } : null);
-                      }}
-                      className={`px-4 py-3 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
-                        isDarkMode
-                          ? "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30"
-                          : "bg-gray-300/30 text-gray-600 hover:bg-gray-300/50"
-                      }`}
-                    >
-                      수동
-                    </button>
-                  </div>
-                )}
-                
-                {battleState && battleState.turn === 'enemy' && (
-                  <div className="flex gap-2 w-full">
-                  <div className={`flex-1 py-3 px-6 rounded-lg text-center font-medium ${
-                    isDarkMode ? "bg-gray-500/20 text-gray-400" : "bg-gray-300/30 text-gray-600"
+                {battleState && battleState.turn !== 'victory' && battleState.turn !== 'defeat' && (
+                  <div className={`w-full py-3 px-6 rounded-lg text-center font-medium flex items-center justify-center gap-2 ${
+                    isDarkMode ? "bg-blue-500/20 text-blue-400" : "bg-blue-500/10 text-blue-600"
                   }`}>
-                    적의 턴...
-                    </div>
-                    {battleState && battleState.autoMode && (
-                      <button
-                        onClick={() => {
-                          setBattleState(prev => prev ? { ...prev, autoMode: false } : null);
-                        }}
-                        className={`px-4 py-3 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
-                          isDarkMode
-                            ? "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30"
-                            : "bg-gray-300/30 text-gray-600 hover:bg-gray-300/50"
-                        }`}
-                      >
-                        수동
-                      </button>
-                    )}
+                    <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
+                    <Zap className="w-4 h-4" />
+                    <span>자동 전투 진행 중...</span>
                   </div>
                 )}
                 
-                {battleState && (battleState.turn === 'victory' || battleState.turn === 'defeat' || battleState.turn === 'fled') && (
+                {battleState && (battleState.turn === 'victory' || battleState.turn === 'defeat') && (
                   <div className="flex gap-3">
                     {/* 채팅 공유 버튼 */}
                     <button

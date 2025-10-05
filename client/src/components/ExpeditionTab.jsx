@@ -114,24 +114,20 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
     setIsProcessingTurn(false);
   };
 
-   // 속도바 시작 함수
+   // 속도바 시작 함수 (탐사전투와 동일)
    const startSpeedBar = (characterId, speed) => {
      // 기존 타이머가 있으면 정리
      if (speedBarIntervalsRef.current[characterId]) {
        clearInterval(speedBarIntervalsRef.current[characterId]);
      }
 
-     // 캐릭터 타입에 따라 최대치 결정
-     const maxProgress = characterId.startsWith('companion_') ? 250 : characterId.startsWith('monster_') ? 100 : 200;
-    
-    // 올바른 속도바 계산: 속도 = 초당 증가량, 공격시간 = maxProgress / 속도
+     // 탐사전투와 동일하게 계산
+     const maxProgress = 250;
     const interval = 50; // 50ms마다 업데이트
-    const increment = (speed * interval) / 1000; // 50ms당 증가량 (속도 × 0.05초)
+    const increment = (speed * interval) / 1000; // 초당 speed만큼 증가
     
     let progress = 0;
-    setSpeedBars(prev => ({ ...prev, [characterId]: 0 }));
-
-    console.log(`[SPEED] Starting ${characterId}: speed=${speed}, maxProgress=${maxProgress}, increment=${increment.toFixed(2)}, expectedTime=${(maxProgress/speed).toFixed(2)}s`);
+    setSpeedBars(prev => ({ ...prev, [characterId]: { current: 0, max: maxProgress } }));
 
     speedBarIntervalsRef.current[characterId] = setInterval(() => {
       // 아군 전멸 체크 - 전멸 시 속도바 중단
@@ -143,38 +139,33 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
       
       progress += increment;
       const newProgress = Math.min(progress, maxProgress);
-      setSpeedBars(prev => ({ ...prev, [characterId]: newProgress }));
-      
-      // 디버깅용 로그 (처음 몇 번만)
-      if (progress < increment * 5) {
-        console.log(`[SPEED] ${characterId}: progress=${newProgress.toFixed(2)}/${maxProgress}, ${((newProgress/maxProgress)*100).toFixed(1)}%`);
-      }
+      setSpeedBars(prev => ({ ...prev, [characterId]: { current: newProgress, max: maxProgress } }));
       
       if (progress >= maxProgress) {
-        // 속도바가 다 차면 잠시 대기 후 자동 리셋
+        // 속도바가 max에 도달하면 자동 리셋 (지연 없음)
         clearInterval(speedBarIntervalsRef.current[characterId]);
         delete speedBarIntervalsRef.current[characterId];
-        setSpeedBars(prev => ({ ...prev, [characterId]: maxProgress }));
         
-        // 100ms 후 자동 리셋 (서버 신호를 기다리지 않음)
-        setTimeout(() => {
-          setSpeedBars(prev => ({ ...prev, [characterId]: 0 }));
-          
-          // 캐릭터가 살아있으면 다시 시작
-          let shouldRestart = true;
-          
-          if (characterId.startsWith('monster_')) {
-            const monsterId = characterId.replace('monster_', '');
-            const monster = currentRoom?.monsters?.find(m => m.id === monsterId);
-            if (monster && !monster.isAlive) {
-              shouldRestart = false;
-            }
+        // 즉시 0으로 리셋 (noTransition으로 즉시 점프)
+        setSpeedBars(prev => ({ ...prev, [characterId]: { current: 0, max: maxProgress, noTransition: true } }));
+        
+        // 캐릭터가 살아있으면 즉시 재시작
+        let shouldRestart = true;
+        
+        if (characterId.startsWith('monster_')) {
+          const monsterId = characterId.replace('monster_', '');
+          const monster = currentRoom?.monsters?.find(m => m.id === monsterId);
+          if (monster && !monster.isAlive) {
+            shouldRestart = false;
           }
-          
-          if (shouldRestart) {
+        }
+        
+        if (shouldRestart) {
+          // 16ms 후 재시작 (1 프레임, noTransition 플래그 제거용)
+          setTimeout(() => {
             startSpeedBar(characterId, speed);
-          }
-        }, 100);
+          }, 16);
+        }
         
         return;
       }
@@ -782,75 +773,67 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                         (updateData.type === 'battleStarted');
     
     if (shouldUpdate && updateData.room) {
-      const updatedRoom = {
-        ...updateData.room,
-        _lastUpdate: Date.now()
-      };
-      
-      setCurrentRoom(updatedRoom);
-      setForceUpdateCounter(prev => prev + 1);
+      // 방 상태 업데이트 (리렌더링 최소화를 위해 forceUpdate는 battleStarted만)
+      setCurrentRoom(updateData.room);
       
       // 죽은 몬스터의 속도바 정리
-      updatedRoom.monsters?.forEach(monster => {
+      updateData.room.monsters?.forEach(monster => {
         const monsterId = `monster_${monster.id}`;
         if (!monster.isAlive && speedBarIntervalsRef.current[monsterId]) {
           clearInterval(speedBarIntervalsRef.current[monsterId]);
           delete speedBarIntervalsRef.current[monsterId];
-          setSpeedBars(prev => ({ ...prev, [monsterId]: 0 }));
+          setSpeedBars(prev => ({ ...prev, [monsterId]: { current: 0, max: 250 } }));
         }
       });
       
       // 아군 전멸 체크
-      if (checkAllAlliesDead(updatedRoom)) {
+      if (checkAllAlliesDead(updateData.room)) {
         clearAllSpeedBars();
       }
       
       if (updateData.type === 'battleStarted') {
+        setForceUpdateCounter(prev => prev + 1);
         setCurrentView('battle');
         
-        // 모든 캐릭터의 속도바 시작
-        setTimeout(() => {
-          // 플레이어 속도바 시작
-          updateData.room?.players?.forEach(player => {
-            if (updateData.room.battleState?.playerHp?.[player.id] > 0) {
-              startSpeedBar(`player_${player.id}`, 100);
+        // 플레이어 속도바 시작
+        updateData.room?.players?.forEach(player => {
+          if (updateData.room.battleState?.playerHp?.[player.id] > 0) {
+            startSpeedBar(`player_${player.id}`, 100);
+          }
+        });
+        
+        // 동료 속도바 시작
+        Object.entries(updateData.room?.playerData || {}).forEach(([playerId, playerData]) => {
+          playerData.companions?.forEach(companion => {
+            const companionKey = `${playerId}_${companion.companionName}`;
+            if (updateData.room.battleState?.companionHp?.[companionKey] > 0) {
+              // 동료 속도 계산
+              const companionData = {
+                "실": { baseSpeed: 45, growthSpeed: 0.5 },
+                "피에나": { baseSpeed: 25, growthSpeed: 0.5 },
+                "애비게일": { baseSpeed: 40, growthSpeed: 0.5 },
+                "림스&베리": { baseSpeed: 50, growthSpeed: 0.5 },
+                "클로에": { baseSpeed: 65, growthSpeed: 0.5 },
+                "나하트라": { baseSpeed: 30, growthSpeed: 0.5 }
+              };
+              const baseData = companionData[companion.companionName];
+              const level = companion.level || 1;
+              const speed = baseData ? 
+                baseData.baseSpeed + (baseData.growthSpeed * (level - 1)) : 150;
+              
+              startSpeedBar(`companion_${companionKey}`, speed);
             }
           });
-          
-          // 동료 속도바 시작
-          Object.entries(updateData.room?.playerData || {}).forEach(([playerId, playerData]) => {
-            playerData.companions?.forEach(companion => {
-              const companionKey = `${playerId}_${companion.companionName}`;
-              if (updateData.room.battleState?.companionHp?.[companionKey] > 0) {
-                                // 동료 속도 계산
-                                const companionData = {
-                                  "실": { baseSpeed: 45, growthSpeed: 0.5 },
-                                  "피에나": { baseSpeed: 25, growthSpeed: 0.5 },
-                                  "애비게일": { baseSpeed: 40, growthSpeed: 0.5 },
-                                  "림스&베리": { baseSpeed: 50, growthSpeed: 0.5 },
-                                  "클로에": { baseSpeed: 65, growthSpeed: 0.5 },
-                                  "나하트라": { baseSpeed: 30, growthSpeed: 0.5 }
-                                };
-                const baseData = companionData[companion.companionName];
-                const level = companion.level || 1;
-                const speed = baseData ? 
-                  baseData.baseSpeed + (baseData.growthSpeed * (level - 1)) : 150;
-                
-                startSpeedBar(`companion_${companionKey}`, speed);
-              }
-            });
-          });
-          
-          // 몬스터 속도바 시작
-          updateData.room?.monsters?.forEach(monster => {
-            if (monster.isAlive) {
-              console.log(`[EXPEDITION] Starting speed bar for ${monster.name} with speed:`, monster.speed);
-              startSpeedBar(`monster_${monster.id}`, monster.speed || 30);
-            }
-          });
-          
-          startTurnProgress();
-        }, 1000);
+        });
+        
+        // 몬스터 속도바 시작
+        updateData.room?.monsters?.forEach(monster => {
+          if (monster.isAlive) {
+            startSpeedBar(`monster_${monster.id}`, monster.speed || 30);
+          }
+        });
+        
+        startTurnProgress();
       }
       
       if (updateData.type === 'playerAttack' || updateData.type === 'monsterAttack' || updateData.type === 'companionAttack') {
@@ -867,7 +850,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
         
         // 승리 시 즉시 방 상태 업데이트
         if (updateData.type === 'victory') {
-          setCurrentRoom(updatedRoom);
+          setCurrentRoom(updateData.room);
           setForceUpdateCounter(prev => prev + 1);
           
           // 승리 시 보상 화면을 보여주지만 자동 수령은 제거
@@ -953,66 +936,8 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
   };
 
   const handleSpeedBarReset = (data) => {
-    // 서버에서 공격이 발생했을 때 해당 캐릭터의 속도바를 리셋
-    if (data.roomId === currentRoom?.id) {
-      const characterId = data.characterId;
-      
-      
-      // 해당 캐릭터의 속도바를 0으로 리셋
-      setSpeedBars(prev => ({ ...prev, [characterId]: 0 }));
-      
-      // 기존 타이머가 있으면 정리
-      if (speedBarIntervalsRef.current[characterId]) {
-        clearInterval(speedBarIntervalsRef.current[characterId]);
-        delete speedBarIntervalsRef.current[characterId];
-      }
-      
-      // 몬스터가 죽은 경우 속도바를 다시 시작하지 않음
-      if (data.characterType === 'monster') {
-        const monsterId = characterId.replace('monster_', '');
-        const monster = currentRoom?.monsters?.find(m => m.id === monsterId);
-        if (monster && !monster.isAlive) {
-          return; // 죽은 몬스터는 속도바를 다시 시작하지 않음
-        }
-      }
-      
-      // 캐릭터 타입에 따라 속도 계산하여 다시 시작
-      let speed = 100; // 기본값
-      
-      if (data.characterType === 'player') {
-        speed = 100;
-      } else if (data.characterType === 'companion') {
-        // 동료 속도 계산
-        const companionKey = characterId.replace('companion_', '');
-        const [playerId, companionName] = companionKey.split('_');
-        const playerData = currentRoom?.playerData?.[playerId];
-        const companion = playerData?.companions?.find(c => c.companionName === companionName);
-        
-        if (companion) {
-          const companionData = {
-            "실": { baseSpeed: 45, growthSpeed: 0.5 },
-            "피에나": { baseSpeed: 25, growthSpeed: 0.5 },
-            "애비게일": { baseSpeed: 40, growthSpeed: 0.5 },
-            "림스&베리": { baseSpeed: 50, growthSpeed: 0.5 },
-            "클로에": { baseSpeed: 65, growthSpeed: 0.5 },
-            "나하트라": { baseSpeed: 35, growthSpeed: 0.5 }
-          };
-          
-          const baseData = companionData[companionName];
-          const level = companion.level || 1;
-          speed = baseData ? 
-            baseData.baseSpeed + (baseData.growthSpeed * (level - 1)) : 150;
-        }
-      } else if (data.characterType === 'monster') {
-        // 몬스터 속도 찾기
-        const monsterId = characterId.replace('monster_', '');
-        const monster = currentRoom?.monsters?.find(m => m.id === monsterId);
-        speed = monster?.speed || 80;
-      }
-      
-      // 속도바 다시 시작
-      startSpeedBar(characterId, speed);
-    }
+    // 🔇 서버 신호 무시 - 클라이언트가 자체적으로 속도바 관리
+    // 탐사전투와 동일하게 클라이언트 독립 실행 방식 사용
   };
 
   // 현재 플레이어 정보 가져오기
@@ -1944,8 +1869,10 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                             isDarkMode ? "bg-gray-700" : "bg-gray-200"
                           }`}>
                             <div
-                              className="h-1.5 rounded-full transition-all duration-100 bg-gradient-to-r from-orange-500 to-orange-600"
-                              style={{ width: `${((speedBars[`player_${player.id}`] || 0) / 200) * 100}%` }}
+                              className={`h-1.5 rounded-full bg-gradient-to-r from-orange-500 to-orange-600 ${
+                                speedBars[`player_${player.id}`]?.noTransition ? '' : 'transition-all duration-300 ease-linear'
+                              }`}
+                              style={{ width: `${((speedBars[`player_${player.id}`]?.current || 0) / 250) * 100}%` }}
                             ></div>
                           </div>
                         </div>
@@ -2020,8 +1947,10 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                                       isDarkMode ? "bg-gray-700" : "bg-gray-200"
                                     }`}>
                                       <div
-                                        className="h-1.5 rounded-full transition-all duration-100 bg-gradient-to-r from-orange-500 to-orange-600"
-                                        style={{ width: `${((speedBars[`companion_${companionKey}`] || 0) / 250) * 100}%` }}
+                                        className={`h-1.5 rounded-full bg-gradient-to-r from-orange-500 to-orange-600 ${
+                                          speedBars[`companion_${companionKey}`]?.noTransition ? '' : 'transition-all duration-300 ease-linear'
+                                        }`}
+                                        style={{ width: `${((speedBars[`companion_${companionKey}`]?.current || 0) / 250) * 100}%` }}
                                       ></div>
                                     </div>
                                   </div>
@@ -2144,16 +2073,18 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                      </div>
                      
                      {/* 속도바 */}
-                     <div className="mb-1.5">
-                       <div className={`w-full rounded-full h-1 ${
-                         isDarkMode ? "bg-gray-700" : "bg-gray-200"
-                       }`}>
-                         <div
-                           className="h-1 rounded-full bg-gradient-to-r from-orange-500 to-orange-600 transition-all duration-100"
-                           style={{ width: `${((speedBars[`monster_${monster.id}`] || 0) / 100) * 100}%` }}
-                         ></div>
-                       </div>
-                     </div>
+                    <div className="mb-1.5">
+                      <div className={`w-full rounded-full h-1 ${
+                        isDarkMode ? "bg-gray-700" : "bg-gray-200"
+                      }`}>
+                        <div
+                          className={`h-1 rounded-full bg-gradient-to-r from-orange-500 to-orange-600 ${
+                            speedBars[`monster_${monster.id}`]?.noTransition ? '' : 'transition-all duration-300 ease-linear'
+                          }`}
+                          style={{ width: `${((speedBars[`monster_${monster.id}`]?.current || 0) / 250) * 100}%` }}
+                        ></div>
+                      </div>
+                    </div>
                      
                      {/* 스탯 표시 */}
                      <div className={`w-full py-2 px-3 rounded-lg text-center ${

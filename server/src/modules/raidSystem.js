@@ -4,7 +4,7 @@ class RaidSystem {
     this.raidBoss = null; // { name, hp, maxHp, isActive, participants: Map<userUuid, damage> }
     this.raidLogs = [];
     this.baseHp = 8000; // 기본 체력
-    this.hpMultiplier = 1.02; // 처치마다 증가하는 배율
+    this.hpMultiplier = 1.055; // 처치마다 증가하는 배율 (5.5% 증가)
   }
 
   // 현재 레이드 보스 체력 계산 (처치 횟수 기반)

@@ -2,8 +2,28 @@
 export const NOTICE_DATA = [
   {
     id: 0,
+    date: "2025.10.05",
+    title: "⚔️ 탐사전투 기능 개선 & 버그 수정",
+    content: [
+      "업데이트시 클라이언트에서 하드 리프레시 적용",
+      "탐사 전투 시스템 개편:",
+      "- 재료를 1~5개까지 선택하여 다수의 물고기와 전투 가능",
+      "- 선택한 재료 수량만큼 랜덤 접두어를 가진 물고기 출현",
+      "- 속도바 기반 전투 기능 적용",
+      "- 도망가기 기능 제거 (자동전투로 대체)",
+      "전투 버그 수정:",
+      "- 체력 0인 캐릭터가 공격하는 문제 해결",
+      "- 클로에 힐 스킬이 죽은 대상을 회복하는 버그 수정",
+      "원정 전투 개선:",
+      "- 서버 타이머와 클라이언트 속도바 싱크 문제 해결"
+    ],
+    isNew: true,
+    type: "major_update"
+  },
+  {
+    id: 1,
     date: "2025.10.04",
-    title: "⚔️장비 강화 기능 & 신규 쿠폰 추가",
+    title: "⚔️ 장비 강화 기능 & 신규 쿠폰 추가",
     content: [
       "신규 쿠폰 '즐거운 한가위 되세요~!' 추가",
       "2025년 10월 19일 오후 12시까지 유효",
@@ -17,11 +37,11 @@ export const NOTICE_DATA = [
       "- 실패 시 다음 시도 확률 증가",
       "- 새 장비 구매 시 강화 수치 리셋"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
-    id: 1,
+    id: 2,
     date: "2025.10.03",
     title: "🔧 동료 시스템 안정성 개선",
     content: [
@@ -37,7 +57,7 @@ export const NOTICE_DATA = [
     type: "major_update"
   },
   {
-    id: 2,
+    id: 3,
     date: "2025.09.29",
     title: "🎁 신규 쿠폰 추가 & 레이드 개선",
     content: [
@@ -52,7 +72,7 @@ export const NOTICE_DATA = [
     type: "major_update"
   },
   {
-    id: 3,
+    id: 4,
     date: "2025.09.28",
     title: "⚔️ 원정 시스템 개선 & 업적 시스템 업데이트",
     content: [
@@ -67,7 +87,7 @@ export const NOTICE_DATA = [
     type: "major_update"
   },
   {
-    id: 4,
+    id: 5,
     date: "2025.09.26",
     title: "⚔️ 원정 시스템 추가 & 레이드 보상 수정",
     content: [
@@ -84,7 +104,7 @@ export const NOTICE_DATA = [
     type: "major_update"
   },
   {
-    id: 5,
+    id: 6,
     date: "2025.09.25",
     title: "⚔️ 레이드 시스템 대폭 개선",
     content: [
@@ -99,7 +119,7 @@ export const NOTICE_DATA = [
     type: "major_update"
   },
   {
-    id: 6,
+    id: 7,
     date: "2025.09.25",
     title: "🏆 새로운 업적 추가 및 시스템 개선",
     content: [
@@ -113,7 +133,7 @@ export const NOTICE_DATA = [
     type: "major_update"
   },
   {
-    id: 7,
+    id: 8,
     date: "2025.09.24",
     title: "🛠️ 시스템 안정성 및 UI 개선",
     content: [
@@ -127,7 +147,7 @@ export const NOTICE_DATA = [
     type: "major_update"
   },
   {
-    id: 8,
+    id: 9,
     date: "2025.09.24",
     title: "🏆 업적 시스템 업데이트",
     content: [
@@ -139,7 +159,7 @@ export const NOTICE_DATA = [
     type: "major_update"
   },
   {
-    id: 9,
+    id: 10,
     date: "2025.09.23",
     title: "🛠️ 게임 시스템 bug-fixed",
     content: [
@@ -153,7 +173,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 10,
+    id: 11,
     date: "2025.09.23",
     title: "⚔️ 레이드 시스템 업데이트",
     content: [
@@ -166,7 +186,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 11,
+    id: 12,
     date: "2025.09.22",
     title: "🎣 낚시 시스템 & 상점 업데이트",
     content: [
@@ -180,7 +200,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 12,
+    id: 13,
     date: "2025.09.22",
     title: "🎆 게임 시스템 업데이트",
     content: [
@@ -194,7 +214,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 13,
+    id: 14,
     date: "2025.09.22",
     title: "🔐 JWT 보안 시스템 대폭 강화",
     content: [
@@ -209,7 +229,7 @@ export const NOTICE_DATA = [
     type: "security"
   },
   {
-    id: 14,
+    id: 15,
     date: "2025.09.22",
     title: "🎉 동료 시스템 업데이트",
     content: [
@@ -222,7 +242,7 @@ export const NOTICE_DATA = [
     type: "update"
   },
   {
-    id: 15,
+    id: 16,
     date: "2025.09.22",
     title: "🔐 보안 시스템 강화",
     content: [
@@ -234,7 +254,7 @@ export const NOTICE_DATA = [
     type: "security"
   },
   {
-    id: 16,
+    id: 17,
     date: "2025.09.19",
     title: "⚔️ 전투 시스템 개선", 
     content: [
@@ -246,7 +266,7 @@ export const NOTICE_DATA = [
     type: "improvement"
   },
   {
-    id: 17,
+    id: 18,
     date: "2025.09.19",
     title: "🦊 여우이야기 Alpha Test 시작",
     content: [
@@ -262,5 +282,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.24"
+  version: "v1.26"
 };

@@ -570,8 +570,32 @@ io.use(socketConnectionLimit);
 // 🌐 Socket.IO 연결 핸들러 (IP 수집용)
 global.io = io; // 전역 접근을 위한 설정
 
+// 🔄 앱 버전 관리 시스템
+let currentBuildVersion = process.env.BUILD_VERSION || Date.now().toString();
+console.log(`📱 현재 앱 버전: ${currentBuildVersion}`);
+
+// 관리자가 새 버전 배포 시 호출하는 함수
+function notifyClientUpdate(newVersion) {
+  currentBuildVersion = newVersion;
+  
+  // 모든 연결된 클라이언트에게 알림
+  io.emit('app:update-available', { 
+    version: newVersion,
+    message: '새로운 버전이 배포되었습니다. 잠시 후 자동으로 새로고침됩니다.',
+    timestamp: Date.now()
+  });
+  
+  console.log(`📢 새 버전 배포 알림 전송: ${newVersion} (연결된 클라이언트: ${io.sockets.sockets.size}개)`);
+}
+
 io.on('connection', (socket) => {
   console.log(`🔌 Socket connected: ${socket.id}`);
+  
+  // 🔄 클라이언트 접속 시 현재 버전 전송
+  socket.emit('app:version', { 
+    version: currentBuildVersion,
+    timestamp: Date.now()
+  });
   
   // 연결 유지를 위한 heartbeat 설정
   let heartbeatInterval;
@@ -4829,14 +4853,29 @@ const getServerAccessoryLevel = (accessoryName) => {
   return level >= 0 ? level + 1 : 0;
 };
 
+// 서버 측 접두어 데이터
+const getServerPrefixData = () => {
+  return [
+    { name: '거대한', hpMultiplier: 1.0, amberMultiplier: 1.0, probability: 75 },
+    { name: '변종', hpMultiplier: 1.45, amberMultiplier: 1.3, probability: 17 },
+    { name: '심연의', hpMultiplier: 2.15, amberMultiplier: 1.8, probability: 6 },
+    { name: '깊은어둠의', hpMultiplier: 3.25, amberMultiplier: 2.5, probability: 2 }
+  ];
+};
+
 // 전투 시작 API (JWT 인증 필수)
 app.post("/api/start-battle", authenticateJWT, async (req, res) => {
   try {
-    const { material, baseFish, selectedPrefix } = req.body;
+    const { material, baseFish, selectedPrefix, materialQuantity = 1 } = req.body;
     // JWT에서 사용자 정보 추출 (보안 강화)
     const { userUuid, username } = req.user;
     
-    console.log(`🔐 Start battle request: ${username} (${userUuid})`, { material, baseFish, selectedPrefix });
+    console.log(`🔐 Start battle request: ${username} (${userUuid})`, { material, baseFish, selectedPrefix, materialQuantity });
+    
+    // 재료 수량 검증 (1~5개)
+    if (materialQuantity < 1 || materialQuantity > 5) {
+      return res.status(400).json({ error: "재료 수량은 1~5개 사이여야 합니다." });
+    }
     
     // 사용자 조회
     const queryResult = await getUserQuery('user', username, userUuid);
@@ -4851,35 +4890,79 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
     
     // 서버에서 전투 상태 계산
     const fishHealthMap = getServerFishHealthMap();
-    const baseHp = fishHealthMap[baseFish] || 100;
-    const enemyMaxHp = Math.floor(baseHp * (selectedPrefix?.hpMultiplier || 1));
-    
+    const prefixData = getServerPrefixData();
     const accessoryLevel = getServerAccessoryLevel(userEquipment?.accessory);
     const playerMaxHp = calculateServerPlayerMaxHp(accessoryLevel);
     
+    // 다중 물고기 생성 (materialQuantity만큼)
+    const enemies = [];
+    for (let i = 0; i < materialQuantity; i++) {
+      // 각 물고기마다 랜덤 접두어 선택
+      let randomPrefix;
+      const random = Math.random() * 100;
+      let cumulative = 0;
+      
+      for (const prefix of prefixData) {
+        cumulative += prefix.probability;
+        if (random <= cumulative) {
+          randomPrefix = prefix;
+          break;
+        }
+      }
+      
+      if (!randomPrefix) {
+        randomPrefix = prefixData[0]; // 기본값
+      }
+      
+      const baseHp = fishHealthMap[baseFish] || 100;
+      const enemyMaxHp = Math.floor(baseHp * randomPrefix.hpMultiplier);
+      
+      // 속도 계산 (물고기 rank 기반)
+      const fishRank = getServerFishData().find(f => f.name === baseFish)?.rank || 1;
+      const baseSpeed = 25 + (fishRank * 0.5);
+      const prefixSpeedMultiplier = randomPrefix.name === '변종' ? 1.1 
+        : randomPrefix.name === '심연의' ? 1.2 
+        : randomPrefix.name === '깊은어둠의' ? 1.3 
+        : 1.0;
+      const speed = baseSpeed * prefixSpeedMultiplier;
+      
+      enemies.push({
+        id: `enemy_${i + 1}`,
+        name: `${randomPrefix.name} ${baseFish}`,
+        baseFish: baseFish,
+        prefix: randomPrefix,
+        hp: enemyMaxHp,
+        maxHp: enemyMaxHp,
+        speed: speed,
+        isAlive: true
+      });
+    }
+    
     const battleState = {
-      enemy: `${selectedPrefix?.name || ''} ${baseFish}`.trim(),
-      baseFish: baseFish,
-      prefix: selectedPrefix,
+      enemies: enemies,
       playerHp: playerMaxHp,
       playerMaxHp: playerMaxHp,
-      enemyHp: enemyMaxHp,
-      enemyMaxHp: enemyMaxHp,
       turn: 'player',
       material: material,
+      materialQuantity: materialQuantity,
       round: 1,
       autoMode: false,
-      canFlee: true,
+      canFlee: false, // 도망가기 불가
       fishingSkill: fishingSkill,
       accessoryLevel: accessoryLevel
     };
     
     console.log("Server calculated battle state:", battleState);
     
+    const enemyNames = enemies.map(e => e.name).join(', ');
     res.json({ 
       success: true, 
       battleState: battleState,
-      log: [`${material}을(를) 사용하여 ${battleState.enemy}(HP: ${enemyMaxHp})와의 전투가 시작되었습니다!`, `전투를 시작하거나 도망갈 수 있습니다.`]
+      log: [
+        `${material} ${materialQuantity}개를 사용하여 ${materialQuantity}마리의 ${baseFish}와의 전투가 시작되었습니다!`,
+        `출현한 적: ${enemyNames}`,
+        `속도바가 채워지면 자동으로 공격합니다!`
+      ]
     });
   } catch (error) {
     console.error("Failed to start battle:", error);
@@ -4890,50 +4973,82 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
 // 전투 공격 API (JWT 인증 필수)
 app.post("/api/battle-attack", authenticateJWT, async (req, res) => {
   try {
-    const { battleState, attackType } = req.body; // 'player' or 'enemy'
+    const { battleState, attackType, targetEnemyId } = req.body; // 'player' or 'enemy'
     // JWT에서 사용자 정보 추출 (보안 강화)
     const { userUuid, username } = req.user;
     
-    console.log(`🔐 Battle attack request: ${username} (${userUuid})`, { attackType });
+    console.log(`🔐 Battle attack request: ${username} (${userUuid})`, { attackType, targetEnemyId });
     
     if (!battleState) {
       return res.status(400).json({ error: "Invalid battle state" });
     }
     
-    let newBattleState = { ...battleState };
+    let newBattleState = { ...battleState, enemies: [...(battleState.enemies || [])] };
     let battleLog = [];
     
     if (attackType === 'player' && newBattleState.turn === 'player') {
       // 플레이어 공격 (서버에서 계산)
       const damage = calculateServerPlayerAttack(newBattleState.fishingSkill);
-      const newEnemyHp = Math.max(0, newBattleState.enemyHp - damage);
       
-      battleLog.push(`플레이어가 ${damage} 데미지를 입혔습니다! (${newBattleState.enemy}: ${newEnemyHp}/${newBattleState.enemyMaxHp})`);
+      // 살아있는 적 찾기
+      const aliveEnemies = newBattleState.enemies.filter(e => e.isAlive);
       
-      newBattleState.enemyHp = newEnemyHp;
+      if (aliveEnemies.length === 0) {
+        return res.status(400).json({ error: "No alive enemies" });
+      }
+      
+      // 대상 적 선택 (targetEnemyId가 있으면 해당 적, 없으면 랜덤)
+      let targetEnemy;
+      if (targetEnemyId) {
+        targetEnemy = newBattleState.enemies.find(e => e.id === targetEnemyId && e.isAlive);
+      }
+      if (!targetEnemy) {
+        targetEnemy = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+      }
+      
+      // 데미지 적용
+      targetEnemy.hp = Math.max(0, targetEnemy.hp - damage);
+      
+      battleLog.push(`플레이어가 ${targetEnemy.name}에게 ${damage} 데미지를 입혔습니다! (${targetEnemy.hp}/${targetEnemy.maxHp})`);
+      
+      if (targetEnemy.hp <= 0) {
+        targetEnemy.isAlive = false;
+        battleLog.push(`${targetEnemy.name}을(를) 물리쳤습니다!`);
+      }
+      
       newBattleState.autoMode = true;
       newBattleState.canFlee = false;
       
-      if (newEnemyHp <= 0) {
-        // 승리
-        const baseReward = Math.floor(newBattleState.enemyMaxHp / 10) + Math.floor(Math.random() * 5) + 1;
-        const amberReward = Math.floor(baseReward * (newBattleState.prefix?.amberMultiplier || 1));
+      // 모든 적이 죽었는지 확인
+      const remainingEnemies = newBattleState.enemies.filter(e => e.isAlive);
+      
+      if (remainingEnemies.length === 0) {
+        // 승리 - 각 적마다 보상 계산
+        let totalAmberReward = 0;
         
-        const prefixBonus = newBattleState.prefix?.amberMultiplier > 1 
-          ? ` (${newBattleState.prefix.name} 보너스 x${newBattleState.prefix.amberMultiplier})` 
-          : '';
+        newBattleState.enemies.forEach(enemy => {
+          const baseReward = Math.floor(enemy.maxHp / 10) + Math.floor(Math.random() * 5) + 1;
+          const amberReward = Math.floor(baseReward * (enemy.prefix?.amberMultiplier || 1));
+          totalAmberReward += amberReward;
+          
+          const prefixBonus = enemy.prefix?.amberMultiplier > 1 
+            ? ` (${enemy.prefix.name} 보너스 x${enemy.prefix.amberMultiplier})` 
+            : '';
+          
+          battleLog.push(`${enemy.name}: 호박석 ${amberReward}개 획득!${prefixBonus}`);
+        });
         
-        battleLog.push(`${newBattleState.enemy}를 물리쳤습니다! 호박석 ${amberReward}개를 획득했습니다!${prefixBonus}`);
+        battleLog.push(`전투 승리! 총 호박석 ${totalAmberReward}개를 획득했습니다!`);
         
         newBattleState.turn = 'victory';
-        newBattleState.amberReward = amberReward;
+        newBattleState.amberReward = totalAmberReward;
         
         res.json({ 
           success: true, 
           battleState: newBattleState, 
           log: battleLog,
           result: 'victory',
-          amberReward: amberReward
+          amberReward: totalAmberReward
         });
       } else {
         // 적 턴으로 변경
@@ -4946,13 +5061,22 @@ app.post("/api/battle-attack", authenticateJWT, async (req, res) => {
         });
       }
     } else if (attackType === 'enemy') {
-      // 적 공격 (서버에서 계산)
-      const fishData = getServerFishData().find(fish => fish.name === newBattleState.baseFish);
-      const fishRank = fishData ? fishData.rank : 1;
-      const damage = calculateServerEnemyAttack(fishRank);
-      const newPlayerHp = Math.max(0, newBattleState.playerHp - damage);
+      // 모든 살아있는 적이 플레이어를 공격
+      const aliveEnemies = newBattleState.enemies.filter(e => e.isAlive);
+      let totalDamage = 0;
       
-      battleLog.push(`${newBattleState.enemy}가 ${damage} 데미지를 입혔습니다! (플레이어: ${newPlayerHp}/${newBattleState.playerMaxHp})`);
+      aliveEnemies.forEach(enemy => {
+        const fishData = getServerFishData().find(fish => fish.name === enemy.baseFish);
+        const fishRank = fishData ? fishData.rank : 1;
+        const damage = calculateServerEnemyAttack(fishRank);
+        totalDamage += damage;
+        
+        battleLog.push(`${enemy.name}이(가) ${damage} 데미지를 입혔습니다!`);
+      });
+      
+      const newPlayerHp = Math.max(0, newBattleState.playerHp - totalDamage);
+      
+      battleLog.push(`총 ${totalDamage} 데미지를 받았습니다! (플레이어: ${newPlayerHp}/${newBattleState.playerMaxHp})`);
       
       newBattleState.playerHp = newPlayerHp;
       
@@ -8357,6 +8481,52 @@ app.get("/api/admin/blocked-ips", async (req, res) => {
   } catch (error) {
     console.error("Failed to fetch blocked IPs:", error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// 🔄 관리자 권한: 클라이언트 업데이트 알림 API
+app.post("/api/admin/notify-update", authenticateJWT, async (req, res) => {
+  try {
+    const { version, message } = req.body;
+    const { username: adminUsername, userUuid: adminUserUuid } = req.query;
+    
+    console.log("🔑 [ADMIN] Update notification request:", { version, adminUsername });
+    
+    // 관리자 권한 확인
+    const adminUser = await UserUuidModel.findOne({ 
+      $or: [{ userUuid: adminUserUuid }, { username: adminUsername }] 
+    });
+    
+    if (!adminUser || !adminUser.isAdmin) {
+      console.log("❌ [ADMIN] Unauthorized update notification attempt:", { adminUsername, adminUserUuid });
+      return res.status(403).json({ 
+        error: "관리자 권한이 필요합니다",
+        code: "ADMIN_REQUIRED"
+      });
+    }
+    
+    // 새 버전으로 업데이트 알림 전송
+    const newVersion = version || `${new Date().toISOString().slice(0, 19).replace(/[-:]/g, '')}`;
+    const customMessage = message || '새로운 버전이 배포되었습니다. 잠시 후 자동으로 새로고침됩니다.';
+    
+    notifyClientUpdate(newVersion);
+    
+    console.log(`✅ [ADMIN] Update notification sent by ${adminUsername}: ${newVersion}`);
+    
+    res.json({ 
+      success: true, 
+      version: newVersion,
+      message: customMessage,
+      connectedClients: io.sockets.sockets.size,
+      timestamp: Date.now()
+    });
+    
+  } catch (error) {
+    console.error("❌ [ADMIN] Failed to send update notification:", error);
+    res.status(500).json({ 
+      error: "업데이트 알림 전송 실패",
+      details: error.message 
+    });
   }
 });
 

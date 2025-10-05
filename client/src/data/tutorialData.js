@@ -134,7 +134,7 @@ export const TUTORIAL_DATA = [
   },
   {
     id: 6,
-    title: "원정 탭",
+    title: "원정",
     color: "teal",
     gradient: "from-teal-50 to-cyan-50",
     content: [
@@ -166,7 +166,7 @@ export const TUTORIAL_DATA = [
   },
   {
     id: 7,
-    title: "동료모집집",
+    title: "동료모집",
     color: "purple",
     gradient: "from-purple-50 to-violet-50",
     content: [

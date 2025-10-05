@@ -801,7 +801,7 @@ class ExpeditionSystem {
             this.increaseMorale(room, player.id, 15);
             
             // 클라이언트에 속도바 리셋 신호 전송
-            io.to(`expedition_${room.id}`).emit('expeditionSpeedBarReset', {
+            io.emit('expeditionSpeedBarReset', {
                 roomId: room.id,
                 characterId: `player_${player.id}`,
                 characterType: 'player'
@@ -831,13 +831,16 @@ class ExpeditionSystem {
             }
             
             // 사기 15 증가 (공격 전에)
+            const moraleBeforeIncrease = room.battleState.companionMorale[companionKey] || 0;
             this.increaseMorale(room, playerId, 15, companionKey);
+            const moraleAfterIncrease = room.battleState.companionMorale[companionKey] || 0;
+            console.log(`[MORALE] ${companion.companionName}: ${moraleBeforeIncrease} → ${moraleAfterIncrease}`);
             
             // 동료 공격 실행
             this.executeCompanionAttack(room, playerId, companion, io);
             
             // 클라이언트에 속도바 리셋 신호 전송
-            io.to(`expedition_${room.id}`).emit('expeditionSpeedBarReset', {
+            io.emit('expeditionSpeedBarReset', {
                 roomId: room.id,
                 characterId: `companion_${companionKey}`,
                 characterType: 'companion'
@@ -868,7 +871,7 @@ class ExpeditionSystem {
             this.executeMonsterAttack(room, monster, io);
             
             // 클라이언트에 속도바 리셋 신호 전송
-            io.to(`expedition_${room.id}`).emit('expeditionSpeedBarReset', {
+            io.emit('expeditionSpeedBarReset', {
                 roomId: room.id,
                 characterId: `monster_${monster.id}`,
                 characterType: 'monster'
@@ -904,7 +907,7 @@ class ExpeditionSystem {
             
             // 몬스터가 죽으면 속도바 리셋 신호 전송
             if (io) {
-                io.to(`expedition_${room.id}`).emit('expeditionSpeedBarReset', {
+                io.emit('expeditionSpeedBarReset', {
                     roomId: room.id,
                     characterId: `monster_${targetMonster.id}`,
                     characterType: 'monster'
@@ -946,6 +949,11 @@ class ExpeditionSystem {
         
         // 스킬 사용 가능 여부 확인
         const canUseSkill = companionStats.skill && currentMorale >= companionStats.skill.moraleRequired;
+        
+        // 디버깅 로그
+        if (companionStats.skill) {
+            console.log(`[COMPANION] ${companion.companionName}: 사기=${currentMorale}, 필요=${companionStats.skill.moraleRequired}, 스킬사용=${canUseSkill}`);
+        }
         
         
         let finalDamage = 0;
@@ -1258,7 +1266,7 @@ class ExpeditionSystem {
                             
                             // 몬스터가 죽으면 속도바 리셋 신호 전송
                             if (io) {
-                                io.to(`expedition_${room.id}`).emit('expeditionSpeedBarReset', {
+                                io.emit('expeditionSpeedBarReset', {
                                     roomId: room.id,
                                     characterId: `monster_${companionTarget.id}`,
                                     characterType: 'monster'
@@ -1600,8 +1608,8 @@ class ExpeditionSystem {
         // processTurn에서 nextTurn을 처리하므로 여기서는 호출하지 않음
     }
 
-    // 플레이어 공격 함수
-    playerAttack(userUuid, targetMonsterId) {
+    // 플레이어 공격 함수 (속도바 기반 - 턴 체크 제거)
+    playerAttack(userUuid, targetMonsterId = null) {
         const roomId = this.playerRooms.get(userUuid);
         if (!roomId) {
             throw new Error('참가한 방이 없습니다.');
@@ -1613,14 +1621,20 @@ class ExpeditionSystem {
         }
 
         const battleState = room.battleState;
-        if (battleState.currentTurn !== 'player') {
-            throw new Error('플레이어 턴이 아닙니다.');
+        
+        // 살아있는 몬스터 찾기
+        const aliveMonsters = room.monsters.filter(m => m.isAlive);
+        if (aliveMonsters.length === 0) {
+            throw new Error('살아있는 몬스터가 없습니다.');
         }
 
-        // 대상 몬스터 찾기
-        const targetMonster = room.monsters.find(m => m.id === targetMonsterId && m.isAlive);
+        // 대상 몬스터 선택
+        let targetMonster;
+        if (targetMonsterId) {
+            targetMonster = room.monsters.find(m => m.id === targetMonsterId && m.isAlive);
+        }
         if (!targetMonster) {
-            throw new Error('유효하지 않은 대상입니다.');
+            targetMonster = aliveMonsters[0]; // 첫 번째 살아있는 몬스터
         }
 
         // 플레이어 데이터 가져오기
@@ -1635,29 +1649,165 @@ class ExpeditionSystem {
         targetMonster.currentHp = Math.max(0, targetMonster.currentHp - finalDamage);
         if (targetMonster.currentHp <= 0) {
             targetMonster.isAlive = false;
-            
-            // 몬스터가 죽으면 속도바 리셋 신호 전송
-            if (io) {
-                io.to(`expedition_${room.id}`).emit('expeditionSpeedBarReset', {
-                    roomId: room.id,
-                    characterId: `monster_${targetMonster.id}`,
-                    characterType: 'monster'
-                });
-            }
         }
 
         // 전투 로그 추가
+        const player = room.players.find(p => p.id === userUuid);
         const attackMessage = isCritical 
-            ? `💥 크리티컬! 플레이어가 ${targetMonster.name}에게 ${finalDamage} 데미지!`
-            : `플레이어가 ${targetMonster.name}에게 ${finalDamage} 데미지!`;
+            ? `💥 크리티컬! ${player?.name || '플레이어'}가 ${targetMonster.name}에게 ${finalDamage} 데미지!`
+            : `${player?.name || '플레이어'}가 ${targetMonster.name}에게 ${finalDamage} 데미지!`;
         
         battleState.battleLog.push(attackMessage);
+        battleState.battleLog.push(`(${targetMonster.currentHp}/${targetMonster.maxHp})`);
         
         if (!targetMonster.isAlive) {
             battleState.battleLog.push(`${targetMonster.name}이(가) 쓰러졌습니다!`);
         }
 
-        return { room, damage: finalDamage, isCritical };
+        return { room, damage: finalDamage, isCritical, targetMonster };
+    }
+
+    // 동료 공격 함수 (속도바 기반)
+    companionAttackSpeedBased(playerId, companionName, targetMonsterId = null) {
+        const roomId = this.playerRooms.get(playerId);
+        if (!roomId) {
+            throw new Error('참가한 방이 없습니다.');
+        }
+
+        const room = this.expeditionRooms.get(roomId);
+        if (!room || room.status !== 'in_progress') {
+            throw new Error('진행 중인 원정이 없습니다.');
+        }
+
+        const companionKey = `${playerId}_${companionName}`;
+        const battleState = room.battleState;
+        
+        // 동료가 살아있는지 확인
+        if (!battleState.companionHp[companionKey] || battleState.companionHp[companionKey] <= 0) {
+            throw new Error('동료가 전투 불능 상태입니다.');
+        }
+
+        // 살아있는 몬스터 찾기
+        const aliveMonsters = room.monsters.filter(m => m.isAlive);
+        if (aliveMonsters.length === 0) {
+            throw new Error('살아있는 몬스터가 없습니다.');
+        }
+
+        // 대상 몬스터 선택
+        let targetMonster;
+        if (targetMonsterId) {
+            targetMonster = room.monsters.find(m => m.id === targetMonsterId && m.isAlive);
+        }
+        if (!targetMonster) {
+            targetMonster = aliveMonsters[Math.floor(Math.random() * aliveMonsters.length)];
+        }
+
+        // 동료 능력치 가져오기
+        const playerData = room.playerData?.[playerId];
+        const companion = playerData?.companions?.find(c => c.companionName === companionName);
+        const companionStats = this.calculateCompanionStats(companionName, companion?.level || 1);
+        
+        if (!companionStats) {
+            throw new Error('동료 정보를 찾을 수 없습니다.');
+        }
+
+        const baseDamage = Math.floor(companionStats.attack * (0.8 + Math.random() * 0.4));
+        const { damage: finalDamage, isCritical } = this.calculateCriticalHit(baseDamage, companionKey, battleState);
+
+        // 몬스터에게 데미지 적용
+        targetMonster.currentHp = Math.max(0, targetMonster.currentHp - finalDamage);
+        if (targetMonster.currentHp <= 0) {
+            targetMonster.isAlive = false;
+        }
+
+        // 사기 증가
+        this.increaseMorale(room, playerId, 15, companionKey);
+
+        // 전투 로그 추가
+        const attackMessage = isCritical
+            ? `💥 크리티컬! ${companionName}이(가) ${targetMonster.name}에게 ${finalDamage} 데미지!`
+            : `${companionName}이(가) ${targetMonster.name}에게 ${finalDamage} 데미지!`;
+        
+        battleState.battleLog.push(attackMessage);
+        battleState.battleLog.push(`(${targetMonster.currentHp}/${targetMonster.maxHp})`);
+        
+        if (!targetMonster.isAlive) {
+            battleState.battleLog.push(`${targetMonster.name}이(가) 쓰러졌습니다!`);
+        }
+
+        return { room, damage: finalDamage, isCritical, targetMonster };
+    }
+
+    // 몬스터 공격 함수 (속도바 기반)
+    monsterAttackSpeedBased(monsterId) {
+        // 몬스터가 속한 방 찾기
+        let room = null;
+        for (const [roomId, r] of this.expeditionRooms) {
+            if (r.monsters.some(m => m.id === monsterId)) {
+                room = r;
+                break;
+            }
+        }
+
+        if (!room || room.status !== 'in_progress') {
+            throw new Error('진행 중인 원정이 없습니다.');
+        }
+
+        const monster = room.monsters.find(m => m.id === monsterId);
+        if (!monster || !monster.isAlive) {
+            throw new Error('유효하지 않은 몬스터입니다.');
+        }
+
+        const battleState = room.battleState;
+
+        // 공격 대상 선택 (플레이어 + 동료)
+        const targets = [];
+        room.players.forEach(player => {
+            if (battleState.playerHp[player.id] > 0) {
+                targets.push({ type: 'player', id: player.id, name: player.name });
+            }
+        });
+        
+        // 동료들도 대상에 추가
+        Object.entries(room.playerData || {}).forEach(([playerId, playerData]) => {
+            playerData.companions?.forEach(companion => {
+                const companionKey = `${playerId}_${companion.companionName}`;
+                if (battleState.companionHp[companionKey] > 0) {
+                    targets.push({ 
+                        type: 'companion', 
+                        id: companionKey, 
+                        name: companion.companionName 
+                    });
+                }
+            });
+        });
+
+        if (targets.length === 0) {
+            throw new Error('공격할 대상이 없습니다.');
+        }
+
+        // 랜덤 대상 선택
+        const target = targets[Math.floor(Math.random() * targets.length)];
+        const damage = Math.floor(monster.attackPower * (0.8 + Math.random() * 0.4));
+
+        // 데미지 적용
+        if (target.type === 'player') {
+            battleState.playerHp[target.id] = Math.max(0, battleState.playerHp[target.id] - damage);
+            battleState.battleLog.push(`${monster.name}이(가) ${target.name}에게 ${damage} 데미지!`);
+            
+            if (battleState.playerHp[target.id] <= 0) {
+                battleState.battleLog.push(`${target.name}이(가) 쓰러졌습니다!`);
+            }
+        } else if (target.type === 'companion') {
+            battleState.companionHp[target.id] = Math.max(0, battleState.companionHp[target.id] - damage);
+            battleState.battleLog.push(`${monster.name}이(가) ${target.name}에게 ${damage} 데미지!`);
+            
+            if (battleState.companionHp[target.id] <= 0) {
+                battleState.battleLog.push(`${target.name}이(가) 쓰러졌습니다!`);
+            }
+        }
+
+        return { room, damage, target };
     }
 
     // 동료 버프 적용

@@ -35,10 +35,37 @@ export function getSocket() {
     // 연결 상태 로깅 (디버깅용)
     socket.on('connect', () => {
       console.log('🔌 Socket connected:', socket.id);
+      
+      // 🔄 재연결 시 자동으로 인증 복구 (모든 브라우저 대응)
+      const nickname = localStorage.getItem("nickname");
+      const userUuid = localStorage.getItem("userUuid");
+      const idToken = localStorage.getItem("idToken");
+      
+      if (nickname && userUuid) {
+        console.log('🔄 Reconnected - Restoring session...');
+        
+        // 1. chat:join으로 사용자 정보 복구
+        socket.emit("chat:join", { 
+          username: nickname, 
+          idToken, 
+          userUuid 
+        });
+        
+        // 2. user-login으로 heartbeat 재시작
+        socket.emit('user-login', { 
+          username: nickname, 
+          userUuid 
+        });
+      }
     });
     
     socket.on('disconnect', (reason) => {
       console.log('❌ Socket disconnected:', reason);
+      
+      // 백그라운드 탭에서 끊긴 경우 (모든 브라우저 공통)
+      if (reason === 'transport close' || reason === 'ping timeout' || reason === 'client namespace disconnect') {
+        console.log('⚠️ 백그라운드에서 연결이 끊겼습니다. 자동 재연결 시도 중...');
+      }
     });
     
     socket.on('connect_error', (error) => {

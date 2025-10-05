@@ -271,7 +271,90 @@ router.post('/rooms/start', authenticateJWT, async (req, res) => {
     }
 });
 
-// 플레이어 공격
+// 플레이어 공격 (속도바 기반)
+router.post('/attack/player', authenticateJWT, (req, res) => {
+    try {
+        const { userUuid } = req.user;
+        const { targetMonsterId } = req.body;
+
+        const result = expeditionSystem.playerAttack(userUuid, targetMonsterId);
+        
+        // 전투 종료 체크
+        if (req.io) {
+            expeditionSystem.checkBattleEnd(result.room, req.io);
+        }
+        
+        // 소켓을 통해 공격 결과 알림
+        if (req.io) {
+            req.io.emit('expeditionBattleUpdate', {
+                type: 'playerAttack',
+                room: expeditionSystem.getRoomForSocket(result.room)
+            });
+        }
+        
+        res.json({ success: true, result });
+    } catch (error) {
+        console.error('[EXPEDITION] Player attack error:', error.message);
+        res.status(400).json({ success: false, error: error.message });
+    }
+});
+
+// 동료 공격 (속도바 기반)
+router.post('/attack/companion', authenticateJWT, (req, res) => {
+    try {
+        const { userUuid } = req.user;
+        const { companionName, targetMonsterId } = req.body;
+
+        const result = expeditionSystem.companionAttackSpeedBased(userUuid, companionName, targetMonsterId);
+        
+        // 전투 종료 체크
+        if (req.io) {
+            expeditionSystem.checkBattleEnd(result.room, req.io);
+        }
+        
+        // 소켓을 통해 공격 결과 알림
+        if (req.io) {
+            req.io.emit('expeditionBattleUpdate', {
+                type: 'companionAttack',
+                room: expeditionSystem.getRoomForSocket(result.room)
+            });
+        }
+        
+        res.json({ success: true, result });
+    } catch (error) {
+        console.error('[EXPEDITION] Companion attack error:', error.message);
+        res.status(400).json({ success: false, error: error.message });
+    }
+});
+
+// 몬스터 공격 (속도바 기반)
+router.post('/attack/monster', authenticateJWT, (req, res) => {
+    try {
+        const { monsterId } = req.body;
+
+        const result = expeditionSystem.monsterAttackSpeedBased(monsterId);
+        
+        // 전투 종료 체크
+        if (req.io) {
+            expeditionSystem.checkBattleEnd(result.room, req.io);
+        }
+        
+        // 소켓을 통해 공격 결과 알림
+        if (req.io) {
+            req.io.emit('expeditionBattleUpdate', {
+                type: 'monsterAttack',
+                room: expeditionSystem.getRoomForSocket(result.room)
+            });
+        }
+        
+        res.json({ success: true, result });
+    } catch (error) {
+        console.error('[EXPEDITION] Monster attack error:', error.message);
+        res.status(400).json({ success: false, error: error.message });
+    }
+});
+
+// 기존 플레이어 공격 API (하위 호환성)
 router.post('/attack', authenticateJWT, (req, res) => {
     try {
         const { userUuid } = req.user;
@@ -279,8 +362,8 @@ router.post('/attack', authenticateJWT, (req, res) => {
 
         const result = expeditionSystem.playerAttack(userUuid, targetMonsterId);
         
-        // 소켓을 통해 공격 결과 알림
         if (req.io) {
+            expeditionSystem.checkBattleEnd(result.room, req.io);
             req.io.emit('expeditionBattleUpdate', {
                 type: 'playerAttack',
                 room: expeditionSystem.getRoomForSocket(result.room)
