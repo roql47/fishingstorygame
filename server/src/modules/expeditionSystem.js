@@ -437,11 +437,16 @@ class ExpeditionSystem {
         };
     }
     
-    // 강화 보너스 계산 함수 (클라이언트와 동일)
+    // 강화 보너스 계산 함수 (3차방정식 - 퍼센트로 표시)
+    calculateEnhancementBonus(level) {
+        if (level <= 0) return 0;
+        return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
+    }
+    
     calculateTotalEnhancementBonus(level) {
         let totalBonus = 0;
         for (let i = 1; i <= level; i++) {
-            totalBonus += 2 + Math.floor(i / 10);
+            totalBonus += this.calculateEnhancementBonus(i);
         }
         return totalBonus;
     }

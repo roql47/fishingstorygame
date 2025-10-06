@@ -19,7 +19,7 @@ const EnhancementModal = ({
   // 한 번에 한 레벨씩만 강화
   const targetLevel = currentEnhancementLevel + 1;
 
-  // 강화 공식: f(x) = 0.2x³ - 0.4x² + 1.6x
+  // 강화 공식: f(x) = 0.2x³ - 0.4x² + 1.6x (퍼센트로 표시)
   const calculateEnhancementBonus = (level) => {
     if (level <= 0) return 0;
     return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
@@ -83,13 +83,42 @@ const EnhancementModal = ({
     };
   };
 
-  // 누적 보너스 계산
+  // 누적 보너스 계산 (%)
   const calculateTotalBonus = (level) => {
     let totalBonus = 0;
     for (let i = 1; i <= level; i++) {
       totalBonus += calculateEnhancementBonus(i);
     }
-    return Math.floor(totalBonus);
+    return totalBonus; // %이므로 소수점 유지
+  };
+
+  // 장비 기본 스탯 계산
+  const getEquipmentBaseStat = () => {
+    if (equipmentType === 'fishingRod') {
+      // 낚시대 기본 공격력 계산
+      const fishingRodOrder = [
+        '나무낚시대', '낡은낚시대', '기본낚시대', '단단한낚시대', '은낚시대', '금낚시대',
+        '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대', '레드다이아몬드낚시대',
+        '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산고등낚시대', '피크닉', '마녀빗자루',
+        '에테르낚시대', '별조각낚시대', '여우꼬리낚시대', '초콜릿롤낚시대', '호박유령낚시대',
+        '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
+      ];
+      const fishingRodLevel = fishingRodOrder.indexOf(equipment);
+      if (fishingRodLevel === -1) return 10;
+      if (fishingRodLevel === 0) return 10;
+      return Math.floor(Math.pow(fishingRodLevel, 1.4) + fishingRodLevel * 2 + 10);
+    } else if (equipmentType === 'accessory') {
+      // 악세사리 기본 체력 계산
+      const accessoryOrder = [
+        '오래된반지', '은목걸이', '금귀걸이', '마법의펜던트', '에메랄드브로치',
+        '토파즈이어링', '자수정팔찌', '백금티아라', '만드라고라허브', '에테르나무묘목',
+        '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
+      ];
+      const accessoryLevel = accessoryOrder.indexOf(equipment) + 1;
+      if (accessoryLevel === 0) return 50;
+      return Math.floor(Math.pow(accessoryLevel, 1.325) + 50 * accessoryLevel + 5 * accessoryLevel);
+    }
+    return 0;
   };
 
   const amberCost = calculateRequiredAmber(targetLevel, equipment, equipmentType);
@@ -97,6 +126,14 @@ const EnhancementModal = ({
   const currentTotalBonus = calculateTotalBonus(currentEnhancementLevel);
   const targetTotalBonus = calculateTotalBonus(targetLevel);
   const bonusIncrease = targetTotalBonus - currentTotalBonus;
+  
+  // 장비 기본 스탯
+  const baseStat = getEquipmentBaseStat();
+  
+  // 실제 추가 스탯 계산
+  const currentActualBonus = (baseStat * currentTotalBonus / 100);
+  const targetActualBonus = (baseStat * targetTotalBonus / 100);
+  const actualBonusIncrease = targetActualBonus - currentActualBonus;
   
   // 강화 성공 확률 정보
   const successRateInfo = calculateEnhancementSuccessRate(currentEnhancementLevel, currentFailCount);
@@ -255,7 +292,7 @@ const EnhancementModal = ({
                   ? isDarkMode ? "text-blue-400" : "text-blue-600"
                   : isDarkMode ? "text-purple-400" : "text-purple-600"
               }`}>
-                +{currentTotalBonus}
+                +{currentActualBonus.toFixed(1)} ({currentTotalBonus.toFixed(1)}%)
               </span>
             </div>
           </div>
@@ -342,7 +379,7 @@ const EnhancementModal = ({
                   <span className={`text-sm ${
                     isDarkMode ? "text-gray-400" : "text-gray-600"
                   }`}>
-                    +{currentTotalBonus}
+                    +{currentActualBonus.toFixed(1)} ({currentTotalBonus.toFixed(1)}%)
                   </span>
                   <span className={`text-sm ${
                     isDarkMode ? "text-gray-500" : "text-gray-400"
@@ -350,19 +387,9 @@ const EnhancementModal = ({
                   <span className={`text-sm font-bold ${
                     isDarkMode ? "text-green-400" : "text-green-600"
                   }`}>
-                    +{targetTotalBonus}
+                    +{targetActualBonus.toFixed(1)} ({targetTotalBonus.toFixed(1)}%)
                   </span>
                 </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className={`text-sm ${
-                  isDarkMode ? "text-gray-300" : "text-gray-700"
-                }`}>증가량</span>
-                <span className={`text-sm font-bold ${
-                  isDarkMode ? "text-green-400" : "text-green-600"
-                }`}>
-                  +{Math.floor(bonusIncrease)}
-                </span>
               </div>
             </div>
           </div>

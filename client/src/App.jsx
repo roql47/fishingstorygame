@@ -517,11 +517,17 @@ function App() {
 
   // 순수 계산 함수들 (TDZ 문제 해결을 위해 최상단에 선언)
   
+  // 강화 보너스 계산 함수 (3차방정식 - 퍼센트로 표시)
+  const calculateEnhancementBonus = (level) => {
+    if (level <= 0) return 0;
+    return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
+  };
+
   // 누적 강화 보너스 계산 (퍼센트)
   const calculateTotalEnhancementBonus = (level) => {
     let totalBonus = 0;
     for (let i = 1; i <= level; i++) {
-      totalBonus += 2 + Math.floor(i / 10);
+      totalBonus += calculateEnhancementBonus(i);
     }
     return totalBonus;
   };
@@ -4392,11 +4398,6 @@ function App() {
     }
   };
 
-  // 강화 보너스 계산 함수 (퍼센트)
-  const calculateEnhancementBonus = (level) => {
-    if (level <= 0) return 0;
-    return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
-  };
 
 
   // 악세사리에 따른 낚시 쿨타임 계산 (낚시실력은 쿨타임에 영향 없음)
@@ -10339,7 +10340,7 @@ function App() {
                     <div className="flex items-center gap-2">
                       <span className={`text-sm ${
                         isDarkMode ? "text-white" : "text-gray-800"
-                      }`}>{battleState ? battleState.playerHp : 0}/{battleState ? battleState.playerMaxHp : 0}</span>
+                      }`}>{battleState ? Math.floor(battleState.playerHp) : 0}/{battleState ? Math.floor(battleState.playerMaxHp) : 0}</span>
                       <span className={`text-xs px-2 py-1 rounded-full font-medium ${
                         battleState && (battleState.playerHp / battleState.playerMaxHp) >= 0.8 
                           ? isDarkMode ? "bg-green-500/20 text-green-400" : "bg-green-500/10 text-green-600"
@@ -10412,7 +10413,7 @@ function App() {
                                   <span className={`text-xs font-medium ${
                                     isDarkMode ? "text-gray-300" : "text-gray-700"
                                   }`}>
-                                    {companionHp?.hp || 0}/{companionHp?.maxHp || 100}
+                                    {Math.floor(companionHp?.hp || 0)}/{Math.floor(companionHp?.maxHp || 100)}
                                   </span>
                                 </div>
                                 {/* 사기바 */}
@@ -10477,7 +10478,7 @@ function App() {
                           <div className="flex items-center gap-2">
                             <span className={`text-sm ${
                               isDarkMode ? "text-white" : "text-gray-800"
-                            }`}>{enemy.hp}/{enemy.maxHp}</span>
+                            }`}>{Math.floor(enemy.hp)}/{Math.floor(enemy.maxHp)}</span>
                             <span className={`text-xs px-2 py-1 rounded-full font-medium ${
                               (enemy.hp / enemy.maxHp) >= 0.8 
                                 ? isDarkMode ? "bg-green-500/20 text-green-400" : "bg-green-500/10 text-green-600"
@@ -10523,7 +10524,7 @@ function App() {
                     <div className="flex items-center gap-2">
                       <span className={`text-sm ${
                         isDarkMode ? "text-white" : "text-gray-800"
-                      }`}>{battleState ? battleState.enemyHp : 0}/{battleState ? battleState.enemyMaxHp : 0}</span>
+                      }`}>{battleState ? Math.floor(battleState.enemyHp) : 0}/{battleState ? Math.floor(battleState.enemyMaxHp) : 0}</span>
                       <span className={`text-xs px-2 py-1 rounded-full font-medium ${
                         battleState && (battleState.enemyHp / battleState.enemyMaxHp) >= 0.8 
                           ? isDarkMode ? "bg-green-500/20 text-green-400" : "bg-green-500/10 text-green-600"
@@ -10610,11 +10611,11 @@ function App() {
                       setBattleState(null);
                     }}
                     className={`flex-1 py-3 px-6 rounded-lg font-bold text-lg transition-all duration-300 hover:scale-105 ${
-                      battleState.turn === 'victory'
+                      battleState && battleState.turn === 'victory'
                         ? isDarkMode
                           ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
                           : "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20"
-                        : battleState.turn === 'fled'
+                        : battleState && battleState.turn === 'fled'
                           ? isDarkMode
                             ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30"
                             : "bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20"

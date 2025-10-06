@@ -1829,14 +1829,18 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                               const playerFishingSkill = playerData?.fishingSkill || 1;
                               const fishingRodEnhancement = playerData?.fishingRodEnhancement || 0;
                               
-                              // 강화 보너스 계산 (내 정보탭과 동일)
+                              // 강화 보너스 계산 (3차방정식 - 강화 모달과 동일)
                               let enhancementBonus = 0;
                               if (calculateTotalEnhancementBonus) {
                                 enhancementBonus = calculateTotalEnhancementBonus(fishingRodEnhancement);
                               } else {
-                                // calculateTotalEnhancementBonus가 없는 경우 직접 계산
+                                // calculateTotalEnhancementBonus가 없는 경우 직접 계산 (3차방정식)
+                                const calculateEnhancementBonus = (level) => {
+                                  if (level <= 0) return 0;
+                                  return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
+                                };
                                 for (let i = 1; i <= fishingRodEnhancement; i++) {
-                                  enhancementBonus += 2 + Math.floor(i / 10);
+                                  enhancementBonus += calculateEnhancementBonus(i);
                                 }
                               }
                               
@@ -1892,7 +1896,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                               style={{ width: `${Math.max(0, hpPercentage)}%` }}
                             ></div>
                             <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white">
-                              {currentHp.toLocaleString()} / {maxHp.toLocaleString()}
+                              {Math.floor(currentHp).toLocaleString()} / {Math.floor(maxHp).toLocaleString()}
                             </span>
                           </div>
                         </div>
@@ -1955,7 +1959,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                                         style={{ width: `${Math.max(0, companionHpPercentage)}%` }}
                                       ></div>
                                       <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white">
-                                        {companionHp}/{companionMaxHp}
+                                        {Math.floor(companionHp)}/{Math.floor(companionMaxHp)}
                                       </span>
                                     </div>
                                   </div>
@@ -2101,7 +2105,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                            style={{ width: `${hpPercentage}%` }}
                          ></div>
                          <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white drop-shadow-lg">
-                           {monster.currentHp.toLocaleString()} / {monster.maxHp.toLocaleString()}
+                           {Math.floor(monster.currentHp).toLocaleString()} / {Math.floor(monster.maxHp).toLocaleString()}
                          </span>
                        </div>
                      </div>
