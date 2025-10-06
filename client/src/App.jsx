@@ -4224,8 +4224,8 @@ function App() {
       if (enhancementBonus > 0) {
         effects.push({
           label: '공격력',
-          value: `${Math.floor(totalAttackPower)} (+${enhancementBonus.toFixed(1)}%)`,
-          description: `탐사 전투에서의 공격력입니다 (기본: ${baseAttackPower}, 강화: +${enhancementBonus.toFixed(1)}%)`
+          value: `${Math.floor(totalAttackPower)}`,
+          description: `탐사 전투에서의 공격력입니다 (기본: ${Math.floor(baseAttackPower)}, 강화: +${Math.floor(enhancementBonus)}%)`
         });
       } else {
         effects.push({
@@ -4261,8 +4261,8 @@ function App() {
       if (enhancementBonus > 0) {
         effects.push({
           label: '체력증가',
-          value: `+${Math.floor(totalMaxHp - baseHp)} (+${enhancementBonus.toFixed(1)}%)`,
-          description: `탐사 전투에서의 추가 체력입니다 (기본: +${baseHpIncrease}, 강화: +${enhancementBonus.toFixed(1)}%)`
+          value: `+${Math.floor(totalMaxHp - baseHp)}`,
+          description: `탐사 전투에서의 추가 체력입니다 (기본: +${Math.floor(baseHpIncrease)}, 강화: +${Math.floor(enhancementBonus)}%)`
         });
       } else {
         effects.push({
@@ -8379,9 +8379,7 @@ function App() {
                         const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement || 0);
                         const maxHp = calculatePlayerMaxHp(accessoryLevel, enhancementBonus);
                         const baseHp = calculatePlayerMaxHp(accessoryLevel, 0);
-                        return enhancementBonus > 0 ? 
-                          `${Math.floor(maxHp)} / ${Math.floor(maxHp)} (+${enhancementBonus.toFixed(1)}%)` : 
-                          `${maxHp} / ${maxHp}`;
+                        return `${Math.floor(maxHp)} / ${Math.floor(maxHp)}`;
                       })()}</span>
                     </div>
                     <div className={`w-full h-3 rounded-full ${
@@ -8405,9 +8403,7 @@ function App() {
                       }`}>{(() => {
                         const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
                         const attackRange = getAttackRange(fishingSkill, enhancementBonus);
-                        return enhancementBonus > 0 ? 
-                          `${Math.floor(attackRange.base)} (+${enhancementBonus.toFixed(1)}%)` : 
-                          attackRange.base;
+                        return Math.floor(attackRange.base);
                       })()}</span>
                     </div>
                     <div className="flex justify-between items-center">
@@ -9187,12 +9183,12 @@ function App() {
                           const enhancementBonus = calculateTotalEnhancementBonus(fishingRodEnhancement);
                           const baseAttack = 0.00225 * Math.pow(fishingSkill, 3) + 0.165 * Math.pow(fishingSkill, 2) + 2 * fishingSkill + 3;
                           const totalAttack = Math.floor(baseAttack + (baseAttack * enhancementBonus / 100));
-                          return enhancementBonus > 0 ? `${Math.floor(totalAttack)} (+${enhancementBonus.toFixed(1)}%)` : Math.floor(totalAttack);
+                          return Math.floor(totalAttack);
                         } else {
                           // 내 공격력 계산
                           const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
                           const attackRange = getAttackRange(fishingSkill, enhancementBonus);
-                          return enhancementBonus > 0 ? `${Math.floor(attackRange.base)} (+${enhancementBonus.toFixed(1)}%)` : Math.floor(attackRange.base);
+                          return Math.floor(attackRange.base);
                         }
                       })()}
                     </div>
@@ -9219,13 +9215,13 @@ function App() {
                           ];
                           const accessoryLevel = accessoryName ? accessories.indexOf(accessoryName) + 1 : 0;
                           const maxHp = calculatePlayerMaxHp(accessoryLevel, enhancementBonus);
-                          return enhancementBonus > 0 ? `${Math.floor(maxHp)} (+${enhancementBonus.toFixed(1)}%)` : Math.floor(maxHp);
+                          return Math.floor(maxHp);
                         } else {
                           // 내 체력 계산
                           const accessoryLevel = getAccessoryLevel(userEquipment.accessory);
                           const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement || 0);
                           const maxHp = calculatePlayerMaxHp(accessoryLevel, enhancementBonus);
-                          return enhancementBonus > 0 ? `${Math.floor(maxHp)} (+${enhancementBonus.toFixed(1)}%)` : Math.floor(maxHp);
+                          return Math.floor(maxHp);
                         }
                       })()}
                     </div>

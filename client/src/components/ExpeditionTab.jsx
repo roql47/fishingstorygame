@@ -1843,7 +1843,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                               // 공격력 계산 (내 정보탭과 동일한 공식)
                               const baseAttack = 0.00225 * Math.pow(playerFishingSkill, 3) + 0.165 * Math.pow(playerFishingSkill, 2) + 2 * playerFishingSkill + 3;
                               const totalAttack = baseAttack + (baseAttack * enhancementBonus / 100);
-                              return enhancementBonus > 0 ? `${Math.floor(totalAttack)} (+${enhancementBonus.toFixed(1)}%)` : Math.floor(totalAttack);
+                              return Math.floor(totalAttack);
                             })()} | 
                             💚 체력: {(() => {
                               const accessoryLevel = playerData?.accessoryLevel || 0;
@@ -1863,7 +1863,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                               // 체력 계산 (내 정보탭과 동일한 공식)
                               const baseHp = accessoryLevel === 0 ? 50 : Math.floor(Math.pow(accessoryLevel, 1.325) + 50 * accessoryLevel + 5 * accessoryLevel);
                               const totalHp = baseHp + (baseHp * enhancementBonus / 100);
-                              return enhancementBonus > 0 ? `${Math.floor(totalHp)} (+${enhancementBonus.toFixed(1)}%)` : Math.floor(totalHp);
+                              return Math.floor(totalHp);
                             })()} | 
                             🛡️ 악세사리: {(() => {
                               const accessoryLevel = playerData?.accessoryLevel || 0;
