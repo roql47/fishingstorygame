@@ -7401,9 +7401,16 @@ app.use(express.static(staticDir, {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html')) {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      // index.html은 캐시하지 않음 (항상 최신 빌드 참조)
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    } else {
+      // JS/CSS 파일은 1시간 캐시 (해시가 있어서 안전)
+      res.setHeader('Cache-Control', 'public, max-age=3600');
     }
-    res.setHeader('Cache-Control', 'public, max-age=3600'); // 1시간
-  }
+  },
+  maxAge: 0
 }));
 
 // SPA fallback handler
@@ -7721,14 +7728,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.272"
+    version: "v1.273"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.272",
+    version: "v1.273",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
