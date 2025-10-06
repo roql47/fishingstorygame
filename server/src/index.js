@@ -1823,7 +1823,7 @@ io.on("connection", (socket) => {
     
     console.log(`🔌 Socket 연결 해제: ${clientIP} (${socket.id}) - ${reason}`);
   });
-  socket.on("chat:join", async ({ username, idToken, userUuid }) => {
+  socket.on("chat:join", async ({ username, idToken, userUuid, isReconnection }) => {
     // 중복 요청 방지
     const joinKey = `${socket.id}-${userUuid || username}`;
     if (processingJoins.has(joinKey)) {
@@ -1836,6 +1836,7 @@ io.on("connection", (socket) => {
     try {
       debugLog("=== CHAT:JOIN DEBUG ===");
       console.log("Chat join request received");
+      console.log("Is reconnection:", isReconnection);
       
       // 토큰 타입에 따라 처리 (구글 또는 카카오)
       let info = null;
@@ -2181,6 +2182,9 @@ io.on("connection", (socket) => {
       if (isNicknameChange) {
         // 닉네임 변경 시에는 메시지를 보내지 않음
         console.log(`[NICKNAME CHANGE] Silent nickname change: ${oldNickname} -> ${user.username}`);
+      } else if (isReconnection) {
+        // 재연결 시에는 입장 메시지를 보내지 않음
+        console.log(`[RECONNECTION] Skipped join message for reconnection: ${user.displayName || user.username}`);
       } else if (!isAlreadyConnected) {
         // 최근 입장 메시지 중복 방지 (5초 내 같은 사용자)
         const now = Date.now();

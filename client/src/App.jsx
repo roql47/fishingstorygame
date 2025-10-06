@@ -479,25 +479,14 @@ function App() {
       if (!document.hidden && username && userUuid) {
         const socket = getSocket();
         
-        // 연결이 끊어졌으면 재연결 시도
+        // 연결이 끊어졌을 때만 재연결 시도
         if (!socket.connected) {
           console.log('👁️ 탭 활성화 - 소켓 재연결 시도...');
           socket.connect();
+          // 재연결 시 chat:join은 socket.js의 connect 이벤트에서 자동으로 처리됨
         } else {
-          // 연결은 되어있지만 인증이 안 되어있을 수 있음 - 자동 복구 시도
-          console.log('👁️ 탭 활성화 - 연결 상태 확인 중...');
-          const nickname = localStorage.getItem("nickname");
-          const storedUserUuid = localStorage.getItem("userUuid");
-          const idToken = localStorage.getItem("idToken");
-          
-          if (nickname && storedUserUuid) {
-            console.log('🔄 탭 활성화 - 인증 상태 복구 시도...');
-            socket.emit("chat:join", { 
-              username: nickname, 
-              idToken, 
-              userUuid: storedUserUuid 
-            });
-          }
+          // 연결은 되어있으므로 chat:join을 다시 보내지 않음
+          console.log('👁️ 탭 활성화 - 소켓 연결 유지 중 (입장 메시지 생략)');
         }
       }
     };

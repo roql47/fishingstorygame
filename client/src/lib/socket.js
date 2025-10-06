@@ -33,22 +33,25 @@ export function getSocket() {
     });
 
     // 연결 상태 로깅 (디버깅용)
+    let isFirstConnection = true; // 최초 연결 여부 추적
+    
     socket.on('connect', () => {
       console.log('🔌 Socket connected:', socket.id);
       
-      // 🔄 재연결 시 자동으로 인증 복구 (모든 브라우저 대응)
+      // 🔄 재연결 시 자동으로 인증 복구 (최초 연결 제외)
       const nickname = localStorage.getItem("nickname");
       const userUuid = localStorage.getItem("userUuid");
       const idToken = localStorage.getItem("idToken");
       
-      if (nickname && userUuid) {
+      if (nickname && userUuid && !isFirstConnection) {
         console.log('🔄 Reconnected - Restoring session...');
         
-        // 1. chat:join으로 사용자 정보 복구
+        // 1. chat:join으로 사용자 정보 복구 (재연결 시에만)
         socket.emit("chat:join", { 
           username: nickname, 
           idToken, 
-          userUuid 
+          userUuid,
+          isReconnection: true // 재연결 플래그 추가
         });
         
         // 2. user-login으로 heartbeat 재시작
@@ -57,6 +60,9 @@ export function getSocket() {
           userUuid 
         });
       }
+      
+      // 최초 연결 이후에는 false로 설정
+      isFirstConnection = false;
     });
     
     socket.on('disconnect', (reason) => {
