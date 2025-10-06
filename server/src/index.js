@@ -567,6 +567,33 @@ const io = new Server(server, {
 // Socket.IO 연결 제한 미들웨어 적용
 io.use(socketConnectionLimit);
 
+// 🔐 Socket.IO JWT 인증 미들웨어 (보안 강화)
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+  
+  if (token && token !== 'temp') {
+    // JWT 토큰이 있으면 검증
+    const decoded = verifyJWT(token);
+    if (decoded) {
+      socket.data.userUuid = decoded.userUuid;
+      socket.data.username = decoded.username;
+      socket.data.isAdmin = decoded.isAdmin;
+      socket.data.isAuthenticated = true;
+      console.log(`🔐 Socket JWT 인증 성공: ${decoded.username} (${decoded.userUuid})`);
+    } else {
+      // 토큰이 유효하지 않지만 재연결을 위해 연결은 허용
+      socket.data.isAuthenticated = false;
+      console.log(`⚠️ Socket JWT 인증 실패: 재연결을 위해 연결 허용`);
+    }
+  } else {
+    // 토큰이 없어도 연결 허용 (재연결 시 토큰 갱신을 위해)
+    socket.data.isAuthenticated = false;
+    console.log(`⚠️ Socket JWT 토큰 없음: 재연결을 위해 연결 허용`);
+  }
+  
+  next(); // 항상 연결 허용 (재연결 안정성)
+});
+
 // 🌐 Socket.IO 연결 핸들러 (IP 수집용)
 global.io = io; // 전역 접근을 위한 설정
 
@@ -602,6 +629,12 @@ io.on('connection', (socket) => {
   
   // 원정 방 참가 이벤트
   socket.on('expedition-join-room', (roomId) => {
+    // 🔐 JWT 인증 확인 (보안 강화)
+    if (!socket.data.isAuthenticated) {
+      console.log(`🚨 [SECURITY] Unauthenticated expedition join attempt: ${socket.id}`);
+      return;
+    }
+    
     socket.join(`expedition_${roomId}`);
     console.log(`🏠 Socket ${socket.id} joined expedition room: ${roomId}`);
   });
@@ -2260,10 +2293,26 @@ io.on("connection", (socket) => {
     const trimmed = msg.content.trim();
     const timestamp = msg.timestamp || new Date().toISOString();
     
+    // 🔐 JWT 인증 확인 (보안 강화)
+    if (!socket.data.isAuthenticated) {
+      socket.emit("chat:error", { 
+        message: "로그인이 필요합니다. 페이지를 새로고침해주세요." 
+      });
+      console.log(`🚨 [SECURITY] Unauthenticated socket message attempt: ${socket.id}`);
+      return;
+    }
+    
     // 사용자 정보 가져오기
     const user = connectedUsers.get(socket.id);
     if (!user || !user.userUuid) {
       socket.emit("chat:error", { message: "사용자 인증이 필요합니다." });
+      return;
+    }
+    
+    // 🔐 메시지 사용자와 Socket 사용자 일치 확인
+    if (msg.username !== socket.data.username) {
+      socket.emit("chat:error", { message: "사용자 정보 불일치" });
+      console.log(`🚨 [SECURITY] Username mismatch: msg=${msg.username}, socket=${socket.data.username}`);
       return;
     }
     
@@ -2642,6 +2691,42 @@ io.on("connection", (socket) => {
 
     if (trimmed === "낚시하기") {
       try {
+        // 🔐 사용자 UUID 확인
+        if (!socket.data.userUuid) {
+          socket.emit("chat:error", { message: "인증이 필요합니다." });
+          return;
+        }
+        
+        // 🛡️ 서버에서 쿨타임 검증 (클라이언트 조작 방지)
+        const dbUser = await UserUuidModel.findOne({ userUuid: socket.data.userUuid });
+        if (!dbUser) {
+          socket.emit("chat:error", { message: "사용자를 찾을 수 없습니다." });
+          return;
+        }
+        
+        const now = new Date();
+        if (dbUser.fishingCooldownEnd && dbUser.fishingCooldownEnd > now) {
+          const remainingTime = Math.ceil((dbUser.fishingCooldownEnd - now) / 1000);
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: `⏰ 낚시 쿨타임이 ${remainingTime}초 남았습니다.`,
+            timestamp: new Date().toISOString()
+          });
+          console.log(`🚨 [SECURITY] Cooldown bypass attempt via socket: ${socket.data.username} (${remainingTime}s remaining)`);
+          return;
+        }
+        
+        // 🛡️ Rate Limiting 추가 (DDoS 방지)
+        const userKey = `fishing_socket_${socket.data.userUuid}`;
+        const lastFishingTime = fishingRateLimit.get(userKey);
+        if (lastFishingTime && (Date.now() - lastFishingTime) < 5000) { // 5초 제한
+          socket.emit("chat:error", { message: "너무 빠르게 낚시하고 있습니다. (5초 대기)" });
+          console.log(`🚨 [SECURITY] Rate limit exceeded via socket: ${socket.data.username}`);
+          return;
+        }
+        fishingRateLimit.set(userKey, Date.now());
+        
         // 사용자 쿼리 생성
         let query;
         if (socket.data.userUuid) {
@@ -2775,8 +2860,8 @@ io.on("connection", (socket) => {
         
         // 쿨타임 설정
         const cooldownDuration = await calculateFishingCooldownTime(query);
-        const now = new Date();
-        const cooldownEnd = new Date(now.getTime() + cooldownDuration);
+        const nowTime = new Date();
+        const cooldownEnd = new Date(nowTime.getTime() + cooldownDuration);
         
         const cooldownUpdateData = {
           userId: query.userId || 'user',
@@ -2870,6 +2955,18 @@ io.on("connection", (socket) => {
 
   // 실시간 데이터 동기화 이벤트들
   socket.on("data:subscribe", ({ userUuid, username }) => {
+    // 🔐 JWT 인증 확인 (보안 강화)
+    if (!socket.data.isAuthenticated) {
+      console.log(`🚨 [SECURITY] Unauthenticated data subscribe attempt: ${socket.id}`);
+      return;
+    }
+    
+    // 🔐 본인 데이터만 구독 가능 (보안 강화)
+    if (userUuid !== socket.data.userUuid || username !== socket.data.username) {
+      console.log(`🚨 [SECURITY] Unauthorized data subscribe: ${socket.data.username} tried to subscribe to ${username}'s data`);
+      return;
+    }
+    
     if (userUuid && username) {
       socket.userUuid = userUuid;
       socket.username = username;
@@ -2884,6 +2981,18 @@ io.on("connection", (socket) => {
   setupRaidWebSocketEvents(socket, UserUuidModel);
 
   socket.on("data:request", async ({ type, userUuid, username }) => {
+    // 🔐 JWT 인증 확인 (보안 강화)
+    if (!socket.data.isAuthenticated) {
+      console.log(`🚨 [SECURITY] Unauthenticated data request: ${socket.id}`);
+      return;
+    }
+    
+    // 🔐 본인 데이터만 요청 가능 (보안 강화)
+    if (userUuid !== socket.data.userUuid || username !== socket.data.username) {
+      console.log(`🚨 [SECURITY] Unauthorized data request: ${socket.data.username} requested ${username}'s data`);
+      return;
+    }
+    
     if (!userUuid || !username) return;
     
     try {

@@ -6599,14 +6599,16 @@ function App() {
         </div>
       </div>
 
-      {/* 탭 네비게이션 */}
-      <div className="relative z-10 max-w-7xl mx-auto px-6 pt-4">
-        <div className={`flex justify-center gap-2 p-2 rounded-2xl ${
+      {/* 탭 네비게이션 - 📱 모바일 최적화 (2단 레이아웃) */}
+      <div className="relative z-10 max-w-7xl mx-auto px-2 sm:px-6 pt-4">
+        <div className={`grid grid-cols-5 gap-1 sm:gap-2 p-1 sm:p-2 rounded-2xl ${
           isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
         }`}>
           <button
             onClick={() => setActiveTab("chat")}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300 font-medium ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
+            } font-medium ${
               activeTab === "chat"
                 ? isDarkMode
                   ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
@@ -6615,13 +6617,16 @@ function App() {
                   ? "text-gray-400 hover:text-gray-300"
                   : "text-gray-600 hover:text-gray-800"
             }`}
+            title="채팅"
           >
-            <MessageCircle className="w-4 h-4" />
-            <span className="hidden sm:inline">채팅</span>
+            <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-[10px] sm:text-sm">채팅</span>
           </button>
           <button
             onClick={() => setActiveTab("inventory")}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300 font-medium ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
+            } font-medium ${
               activeTab === "inventory"
                 ? isDarkMode
                   ? "bg-emerald-500/20 text-emerald-400 border border-emerald-400/30"
@@ -6630,13 +6635,16 @@ function App() {
                   ? "text-gray-400 hover:text-gray-300"
                   : "text-gray-600 hover:text-gray-800"
             }`}
+            title="인벤토리"
           >
-            <Package className="w-4 h-4" />
-            <span className="hidden sm:inline">인벤토리</span>
+            <Package className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-[10px] sm:text-sm">인벤토리</span>
           </button>
           <button
             onClick={() => setActiveTab("shop")}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300 font-medium ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
+            } font-medium ${
               activeTab === "shop"
                 ? isDarkMode
                   ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
@@ -6645,13 +6653,16 @@ function App() {
                   ? "text-gray-400 hover:text-gray-300"
                   : "text-gray-600 hover:text-gray-800"
             }`}
+            title="상점"
           >
-            <ShoppingCart className="w-4 h-4" />
-            <span className="hidden sm:inline">상점</span>
+            <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-[10px] sm:text-sm">상점</span>
           </button>
           <button
             onClick={() => setActiveTab("exploration")}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300 font-medium ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
+            } font-medium ${
               activeTab === "exploration"
                 ? isDarkMode
                   ? "bg-orange-500/20 text-orange-400 border border-orange-400/30"
@@ -6660,13 +6671,16 @@ function App() {
                   ? "text-gray-400 hover:text-gray-300"
                   : "text-gray-600 hover:text-gray-800"
             }`}
+            title="탐사"
           >
-            <Waves className="w-4 h-4" />
-            <span className="hidden sm:inline">탐사</span>
+            <Waves className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-[10px] sm:text-sm">탐사</span>
           </button>
           <button
             onClick={() => setActiveTab("expedition")}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300 font-medium ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
+            } font-medium ${
               activeTab === "expedition"
                 ? isDarkMode
                   ? "bg-teal-500/20 text-teal-400 border border-teal-400/30"
@@ -6675,16 +6689,19 @@ function App() {
                   ? "text-gray-400 hover:text-gray-300"
                   : "text-gray-600 hover:text-gray-800"
             }`}
+            title="원정"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
-            <span className="hidden sm:inline">원정</span>
+            <span className="text-[10px] sm:text-sm">원정</span>
           </button>
           <button
             onClick={() => setActiveTab("companions")}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300 font-medium ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
+            } font-medium ${
               activeTab === "companions"
                 ? isDarkMode
                   ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
@@ -6693,13 +6710,16 @@ function App() {
                   ? "text-gray-400 hover:text-gray-300"
                   : "text-gray-600 hover:text-gray-800"
             }`}
+            title="동료모집"
           >
-            <Users className="w-4 h-4" />
-            <span className="hidden sm:inline">동료모집</span>
+            <Users className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-[10px] sm:text-sm">동료</span>
           </button>
           <button
             onClick={() => setActiveTab("raid")}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300 font-medium ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
+            } font-medium ${
               activeTab === "raid"
                 ? isDarkMode
                   ? "bg-red-500/20 text-red-400 border border-red-400/30"
@@ -6708,13 +6728,16 @@ function App() {
                   ? "text-gray-400 hover:text-gray-300"
                   : "text-gray-600 hover:text-gray-800"
             }`}
+            title="레이드"
           >
-            <Sword className="w-4 h-4" />
-            <span className="hidden sm:inline">레이드</span>
+            <Sword className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-[10px] sm:text-sm">레이드</span>
           </button>
           <button
             onClick={() => setActiveTab("quests")}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300 font-medium ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
+            } font-medium ${
               activeTab === "quests"
                 ? isDarkMode
                   ? "bg-yellow-500/20 text-yellow-400 border border-yellow-400/30"
@@ -6723,13 +6746,16 @@ function App() {
                   ? "text-gray-400 hover:text-gray-300"
                   : "text-gray-600 hover:text-gray-800"
             }`}
+            title="퀘스트"
           >
-            <Target className="w-4 h-4" />
-            <span className="hidden sm:inline">퀘스트</span>
+            <Target className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-[10px] sm:text-sm">퀘스트</span>
           </button>
           <button
             onClick={() => setActiveTab("myinfo")}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300 font-medium ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
+            } font-medium ${
               activeTab === "myinfo"
                 ? isDarkMode
                   ? "bg-emerald-500/20 text-emerald-400 border border-emerald-400/30"
@@ -6738,13 +6764,16 @@ function App() {
                   ? "text-gray-400 hover:text-gray-300"
                   : "text-gray-600 hover:text-gray-800"
             }`}
+            title="내정보"
           >
-            <Trophy className="w-4 h-4" />
-            <span className="hidden sm:inline">내정보</span>
+            <Trophy className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-[10px] sm:text-sm">내정보</span>
           </button>
           <button
             onClick={() => setActiveTab("ranking")}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-300 font-medium ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
+            } font-medium ${
               activeTab === "ranking"
                 ? isDarkMode
                   ? "bg-yellow-500/20 text-yellow-400 border border-yellow-400/30"
@@ -6753,9 +6782,10 @@ function App() {
                   ? "text-gray-400 hover:text-gray-300"
                   : "text-gray-600 hover:text-gray-800"
             }`}
+            title="랭킹"
           >
-            <Trophy className="w-4 h-4" />
-            <span className="hidden sm:inline">랭킹</span>
+            <Trophy className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-[10px] sm:text-sm">랭킹</span>
           </button>
         </div>
       </div>

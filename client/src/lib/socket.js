@@ -8,7 +8,14 @@ let socket = null;
 
 export function getSocket() {
   if (!socket) {
+    // 🔐 JWT 토큰 가져오기
+    const token = localStorage.getItem('jwtToken');
+    
     socket = io(serverUrl, {
+      // 🔐 JWT 인증 추가 (보안 강화)
+      auth: {
+        token: token || 'temp' // 토큰이 없어도 연결 허용 (재연결을 위해)
+      },
       transports: ["websocket", "polling"], // websocket 우선 시도
       timeout: 20000, // 20초 연결 타임아웃
       forceNew: false, // 기존 연결 재사용
@@ -46,6 +53,12 @@ export function getSocket() {
       if (nickname && userUuid && !isFirstConnection) {
         console.log('🔄 Reconnected - Restoring session...');
         
+        // 🔐 JWT 토큰 갱신 요청
+        socket.emit("auth:refresh-token", { 
+          userUuid, 
+          username: nickname 
+        });
+        
         // 1. chat:join으로 사용자 정보 복구 (재연결 시에만)
         socket.emit("chat:join", { 
           username: nickname, 
@@ -63,6 +76,18 @@ export function getSocket() {
       
       // 최초 연결 이후에는 false로 설정
       isFirstConnection = false;
+    });
+    
+    // 🔐 JWT 토큰 갱신 응답 처리
+    socket.on("auth:token", (data) => {
+      if (data.token) {
+        localStorage.setItem("jwtToken", data.token);
+        // Socket의 auth 정보도 업데이트
+        if (socket.auth) {
+          socket.auth.token = data.token;
+        }
+        console.log("🔐 JWT 토큰 갱신 완료");
+      }
     });
     
     socket.on('disconnect', (reason) => {

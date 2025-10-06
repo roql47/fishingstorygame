@@ -28,6 +28,7 @@ const ChatTab = ({
   setIsProcessingFishing,
   serverUrl,
   idToken,
+  mobileConfig,
   userUuid,
   getSocket,
   updateQuestProgress,
@@ -377,7 +378,7 @@ const ChatTab = ({
 
         {/* 채팅 메시지 영역 */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[50vh]">
-          {messages.map((m, i) => (
+          {messages.slice(-(mobileConfig?.maxChatMessages || 100)).map((m, i) => (
             <div key={i} className="group">
               {m.system ? (
                 <div className="text-center my-1">
@@ -613,7 +614,11 @@ const ChatTab = ({
               }}
             />
             <button
-              className={`px-6 py-3 rounded-xl hover:glow-effect transition-all duration-300 transform hover:scale-105 flex items-center gap-2 ${
+              className={`px-6 py-3 rounded-xl hover:glow-effect transition-all flex items-center gap-2 ${
+                mobileConfig?.shouldReduceAnimations 
+                  ? 'duration-200 active:scale-95' 
+                  : 'duration-300 transform hover:scale-105'
+              } ${
                 isDarkMode 
                   ? "glass-input text-blue-400" 
                   : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-blue-600"
