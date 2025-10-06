@@ -1202,6 +1202,12 @@ function App() {
 
   // 액션 애니메이션 함수들
   const triggerDamageEffect = (damage, isCritical = false, source = "unknown") => {
+    // 📱 모바일에서는 애니메이션 비활성화 (성능 최적화)
+    if (mobileConfig?.shouldReduceAnimations) {
+      console.log(`📱 모바일 모드: 애니메이션 스킵 - ${damage} 데미지`);
+      return;
+    }
+    
     const animationId = Date.now() + Math.random();
     console.log(`🎬 애니메이션 트리거: ${damage} 데미지, 크리티컬: ${isCritical}, 소스: ${source}, ID: ${animationId}`);
     
