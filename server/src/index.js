@@ -3945,16 +3945,18 @@ app.get("/api/companion-stats/:userId", async (req, res) => {
       query = queryResult;
     }
     
-    const companionStats = await CompanionStatsModel.find(query);
+    const companionStats = await CompanionStatsModel.find(query).sort({ updatedAt: -1 });
     
-    // 동료별로 정리
+    // 🔧 동료별로 정리 (중복이 있으면 최신 것만 사용)
     const statsMap = {};
     companionStats.forEach(stat => {
-      statsMap[stat.companionName] = {
-        level: stat.level,
-        experience: stat.experience,
-        isInBattle: stat.isInBattle
-      };
+      if (!statsMap[stat.companionName]) {
+        statsMap[stat.companionName] = {
+          level: stat.level,
+          experience: stat.experience,
+          isInBattle: stat.isInBattle
+        };
+      }
     });
     
     console.log(`Companion stats for ${username}:`, statsMap);
@@ -3978,16 +3980,18 @@ app.get("/api/companion-stats/user", async (req, res) => {
     }
     
     const query = { userUuid: userUuid };
-    const companionStats = await CompanionStatsModel.find(query);
+    const companionStats = await CompanionStatsModel.find(query).sort({ updatedAt: -1 });
     
-    // 동료별로 정리
+    // 🔧 동료별로 정리 (중복이 있으면 최신 것만 사용)
     const statsMap = {};
     companionStats.forEach(stat => {
-      statsMap[stat.companionName] = {
-        level: stat.level,
-        experience: stat.experience,
-        isInBattle: stat.isInBattle
-      };
+      if (!statsMap[stat.companionName]) {
+        statsMap[stat.companionName] = {
+          level: stat.level,
+          experience: stat.experience,
+          isInBattle: stat.isInBattle
+        };
+      }
     });
     
     console.log(`Expedition companion stats for ${username}:`, statsMap);
@@ -4025,6 +4029,77 @@ app.get("/api/companion-stats", authenticateJWT, async (req, res) => {
   } catch (error) {
     console.error("Failed to get companion stats:", error);
     res.status(500).json({ error: "동료 능력치 조회에 실패했습니다." });
+  }
+});
+
+// 🔧 중복 동료 데이터 정리 API
+app.post("/api/admin/clean-duplicate-companions", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid: adminUserUuid } = req.user;
+    
+    // 관리자 권한 확인
+    const adminUser = await UserModel.findOne({ userUuid: adminUserUuid });
+    if (!adminUser || !adminUser.isAdmin) {
+      return res.status(403).json({ error: "관리자 권한이 필요합니다." });
+    }
+    
+    console.log('[ADMIN] 중복 동료 데이터 정리 시작...');
+    
+    // 모든 동료 데이터 조회
+    const allCompanions = await CompanionStatsModel.find({}).sort({ updatedAt: -1 });
+    
+    // userUuid + companionName으로 그룹화
+    const grouped = {};
+    allCompanions.forEach(companion => {
+      const key = `${companion.userUuid}_${companion.companionName}`;
+      if (!grouped[key]) {
+        grouped[key] = [];
+      }
+      grouped[key].push(companion);
+    });
+    
+    // 중복 찾기 및 삭제
+    let totalDeleted = 0;
+    const duplicateReport = [];
+    
+    for (const [key, companions] of Object.entries(grouped)) {
+      if (companions.length > 1) {
+        // 최신 것을 제외한 나머지 삭제
+        const idsToDelete = companions.slice(1).map(c => c._id);
+        
+        duplicateReport.push({
+          userUuid: companions[0].userUuid,
+          username: companions[0].username,
+          companionName: companions[0].companionName,
+          duplicateCount: companions.length,
+          kept: {
+            level: companions[0].level,
+            experience: companions[0].experience,
+            updatedAt: companions[0].updatedAt
+          },
+          deleted: companions.slice(1).map(c => ({
+            level: c.level,
+            experience: c.experience,
+            updatedAt: c.updatedAt
+          }))
+        });
+        
+        await CompanionStatsModel.deleteMany({ _id: { $in: idsToDelete } });
+        totalDeleted += idsToDelete.length;
+      }
+    }
+    
+    console.log(`[ADMIN] ✅ 중복 정리 완료: ${totalDeleted}개 삭제`);
+    
+    res.json({
+      success: true,
+      totalDeleted,
+      duplicateReport
+    });
+    
+  } catch (error) {
+    console.error("[ADMIN] 중복 정리 실패:", error);
+    res.status(500).json({ error: "중복 정리에 실패했습니다." });
   }
 });
 
@@ -4096,7 +4171,7 @@ app.get("/api/admin/companion-rollback-logs", authenticateJWT, async (req, res) 
   }
 });
 
-// 동료 능력치 업데이트 API (롤백 방지 강화)
+// 동료 능력치 업데이트 API (롤백 방지 강화 + 중복 방지)
 app.post("/api/update-companion-stats", authenticateJWT, async (req, res) => {
   try {
     const { companionName, level, experience, isInBattle } = req.body;
@@ -4125,51 +4200,50 @@ app.post("/api/update-companion-stats", authenticateJWT, async (req, res) => {
       query = queryResult;
     }
     
-    // 기존 능력치 찾기 또는 생성
-    let companionStat = await CompanionStatsModel.findOne({
+    // 🔧 중복 체크 및 정리 (같은 userUuid + companionName이 여러 개 있으면 최신 것만 남기고 삭제)
+    const duplicates = await CompanionStatsModel.find({
       ...query,
       companionName: companionName
-    });
+    }).sort({ updatedAt: -1 });
     
-    if (!companionStat) {
-      // 🔧 새로운 동료 능력치 생성 시 안전한 기본값 사용
-      companionStat = new CompanionStatsModel({
-        userId: query.userId || 'user',
-        username: query.username || username,
-        userUuid: query.userUuid || userUuid,
-        companionName: companionName,
-        level: Math.max(level || 1, 1), // 최소 레벨 1 보장
-        experience: Math.max(experience || 0, 0), // 최소 경험치 0 보장
-        isInBattle: isInBattle || false
-      });
+    if (duplicates.length > 1) {
+      console.warn(`⚠️ [DUPLICATE] ${username}의 ${companionName} 중복 발견 (${duplicates.length}개) - 오래된 것 삭제`);
       
-      console.log(`🔧 새 동료 능력치 생성: ${companionName} (레벨 ${companionStat.level})`);
-    } else {
-      // 🔧 기존 능력치 업데이트 시 롤백 방지
-      const oldLevel = companionStat.level;
-      const oldExp = companionStat.experience;
+      // 최신 것을 제외한 나머지 삭제
+      const idsToDelete = duplicates.slice(1).map(d => d._id);
+      await CompanionStatsModel.deleteMany({ _id: { $in: idsToDelete } });
       
-      if (level !== undefined) {
-        // 레벨이 기존보다 낮아지는 경우 경고 로그
-        if (level < oldLevel) {
-          console.warn(`⚠️ [ROLLBACK WARNING] ${companionName} 레벨 하락: ${oldLevel} → ${level} (사용자: ${username})`);
-          // 레벨 하락을 허용하되 로그 남김 (관리자 모니터링용)
-        }
-        companionStat.level = Math.max(level, 1); // 최소 레벨 1 보장
-      }
-      
-      if (experience !== undefined) {
-        companionStat.experience = Math.max(experience, 0); // 최소 경험치 0 보장
-      }
-      
-      if (isInBattle !== undefined) {
-        companionStat.isInBattle = isInBattle;
-      }
-      
-      console.log(`🔧 동료 능력치 업데이트: ${companionName} (${oldLevel}→${companionStat.level}, ${oldExp}→${companionStat.experience})`);
+      console.log(`✅ [DUPLICATE CLEANED] ${idsToDelete.length}개의 중복 레코드 삭제`);
     }
     
-    await companionStat.save();
+    // 🔧 findOneAndUpdate로 upsert (중복 방지)
+    const updateData = {};
+    if (level !== undefined) updateData.level = Math.max(level, 1);
+    if (experience !== undefined) updateData.experience = Math.max(experience, 0);
+    if (isInBattle !== undefined) updateData.isInBattle = isInBattle;
+    
+    const companionStat = await CompanionStatsModel.findOneAndUpdate(
+      {
+        ...query,
+        companionName: companionName
+      },
+      {
+        $set: updateData,
+        $setOnInsert: {
+          userId: query.userId || 'user',
+          username: query.username || username,
+          userUuid: query.userUuid || userUuid,
+          companionName: companionName
+        }
+      },
+      {
+        new: true, // 업데이트된 문서 반환
+        upsert: true, // 없으면 생성
+        runValidators: true
+      }
+    );
+    
+    console.log(`✅ 동료 능력치 저장: ${companionName} (레벨 ${companionStat.level}, 경험치 ${companionStat.experience})`);
     
     res.json({ 
       success: true, 

@@ -1,11 +1,12 @@
 const { getFishData, getFishHealthData, getPrefixData } = require('../data/gameData');
 
 class ExpeditionSystem {
-    constructor(EtherKeyModel) {
+    constructor(EtherKeyModel, CompanionStatsModel) {
         this.expeditionRooms = new Map(); // roomId -> room data
         this.playerRooms = new Map(); // playerId -> roomId
         this.roomCounter = 1;
         this.EtherKeyModel = EtherKeyModel; // 에테르 열쇠 모델
+        this.CompanionStatsModel = CompanionStatsModel; // 동료 능력치 모델
         
         // 게임 데이터 캐싱
         this.fishData = getFishData();
@@ -802,14 +803,14 @@ class ExpeditionSystem {
     
     // 플레이어 개별 타이머
     startPlayerTimer(room, player, interval, io) {
-        const timerId = setInterval(() => {
+        const timerId = setInterval(async () => {
             if (!room.battleState || room.battleState.playerHp[player.id] <= 0) {
                 clearInterval(timerId);
                     return;
                 }
                 
             // 전투 종료 체크
-            if (this.checkBattleEnd(room, io)) {
+            if (await this.checkBattleEnd(room, io)) {
                 clearInterval(timerId);
                 return;
             }
@@ -838,14 +839,14 @@ class ExpeditionSystem {
     startCompanionTimer(room, playerId, companion, interval, io) {
         const companionKey = `${playerId}_${companion.companionName}`;
         
-        const timerId = setInterval(() => {
+        const timerId = setInterval(async () => {
             if (!room.battleState || room.battleState.companionHp[companionKey] <= 0) {
                 clearInterval(timerId);
                 return;
             }
             
             // 전투 종료 체크
-            if (this.checkBattleEnd(room, io)) {
+            if (await this.checkBattleEnd(room, io)) {
                 clearInterval(timerId);
                 return;
             }
@@ -875,14 +876,14 @@ class ExpeditionSystem {
     
     // 몬스터 개별 타이머
     startMonsterTimer(room, monster, interval, io) {
-        const timerId = setInterval(() => {
+        const timerId = setInterval(async () => {
             if (!room.battleState || !monster.isAlive) {
                 clearInterval(timerId);
                 return;
             }
             
             // 전투 종료 체크
-            if (this.checkBattleEnd(room, io)) {
+            if (await this.checkBattleEnd(room, io)) {
                 clearInterval(timerId);
                 return;
             }
@@ -1322,12 +1323,12 @@ class ExpeditionSystem {
     }
 
     // 턴 처리 함수 (탐사전투와 동일한 자동 진행 방식)
-    processTurn(room, io) {
+    async processTurn(room, io) {
         const battleState = room.battleState;
         const currentTurn = battleState.currentTurn;
         
         // 전투 종료 조건 확인
-        if (this.checkBattleEnd(room, io)) {
+        if (await this.checkBattleEnd(room, io)) {
             return;
         }
         
@@ -1397,14 +1398,14 @@ class ExpeditionSystem {
     }
 
     // 전투 종료 조건 확인
-    checkBattleEnd(room, io) {
+    async checkBattleEnd(room, io) {
         const battleState = room.battleState;
         
         // 모든 몬스터가 죽었는지 확인
         const allMonstersDefeated = room.monsters.every(m => !m.isAlive);
         if (allMonstersDefeated) {
             this.clearAllTimers(room);
-            this.handleVictory(room);
+            await this.handleVictory(room);
         if (io) {
                 const roomData = this.getRoomForSocket(room);
                 io.emit('expeditionCompleted', roomData);
@@ -2026,7 +2027,7 @@ class ExpeditionSystem {
     }
 
     // 승리 처리
-    handleVictory(room) {
+    async handleVictory(room) {
         room.status = 'completed';
         room.completedAt = new Date();
         
@@ -2040,8 +2041,80 @@ class ExpeditionSystem {
         const rewards = this.calculateRewards(room);
         room.rewards = rewards;
         
+        // 동료 경험치 지급
+        await this.grantCompanionExperience(room);
+        
         room.battleState.battleLog.push('🎉 승리! 모든 몬스터를 물리쳤습니다!');
         room.battleState.battleLog.push(`보상: ${rewards.map(r => `${r.fishName} x${r.quantity}`).join(', ')}`);
+    }
+    
+    // 동료 경험치 지급 함수
+    async grantCompanionExperience(room) {
+        if (!this.CompanionStatsModel) {
+            console.warn('[EXPEDITION] CompanionStatsModel이 없어 경험치를 지급할 수 없습니다.');
+            return;
+        }
+        
+        // 몬스터 총 체력 기반 경험치 계산
+        const totalMonsterHp = room.monsters.reduce((sum, monster) => sum + monster.maxHp, 0);
+        const baseExpReward = Math.floor(totalMonsterHp / 10) + 20; // 기본 경험치
+        
+        console.log(`[EXPEDITION] 승리! 동료들에게 경험치 ${baseExpReward} 지급`);
+        
+        // 각 플레이어의 동료들에게 경험치 지급
+        for (const player of room.players) {
+            const playerData = room.playerData?.[player.id];
+            if (!playerData?.companions || playerData.companions.length === 0) continue;
+            
+            for (const companion of playerData.companions) {
+                try {
+                    // 🔧 DB에서 동료 능력치 조회 (최신 것만)
+                    const companionStat = await this.CompanionStatsModel.findOne({
+                        userUuid: player.id,
+                        companionName: companion.companionName
+                    }).sort({ updatedAt: -1 });
+                    
+                    if (!companionStat) {
+                        console.warn(`[EXPEDITION] ${player.name}의 ${companion.companionName} 능력치를 찾을 수 없습니다.`);
+                        continue;
+                    }
+                    
+                    // 경험치 추가
+                    const oldLevel = companionStat.level;
+                    let newExp = companionStat.experience + baseExpReward;
+                    let newLevel = companionStat.level;
+                    
+                    // 레벨업 체크 (레벨당 필요 경험치 공식: 100 + (level - 1) * 50)
+                    const calculateExpToNextLevel = (level) => {
+                        return 100 + (level - 1) * 50;
+                    };
+                    
+                    let expToNextLevel = calculateExpToNextLevel(newLevel + 1);
+                    
+                    while (newExp >= expToNextLevel && newLevel < 100) {
+                        newExp -= expToNextLevel;
+                        newLevel++;
+                        expToNextLevel = calculateExpToNextLevel(newLevel + 1);
+                        console.log(`[EXPEDITION] 🎉 ${companion.companionName} 레벨업! ${newLevel - 1} → ${newLevel}`);
+                    }
+                    
+                    // DB 업데이트
+                    companionStat.level = newLevel;
+                    companionStat.experience = newExp;
+                    await companionStat.save();
+                    
+                    console.log(`[EXPEDITION] ✅ ${player.name}의 ${companion.companionName}: 레벨 ${newLevel}, 경험치 ${newExp}/${expToNextLevel}`);
+                    
+                    // 전투 로그에 추가
+                    if (newLevel > oldLevel) {
+                        room.battleState.battleLog.push(`🎉 ${companion.companionName}이(가) 레벨업! (Lv.${newLevel})`);
+                    }
+                    
+                } catch (error) {
+                    console.error(`[EXPEDITION] ${companion.companionName} 경험치 저장 실패:`, error);
+                }
+            }
+        }
     }
 
     // 패배 처리

@@ -1114,6 +1114,12 @@ function App() {
 
   // 순위 변동 감지 및 애니메이션 트리거
   const detectRankingChanges = useCallback((newRanking) => {
+    // 📱 모바일에서는 순위 변동 애니메이션 비활성화
+    if (mobileConfig?.shouldReduceAnimations) {
+      setPreviousRanking(newRanking);
+      return;
+    }
+    
     if (previousRanking.length === 0) {
       setPreviousRanking(newRanking);
       return;
@@ -1190,7 +1196,7 @@ function App() {
     }
 
     setPreviousRanking(newRanking);
-  }, [previousRanking, userUuid]);
+  }, [previousRanking, userUuid, mobileConfig?.shouldReduceAnimations]);
 
   // 레이드 보스 상태 변경 시 순위 변동 감지
   useEffect(() => {
@@ -6618,7 +6624,7 @@ function App() {
 
       {/* 탭 네비게이션 - 📱 모바일 최적화 (2단 레이아웃) */}
       <div className="relative z-10 max-w-7xl mx-auto px-2 sm:px-6 pt-4">
-        <div className={`grid grid-cols-5 md:grid-cols-10 gap-1 sm:gap-2 p-1 sm:p-2 rounded-2xl ${
+        <div className={`grid grid-cols-5 lg:grid-cols-10 gap-1 sm:gap-2 p-1 sm:p-2 rounded-2xl ${
           isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
         }`}>
           <button
@@ -8093,14 +8099,18 @@ function App() {
                         <button
                           onClick={attackRaidBoss}
                           disabled={isAttacking || attackCooldown > 0}
-                          className={`w-full px-6 py-4 rounded-xl font-medium transition-all duration-300 relative overflow-hidden ${
+                          className={`w-full px-6 py-4 rounded-xl font-medium relative overflow-hidden ${
+                            mobileConfig?.shouldReduceAnimations ? 'duration-100 active:scale-95' : 'transition-all duration-300'
+                          } ${
                             isAttacking || attackCooldown > 0
                               ? "bg-gray-400 text-gray-600 cursor-not-allowed"
                               : isDarkMode
                                 ? "bg-red-600 hover:bg-red-500 text-white hover:shadow-red-500/50"
                                 : "bg-red-500 hover:bg-red-600 text-white hover:shadow-red-500/50"
-                          } shadow-lg hover:shadow-2xl transform hover:scale-105 ${
-                            isAttacking ? "animate-pulse scale-95" : ""
+                          } shadow-lg ${
+                            mobileConfig?.shouldReduceAnimations ? '' : 'hover:shadow-2xl transform hover:scale-105'
+                          } ${
+                            isAttacking && !mobileConfig?.shouldReduceAnimations ? "animate-pulse scale-95" : ""
                           }`}
                         >
                           {/* 쿨타임 프로그레스바 - 버튼 전체 */}
@@ -8145,8 +8155,10 @@ function App() {
                           return (
                             <div
                               key={player.userUuid}
-                              className={`relative flex items-center justify-between p-2 rounded transition-all duration-300 ${
-                                animation?.isAnimating 
+                              className={`relative flex items-center justify-between p-2 rounded ${
+                                mobileConfig?.shouldReduceAnimations ? '' : 'transition-all duration-300'
+                              } ${
+                                !mobileConfig?.shouldReduceAnimations && animation?.isAnimating 
                                   ? animation.direction === 'up' 
                                     ? "rank-up-animation bg-green-500/30 glow-pulse-animation" 
                                     : animation.direction === 'down'
@@ -8168,8 +8180,8 @@ function App() {
                                   : "all 0.3s ease"
                               }}
                             >
-                              {/* 순위 변동 표시 */}
-                              {change && animation?.isAnimating && (
+                              {/* 순위 변동 표시 - 모바일에서는 비활성화 */}
+                              {!mobileConfig?.shouldReduceAnimations && change && animation?.isAnimating && (
                                 <div className={`absolute -top-3 -right-3 z-20 flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold shadow-lg ${
                                   change.change === 'up' 
                                     ? "bg-gradient-to-r from-green-500 to-emerald-500 text-white animate-bounce"
