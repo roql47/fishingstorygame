@@ -6606,7 +6606,7 @@ function App() {
 
       {/* 탭 네비게이션 - 📱 모바일 최적화 (2단 레이아웃) */}
       <div className="relative z-10 max-w-7xl mx-auto px-2 sm:px-6 pt-4">
-        <div className={`grid grid-cols-5 gap-1 sm:gap-2 p-1 sm:p-2 rounded-2xl ${
+        <div className={`grid grid-cols-5 md:grid-cols-10 gap-1 sm:gap-2 p-1 sm:p-2 rounded-2xl ${
           isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
         }`}>
           <button
