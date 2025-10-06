@@ -6348,18 +6348,22 @@ function App() {
   if (!username && !idToken && !showTermsModal) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-800 flex items-center justify-center p-4 relative overflow-hidden">
-        {/* 배경 장식 요소들 */}
+        {/* 배경 장식 요소들 - 모바일에서는 애니메이션 비활성화 */}
+        {!mobileConfig?.shouldReduceAnimations && (
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
           <div className="absolute bottom-1/4 right-1/4 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl animate-pulse delay-500"></div>
         </div>
+        )}
 
         <div className="relative z-10 w-full max-w-md">
           <div className="glass-card rounded-3xl p-8 board-shadow">
             <div className="text-center mb-8">
               {/* 로고 */}
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-6 bg-gradient-to-br from-blue-500/20 to-purple-500/20 backdrop-blur-sm border border-white/10 bounce-slow">
+              <div className={`inline-flex items-center justify-center w-20 h-20 rounded-full mb-6 bg-gradient-to-br from-blue-500/20 to-purple-500/20 backdrop-blur-sm border border-white/10 ${
+                mobileConfig?.shouldReduceAnimations ? '' : 'bounce-slow'
+              }`}>
                 <Fish className="w-10 h-10 text-blue-400 drop-shadow-lg" />
               </div>
               
@@ -6465,7 +6469,8 @@ function App() {
         ? "bg-gradient-to-br from-gray-900 via-black to-gray-800" 
         : "bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-200"
     }`}>
-      {/* 배경 장식 요소들 */}
+      {/* 배경 장식 요소들 - 모바일에서는 애니메이션 비활성화 */}
+      {!mobileConfig?.shouldReduceAnimations && (
       <div className="absolute inset-0 overflow-hidden">
         <div className={`absolute top-1/4 left-1/4 w-96 h-96 rounded-full blur-3xl animate-pulse ${
           isDarkMode ? "bg-blue-500/5" : "bg-blue-500/10"
@@ -6477,6 +6482,7 @@ function App() {
           isDarkMode ? "bg-emerald-500/5" : "bg-emerald-500/10"
         }`}></div>
       </div>
+      )}
 
       {/* 헤더 */}
       <div className={`sticky top-0 z-50 border-b ${
@@ -7120,7 +7126,9 @@ function App() {
                 <>
                   {inventory.length === 0 ? (
                   <div className="text-center py-12">
-                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 mb-4 bounce-slow">
+                    <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 mb-4 ${
+                      mobileConfig?.shouldReduceAnimations ? '' : 'bounce-slow'
+                    }`}>
                       <Fish className={`w-8 h-8 ${
                         isDarkMode ? "text-blue-400" : "text-blue-600"
                       }`} />

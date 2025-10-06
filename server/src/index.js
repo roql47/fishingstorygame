@@ -2711,41 +2711,11 @@ io.on("connection", (socket) => {
 
     if (trimmed === "낚시하기") {
       try {
-        // 🔐 사용자 UUID 확인
+        // 🔐 사용자 UUID 확인 (인증만 체크, 쿨타임은 클라이언트에서 관리)
         if (!socket.data.userUuid) {
           socket.emit("chat:error", { message: "인증이 필요합니다." });
           return;
         }
-        
-        // 🛡️ 서버에서 쿨타임 검증 (클라이언트 조작 방지)
-        const dbUser = await UserUuidModel.findOne({ userUuid: socket.data.userUuid });
-        if (!dbUser) {
-          socket.emit("chat:error", { message: "사용자를 찾을 수 없습니다." });
-          return;
-        }
-        
-        const now = new Date();
-        if (dbUser.fishingCooldownEnd && dbUser.fishingCooldownEnd > now) {
-          const remainingTime = Math.ceil((dbUser.fishingCooldownEnd - now) / 1000);
-          socket.emit("chat:message", {
-            system: true,
-            username: "system",
-            content: `⏰ 낚시 쿨타임이 ${remainingTime}초 남았습니다.`,
-            timestamp: new Date().toISOString()
-          });
-          console.log(`🚨 [SECURITY] Cooldown bypass attempt via socket: ${socket.data.username} (${remainingTime}s remaining)`);
-          return;
-        }
-        
-        // 🛡️ Rate Limiting 추가 (DDoS 방지)
-        const userKey = `fishing_socket_${socket.data.userUuid}`;
-        const lastFishingTime = fishingRateLimit.get(userKey);
-        if (lastFishingTime && (Date.now() - lastFishingTime) < 5000) { // 5초 제한
-          socket.emit("chat:error", { message: "너무 빠르게 낚시하고 있습니다. (5초 대기)" });
-          console.log(`🚨 [SECURITY] Rate limit exceeded via socket: ${socket.data.username}`);
-          return;
-        }
-        fishingRateLimit.set(userKey, Date.now());
         
         // 사용자 쿼리 생성
         let query;
@@ -4809,6 +4779,42 @@ app.post("/api/set-fishing-cooldown", authenticateJWT, async (req, res) => {
   } catch (error) {
     console.error("Failed to set fishing cooldown:", error);
     res.status(500).json({ error: "낚시 쿨타임 설정에 실패했습니다." });
+  }
+});
+
+// 🔧 낚시 쿨타임 강제 클리어 API (버그 수정용)
+app.post("/api/clear-fishing-cooldown", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid, username } = req.user;
+    
+    console.log(`🔧 Clear fishing cooldown request: ${username} (${userUuid})`);
+    
+    // UserUuidModel과 CooldownModel 모두 업데이트
+    await Promise.all([
+      UserUuidModel.updateOne(
+        { userUuid },
+        { $set: { fishingCooldownEnd: null } }
+      ),
+      CooldownModel.updateOne(
+        { userUuid },
+        { $set: { fishingCooldownEnd: null } }
+      )
+    ]);
+    
+    console.log(`✅ Fishing cooldown cleared for ${username}`);
+    
+    // WebSocket으로 실시간 업데이트
+    broadcastUserDataUpdate(userUuid, username, 'cooldown', {
+      fishingCooldown: 0
+    });
+    
+    res.json({ 
+      success: true,
+      message: "낚시 쿨타임이 초기화되었습니다."
+    });
+  } catch (error) {
+    console.error("Failed to clear fishing cooldown:", error);
+    res.status(500).json({ error: "쿨타임 초기화에 실패했습니다." });
   }
 });
 
@@ -9165,6 +9171,38 @@ async function bootstrap() {
     
     // 🚀 DB 인덱스 최적화 실행
     await optimizeDBIndexes();
+    
+    // 🔧 이상한 쿨타임 값 정리 (서버 시작 시 1회 실행)
+    try {
+      const now = new Date();
+      const maxValidCooldown = new Date(now.getTime() + 10 * 60 * 1000); // 현재 시간 + 10분
+      
+      // 10분 이상 남은 쿨타임은 이상한 값으로 간주하고 제거
+      const result = await UserUuidModel.updateMany(
+        { 
+          fishingCooldownEnd: { $gt: maxValidCooldown } 
+        },
+        { 
+          $set: { fishingCooldownEnd: null } 
+        }
+      );
+      
+      if (result.modifiedCount > 0) {
+        console.log(`🔧 Cleared ${result.modifiedCount} invalid fishing cooldown(s)`);
+      }
+      
+      // CooldownModel도 정리
+      await CooldownModel.updateMany(
+        { 
+          fishingCooldownEnd: { $gt: maxValidCooldown } 
+        },
+        { 
+          $set: { fishingCooldownEnd: null } 
+        }
+      );
+    } catch (error) {
+      console.error('❌ Failed to clear invalid cooldowns:', error);
+    }
     
     // 연결 상태 모니터링
     mongoose.connection.on('connected', () => {

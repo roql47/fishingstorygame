@@ -6,8 +6,8 @@ export const NOTICE_DATA = [
     title: "🔐 보안 시스템 안정화 & 모바일 UI 최적화",
     content: [
       "보안 강화:",
-      "- Socket.IO JWT 인증 추가 (무한낚시 취약점 완전 차단)",
-      "- 서버 측 낚시 쿨타임 검증 추가 (클라이언트 조작 방지)",
+      "- Socket.IO JWT 인증 추가",
+      "- 서버 측 낚시 쿨타임 검증 추가",
       "- Socket Rate Limiting 강화 (5초에 1번 제한)",
       "- 데이터 요청 시 본인 데이터만 접근 가능하도록 제한",
       "- 원정/레이드 시스템 JWT 인증 필수화",
@@ -324,5 +324,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.272"
+  version: "v1.273"
 };
