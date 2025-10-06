@@ -972,6 +972,26 @@ fishDiscoverySchema.index({ userUuid: 1, fishName: 1 }, { unique: true });
 
 const FishDiscoveryModel = mongoose.model("FishDiscovery", fishDiscoverySchema);
 
+// Expedition Reward Claim Schema (원정 보상 수령 기록 - 중복 방지)
+const expeditionRewardClaimSchema = new mongoose.Schema(
+  {
+    userUuid: { type: String, required: true, index: true },
+    username: { type: String, required: true },
+    roomId: { type: String, required: true },
+    rewards: [{
+      fishName: String,
+      quantity: Number
+    }],
+    claimedAt: { type: Date, default: Date.now }
+  },
+  { timestamps: true }
+);
+
+// 사용자당 방별 중복 수령 방지
+expeditionRewardClaimSchema.index({ userUuid: 1, roomId: 1 }, { unique: true });
+
+const ExpeditionRewardClaimModel = mongoose.model("ExpeditionRewardClaim", expeditionRewardClaimSchema);
+
 // Admin Schema (관리자 시스템)
 const adminSchema = new mongoose.Schema(
   {

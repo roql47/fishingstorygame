@@ -431,6 +431,21 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
         const mongoose = require('mongoose');
         const CatchModel = mongoose.model('Catch');
         const FishDiscoveryModel = mongoose.model('FishDiscovery');
+        const ExpeditionRewardClaimModel = mongoose.model('ExpeditionRewardClaim');
+        
+        // 🔒 DB에서 이미 보상을 수령했는지 확인 (중복 방지)
+        const existingClaim = await ExpeditionRewardClaimModel.findOne({ 
+            userUuid: userUuid, 
+            roomId: room.id 
+        });
+        
+        if (existingClaim) {
+            console.log(`[EXPEDITION] ⚠️ 중복 보상 수령 시도 차단: ${username} (${userUuid}) - Room: ${room.id}`);
+            return res.status(400).json({ 
+                success: false, 
+                error: '이미 보상을 수령하였습니다.' 
+            });
+        }
         
         for (const reward of playerRewards) {
             // 물고기 발견 기록 저장 (중복 방지)
@@ -461,7 +476,32 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
             }
         }
 
-        // 보상 수령 완료 표시
+        // 🔒 DB에 보상 수령 기록 저장 (중복 방지)
+        try {
+            await ExpeditionRewardClaimModel.create({
+                userUuid: userUuid,
+                username: username,
+                roomId: room.id,
+                rewards: playerRewards.map(r => ({
+                    fishName: r.fishName,
+                    quantity: r.quantity
+                })),
+                claimedAt: new Date()
+            });
+            console.log(`[EXPEDITION] ✅ 보상 수령 기록 저장: ${username} (${userUuid}) - Room: ${room.id}`);
+        } catch (error) {
+            // 중복 키 에러 (이미 수령한 경우)
+            if (error.code === 11000) {
+                console.log(`[EXPEDITION] ⚠️ 중복 보상 수령 시도 차단 (DB): ${username} (${userUuid}) - Room: ${room.id}`);
+                return res.status(400).json({ 
+                    success: false, 
+                    error: '이미 보상을 수령하였습니다.' 
+                });
+            }
+            throw error; // 다른 에러는 상위로 전달
+        }
+
+        // 보상 수령 완료 표시 (메모리)
         console.log(`[EXPEDITION] Before markRewardsClaimed - Room rewards count: ${room.rewards?.length}`);
         expeditionSystem.markRewardsClaimed(userUuid);
         

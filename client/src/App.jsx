@@ -6,6 +6,8 @@ import axios from "axios";
 import { protectConsole, showProtectionMessage, disableRightClick } from "./utils/security";
 // 🚀 게임 데이터 훅 임포트 (변수 초기화 문제 해결)
 import { useGameData } from "./hooks/useGameData";
+// 📱 모바일 최적화 훅
+import { useMobileOptimization } from "./hooks/useMobile";
 import ChatTab from "./components/ChatTab";
 import NoticeModal from "./components/NoticeModal";
 import TutorialModal from "./components/TutorialModal";
@@ -217,6 +219,9 @@ function App() {
     getAllShopItems,
     getAvailableShopItem
   } = useGameData();
+
+  // 📱 모바일 최적화 훅 사용
+  const mobileConfig = useMobileOptimization();
 
   // Socket 초기화
   const socket = getSocket();
