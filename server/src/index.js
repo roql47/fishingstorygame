@@ -4828,13 +4828,29 @@ const getServerFishHealthMap = () => {
 };
 
 // 서버 측 전투 계산 함수들
-const calculateServerPlayerMaxHp = (accessoryLevel) => {
-  if (accessoryLevel === 0) return 100;
-  return Math.floor(Math.pow(accessoryLevel, 1.125) + 30 * accessoryLevel);
+// 강화 보너스 계산 함수 (클라이언트와 동일)
+const calculateServerTotalEnhancementBonus = (level) => {
+  let totalBonus = 0;
+  for (let i = 1; i <= level; i++) {
+    totalBonus += 2 + Math.floor(i / 10);
+  }
+  return totalBonus;
 };
 
-const calculateServerPlayerAttack = (fishingSkill) => {
-  return Math.floor(Math.pow(fishingSkill, 1.4) + fishingSkill * 2 + 5 + Math.random() * 10);
+// 체력 계산 (내정보 탭과 동일한 공식 사용 + 강화 보너스 적용)
+const calculateServerPlayerMaxHp = (accessoryLevel, enhancementBonusPercent = 0) => {
+  if (accessoryLevel === 0 && enhancementBonusPercent === 0) return 50; // 기본 체력
+  const baseHp = accessoryLevel === 0 ? 50 : Math.floor(Math.pow(accessoryLevel, 1.325) + 50 * accessoryLevel + 5 * accessoryLevel);
+  // 강화 보너스 퍼센트 적용
+  return baseHp + (baseHp * enhancementBonusPercent / 100);
+};
+
+// 공격력 계산 (내정보 탭과 동일한 공식 사용 + 강화 보너스 적용)
+const calculateServerPlayerAttack = (fishingSkill, enhancementBonusPercent = 0) => {
+  const baseAttack = 0.00225 * Math.pow(fishingSkill, 3) + 0.165 * Math.pow(fishingSkill, 2) + 2 * fishingSkill + 3;
+  const totalAttack = baseAttack + (baseAttack * enhancementBonusPercent / 100);
+  const randomFactor = 0.8 + Math.random() * 0.4;
+  return Math.floor(totalAttack * randomFactor);
 };
 
 const calculateServerEnemyAttack = (fishRank) => {
@@ -4892,7 +4908,11 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
     const fishHealthMap = getServerFishHealthMap();
     const prefixData = getServerPrefixData();
     const accessoryLevel = getServerAccessoryLevel(userEquipment?.accessory);
-    const playerMaxHp = calculateServerPlayerMaxHp(accessoryLevel);
+    
+    // 강화 보너스 계산 (내정보 탭과 동일)
+    const accessoryEnhancement = userEquipment?.accessoryEnhancement || 0;
+    const accessoryEnhancementBonus = calculateServerTotalEnhancementBonus(accessoryEnhancement);
+    const playerMaxHp = calculateServerPlayerMaxHp(accessoryLevel, accessoryEnhancementBonus);
     
     // 다중 물고기 생성 (materialQuantity만큼)
     const enemies = [];
@@ -4938,6 +4958,10 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
       });
     }
     
+    // 낚시대 강화 보너스도 저장 (공격 시 사용)
+    const fishingRodEnhancement = userEquipment?.fishingRodEnhancement || 0;
+    const fishingRodEnhancementBonus = calculateServerTotalEnhancementBonus(fishingRodEnhancement);
+    
     const battleState = {
       enemies: enemies,
       playerHp: playerMaxHp,
@@ -4949,7 +4973,8 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
       autoMode: false,
       canFlee: false, // 도망가기 불가
       fishingSkill: fishingSkill,
-      accessoryLevel: accessoryLevel
+      accessoryLevel: accessoryLevel,
+      fishingRodEnhancementBonus: fishingRodEnhancementBonus // 강화 보너스 추가
     };
     
     console.log("Server calculated battle state:", battleState);
@@ -4987,8 +5012,9 @@ app.post("/api/battle-attack", authenticateJWT, async (req, res) => {
     let battleLog = [];
     
     if (attackType === 'player' && newBattleState.turn === 'player') {
-      // 플레이어 공격 (서버에서 계산)
-      const damage = calculateServerPlayerAttack(newBattleState.fishingSkill);
+      // 플레이어 공격 (서버에서 계산) - 강화 보너스 적용
+      const enhancementBonus = newBattleState.fishingRodEnhancementBonus || 0;
+      const damage = calculateServerPlayerAttack(newBattleState.fishingSkill, enhancementBonus);
       
       // 살아있는 적 찾기
       const aliveEnemies = newBattleState.enemies.filter(e => e.isAlive);

@@ -18,7 +18,7 @@ import {
   Plus
 } from 'lucide-react';
 
-const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, syncBattleCompanionsToServer, battleCompanions, companionStats }) => {
+const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, syncBattleCompanionsToServer, battleCompanions, companionStats, userEquipment, fishingSkill, calculateTotalEnhancementBonus }) => {
   // 접두어에 따른 색상 반환 (탐사와 동일)
   const getPrefixColor = (prefixName, isDark) => {
     switch (prefixName) {
@@ -1826,10 +1826,44 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                           }`}>
                             🎣 낚시실력: {playerData?.fishingSkill || 1} | 
                             ⚔️ 공격력: {(() => {
-                              const fishingSkill = playerData?.fishingSkill || 1;
-                              // 내 정보탭과 동일한 공식 사용
-                              const baseAttack = 0.00225 * Math.pow(fishingSkill, 3) + 0.165 * Math.pow(fishingSkill, 2) + 2 * fishingSkill + 3;
-                              return Math.floor(baseAttack);
+                              const playerFishingSkill = playerData?.fishingSkill || 1;
+                              const fishingRodEnhancement = playerData?.fishingRodEnhancement || 0;
+                              
+                              // 강화 보너스 계산 (내 정보탭과 동일)
+                              let enhancementBonus = 0;
+                              if (calculateTotalEnhancementBonus) {
+                                enhancementBonus = calculateTotalEnhancementBonus(fishingRodEnhancement);
+                              } else {
+                                // calculateTotalEnhancementBonus가 없는 경우 직접 계산
+                                for (let i = 1; i <= fishingRodEnhancement; i++) {
+                                  enhancementBonus += 2 + Math.floor(i / 10);
+                                }
+                              }
+                              
+                              // 공격력 계산 (내 정보탭과 동일한 공식)
+                              const baseAttack = 0.00225 * Math.pow(playerFishingSkill, 3) + 0.165 * Math.pow(playerFishingSkill, 2) + 2 * playerFishingSkill + 3;
+                              const totalAttack = baseAttack + (baseAttack * enhancementBonus / 100);
+                              return enhancementBonus > 0 ? `${Math.floor(totalAttack)} (+${enhancementBonus.toFixed(1)}%)` : Math.floor(totalAttack);
+                            })()} | 
+                            💚 체력: {(() => {
+                              const accessoryLevel = playerData?.accessoryLevel || 0;
+                              const accessoryEnhancement = playerData?.accessoryEnhancement || 0;
+                              
+                              // 강화 보너스 계산 (내 정보탭과 동일)
+                              let enhancementBonus = 0;
+                              if (calculateTotalEnhancementBonus) {
+                                enhancementBonus = calculateTotalEnhancementBonus(accessoryEnhancement);
+                              } else {
+                                // calculateTotalEnhancementBonus가 없는 경우 직접 계산
+                                for (let i = 1; i <= accessoryEnhancement; i++) {
+                                  enhancementBonus += 2 + Math.floor(i / 10);
+                                }
+                              }
+                              
+                              // 체력 계산 (내 정보탭과 동일한 공식)
+                              const baseHp = accessoryLevel === 0 ? 50 : Math.floor(Math.pow(accessoryLevel, 1.325) + 50 * accessoryLevel + 5 * accessoryLevel);
+                              const totalHp = baseHp + (baseHp * enhancementBonus / 100);
+                              return enhancementBonus > 0 ? `${Math.floor(totalHp)} (+${enhancementBonus.toFixed(1)}%)` : Math.floor(totalHp);
                             })()} | 
                             🛡️ 악세사리: {(() => {
                               const accessoryLevel = playerData?.accessoryLevel || 0;

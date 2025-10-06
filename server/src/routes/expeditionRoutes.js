@@ -231,10 +231,13 @@ router.post('/rooms/start', authenticateJWT, async (req, res) => {
             
             const accessoryLevel = getAccessoryLevel(userEquipment?.accessory) || 1;
             
+            // 강화 정보도 포함 (내정보 탭과 동일한 능력치를 참조하도록)
             allPlayerData[player.id] = {
                 companions: companions,
                 fishingSkill: fishingSkill,
-                accessoryLevel: accessoryLevel
+                accessoryLevel: accessoryLevel,
+                fishingRodEnhancement: userEquipment?.fishingRodEnhancement || 0,
+                accessoryEnhancement: userEquipment?.accessoryEnhancement || 0
             };
             
             console.log(`[EXPEDITION] Player ${player.name} data:`, {

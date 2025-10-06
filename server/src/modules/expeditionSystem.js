@@ -343,8 +343,12 @@ class ExpeditionSystem {
             const accessoryLevel = playerData?.accessoryLevel || 1;
             const fishingSkill = playerData?.fishingSkill || 1;
             
-            // 체력 계산: 내정보 탭과 동일하게 악세사리 레벨만 사용
-            const maxHp = this.calculatePlayerMaxHp(accessoryLevel);
+            // 강화 보너스 계산 (내정보 탭과 동일)
+            const accessoryEnhancement = playerData?.accessoryEnhancement || 0;
+            const accessoryEnhancementBonus = this.calculateTotalEnhancementBonus(accessoryEnhancement);
+            
+            // 체력 계산: 내정보 탭과 동일하게 강화 보너스 포함
+            const maxHp = this.calculatePlayerMaxHp(accessoryLevel, accessoryEnhancementBonus);
             
             playerHp[player.id] = maxHp;
             playerMaxHp[player.id] = maxHp;
@@ -433,11 +437,22 @@ class ExpeditionSystem {
         };
     }
     
-    // 플레이어 최대 체력 계산 (내정보 탭과 동일한 공식)
-    calculatePlayerMaxHp(accessoryLevel) {
+    // 강화 보너스 계산 함수 (클라이언트와 동일)
+    calculateTotalEnhancementBonus(level) {
+        let totalBonus = 0;
+        for (let i = 1; i <= level; i++) {
+            totalBonus += 2 + Math.floor(i / 10);
+        }
+        return totalBonus;
+    }
+    
+    // 플레이어 최대 체력 계산 (내정보 탭과 동일한 공식 + 강화 보너스)
+    calculatePlayerMaxHp(accessoryLevel, enhancementBonusPercent = 0) {
         // 내정보 탭과 동일한 체력 계산 공식 사용
-        if (accessoryLevel === 0) return 50; // 기본 체력
-        return Math.floor(Math.pow(accessoryLevel, 1.325) + 50 * accessoryLevel + 5 * accessoryLevel);
+        if (accessoryLevel === 0 && enhancementBonusPercent === 0) return 50; // 기본 체력
+        const baseHp = accessoryLevel === 0 ? 50 : Math.floor(Math.pow(accessoryLevel, 1.325) + 50 * accessoryLevel + 5 * accessoryLevel);
+        // 강화 보너스 퍼센트 적용
+        return baseHp + (baseHp * enhancementBonusPercent / 100);
     }
 
     // 동료 능력치 계산 (탐사전투와 동일)
@@ -894,10 +909,12 @@ class ExpeditionSystem {
         
         const targetMonster = aliveMonsters[Math.floor(Math.random() * aliveMonsters.length)];
         
-        // 플레이어 공격력 계산
+        // 플레이어 공격력 계산 (강화 보너스 포함)
                 const playerData = room.playerData?.[player.id];
         const fishingSkill = playerData?.fishingSkill || 1;
-        const baseDamage = this.calculatePlayerAttack(fishingSkill);
+        const fishingRodEnhancement = playerData?.fishingRodEnhancement || 0;
+        const fishingRodEnhancementBonus = this.calculateTotalEnhancementBonus(fishingRodEnhancement);
+        const baseDamage = this.calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus);
         const { damage: finalDamage, isCritical } = this.calculateCriticalHit(baseDamage);
         
         // 몬스터에게 데미지 적용
@@ -976,7 +993,11 @@ class ExpeditionSystem {
                 
                 room.players.forEach(player => {
                     const currentHp = battleState.playerHp[player.id] || 0;
-                    const maxHp = this.calculatePlayerMaxHp(room.playerData[player.id]?.accessoryLevel || 0);
+                    const playerData = room.playerData[player.id];
+                    const accessoryLevel = playerData?.accessoryLevel || 0;
+                    const accessoryEnhancement = playerData?.accessoryEnhancement || 0;
+                    const accessoryEnhancementBonus = this.calculateTotalEnhancementBonus(accessoryEnhancement);
+                    const maxHp = this.calculatePlayerMaxHp(accessoryLevel, accessoryEnhancementBonus);
                     const hpRatio = currentHp / maxHp;
                     
                     if (currentHp > 0 && hpRatio < lowestHpRatio) {
@@ -1210,10 +1231,12 @@ class ExpeditionSystem {
             
             const targetMonster = aliveMonsters[Math.floor(Math.random() * aliveMonsters.length)];
             
-            // 플레이어 공격력 계산 (탐사전투와 동일)
+            // 플레이어 공격력 계산 (탐사전투와 동일, 강화 보너스 포함)
             const playerData = room.playerData?.[player.id];
             const fishingSkill = playerData?.fishingSkill || 1;
-            const baseDamage = this.calculatePlayerAttack(fishingSkill);
+            const fishingRodEnhancement = playerData?.fishingRodEnhancement || 0;
+            const fishingRodEnhancementBonus = this.calculateTotalEnhancementBonus(fishingRodEnhancement);
+            const baseDamage = this.calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus);
             const { damage: finalDamage, isCritical } = this.calculateCriticalHit(baseDamage);
             
             // 몬스터에게 데미지 적용
@@ -1641,8 +1664,10 @@ class ExpeditionSystem {
         const playerData = room.playerData?.[userUuid];
         const fishingSkill = playerData?.fishingSkill || 1;
         
-        // 공격력 계산
-        const baseDamage = this.calculatePlayerAttack(fishingSkill);
+        // 공격력 계산 (강화 보너스 포함)
+        const fishingRodEnhancement = playerData?.fishingRodEnhancement || 0;
+        const fishingRodEnhancementBonus = this.calculateTotalEnhancementBonus(fishingRodEnhancement);
+        const baseDamage = this.calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus);
         const { damage: finalDamage, isCritical } = this.calculateCriticalHit(baseDamage);
 
         // 몬스터에게 데미지 적용
