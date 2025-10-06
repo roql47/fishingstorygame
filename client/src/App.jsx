@@ -17,6 +17,7 @@ import ShopTab from './components/ShopTab';
 import { COMPANION_DATA, calculateCompanionStats } from './data/companionData';
 import { useAchievements, ACHIEVEMENT_DEFINITIONS } from './hooks/useAchievements';
 import AchievementModal from './components/AchievementModal';
+import { VERSION_INFO } from './data/noticeData';
 import { 
   Fish, 
   MessageCircle, 
@@ -520,7 +521,7 @@ function App() {
   // 강화 보너스 계산 함수 (3차방정식 - 퍼센트로 표시)
   const calculateEnhancementBonus = (level) => {
     if (level <= 0) return 0;
-    return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
+    return 0.1 * Math.pow(level, 3) - 0.2 * Math.pow(level, 2) + 0.8 * level;
   };
 
   // 누적 강화 보너스 계산 (퍼센트)
@@ -3507,6 +3508,30 @@ function App() {
   }, [serverUrl, username, adminStatusLoaded, isAdmin, jwtToken]);
 
   // 쿨타임과 총 낚은 수는 WebSocket으로 실시간 업데이트됨 (위에서 처리)
+
+  // 🔄 버전 체크 및 자동 리프레시 (앱 로드 시 1회 실행)
+  useEffect(() => {
+    const checkVersion = async () => {
+      try {
+        const res = await axios.get(`${serverUrl}/api/version`);
+        const serverVersion = res.data.version;
+        const clientVersion = VERSION_INFO.version;
+        
+        console.log(`📱 버전 체크: 클라이언트=${clientVersion}, 서버=${serverVersion}`);
+        
+        if (serverVersion !== clientVersion) {
+          console.warn(`⚠️ 버전 불일치! 하드 리프레시 실행...`);
+          alert(`새로운 버전(${serverVersion})이 배포되었습니다.\n페이지를 새로고침합니다.`);
+          // 하드 리프레시
+          window.location.reload(true);
+        }
+      } catch (e) {
+        console.error('버전 체크 실패:', e);
+      }
+    };
+    
+    checkVersion();
+  }, [serverUrl]);
 
   // 랭킹 데이터 가져오기 (자주 변경되지 않으므로 주기 증가)
   useEffect(() => {
@@ -7293,13 +7318,19 @@ function App() {
                                 isDarkMode ? "text-green-400" : "text-green-600"
                               }`}>
                                 장착됨 • 클릭하여 효과 보기
-                                {userEquipment.fishingRodEnhancement > 0 && (
-                                  <span className={`ml-2 ${
-                                    isDarkMode ? "text-blue-400" : "text-blue-600"
-                                  }`}>
-                                    • 추가 공격력 +{Math.floor(calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement))}
-                                  </span>
-                                )}
+                                {userEquipment.fishingRodEnhancement > 0 && (() => {
+                                  const fishingRodLevel = getFishingRodLevel(userEquipment.fishingRod);
+                                  const baseAttack = getFishingRodAttack(fishingRodLevel);
+                                  const bonusPercent = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement);
+                                  const actualBonus = (baseAttack * bonusPercent / 100).toFixed(1);
+                                  return (
+                                    <span className={`ml-2 ${
+                                      isDarkMode ? "text-blue-400" : "text-blue-600"
+                                    }`}>
+                                      • 추가 공격력 +{actualBonus}
+                                    </span>
+                                  );
+                                })()}
                               </div>
                             </div>
                           </div>
@@ -7374,13 +7405,19 @@ function App() {
                                 isDarkMode ? "text-green-400" : "text-green-600"
                               }`}>
                                 장착됨 • 클릭하여 효과 보기
-                                {userEquipment.accessoryEnhancement > 0 && (
-                                  <span className={`ml-2 ${
-                                    isDarkMode ? "text-purple-400" : "text-purple-600"
-                                  }`}>
-                                    • 추가 체력 +{Math.floor(calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement))}
-                                  </span>
-                                )}
+                                {userEquipment.accessoryEnhancement > 0 && (() => {
+                                  const accessoryLevel = getAccessoryLevel(userEquipment.accessory);
+                                  const baseHp = calculatePlayerMaxHp(accessoryLevel, 0);
+                                  const bonusPercent = calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement);
+                                  const actualBonus = (baseHp * bonusPercent / 100).toFixed(1);
+                                  return (
+                                    <span className={`ml-2 ${
+                                      isDarkMode ? "text-purple-400" : "text-purple-600"
+                                    }`}>
+                                      • 추가 체력 +{actualBonus}
+                                    </span>
+                                  );
+                                })()}
                               </div>
                             </div>
                           </div>

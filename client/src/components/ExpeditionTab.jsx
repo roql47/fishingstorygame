@@ -1837,7 +1837,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                                 // calculateTotalEnhancementBonus가 없는 경우 직접 계산 (3차방정식)
                                 const calculateEnhancementBonus = (level) => {
                                   if (level <= 0) return 0;
-                                  return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
+                                  return 0.1 * Math.pow(level, 3) - 0.2 * Math.pow(level, 2) + 0.8 * level;
                                 };
                                 for (let i = 1; i <= fishingRodEnhancement; i++) {
                                   enhancementBonus += calculateEnhancementBonus(i);

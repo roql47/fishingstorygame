@@ -19,8 +19,14 @@ const EnhancementModal = ({
   // 한 번에 한 레벨씩만 강화
   const targetLevel = currentEnhancementLevel + 1;
 
-  // 강화 공식: f(x) = 0.2x³ - 0.4x² + 1.6x (퍼센트로 표시)
+  // 강화 보너스 공식: f(x) = 0.1x³ - 0.2x² + 0.8x (퍼센트로 표시)
   const calculateEnhancementBonus = (level) => {
+    if (level <= 0) return 0;
+    return 0.1 * Math.pow(level, 3) - 0.2 * Math.pow(level, 2) + 0.8 * level;
+  };
+
+  // 호박석 비용 계산용 공식 (원래 공식 유지): f(x) = 0.2x³ - 0.4x² + 1.6x
+  const calculateAmberCostBonus = (level) => {
     if (level <= 0) return 0;
     return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
   };
@@ -56,7 +62,7 @@ const EnhancementModal = ({
   // 강화에 필요한 호박석 계산: 공식 * 1 * 장비등급배율 (90% 할인)
   const calculateRequiredAmber = (level, equipmentName, equipmentType) => {
     if (level <= 0) return 0;
-    const baseCost = calculateEnhancementBonus(level) * 1; // 90% 할인 (서버와 동일)
+    const baseCost = calculateAmberCostBonus(level) * 1; // 호박석 비용은 원래 공식 사용
     const gradeMultiplier = getEquipmentGradeMultiplier(equipmentName, equipmentType);
     return Math.ceil(baseCost * gradeMultiplier);
   };
@@ -166,9 +172,6 @@ const EnhancementModal = ({
       });
       console.log(`💎 호박석 체크: 보유=${userAmber}, 필요=${amberCost}, 충분=${canAfford}`);
       
-      // 먼저 강화 요청을 보내고 응답을 기다림 (호박석 부족 등 즉시 체크)
-      const enhancePromise = onEnhance(equipmentType, targetLevel, amberCost);
-      
       // 5초 프로그레스바 애니메이션
       const progressInterval = setInterval(() => {
         setProgress(prev => {
@@ -180,10 +183,10 @@ const EnhancementModal = ({
         });
       }, 100);
       
-      // 5초 후 결과 처리
+      // 5초 후 서버에 강화 요청 보내고 결과 처리
       setTimeout(async () => {
         try {
-          const result = await enhancePromise;
+          const result = await onEnhance(equipmentType, targetLevel, amberCost);
           setEnhancementResult(result);
           
           // 결과 표시 후 2초 뒤에 모달 처리

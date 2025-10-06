@@ -4831,7 +4831,7 @@ const getServerFishHealthMap = () => {
 // 강화 보너스 계산 함수 (3차방정식 - 퍼센트로 표시)
 const calculateServerEnhancementBonus = (level) => {
   if (level <= 0) return 0;
-  return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
+  return 0.1 * Math.pow(level, 3) - 0.2 * Math.pow(level, 2) + 0.8 * level;
 };
 
 const calculateServerTotalEnhancementBonus = (level) => {
@@ -7579,10 +7579,17 @@ async function updateFishingSkillWithAchievements(userUuid) {
   return await achievementSystem.logAchievementBonus(userUuid);
 }
 
+// 🔥 서버 버전 정보 API
+app.get("/api/version", (req, res) => {
+  res.json({
+    version: "v1.271"
+  });
+});
+
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v2024.12.19",
+    version: "v1.271",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [

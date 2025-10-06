@@ -13,7 +13,8 @@ export const NOTICE_DATA = [
       "원정 전투 UI 개선:",
       "- 플레이어 상태 정보에 강화 보너스 표시 추가",
       "- 실제 전투력을 정확하게 확인 가능",
-      "장비강화 모달 UI 일부 변경"
+      "장비강화 모달 UI 일부 변경",
+      "강화시 progress bar가 전부 차기전에 강화가 실행 되던점 수정"
     ],
     isNew: true,
     type: "major_update"
@@ -301,5 +302,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.27"
+  version: "v1.271"
 };
