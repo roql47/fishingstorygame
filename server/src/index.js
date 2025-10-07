@@ -5091,9 +5091,9 @@ const getServerAccessoryLevel = (accessoryName) => {
 const getServerPrefixData = () => {
   return [
     { name: '거대한', hpMultiplier: 1.0, amberMultiplier: 1.0, probability: 75 },
-    { name: '변종', hpMultiplier: 1.45, amberMultiplier: 1.3, probability: 17 },
-    { name: '심연의', hpMultiplier: 2.15, amberMultiplier: 1.8, probability: 6 },
-    { name: '깊은어둠의', hpMultiplier: 3.25, amberMultiplier: 2.5, probability: 2 }
+    { name: '변종', hpMultiplier: 1.45, amberMultiplier: 1.2, probability: 17 },
+    { name: '심연의', hpMultiplier: 2.15, amberMultiplier: 1.4, probability: 6 },
+    { name: '깊은어둠의', hpMultiplier: 3.25, amberMultiplier: 1.8, probability: 2 }
   ];
 };
 

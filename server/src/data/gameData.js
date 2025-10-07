@@ -125,8 +125,8 @@ const PROBABILITY_DATA = [40, 24, 15, 8, 5, 3, 2, 1, 0.7, 0.3];
 const PREFIX_DATA = [
   { name: '거대한', probability: 70, hpMultiplier: 1.0, amberMultiplier: 1.0 },
   { name: '변종', probability: 20, hpMultiplier: 1.5, amberMultiplier: 1.2 },
-  { name: '심연의', probability: 7, hpMultiplier: 2.4, amberMultiplier: 1.6 },
-  { name: '깊은어둠의', probability: 3, hpMultiplier: 3.9, amberMultiplier: 2.2 }
+  { name: '심연의', probability: 7, hpMultiplier: 2.4, amberMultiplier: 1.4 },
+  { name: '깊은어둠의', probability: 3, hpMultiplier: 3.9, amberMultiplier: 1.8 }
 ];
 
 // 상점 데이터

@@ -1431,6 +1431,10 @@ function App() {
         console.log('✅ Processed refreshed companion stats:', processedStats);
         setCompanionStats(processedStats);
         
+        // 🔧 localStorage에도 저장 (캐시 업데이트)
+        localStorage.setItem(`companionStats_${userUuid || username}`, JSON.stringify(processedStats));
+        console.log('✅ Companion stats saved to localStorage');
+        
         // 🔧 새로고침 시에도 battleCompanions 초기화
         const battleCompanionsFromServer = Object.entries(processedStats)
           .filter(([_, stats]) => stats.isInBattle)
@@ -3334,6 +3338,10 @@ function App() {
           
           console.log('✅ Processed companion stats:', processedStats);
           setCompanionStats(processedStats);
+          
+          // 🔧 localStorage에도 저장 (캐시 업데이트)
+          localStorage.setItem(`companionStats_${userUuid || username}`, JSON.stringify(processedStats));
+          console.log('✅ Companion stats saved to localStorage');
           
           // 🔧 서버에서 로드한 isInBattle 정보를 기반으로 battleCompanions 초기화
           const battleCompanionsFromServer = Object.entries(processedStats)
@@ -7849,6 +7857,7 @@ function App() {
                 userEquipment={userEquipment}
                 fishingSkill={fishingSkill}
                 calculateTotalEnhancementBonus={calculateTotalEnhancementBonus}
+                refreshCompanions={refreshCompanions}
                 refreshInventory={async () => {
                   // 인벤토리 새로고침 함수
                   try {

@@ -18,7 +18,7 @@ import {
   Plus
 } from 'lucide-react';
 
-const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, syncBattleCompanionsToServer, battleCompanions, companionStats, userEquipment, fishingSkill, calculateTotalEnhancementBonus }) => {
+const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, refreshCompanions, syncBattleCompanionsToServer, battleCompanions, companionStats, userEquipment, fishingSkill, calculateTotalEnhancementBonus }) => {
   // 접두어에 따른 색상 반환 (탐사와 동일)
   const getPrefixColor = (prefixName, isDark) => {
     switch (prefixName) {
@@ -691,6 +691,12 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
           await refreshInventory();
         }
         
+        // 🔧 동료 데이터 새로고침 (탐사 전투에서 획득한 경험치 반영)
+        if (refreshCompanions) {
+          console.log('🔄 Refreshing companions after expedition...');
+          await refreshCompanions();
+        }
+        
         // 🔧 중요: 현재 방 상태에서 내 보상 제거 (UI 즉시 업데이트)
         if (currentRoom && currentRoom.rewards) {
           const updatedRoom = {
@@ -867,13 +873,19 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
     }
   };
 
-  const handleExpeditionCompleted = (room) => {
+  const handleExpeditionCompleted = async (room) => {
     console.log('[EXPEDITION] Expedition completed event received:', room);
     if (currentRoom && currentRoom.id === room.id) {
       console.log('[EXPEDITION] Updating room to completed state');
       setCurrentRoom(room);
       setForceUpdateCounter(prev => prev + 1);
       clearAllSpeedBars(); // 속도바 중단
+      
+      // 🔧 동료 데이터 새로고침 (서버에서 업데이트된 레벨 가져오기)
+      if (refreshCompanions) {
+        console.log('[EXPEDITION] Refreshing companion data...');
+        await refreshCompanions();
+      }
       
       setTimeout(() => {
         alert('원정이 완료되었습니다!');
