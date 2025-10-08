@@ -12,6 +12,9 @@ const ShopTab = ({
   userMoney,
   userAmber,
   userStarPieces,
+  materials,
+  userEquipment,
+  fishingSkill,
   
   // 함수
   getAllShopItems,
@@ -19,6 +22,34 @@ const ShopTab = ({
   exchangeEtherKeys
 }) => {
   const [activeShopTab, setActiveShopTab] = useState('equipment'); // equipment, items
+  
+  // 재료 수량 가져오기 함수
+  const getMaterialCount = (materialName) => {
+    const material = materials?.find(m => m.material === materialName);
+    return material?.count || 0;
+  };
+  
+  // 구매 가능 여부 체크 함수
+  const canPurchaseItem = (item, category) => {
+    const allItems = getAllShopItems(category);
+    
+    // 현재 장착된 아이템의 레벨 확인
+    let currentItemLevel = -1;
+    if (category === 'fishing_rod' && userEquipment?.fishingRod) {
+      const currentItem = allItems.find(i => i.name === userEquipment.fishingRod);
+      if (currentItem) {
+        currentItemLevel = currentItem.requiredSkill;
+      }
+    } else if (category === 'accessories' && userEquipment?.accessory) {
+      const currentItem = allItems.find(i => i.name === userEquipment.accessory);
+      if (currentItem) {
+        currentItemLevel = currentItem.requiredSkill;
+      }
+    }
+    
+    // 순차 구매: 현재 아이템보다 바로 다음 레벨만 구매 가능
+    return item.requiredSkill === (currentItemLevel + 1);
+  };
 
   return (
     <div className={`rounded-2xl board-shadow min-h-full flex flex-col ${
@@ -140,65 +171,82 @@ const ShopTab = ({
                 <h3 className="font-semibold">낚시대</h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {getAllShopItems('낚시대').map((item, index) => (
-                  <div key={index} className={`p-4 rounded-xl border transition-all duration-300 hover:scale-105 ${
-                    isDarkMode 
-                      ? "bg-blue-500/10 border-blue-500/30 hover:border-blue-400/50" 
-                      : "bg-blue-500/5 border-blue-500/20 hover:border-blue-400/40"
-                  }`}>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-lg ${
-                          isDarkMode ? "bg-blue-500/20" : "bg-blue-500/10"
-                        }`}>
-                          <Fish className={`w-6 h-6 ${
-                            isDarkMode ? "text-blue-400" : "text-blue-600"
-                          }`} />
-                        </div>
-                        <div>
-                          <h4 className={`font-bold ${
-                            isDarkMode ? "text-white" : "text-gray-800"
-                          }`}>{item.name}</h4>
-                          <p className={`text-sm ${
-                            isDarkMode ? "text-gray-400" : "text-gray-600"
-                          }`}>{item.description}</p>
+                {getAllShopItems('fishing_rod')
+                  .filter(item => canPurchaseItem(item, 'fishing_rod'))
+                  .map((item, index) => {
+                  const userMaterialCount = getMaterialCount(item.material);
+                  const hasEnoughMaterial = userMaterialCount >= item.materialCount;
+                  const canBuy = hasEnoughMaterial;
+                  
+                  return (
+                    <div key={index} className={`p-4 rounded-xl border transition-all duration-300 hover:scale-105 ${
+                      isDarkMode 
+                        ? "bg-blue-500/10 border-blue-500/30 hover:border-blue-400/50" 
+                        : "bg-blue-500/5 border-blue-500/20 hover:border-blue-400/40"
+                    }`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-lg ${
+                            isDarkMode ? "bg-blue-500/20" : "bg-blue-500/10"
+                          }`}>
+                            <Fish className={`w-6 h-6 ${
+                              isDarkMode ? "text-blue-400" : "text-blue-600"
+                            }`} />
+                          </div>
+                          <div>
+                            <h4 className={`font-bold ${
+                              isDarkMode ? "text-white" : "text-gray-800"
+                            }`}>{item.name}</h4>
+                            <p className={`text-sm ${
+                              isDarkMode ? "text-gray-400" : "text-gray-600"
+                            }`}>{item.description}</p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${
-                        isDarkMode 
-                          ? "bg-yellow-500/20 border border-yellow-500/30" 
-                          : "bg-yellow-500/10 border border-yellow-500/20"
-                      }`}>
-                        <Coins className={`w-4 h-4 ${
-                          isDarkMode ? "text-yellow-400" : "text-yellow-600"
-                        }`} />
-                        <span className={`text-sm font-bold ${
-                          isDarkMode ? "text-yellow-400" : "text-yellow-600"
-                        }`}>{item.price.toLocaleString()}</span>
-                        <span className={`text-xs ${
-                          isDarkMode ? "text-gray-400" : "text-gray-600"
-                        }`}>골드</span>
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col gap-1">
+                          <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${
+                            isDarkMode 
+                              ? "bg-purple-500/20 border border-purple-500/30" 
+                              : "bg-purple-500/10 border border-purple-500/20"
+                          }`}>
+                            <Package className={`w-4 h-4 ${
+                              isDarkMode ? "text-purple-400" : "text-purple-600"
+                            }`} />
+                            <span className={`text-sm font-bold ${
+                              isDarkMode ? "text-purple-400" : "text-purple-600"
+                            }`}>{item.material}</span>
+                            <span className={`text-xs ${
+                              isDarkMode ? "text-gray-400" : "text-gray-600"
+                            }`}>x{item.materialCount}</span>
+                          </div>
+                          <span className={`text-xs ml-2 ${
+                            hasEnoughMaterial
+                              ? isDarkMode ? "text-green-400" : "text-green-600"
+                              : isDarkMode ? "text-red-400" : "text-red-600"
+                          }`}>
+                            보유: {userMaterialCount}개
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => buyItem(item)}
+                          disabled={!canBuy}
+                          className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                            !canBuy
+                              ? isDarkMode
+                                ? "bg-gray-600 text-gray-400 cursor-not-allowed"
+                                : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                              : isDarkMode
+                                ? "bg-blue-600 hover:bg-blue-500 text-white"
+                                : "bg-blue-500 hover:bg-blue-600 text-white"
+                          } hover:scale-105 active:scale-95`}
+                        >
+                          구매하기
+                        </button>
                       </div>
-                      <button
-                        onClick={() => buyItem(item)}
-                        disabled={!userMoney || userMoney < item.price}
-                        className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
-                          !userMoney || userMoney < item.price
-                            ? isDarkMode
-                              ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                              : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                            : isDarkMode
-                              ? "bg-blue-600 hover:bg-blue-500 text-white"
-                              : "bg-blue-500 hover:bg-blue-600 text-white"
-                        } hover:scale-105 active:scale-95`}
-                      >
-                        구매하기
-                      </button>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -211,65 +259,82 @@ const ShopTab = ({
                 <h3 className="font-semibold">악세서리</h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {getAllShopItems('악세서리').map((item, index) => (
-                  <div key={index} className={`p-4 rounded-xl border transition-all duration-300 hover:scale-105 ${
-                    isDarkMode 
-                      ? "bg-orange-500/10 border-orange-500/30 hover:border-orange-400/50" 
-                      : "bg-orange-500/5 border-orange-500/20 hover:border-orange-400/40"
-                  }`}>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-lg ${
-                          isDarkMode ? "bg-orange-500/20" : "bg-orange-500/10"
-                        }`}>
-                          <Diamond className={`w-6 h-6 ${
-                            isDarkMode ? "text-orange-400" : "text-orange-600"
-                          }`} />
-                        </div>
-                        <div>
-                          <h4 className={`font-bold ${
-                            isDarkMode ? "text-white" : "text-gray-800"
-                          }`}>{item.name}</h4>
-                          <p className={`text-sm ${
-                            isDarkMode ? "text-gray-400" : "text-gray-600"
-                          }`}>{item.description}</p>
+                {getAllShopItems('accessories')
+                  .filter(item => canPurchaseItem(item, 'accessories'))
+                  .map((item, index) => {
+                  const userMaterialCount = getMaterialCount(item.material);
+                  const hasEnoughMaterial = userMaterialCount >= item.materialCount;
+                  const canBuy = hasEnoughMaterial;
+                  
+                  return (
+                    <div key={index} className={`p-4 rounded-xl border transition-all duration-300 hover:scale-105 ${
+                      isDarkMode 
+                        ? "bg-orange-500/10 border-orange-500/30 hover:border-orange-400/50" 
+                        : "bg-orange-500/5 border-orange-500/20 hover:border-orange-400/40"
+                    }`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-lg ${
+                            isDarkMode ? "bg-orange-500/20" : "bg-orange-500/10"
+                          }`}>
+                            <Diamond className={`w-6 h-6 ${
+                              isDarkMode ? "text-orange-400" : "text-orange-600"
+                            }`} />
+                          </div>
+                          <div>
+                            <h4 className={`font-bold ${
+                              isDarkMode ? "text-white" : "text-gray-800"
+                            }`}>{item.name}</h4>
+                            <p className={`text-sm ${
+                              isDarkMode ? "text-gray-400" : "text-gray-600"
+                            }`}>{item.description}</p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${
-                        isDarkMode 
-                          ? "bg-orange-500/20 border border-orange-500/30" 
-                          : "bg-orange-500/10 border border-orange-500/20"
-                      }`}>
-                        <Gem className={`w-4 h-4 ${
-                          isDarkMode ? "text-orange-400" : "text-orange-600"
-                        }`} />
-                        <span className={`text-sm font-bold ${
-                          isDarkMode ? "text-orange-400" : "text-orange-600"
-                        }`}>{item.price.toLocaleString()}</span>
-                        <span className={`text-xs ${
-                          isDarkMode ? "text-gray-400" : "text-gray-600"
-                        }`}>호박석</span>
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col gap-1">
+                          <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${
+                            isDarkMode 
+                              ? "bg-purple-500/20 border border-purple-500/30" 
+                              : "bg-purple-500/10 border border-purple-500/20"
+                          }`}>
+                            <Package className={`w-4 h-4 ${
+                              isDarkMode ? "text-purple-400" : "text-purple-600"
+                            }`} />
+                            <span className={`text-sm font-bold ${
+                              isDarkMode ? "text-purple-400" : "text-purple-600"
+                            }`}>{item.material}</span>
+                            <span className={`text-xs ${
+                              isDarkMode ? "text-gray-400" : "text-gray-600"
+                            }`}>x{item.materialCount}</span>
+                          </div>
+                          <span className={`text-xs ml-2 ${
+                            hasEnoughMaterial
+                              ? isDarkMode ? "text-green-400" : "text-green-600"
+                              : isDarkMode ? "text-red-400" : "text-red-600"
+                          }`}>
+                            보유: {userMaterialCount}개
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => buyItem(item)}
+                          disabled={!canBuy}
+                          className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                            !canBuy
+                              ? isDarkMode
+                                ? "bg-gray-600 text-gray-400 cursor-not-allowed"
+                                : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                              : isDarkMode
+                                ? "bg-orange-600 hover:bg-orange-500 text-white"
+                                : "bg-orange-500 hover:bg-orange-600 text-white"
+                          } hover:scale-105 active:scale-95`}
+                        >
+                          구매하기
+                        </button>
                       </div>
-                      <button
-                        onClick={() => buyItem(item)}
-                        disabled={!userAmber || userAmber < item.price}
-                        className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
-                          !userAmber || userAmber < item.price
-                            ? isDarkMode
-                              ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                              : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                            : isDarkMode
-                              ? "bg-orange-600 hover:bg-orange-500 text-white"
-                              : "bg-orange-500 hover:bg-orange-600 text-white"
-                        } hover:scale-105 active:scale-95`}
-                      >
-                        구매하기
-                      </button>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>

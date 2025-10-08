@@ -73,6 +73,15 @@ const optimizeDBIndexes = async () => {
       { collection: DailyQuestModel, indexes: [
         { key: { userUuid: 1 }, name: 'quest_userUuid_1' },
         { key: { lastResetDate: 1 }, name: 'quest_resetDate_1' }
+      ]},
+      { collection: MarketListingModel, indexes: [
+        { key: { userUuid: 1 }, name: 'market_userUuid_1' },
+        { key: { listedAt: -1 }, name: 'market_listedAt_-1' }
+      ]},
+      { collection: MarketTradeHistoryModel, indexes: [
+        { key: { buyerUuid: 1 }, name: 'trade_buyerUuid_1' },
+        { key: { sellerUuid: 1 }, name: 'trade_sellerUuid_1' },
+        { key: { tradedAt: -1 }, name: 'trade_tradedAt_-1' }
       ]}
     ];
     
@@ -1142,6 +1151,56 @@ const dailyQuestSchema = new mongoose.Schema(
 
 const DailyQuestModel = mongoose.model("DailyQuest", dailyQuestSchema);
 
+// Market Listing Schema
+const marketListingSchema = new mongoose.Schema(
+  {
+    userUuid: { type: String, required: true, index: true },
+    sellerNickname: { type: String, required: true },
+    itemName: { type: String, required: true },
+    quantity: { type: Number, required: true },
+    pricePerUnit: { type: Number, required: true },
+    listedAt: { type: Date, default: Date.now }
+  },
+  { timestamps: { createdAt: true, updatedAt: false } }
+);
+
+const MarketListingModel = mongoose.model("MarketListing", marketListingSchema);
+
+// Market Trade History Schema
+const marketTradeHistorySchema = new mongoose.Schema(
+  {
+    buyerUuid: { type: String, required: true, index: true },
+    buyerNickname: { type: String, required: true },
+    sellerUuid: { type: String, required: true, index: true },
+    sellerNickname: { type: String, required: true },
+    itemName: { type: String, required: true },
+    quantity: { type: Number, required: true },
+    pricePerUnit: { type: Number, required: true },
+    totalPrice: { type: Number, required: true },
+    tradedAt: { type: Date, default: Date.now }
+  },
+  { timestamps: { createdAt: true, updatedAt: false } }
+);
+
+const MarketTradeHistoryModel = mongoose.model("MarketTradeHistory", marketTradeHistorySchema);
+
+// Mail Schema (플레이어 간 DM 시스템)
+const mailSchema = new mongoose.Schema(
+  {
+    senderUuid: { type: String, required: true, index: true },
+    senderNickname: { type: String, required: true },
+    receiverUuid: { type: String, required: true, index: true },
+    receiverNickname: { type: String, required: true },
+    subject: { type: String, required: true },
+    message: { type: String, required: true },
+    isRead: { type: Boolean, default: false },
+    sentAt: { type: Date, default: Date.now }
+  },
+  { timestamps: { createdAt: true, updatedAt: false } }
+);
+
+const MailModel = mongoose.model("Mail", mailSchema);
+
 // UUID 생성 함수
 async function generateNextUuid() {
   try {
@@ -1669,6 +1728,7 @@ function parseKakaoToken(idToken) {
 
 // 접속자 관리
 const connectedUsers = new Map();
+const connectedUsersMap = new Map(); // userUuid -> socketId 매핑 (메일 알림용)
 const processingJoins = new Set(); // 중복 join 요청 방지
 const recentJoins = new Map(); // 최근 입장 메시지 추적 (userUuid -> timestamp)
 const processingMaterialConsumption = new Set(); // 중복 재료 소모 요청 방지
@@ -2169,6 +2229,9 @@ io.on("connection", (socket) => {
         originalGoogleId: user.originalGoogleId, // 구글 ID 정보
         originalKakaoId: user.originalKakaoId // 카카오 ID 정보도 추가
       });
+      
+      // 메일 알림을 위한 userUuid -> socketId 매핑
+      connectedUsersMap.set(user.userUuid, socket.id);
     
       console.log("User joined:", { 
         userUuid: user.userUuid,
@@ -2908,6 +2971,7 @@ io.on("connection", (socket) => {
     const user = connectedUsers.get(socket.id);
     if (user) {
       connectedUsers.delete(socket.id);
+      connectedUsersMap.delete(user.userUuid); // 메일 알림 맵에서도 제거
       console.log("User disconnected:", user.displayName, "Reason:", reason);
       
       // 🔧 좀비 WebSocket 방지: socket 객체에서 사용자 정보 정리
@@ -3525,6 +3589,151 @@ app.get("/api/game-data/shop/:category", (req, res) => {
     res.status(500).json({ success: false, error: "Failed to load shop items" });
   }
 });
+
+// ==================== 메일 시스템 API ====================
+
+// 메일 발송
+app.post("/api/mail/send", authenticateJWT, async (req, res) => {
+  try {
+    const { receiverNickname, subject, message } = req.body;
+    const senderUuid = req.user.userUuid;
+    const senderNickname = req.user.username;
+
+    // 받는 사람 확인
+    const receiver = await UserUuidModel.findOne({ username: receiverNickname });
+    if (!receiver) {
+      return res.status(404).json({ success: false, error: "받는 사람을 찾을 수 없습니다." });
+    }
+
+    // 자신에게는 발송 불가
+    if (receiver.userUuid === senderUuid) {
+      return res.status(400).json({ success: false, error: "자신에게는 메일을 보낼 수 없습니다." });
+    }
+
+    // 메일 생성
+    const newMail = new MailModel({
+      senderUuid,
+      senderNickname,
+      receiverUuid: receiver.userUuid,
+      receiverNickname: receiver.username,
+      subject: subject || "(제목 없음)",
+      message
+    });
+
+    await newMail.save();
+
+    // Socket으로 실시간 알림
+    const receiverSocketId = connectedUsersMap.get(receiver.userUuid);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("new-mail", {
+        from: senderNickname,
+        subject: newMail.subject
+      });
+    }
+
+    res.json({ success: true, message: "메일을 전송했습니다." });
+  } catch (error) {
+    console.error("메일 전송 실패:", error);
+    res.status(500).json({ success: false, error: "메일 전송에 실패했습니다." });
+  }
+});
+
+// 받은 메일 목록 조회
+app.get("/api/mail/inbox", authenticateJWT, async (req, res) => {
+  try {
+    const userUuid = req.user.userUuid;
+    
+    const mails = await MailModel.find({ receiverUuid: userUuid })
+      .sort({ sentAt: -1 })
+      .limit(100)
+      .lean();
+
+    res.json({ success: true, mails });
+  } catch (error) {
+    console.error("받은 메일 조회 실패:", error);
+    res.status(500).json({ success: false, error: "메일을 불러오는데 실패했습니다." });
+  }
+});
+
+// 보낸 메일 목록 조회
+app.get("/api/mail/sent", authenticateJWT, async (req, res) => {
+  try {
+    const userUuid = req.user.userUuid;
+    
+    const mails = await MailModel.find({ senderUuid: userUuid })
+      .sort({ sentAt: -1 })
+      .limit(100)
+      .lean();
+
+    res.json({ success: true, mails });
+  } catch (error) {
+    console.error("보낸 메일 조회 실패:", error);
+    res.status(500).json({ success: false, error: "메일을 불러오는데 실패했습니다." });
+  }
+});
+
+// 메일 읽음 처리
+app.post("/api/mail/read/:mailId", authenticateJWT, async (req, res) => {
+  try {
+    const { mailId } = req.params;
+    const userUuid = req.user.userUuid;
+
+    const mail = await MailModel.findOne({ _id: mailId, receiverUuid: userUuid });
+    if (!mail) {
+      return res.status(404).json({ success: false, error: "메일을 찾을 수 없습니다." });
+    }
+
+    mail.isRead = true;
+    await mail.save();
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("메일 읽음 처리 실패:", error);
+    res.status(500).json({ success: false, error: "메일 읽음 처리에 실패했습니다." });
+  }
+});
+
+// 메일 삭제
+app.delete("/api/mail/:mailId", authenticateJWT, async (req, res) => {
+  try {
+    const { mailId } = req.params;
+    const userUuid = req.user.userUuid;
+
+    const mail = await MailModel.findOne({
+      _id: mailId,
+      $or: [{ senderUuid: userUuid }, { receiverUuid: userUuid }]
+    });
+
+    if (!mail) {
+      return res.status(404).json({ success: false, error: "메일을 찾을 수 없습니다." });
+    }
+
+    await MailModel.deleteOne({ _id: mailId });
+    res.json({ success: true, message: "메일을 삭제했습니다." });
+  } catch (error) {
+    console.error("메일 삭제 실패:", error);
+    res.status(500).json({ success: false, error: "메일 삭제에 실패했습니다." });
+  }
+});
+
+// 읽지 않은 메일 개수 조회
+app.get("/api/mail/unread-count", authenticateJWT, async (req, res) => {
+  try {
+    const userUuid = req.user.userUuid;
+    
+    const unreadCount = await MailModel.countDocuments({
+      receiverUuid: userUuid,
+      isRead: false
+    });
+
+    res.json({ success: true, unreadCount });
+  } catch (error) {
+    console.error("읽지 않은 메일 개수 조회 실패:", error);
+    res.status(500).json({ success: false, error: "메일 개수 조회에 실패했습니다." });
+  }
+});
+
+// ==================== 메일 시스템 API 끝 ====================
 
 app.get("/api/inventory/:userId", optionalJWT, async (req, res) => {
   try {
@@ -6356,23 +6565,22 @@ app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
 
 // 🔒 서버 측 아이템 데이터는 gameData.js에서 관리 (중복 제거)
 
-// Item Buying API (보안 강화 - 서버에서 가격 검증 + JWT 인증)
+// Item Buying API (재료 기반 구매 시스템 - 서버에서 재료 검증 + JWT 인증)
 app.post("/api/buy-item", authenticateJWT, async (req, res) => {
   try {
-    const { itemName, price: clientPrice, category, currency = 'gold' } = req.body;
+    const { itemName, material: clientMaterial, materialCount: clientMaterialCount, category } = req.body;
     // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
     const { userUuid, username } = req.user;
     
-    console.log("=== BUY ITEM REQUEST ===");
+    console.log("=== BUY ITEM REQUEST (MATERIAL-BASED) ===");
     console.log("Item:", itemName);
-    console.log("Price:", clientPrice);
+    console.log("Material:", clientMaterial);
+    console.log("Material Count:", clientMaterialCount);
     console.log("Category:", category);
-    console.log("Currency:", currency);
     console.log("Username:", username);
     console.log("UserUuid (decoded):", userUuid);
-    console.log("Raw query:", req.query);
     
-    // 서버에서 실제 아이템 정보 가져오기 (클라이언트 가격 무시)
+    // 서버에서 실제 아이템 정보 가져오기 (클라이언트 데이터 무시)
     const serverShopItems = getShopData();
     const categoryItems = serverShopItems[category];
     
@@ -6385,17 +6593,17 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: "Item not found" });
     }
     
-    // 클라이언트에서 보낸 가격과 서버 가격 비교 (보안 검증)
-    if (clientPrice !== serverItem.price) {
-      console.warn(`Price manipulation detected! Client: ${clientPrice}, Server: ${serverItem.price}, Item: ${itemName}, User: ${username}`);
-      return res.status(400).json({ error: "Invalid item price" });
+    // 클라이언트에서 보낸 재료 정보와 서버 재료 정보 비교 (보안 검증)
+    if (clientMaterial !== serverItem.material || clientMaterialCount !== serverItem.materialCount) {
+      console.warn(`Material manipulation detected! Client: ${clientMaterial}x${clientMaterialCount}, Server: ${serverItem.material}x${serverItem.materialCount}, Item: ${itemName}, User: ${username}`);
+      return res.status(400).json({ error: "Invalid material requirement" });
     }
     
-    // 서버에서 검증된 실제 가격 사용
-    const actualPrice = serverItem.price;
-    const actualCurrency = serverItem.currency || currency;
+    // 서버에서 검증된 실제 재료 정보 사용
+    const requiredMaterial = serverItem.material;
+    const requiredCount = serverItem.materialCount;
     
-    console.log(`Server validated price: ${actualPrice} ${actualCurrency} for ${itemName}`);
+    console.log(`Server validated material: ${requiredMaterial} x${requiredCount} for ${itemName}`);
     
     // UUID 기반 사용자 조회
     console.log("=== USER QUERY DEBUG ===");
@@ -6423,36 +6631,26 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: "User not found" });
     }
     
-    // 화폐 종류에 따른 잔액 확인 및 차감
-    let userMoney = null;
-    let userAmber = null;
+    // 재료 확인 및 차감
+    const userMaterials = await MaterialModel.find({
+      ...query,
+      material: requiredMaterial
+    });
     
-    if (actualCurrency === 'amber') {
-      userAmber = await UserAmberModel.findOne(query);
-      
-      if (!userAmber || userAmber.amber < actualPrice) {
-        // 앰버 부족 (보안상 잔액 정보는 로그에 기록하지 않음)
-        return res.status(400).json({ error: "Not enough amber" });
-      }
-      
-      // 호박석 차감
-      userAmber.amber -= actualPrice;
-      await userAmber.save();
-      // 앰버 차감 완료 (보안상 잔액 정보는 로그에 기록하지 않음)
-    } else {
-      // 골드 확인 및 차감
-      userMoney = await UserMoneyModel.findOne(query);
-      
-      if (!userMoney || userMoney.money < actualPrice) {
-        // 골드 부족 (보안상 잔액 정보는 로그에 기록하지 않음)
-      return res.status(400).json({ error: "Not enough money" });
+    const userMaterialCount = userMaterials.length;
+    
+    if (userMaterialCount < requiredCount) {
+      console.log(`Material shortage: User has ${userMaterialCount}, needs ${requiredCount}`);
+      return res.status(400).json({ error: "Not enough materials" });
     }
     
-    // 돈 차감
-      userMoney.money -= actualPrice;
-    await userMoney.save();
-      // 골드 차감 완료 (보안상 잔액 정보는 로그에 기록하지 않음)
-    }
+    // 재료 차감 (requiredCount만큼의 문서 삭제)
+    const materialsToDelete = userMaterials.slice(0, requiredCount);
+    await MaterialModel.deleteMany({
+      _id: { $in: materialsToDelete.map(m => m._id) }
+    });
+    console.log(`Material ${requiredMaterial} reduced by ${requiredCount} (${userMaterialCount} → ${userMaterialCount - requiredCount})`);
+
     
     // 장비 자동 장착
     console.log("=== EQUIPMENT SAVE DEBUG ===");
@@ -6553,12 +6751,12 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
       console.log(`낚시 실력 증가 완료: 낚시대 구매로 ${fishingSkill.skill}`);
     }
     
-    // 구매 성공 응답 (화폐 종류에 따라 적절한 잔액 반환)
-    if (actualCurrency === 'amber') {
-      res.json({ success: true, newAmber: userAmber.amber });
-    } else {
-    res.json({ success: true, newBalance: userMoney.money });
-    }
+    // 구매 성공 응답 (재료 기반)
+    res.json({ 
+      success: true, 
+      usedMaterial: requiredMaterial,
+      usedCount: requiredCount
+    });
   } catch (error) {
     console.error("=== BUY ITEM ERROR ===");
     console.error("Error message:", error.message);
@@ -7294,6 +7492,149 @@ app.post("/api/consume-material", authenticateJWT, async (req, res) => {
   } finally {
     // 처리 완료 후 중복 방지 키 제거
     processingMaterialConsumption.delete(consumeKey);
+  }
+});
+
+// 조합 레시피 데이터 임포트
+const { getCraftingRecipe, getDecomposeRecipe } = require('./data/craftingData');
+
+// 재료 조합 API (하위 재료 3개 → 상위 재료 1개)
+app.post("/api/craft-material", authenticateJWT, async (req, res) => {
+  try {
+    const { inputMaterial, inputCount, outputMaterial, outputCount } = req.body;
+    // 🔐 JWT에서 사용자 정보 추출
+    const { userUuid, username } = req.user;
+    
+    console.log("Craft material request:", { inputMaterial, inputCount, outputMaterial, outputCount, username, userUuid });
+    
+    // 레시피 유효성 검증
+    const recipe = getCraftingRecipe(inputMaterial);
+    if (!recipe || recipe.outputMaterial !== outputMaterial || recipe.inputCount !== inputCount) {
+      return res.status(400).json({ error: "Invalid crafting recipe" });
+    }
+    
+    // UUID 기반 사용자 조회
+    const userId = 'user';
+    const queryResult = await getUserQuery(userId, username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    // 사용자가 해당 재료를 충분히 가지고 있는지 확인
+    const userMaterials = await MaterialModel.find({ ...query, material: inputMaterial });
+    console.log(`Found ${userMaterials.length} ${inputMaterial} for user`);
+    
+    if (userMaterials.length < inputCount) {
+      console.log(`Not enough materials: has ${userMaterials.length}, needs ${inputCount}`);
+      return res.status(400).json({ error: `재료가 부족합니다. (${userMaterials.length}/${inputCount})` });
+    }
+    
+    // 재료 제거 (inputCount만큼 삭제)
+    const materialsToDelete = userMaterials.slice(0, inputCount).map(m => m._id);
+    const deleteResult = await MaterialModel.deleteMany({ _id: { $in: materialsToDelete } });
+    console.log(`Deleted ${deleteResult.deletedCount} ${inputMaterial}`);
+    
+    if (deleteResult.deletedCount !== inputCount) {
+      console.error(`Material deletion failed: expected ${inputCount}, deleted ${deleteResult.deletedCount}`);
+      return res.status(500).json({ error: "조합 중 오류가 발생했습니다." });
+    }
+    
+    // 새로운 재료 추가
+    const materialData = {
+      ...query,
+      material: outputMaterial,
+      displayName: query.username || username || 'User'
+    };
+    
+    if (username) {
+      materialData.username = username;
+    }
+    
+    // outputCount만큼 재료 생성
+    const materialsToCreate = Array(outputCount).fill().map(() => ({ insertOne: { document: materialData } }));
+    const bulkCreateResult = await MaterialModel.bulkWrite(materialsToCreate, {
+      ordered: false,
+      writeConcern: { w: 1, j: false }
+    });
+    
+    console.log(`Created ${bulkCreateResult.insertedCount} ${outputMaterial}`);
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Failed to craft material:", error);
+    res.status(500).json({ error: "재료 조합에 실패했습니다." });
+  }
+});
+
+// 재료 분해 API (상위 재료 1개 → 하위 재료 2개)
+app.post("/api/decompose-material", authenticateJWT, async (req, res) => {
+  try {
+    const { inputMaterial, outputMaterial, outputCount } = req.body;
+    // 🔐 JWT에서 사용자 정보 추출
+    const { userUuid, username } = req.user;
+    
+    console.log("Decompose material request:", { inputMaterial, outputMaterial, outputCount, username, userUuid });
+    
+    // 레시피 유효성 검증
+    const recipe = getDecomposeRecipe(inputMaterial);
+    if (!recipe || recipe.inputMaterial !== outputMaterial) {
+      return res.status(400).json({ error: "Invalid decompose recipe" });
+    }
+    
+    // UUID 기반 사용자 조회
+    const userId = 'user';
+    const queryResult = await getUserQuery(userId, username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    // 사용자가 해당 재료를 가지고 있는지 확인
+    const userMaterial = await MaterialModel.findOne({ ...query, material: inputMaterial });
+    
+    if (!userMaterial) {
+      console.log(`Material not found: ${inputMaterial}`);
+      return res.status(400).json({ error: "분해할 재료가 없습니다." });
+    }
+    
+    // 재료 제거 (1개 삭제)
+    const deleteResult = await MaterialModel.deleteOne({ _id: userMaterial._id });
+    console.log(`Deleted 1 ${inputMaterial}`);
+    
+    if (deleteResult.deletedCount !== 1) {
+      console.error(`Material deletion failed`);
+      return res.status(500).json({ error: "분해 중 오류가 발생했습니다." });
+    }
+    
+    // 새로운 재료 추가 (outputCount만큼)
+    const materialData = {
+      ...query,
+      material: outputMaterial,
+      displayName: query.username || username || 'User'
+    };
+    
+    if (username) {
+      materialData.username = username;
+    }
+    
+    // outputCount만큼 재료 생성
+    const materialsToCreate = Array(outputCount).fill().map(() => ({ insertOne: { document: materialData } }));
+    const bulkCreateResult = await MaterialModel.bulkWrite(materialsToCreate, {
+      ordered: false,
+      writeConcern: { w: 1, j: false }
+    });
+    
+    console.log(`Created ${bulkCreateResult.insertedCount} ${outputMaterial}`);
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Failed to decompose material:", error);
+    res.status(500).json({ error: "재료 분해에 실패했습니다." });
   }
 });
 
@@ -9174,6 +9515,336 @@ app.use("/api/expedition", expeditionRouter);
 // 업적 라우터 등록
 const { router: achievementRouter } = setupAchievementRoutes(authenticateJWT, UserUuidModel, CatchModel, FishingSkillModel, RaidDamageModel, RareFishCountModel);
 app.use("/api/achievements", achievementRouter);
+
+// ==================== 거래소 API ====================
+
+// 거래소 목록 조회
+app.get("/api/market/listings", authenticateJWT, async (req, res) => {
+  try {
+    const listings = await MarketListingModel.find({}).sort({ listedAt: -1 }).lean();
+    res.json(listings);
+  } catch (error) {
+    console.error("거래소 목록 조회 실패:", error);
+    res.status(500).json({ message: "거래소 목록을 불러올 수 없습니다." });
+  }
+});
+
+// 아이템 등록
+app.post("/api/market/list", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid, username } = req.user;
+    const { itemName, quantity, pricePerUnit } = req.body;
+
+    if (!itemName || !quantity || !pricePerUnit || quantity <= 0 || pricePerUnit <= 0) {
+      return res.status(400).json({ message: "올바른 정보를 입력해주세요." });
+    }
+
+    // 사용자의 재료 확인
+    const material = await MaterialModel.findOne({ 
+      userUuid: userUuid,
+      material: itemName 
+    });
+
+    if (!material || material.count < quantity) {
+      return res.status(400).json({ message: "재료가 부족합니다." });
+    }
+
+    // 재료 차감
+    material.count -= quantity;
+    if (material.count === 0) {
+      await MaterialModel.deleteOne({ _id: material._id });
+    } else {
+      await material.save();
+    }
+
+    // 거래소에 등록
+    const listing = new MarketListingModel({
+      userUuid: userUuid,
+      sellerNickname: username,
+      itemName: itemName,
+      quantity: quantity,
+      pricePerUnit: pricePerUnit,
+      listedAt: new Date()
+    });
+
+    await listing.save();
+
+    // 소켓으로 전체 사용자에게 알림
+    io.emit('marketUpdate', { type: 'newListing', listing: listing.toObject() });
+
+    res.json({ message: "아이템이 등록되었습니다.", listing: listing.toObject() });
+  } catch (error) {
+    console.error("아이템 등록 실패:", error);
+    res.status(500).json({ message: "아이템 등록에 실패했습니다." });
+  }
+});
+
+// 아이템 구매
+app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid, username } = req.user;
+    const { listingId } = req.params;
+
+    // 거래소 등록 확인
+    const listing = await MarketListingModel.findById(listingId);
+    if (!listing) {
+      return res.status(404).json({ message: "등록된 아이템을 찾을 수 없습니다." });
+    }
+
+    // 자기 자신의 물건은 구매 불가
+    if (listing.userUuid === userUuid) {
+      return res.status(400).json({ message: "자신의 물건은 구매할 수 없습니다." });
+    }
+
+    const totalPrice = listing.pricePerUnit * listing.quantity;
+
+    // 구매자의 골드 확인
+    const buyerMoney = await UserMoneyModel.findOne({ userUuid: userUuid });
+    if (!buyerMoney || buyerMoney.money < totalPrice) {
+      return res.status(400).json({ message: "골드가 부족합니다." });
+    }
+
+    // 구매자 골드 차감
+    buyerMoney.money -= totalPrice;
+    await buyerMoney.save();
+
+    // 판매자에게 골드 지급
+    const sellerMoney = await UserMoneyModel.findOne({ userUuid: listing.userUuid });
+    if (sellerMoney) {
+      sellerMoney.money += totalPrice;
+      await sellerMoney.save();
+    }
+
+    // 구매자에게 재료 지급
+    const buyerMaterial = await MaterialModel.findOne({ 
+      userUuid: userUuid,
+      material: listing.itemName 
+    });
+
+    if (buyerMaterial) {
+      buyerMaterial.count += listing.quantity;
+      await buyerMaterial.save();
+    } else {
+      await MaterialModel.create({
+        userUuid: userUuid,
+        username: username,
+        material: listing.itemName,
+        count: listing.quantity
+      });
+    }
+
+    // 거래소에서 제거
+    await MarketListingModel.deleteOne({ _id: listingId });
+
+    // 거래 내역 저장
+    await MarketTradeHistoryModel.create({
+      buyerUuid: userUuid,
+      buyerNickname: username,
+      sellerUuid: listing.userUuid,
+      sellerNickname: listing.sellerNickname,
+      itemName: listing.itemName,
+      quantity: listing.quantity,
+      pricePerUnit: listing.pricePerUnit,
+      totalPrice: totalPrice,
+      tradedAt: new Date()
+    });
+
+    // 판매자에게 판매 알림 메일 발송
+    try {
+      const saleMail = new MailModel({
+        senderUuid: 'system',
+        senderNickname: '거래소',
+        receiverUuid: listing.userUuid,
+        receiverNickname: listing.sellerNickname,
+        subject: '📦 거래소 판매 완료',
+        message: `${username}님이 거래소에서 ${listing.itemName} ${listing.quantity}개를 ${totalPrice.toLocaleString()}골드(개당 ${listing.pricePerUnit.toLocaleString()}골드)에 구매했습니다.`,
+        isRead: false,
+        sentAt: new Date()
+      });
+      await saleMail.save();
+
+      // 실시간 메일 알림 (판매자가 접속 중이면)
+      const sellerSocketId = connectedUsersMap.get(listing.userUuid);
+      if (sellerSocketId) {
+        io.to(sellerSocketId).emit("new-mail", {
+          from: '거래소',
+          subject: '📦 거래소 판매 완료'
+        });
+      }
+    } catch (mailError) {
+      console.error('판매 알림 메일 발송 실패:', mailError);
+      // 메일 발송 실패해도 거래는 계속 진행
+    }
+
+    // 구매자에게 구매 확인 메일 발송
+    try {
+      const purchaseMail = new MailModel({
+        senderUuid: 'system',
+        senderNickname: '거래소',
+        receiverUuid: userUuid,
+        receiverNickname: username,
+        subject: '🛒 거래소 구매 완료',
+        message: `${listing.sellerNickname}님으로부터 ${listing.itemName} ${listing.quantity}개를 ${totalPrice.toLocaleString()}골드(개당 ${listing.pricePerUnit.toLocaleString()}골드)에 구매했습니다.`,
+        isRead: false,
+        sentAt: new Date()
+      });
+      await purchaseMail.save();
+
+      // 실시간 메일 알림 (구매자가 접속 중이면)
+      const buyerSocketId = connectedUsersMap.get(userUuid);
+      if (buyerSocketId) {
+        io.to(buyerSocketId).emit("new-mail", {
+          from: '거래소',
+          subject: '🛒 거래소 구매 완료'
+        });
+      }
+    } catch (mailError) {
+      console.error('구매 알림 메일 발송 실패:', mailError);
+      // 메일 발송 실패해도 거래는 계속 진행
+    }
+
+    // 소켓으로 전체 사용자에게 알림
+    io.emit('marketUpdate', { type: 'purchase', listingId: listingId });
+
+    res.json({ 
+      message: "구매가 완료되었습니다!",
+      item: listing.itemName,
+      quantity: listing.quantity,
+      totalPrice: totalPrice
+    });
+  } catch (error) {
+    console.error("구매 실패:", error);
+    res.status(500).json({ message: "구매 중 오류가 발생했습니다." });
+  }
+});
+
+// 등록 취소
+app.delete("/api/market/cancel/:listingId", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid, username } = req.user;
+    const { listingId } = req.params;
+
+    // 거래소 등록 확인
+    const listing = await MarketListingModel.findById(listingId);
+    if (!listing) {
+      return res.status(404).json({ message: "등록된 아이템을 찾을 수 없습니다." });
+    }
+
+    // 자기 자신의 물건만 취소 가능
+    if (listing.userUuid !== userUuid) {
+      return res.status(403).json({ message: "자신의 물건만 취소할 수 있습니다." });
+    }
+
+    // 재료 반환
+    const material = await MaterialModel.findOne({ 
+      userUuid: userUuid,
+      material: listing.itemName 
+    });
+
+    if (material) {
+      material.count += listing.quantity;
+      await material.save();
+    } else {
+      await MaterialModel.create({
+        userUuid: userUuid,
+        username: username,
+        material: listing.itemName,
+        count: listing.quantity
+      });
+    }
+
+    // 거래소에서 제거
+    await MarketListingModel.deleteOne({ _id: listingId });
+
+    // 소켓으로 전체 사용자에게 알림
+    io.emit('marketUpdate', { type: 'cancel', listingId: listingId });
+
+    res.json({ message: "등록이 취소되었습니다." });
+  } catch (error) {
+    console.error("등록 취소 실패:", error);
+    res.status(500).json({ message: "등록 취소에 실패했습니다." });
+  }
+});
+
+// 거래 내역 조회
+app.get("/api/market/history", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid } = req.user;
+
+    // 사용자가 구매하거나 판매한 거래 내역 조회 (최근 50개)
+    const trades = await MarketTradeHistoryModel.find({
+      $or: [
+        { buyerUuid: userUuid },
+        { sellerUuid: userUuid }
+      ]
+    })
+    .sort({ tradedAt: -1 })
+    .limit(50)
+    .lean();
+
+    // 각 거래에 type 추가 (purchase or sale)
+    const tradesWithType = trades.map(trade => ({
+      ...trade,
+      type: trade.buyerUuid === userUuid ? 'purchase' : 'sale'
+    }));
+
+    res.json(tradesWithType);
+  } catch (error) {
+    console.error("거래 내역 조회 실패:", error);
+    res.status(500).json({ message: "거래 내역을 불러올 수 없습니다." });
+  }
+});
+
+// 아이템별 평균 거래가 조회
+app.get("/api/market/average-prices", authenticateJWT, async (req, res) => {
+  try {
+    // 최근 30일 이내의 모든 거래 내역 조회
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const trades = await MarketTradeHistoryModel.find({
+      tradedAt: { $gte: thirtyDaysAgo }
+    }).lean();
+
+    // 아이템별로 평균 가격 계산
+    const itemStats = {};
+    
+    trades.forEach(trade => {
+      if (!itemStats[trade.itemName]) {
+        itemStats[trade.itemName] = {
+          totalPrice: 0,
+          totalQuantity: 0,
+          tradeCount: 0,
+          prices: []
+        };
+      }
+      
+      itemStats[trade.itemName].totalPrice += trade.pricePerUnit * trade.quantity;
+      itemStats[trade.itemName].totalQuantity += trade.quantity;
+      itemStats[trade.itemName].tradeCount += 1;
+      itemStats[trade.itemName].prices.push(trade.pricePerUnit);
+    });
+
+    // 평균 가격 계산
+    const averagePrices = {};
+    Object.keys(itemStats).forEach(itemName => {
+      const stats = itemStats[itemName];
+      averagePrices[itemName] = {
+        avgPrice: stats.totalPrice / stats.totalQuantity,
+        tradeCount: stats.tradeCount,
+        minPrice: Math.min(...stats.prices),
+        maxPrice: Math.max(...stats.prices)
+      };
+    });
+
+    res.json(averagePrices);
+  } catch (error) {
+    console.error("평균 가격 조회 실패:", error);
+    res.status(500).json({ message: "평균 가격을 불러올 수 없습니다." });
+  }
+});
+
+// ==================== 거래소 API 끝 ====================
 
 // 🔐 선택적 JWT 인증 미들웨어 (토큰이 없어도 통과, 있으면 검증)
 function optionalJWT(req, res, next) {

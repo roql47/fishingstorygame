@@ -192,8 +192,20 @@ export const useGameData = () => {
   }, []);
   
   // 🚀 상점 아이템 조회 함수
-  const getAllShopItems = useCallback(() => {
-    return shopData || { fishing_rod: [], accessories: [] };
+  const getAllShopItems = useCallback((category) => {
+    const allItems = shopData || { fishing_rod: [], accessories: [] };
+    
+    // category가 제공되지 않으면 전체 데이터 반환
+    if (!category) {
+      return allItems;
+    }
+    
+    // 특정 카테고리의 아이템 반환 (category 정보 추가)
+    const categoryItems = allItems[category] || [];
+    return categoryItems.map(item => ({
+      ...item,
+      category: category
+    }));
   }, [shopData]);
   
   // 🚀 현재 구매 가능한 아이템 함수 (단일 아이템 반환)
@@ -223,15 +235,8 @@ export const useGameData = () => {
     
     // 구매 가능한 아이템들 필터링
     const availableItems = allItems.filter(item => {
-      let canBuy;
-      
-      if (category === 'accessories') {
-        // 악세사리는 순차 구매: 현재 아이템보다 바로 다음 레벨만 구매 가능
-        canBuy = item.requiredSkill === (currentItemLevel + 1);
-      } else {
-        // 낚시대는 기존 로직: 낚시실력 >= requiredSkill && 현재보다 높은 레벨
-        canBuy = fishingSkill >= item.requiredSkill && item.requiredSkill > currentItemLevel;
-      }
+      // 낚시대와 악세사리 모두 순차 구매: 현재 아이템보다 바로 다음 레벨만 구매 가능
+      const canBuy = item.requiredSkill === (currentItemLevel + 1);
       
       console.log(`${item.name}: requiredSkill=${item.requiredSkill}, currentLevel=${currentItemLevel}, canBuy=${canBuy}`);
       return canBuy;
@@ -244,9 +249,9 @@ export const useGameData = () => {
     
     console.log(`Next item:`, nextItem);
     
-    // 🔧 안전한 기본값 보장
-    if (nextItem && nextItem.price === undefined) {
-      nextItem.price = 0;
+    // 🔧 category 정보 추가
+    if (nextItem) {
+      nextItem.category = category;
     }
     
     return nextItem;

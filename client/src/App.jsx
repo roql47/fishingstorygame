@@ -13,6 +13,8 @@ import NoticeModal from "./components/NoticeModal";
 import TutorialModal from "./components/TutorialModal";
 import CollectionModal from './components/CollectionModal';
 import EnhancementModal from './components/EnhancementModal';
+import MarketModal from './components/MarketModal';
+import MailModal from './components/MailModal';
 import { CompanionTab, processCompanionSkill, canUseCompanionSkill } from './components/companions';
 import ExpeditionTab from './components/ExpeditionTab';
 import ShopTab from './components/ShopTab';
@@ -20,6 +22,7 @@ import { COMPANION_DATA, calculateCompanionStats } from './data/companionData';
 import { useAchievements, ACHIEVEMENT_DEFINITIONS } from './hooks/useAchievements';
 import AchievementModal from './components/AchievementModal';
 import { VERSION_INFO } from './data/noticeData';
+import { CRAFTING_RECIPES, getCraftingRecipe, getDecomposeRecipe, getMaterialTier } from './data/craftingData';
 import { 
   Fish, 
   MessageCircle, 
@@ -50,7 +53,9 @@ import {
   Bell,
   BookOpen,
   Info,
-  Zap
+  Zap,
+  Hammer,
+  Mail
 } from "lucide-react";
 import "./App.css";
 
@@ -316,6 +321,9 @@ function App() {
   const [showNoticeModal, setShowNoticeModal] = useState(false); // 공지사항 모달
   const [showTutorialModal, setShowTutorialModal] = useState(false); // 튜토리얼 모달
   const [showCollectionModal, setShowCollectionModal] = useState(false); // 도감 모달
+  const [showMarketModal, setShowMarketModal] = useState(false); // 거래소 모달
+  const [showMailModal, setShowMailModal] = useState(false); // 편지함 모달
+  const [unreadMailCount, setUnreadMailCount] = useState(0); // 읽지 않은 메일 개수
   
   // 레이드 관련 상태
   const [raidBoss, setRaidBoss] = useState(null); // { name, hp, maxHp, isActive }
@@ -2691,6 +2699,15 @@ function App() {
     socket.on("user:uuid", onUserUuid);
     socket.on("message:reaction:update", onReactionUpdate);
     
+    // 메일 관련 이벤트 핸들러
+    const onNewMail = (data) => {
+      console.log("📬 새로운 메일 도착:", data);
+      setUnreadMailCount(prev => prev + 1);
+      // 메일함 배지만 업데이트 (채팅창 알림 제거)
+    };
+    
+    socket.on("new-mail", onNewMail);
+    
     // 레이드 관련 이벤트 핸들러들
     const onRaidBossUpdate = (data) => {
       console.log(`🏰 보스 상태 업데이트:`, data.boss);
@@ -2914,6 +2931,7 @@ function App() {
       socket.off("chat:error", onChatError);
       socket.off("connect_error", onConnectError);
       socket.off("account-blocked", onAccountBlocked);
+      socket.off("new-mail", onNewMail);
       
       // 레이드 관련 이벤트 정리
       socket.off("raid:boss:update", onRaidBossUpdate);
@@ -2922,6 +2940,35 @@ function App() {
     };
   }, [username, idToken]);
 
+  // 📬 읽지 않은 메일 개수 주기적으로 확인
+  useEffect(() => {
+    const fetchUnreadMailCount = async () => {
+      try {
+        const token = localStorage.getItem('jwtToken');
+        if (!token || !username) return;
+
+        const response = await axios.get(
+          `${import.meta.env.VITE_SERVER_URL || 'http://localhost:4000'}/api/mail/unread-count`,
+          {
+            headers: { Authorization: `Bearer ${token}` }
+          }
+        );
+
+        if (response.data.success) {
+          setUnreadMailCount(response.data.unreadCount);
+        }
+      } catch (error) {
+        console.error('읽지 않은 메일 개수 조회 실패:', error);
+      }
+    };
+
+    if (username) {
+      fetchUnreadMailCount();
+      // 30초마다 확인
+      const interval = setInterval(fetchUnreadMailCount, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [username]);
 
   // 🚀 재료 가져오기 함수 (전역에서 사용 가능) - useCallback으로 최적화
   const fetchMaterials = useCallback(async () => {
@@ -6224,74 +6271,152 @@ function App() {
     }
   };
 
-  // 아이템 구매 함수
-  const buyItem = async (itemName, price, category, currency = 'gold') => {
-    console.log("buyItem called with:", { itemName, price, category, currency, username, userUuid });
+  // 재료 조합 함수 (하위 재료 3개 → 상위 재료 1개)
+  const handleCraft = async (materialName, recipe) => {
+    if (!username) {
+      alert('사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.');
+      return;
+    }
+
+    try {
+      const userId = idToken ? 'user' : 'null';
+      const params = { username, userUuid };
+
+      // 🔐 JWT 인증을 사용한 API 호출
+      const response = await authenticatedRequest.post(`${serverUrl}/api/craft-material`, {
+        inputMaterial: recipe.inputMaterial,
+        inputCount: recipe.inputCount,
+        outputMaterial: recipe.outputMaterial,
+        outputCount: recipe.outputCount
+      });
+
+      if (response.data.success) {
+        // 재료 목록 새로고침
+        await fetchMaterials();
+        
+        setMessages(prev => [...prev, {
+          system: true,
+          content: `✨ ${recipe.inputMaterial} ${recipe.inputCount}개를 조합하여 ${recipe.outputMaterial} ${recipe.outputCount}개를 획득했습니다!`,
+          timestamp: new Date().toISOString()
+        }]);
+      } else {
+        alert(response.data.error || '조합에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('Failed to craft material:', error);
+      alert(error.response?.data?.error || '조합에 실패했습니다.');
+    }
+  };
+
+  // 재료 분해 함수 (상위 재료 1개 → 하위 재료 2개)
+  const handleDecompose = async (materialName, recipe) => {
+    if (!username) {
+      alert('사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.');
+      return;
+    }
+
+    try {
+      const userId = idToken ? 'user' : 'null';
+      const params = { username, userUuid };
+
+      // 🔐 JWT 인증을 사용한 API 호출
+      const response = await authenticatedRequest.post(`${serverUrl}/api/decompose-material`, {
+        inputMaterial: recipe.outputMaterial, // 분해할 재료 (상위)
+        outputMaterial: recipe.inputMaterial, // 얻을 재료 (하위)
+        outputCount: 2 // 분해 시 2개 획득
+      });
+
+      if (response.data.success) {
+        // 재료 목록 새로고침
+        await fetchMaterials();
+        
+        setMessages(prev => [...prev, {
+          system: true,
+          content: `🔨 ${recipe.outputMaterial} 1개를 분해하여 ${recipe.inputMaterial} 2개를 획득했습니다!`,
+          timestamp: new Date().toISOString()
+        }]);
+      } else {
+        alert(response.data.error || '분해에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('Failed to decompose material:', error);
+      alert(error.response?.data?.error || '분해에 실패했습니다.');
+    }
+  };
+
+  // 아이템 구매 함수 (재료 기반)
+  const buyItem = async (item) => {
+    console.log("buyItem called with:", { item, username, userUuid });
     
     if (!username) {
       alert('사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.');
       return;
     }
     
-    // 화폐 종류에 따른 잔액 확인
-    if (currency === 'amber') {
-      if (userAmber < price) {
-        alert('호박석이 부족합니다!');
-        return;
-      }
-    } else {
-    if (userMoney < price) {
-      alert('골드가 부족합니다!');
+    // 재료 확인
+    const userMaterial = materials.find(m => m.material === item.material);
+    const userMaterialCount = userMaterial?.count || 0;
+    
+    if (userMaterialCount < item.materialCount) {
+      alert(`재료가 부족합니다! (${item.material} ${userMaterialCount}/${item.materialCount})`);
       return;
-      }
     }
     
     try {
       const userId = idToken ? 'user' : 'null';
       const params = { username, userUuid }; // username과 userUuid 모두 전달
       
-      console.log("Sending buy item request:", { itemName, price, category, params });
+      console.log("Sending buy item request:", { 
+        itemName: item.name, 
+        material: item.material, 
+        materialCount: item.materialCount,
+        category: item.category,
+        params 
+      });
       
       // 🔐 JWT 인증을 사용한 API 호출
       const response = await authenticatedRequest.post(`${serverUrl}/api/buy-item`, {
-        itemName,
-        price,
-        category,
-        currency // 화폐 종류 전송
+        itemName: item.name,
+        material: item.material,
+        materialCount: item.materialCount,
+        category: item.category
       });
       
       if (response.data.success) {
-        // 화폐 종류에 따라 차감
-        if (currency === 'amber') {
-          setUserAmber(prev => prev - price);
-        } else {
-        setUserMoney(prev => prev - price);
-        }
+        // 재료 차감 (로컬)
+        setMaterials(prev => {
+          const updated = prev.map(m => 
+            m.material === item.material
+              ? { ...m, count: m.count - item.materialCount }
+              : m
+          ).filter(m => m.count > 0);
+          return updated;
+        });
         
         // 장비 자동 장착
-        if (category === 'fishing_rod') {
+        if (item.category === 'fishing_rod') {
           setUserEquipment(prev => ({ 
             ...prev, 
-            fishingRod: itemName,
+            fishingRod: item.name,
             fishingRodEnhancement: 0,
             fishingRodFailCount: 0
           }));
           // 낚시대 구매 시에만 낚시실력 +1
           setFishingSkill(prev => prev + 1);
-        } else if (category === 'accessories') {
+        } else if (item.category === 'accessories') {
           setUserEquipment(prev => ({ 
             ...prev, 
-            accessory: itemName,
+            accessory: item.name,
             accessoryEnhancement: 0,
             accessoryFailCount: 0
           }));
           // 악세사리 구매 시에는 낚시실력 증가 안함
           // 🛡️ [FIX] 악세사리 구매 시 서버에서 쿨타임 재계산 요청
           try {
-            const response = await authenticatedRequest.post(`${serverUrl}/api/recalculate-fishing-cooldown`, {});
+            const cooldownResponse = await authenticatedRequest.post(`${serverUrl}/api/recalculate-fishing-cooldown`, {});
             
-            if (response.data.success) {
-              const newCooldownTime = response.data.remainingTime || 0;
+            if (cooldownResponse.data.success) {
+              const newCooldownTime = cooldownResponse.data.remainingTime || 0;
               setFishingCooldown(newCooldownTime);
               console.log(`🎣 Fishing cooldown recalculated after accessory purchase: ${newCooldownTime}ms`);
             }
@@ -6330,23 +6455,30 @@ function App() {
               achievementBonus,
               totalSkill
             });
+            
+            // 재료 정보도 새로고침
+            const materialsRes = await axios.get(`${serverUrl}/api/materials/${userId}`, { params });
+            setMaterials(materialsRes.data || []);
           } catch (e) {
-            console.error('Failed to refresh equipment after purchase:', e);
+            console.error('Failed to refresh data after purchase:', e);
           }
         }, 500);
         
         // 구매 메시지 채팅에 추가
-        const skillMessage = (category === 'fishing_rod') ? ' (낚시실력 +1)' : '';
-        const currencyText = currency === 'amber' ? '호박석' : '골드';
+        const skillMessage = (item.category === 'fishing_rod') ? ' (낚시실력 +1)' : '';
         setMessages(prev => [...prev, {
           system: true,
-          content: `${itemName}을(를) ${(price || 0).toLocaleString()}${currencyText}에 구매하고 장착했습니다!${skillMessage}`,
+          content: `${item.name}을(를) ${item.material} x${item.materialCount}(으)로 구매하고 장착했습니다!${skillMessage}`,
           timestamp: new Date().toISOString()
         }]);
       }
     } catch (error) {
       console.error('Failed to buy item:', error);
-      alert('아이템 구매에 실패했습니다.');
+      if (error.response?.data?.error === 'Not enough materials') {
+        alert('재료가 부족합니다!');
+      } else {
+        alert('아이템 구매에 실패했습니다.');
+      }
     }
   };
 
@@ -6551,6 +6683,19 @@ function App() {
           <div className="flex items-center gap-4">
             {/* 유틸리티 버튼들 */}
             <div className="flex items-center gap-2">
+              {/* 거래소 버튼 */}
+              <button
+                onClick={() => setShowMarketModal(true)}
+                className={`p-2 rounded-full hover:glow-effect transition-all duration-300 ${
+                  isDarkMode 
+                    ? "glass-input text-green-400 hover:text-green-300" 
+                    : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-green-600 hover:text-green-500"
+                }`}
+                title="거래소"
+              >
+                <ShoppingCart className="w-4 h-4" />
+              </button>
+
               {/* 도감 버튼 */}
               <button
                 onClick={() => setShowCollectionModal(true)}
@@ -6588,6 +6733,24 @@ function App() {
                 title="튜토리얼"
               >
                 <BookOpen className="w-4 h-4" />
+              </button>
+              
+              {/* 편지함 버튼 */}
+              <button
+                onClick={() => setShowMailModal(true)}
+                className={`p-2 rounded-full hover:glow-effect transition-all duration-300 relative ${
+                  isDarkMode 
+                    ? "glass-input text-purple-400 hover:text-purple-300" 
+                    : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-purple-600 hover:text-purple-500"
+                } ${unreadMailCount > 0 ? 'shadow-[0_0_15px_rgba(168,85,247,0.6)] animate-pulse' : ''}`}
+                title="편지함"
+              >
+                <Mail className="w-4 h-4" />
+                {unreadMailCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                    {unreadMailCount > 9 ? '9+' : unreadMailCount}
+                  </span>
+                )}
               </button>
               
               {/* 테마 토글 */}
@@ -7093,6 +7256,21 @@ function App() {
                     <Sword className="w-4 h-4" />
                     <span className="text-sm">착용 장비</span>
                   </button>
+                  <button
+                    onClick={() => setInventoryCategory("crafting")}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 font-medium ${
+                      inventoryCategory === "crafting"
+                        ? isDarkMode
+                          ? "bg-amber-500/20 text-amber-400 border border-amber-400/30"
+                          : "bg-amber-500/10 text-amber-600 border border-amber-500/30"
+                        : isDarkMode
+                          ? "text-gray-400 hover:text-gray-300"
+                          : "text-gray-600 hover:text-gray-800"
+                    }`}
+                  >
+                    <Hammer className="w-4 h-4" />
+                    <span className="text-sm">조합</span>
+                  </button>
                 </div>
 
                 {/* 전체 판매/분해 버튼 - 인벤토리 탭에서만 표시 */}
@@ -7500,12 +7678,152 @@ function App() {
                   </div>
                 </div>
               )}
+
+              {/* 조합 인벤토리 */}
+              {inventoryCategory === "crafting" && (
+                <div className="space-y-4">
+                  {/* 조합 설명 */}
+                  <div className={`p-4 rounded-xl ${
+                    isDarkMode ? "glass-input border border-amber-400/20" : "bg-white/60 backdrop-blur-sm border border-amber-300/40"
+                  }`}>
+                    <div className="flex items-center gap-3 mb-2">
+                      <Hammer className={`w-5 h-5 ${
+                        isDarkMode ? "text-amber-400" : "text-amber-600"
+                      }`} />
+                      <h3 className={`text-lg font-semibold ${
+                        isDarkMode ? "text-white" : "text-gray-800"
+                      }`}>재료 조합</h3>
+                    </div>
+                    <p className={`text-sm ${
+                      isDarkMode ? "text-gray-400" : "text-gray-600"
+                    }`}>
+                      • 하위 재료 3개를 조합하여 상위 재료 1개를 만들 수 있습니다<br />
+                      • 상위 재료 1개를 분해하여 하위 재료 2개를 얻을 수 있습니다
+                    </p>
+                  </div>
+
+                  {/* 재료 목록 */}
+                  {materials.length === 0 ? (
+                    <div className="text-center py-12">
+                      <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-500/20 mb-4 ${
+                        mobileConfig?.shouldReduceAnimations ? '' : 'bounce-slow'
+                      }`}>
+                        <Gem className={`w-8 h-8 ${
+                          isDarkMode ? "text-amber-400" : "text-amber-600"
+                        }`} />
+                      </div>
+                      <p className={`text-sm font-medium mb-2 ${
+                        isDarkMode ? "text-gray-300" : "text-gray-700"
+                      }`}>보유한 재료가 없습니다</p>
+                      <p className={`text-xs ${
+                        isDarkMode ? "text-gray-500" : "text-gray-600"
+                      }`}>물고기를 분해하여 재료를 획득하세요!</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {materials
+                        .sort((a, b) => {
+                          // tier 순서대로 정렬 (문어다리가 맨 위로)
+                          const tierA = getMaterialTier(a.material);
+                          const tierB = getMaterialTier(b.material);
+                          return tierA - tierB;
+                        })
+                        .map((item, index) => {
+                          const craftRecipe = getCraftingRecipe(item.material);
+                          const decomposeRecipe = getDecomposeRecipe(item.material);
+                          const canCraft = craftRecipe && item.count >= craftRecipe.inputCount;
+                          const canDecompose = decomposeRecipe && item.count >= 1;
+                          
+                          return (
+                            <div key={index} className={`p-4 rounded-xl hover:glow-effect transition-all duration-300 group ${
+                              isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+                            }`}>
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20">
+                                    <Gem className={`w-6 h-6 group-hover:scale-110 transition-transform ${
+                                      isDarkMode ? "text-purple-400" : "text-purple-600"
+                                    }`} />
+                                  </div>
+                                  <div>
+                                    <div className={`font-medium text-base ${
+                                      isDarkMode ? "text-white" : "text-gray-800"
+                                    }`}>{item.material}</div>
+                                    <div className={`text-xs ${
+                                      isDarkMode ? "text-gray-400" : "text-gray-600"
+                                    }`}>보유량: {item.count}개</div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* 조합/분해 버튼 */}
+                              <div className="flex gap-2">
+                                {/* 조합 버튼 */}
+                                {craftRecipe && (
+                                  <button
+                                    onClick={() => handleCraft(item.material, craftRecipe)}
+                                    disabled={!canCraft}
+                                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
+                                      canCraft
+                                        ? isDarkMode
+                                          ? "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 border border-amber-400/30 hover:scale-105"
+                                          : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border border-amber-500/30 hover:scale-105"
+                                        : "opacity-50 cursor-not-allowed bg-gray-500/10 text-gray-500 border border-gray-500/20"
+                                    }`}
+                                    title={canCraft ? `${craftRecipe.inputMaterial} 3개 → ${craftRecipe.outputMaterial} 1개` : `재료가 부족합니다 (${item.count}/3)`}
+                                  >
+                                    <Hammer className="w-4 h-4" />
+                                    <span className="text-sm">조합 ({craftRecipe.inputCount}개 → {craftRecipe.outputMaterial})</span>
+                                  </button>
+                                )}
+
+                                {/* 분해 버튼 */}
+                                {decomposeRecipe && (
+                                  <button
+                                    onClick={() => handleDecompose(item.material, decomposeRecipe)}
+                                    disabled={!canDecompose}
+                                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
+                                      canDecompose
+                                        ? isDarkMode
+                                          ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-400/30 hover:scale-105"
+                                          : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border border-blue-500/30 hover:scale-105"
+                                        : "opacity-50 cursor-not-allowed bg-gray-500/10 text-gray-500 border border-gray-500/20"
+                                    }`}
+                                    title={canDecompose ? `${decomposeRecipe.outputMaterial} 1개 → ${decomposeRecipe.inputMaterial} 2개` : "재료가 부족합니다"}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                    <span className="text-sm">분해 (1개 → {decomposeRecipe.inputMaterial} 2개)</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           )}
 
           {/* 상점 탭 */}
           {activeTab === "shop" && (
+            <ShopTab
+              isDarkMode={isDarkMode}
+              userMoney={userMoney}
+              userAmber={userAmber}
+              userStarPieces={userStarPieces}
+              materials={materials}
+              userEquipment={userEquipment}
+              fishingSkill={fishingSkill}
+              getAllShopItems={getAllShopItems}
+              buyItem={buyItem}
+              exchangeEtherKeys={exchangeEtherKeys}
+            />
+          )}
+
+          {activeTab === "shop_OLD_DISABLED" && (
           <div className={`rounded-2xl board-shadow min-h-full flex flex-col ${
             isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
           }`}>
@@ -10863,6 +11181,37 @@ function App() {
         isDarkMode={isDarkMode}
       />
 
+      {/* 편지함 모달 */}
+      <MailModal
+        isOpen={showMailModal}
+        onClose={() => {
+          setShowMailModal(false);
+          // 모달 닫을 때 읽지 않은 메일 개수 갱신
+          const fetchUnreadMailCount = async () => {
+            try {
+              const token = localStorage.getItem('jwtToken');
+              if (!token) return;
+              
+              const response = await axios.get(
+                `${import.meta.env.VITE_SERVER_URL || 'http://localhost:4000'}/api/mail/unread-count`,
+                {
+                  headers: { Authorization: `Bearer ${token}` }
+                }
+              );
+              
+              if (response.data.success) {
+                setUnreadMailCount(response.data.unreadCount);
+              }
+            } catch (error) {
+              console.error('읽지 않은 메일 개수 조회 실패:', error);
+            }
+          };
+          fetchUnreadMailCount();
+        }}
+        username={username}
+        userUuid={userUuid}
+      />
+
       {/* 수집 도감 모달 */}
       <CollectionModal 
         showCollectionModal={showCollectionModal}
@@ -10871,6 +11220,20 @@ function App() {
         inventory={inventory}
         userEquipment={userEquipment}
         allFishTypes={allFishTypes}
+      />
+
+      {/* 거래소 모달 */}
+      <MarketModal 
+        showMarketModal={showMarketModal}
+        setShowMarketModal={setShowMarketModal}
+        isDarkMode={isDarkMode}
+        inventory={inventory}
+        materials={materials}
+        gold={userMoney}
+        nickname={username}
+        onPurchase={refreshAllData}
+        onListItem={refreshAllData}
+        onCancelListing={refreshAllData}
       />
 
       {/* 장비 강화 모달 */}
