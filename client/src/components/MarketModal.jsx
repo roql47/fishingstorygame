@@ -40,7 +40,6 @@ const MarketModal = ({
     const socket = getSocket();
     
     const handleMarketUpdate = (data) => {
-      console.log('거래소 업데이트:', data);
       fetchMarketListings(); // 거래소 목록 새로고침
       fetchTradeHistory(); // 내 거래내역 새로고침
       fetchAllTradeHistory(); // 전체 거래내역 새로고침
@@ -317,8 +316,6 @@ const MarketModal = ({
   const decomposeMaterials = getDecomposeMaterials();
   const myListings = marketListings.filter(listing => listing.sellerNickname === nickname);
   const allListings = marketListings; // 모든 등록 아이템 표시
-  
-  console.log('거래소 디버그:', { nickname, marketListings, myListings: myListings.length, allListings: allListings.length });
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">

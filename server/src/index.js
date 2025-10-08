@@ -9652,6 +9652,20 @@ app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) =>
 
     console.log(`💰 거래 완료: 총액 ${totalPrice.toLocaleString()}골드, 수수료 ${fee.toLocaleString()}골드, 판매자 수령 ${sellerReceives.toLocaleString()}골드`);
 
+    // 구매자에게 골드 업데이트 소켓 전송
+    const buyerSocketId = connectedUsersMap.get(userUuid);
+    if (buyerSocketId) {
+      io.to(buyerSocketId).emit('data:money', { money: buyerMoney.money });
+      console.log(`💰 구매자 골드 업데이트 전송: ${username} - ${buyerMoney.money}`);
+    }
+
+    // 판매자에게 골드 업데이트 소켓 전송
+    const sellerSocketId = connectedUsersMap.get(listing.userUuid);
+    if (sellerSocketId && sellerMoney) {
+      io.to(sellerSocketId).emit('data:money', { money: sellerMoney.money });
+      console.log(`💰 판매자 골드 업데이트 전송: ${listing.sellerNickname} - ${sellerMoney.money}`);
+    }
+
     // 구매자에게 재료 지급
     const buyerMaterial = await MaterialModel.findOne({ 
       userUuid: userUuid,
@@ -9700,8 +9714,7 @@ app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) =>
       });
       await saleMail.save();
 
-      // 실시간 메일 알림 (판매자가 접속 중이면)
-      const sellerSocketId = connectedUsersMap.get(listing.userUuid);
+      // 실시간 메일 알림 (판매자가 접속 중이면) - sellerSocketId는 위에서 이미 선언됨
       if (sellerSocketId) {
         io.to(sellerSocketId).emit("new-mail", {
           from: '거래소',
@@ -9727,8 +9740,7 @@ app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) =>
       });
       await purchaseMail.save();
 
-      // 실시간 메일 알림 (구매자가 접속 중이면)
-      const buyerSocketId = connectedUsersMap.get(userUuid);
+      // 실시간 메일 알림 (구매자가 접속 중이면) - buyerSocketId는 위에서 이미 선언됨
       if (buyerSocketId) {
         io.to(buyerSocketId).emit("new-mail", {
           from: '거래소',
@@ -9745,9 +9757,9 @@ app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) =>
 
     // 구매자에게 재료 업데이트 전송
     const buyerMaterials = await MaterialModel.find({ userUuid: userUuid }).lean();
-    const buyerSocketId = connectedUsersMap.get(userUuid);
     if (buyerSocketId) {
       io.to(buyerSocketId).emit('data:materials', { materials: buyerMaterials });
+      console.log(`📦 구매자 재료 업데이트 전송: ${username}`);
     }
 
     res.json({ 
