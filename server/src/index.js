@@ -9522,6 +9522,7 @@ app.use("/api/achievements", achievementRouter);
 app.get("/api/market/listings", authenticateJWT, async (req, res) => {
   try {
     const listings = await MarketListingModel.find({}).sort({ listedAt: -1 }).lean();
+    console.log(`📦 거래소 목록 조회: ${listings.length}개 아이템, 요청자: ${req.user.username}`);
     res.json(listings);
   } catch (error) {
     console.error("거래소 목록 조회 실패:", error);
@@ -9766,7 +9767,7 @@ app.delete("/api/market/cancel/:listingId", authenticateJWT, async (req, res) =>
   }
 });
 
-// 거래 내역 조회
+// 내 거래 내역 조회
 app.get("/api/market/history", authenticateJWT, async (req, res) => {
   try {
     const { userUuid } = req.user;
@@ -9791,6 +9792,22 @@ app.get("/api/market/history", authenticateJWT, async (req, res) => {
     res.json(tradesWithType);
   } catch (error) {
     console.error("거래 내역 조회 실패:", error);
+    res.status(500).json({ message: "거래 내역을 불러올 수 없습니다." });
+  }
+});
+
+// 전체 거래 내역 조회 (모든 플레이어)
+app.get("/api/market/history/all", authenticateJWT, async (req, res) => {
+  try {
+    // 모든 거래 내역 조회 (최근 100개)
+    const trades = await MarketTradeHistoryModel.find({})
+      .sort({ tradedAt: -1 })
+      .limit(100)
+      .lean();
+
+    res.json(trades);
+  } catch (error) {
+    console.error("전체 거래 내역 조회 실패:", error);
     res.status(500).json({ message: "거래 내역을 불러올 수 없습니다." });
   }
 });

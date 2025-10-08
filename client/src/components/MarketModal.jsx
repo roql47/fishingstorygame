@@ -15,9 +15,10 @@ const MarketModal = ({
   onListItem,
   onCancelListing
 }) => {
-  const [activeTab, setActiveTab] = useState('browse'); // browse, myListings, myItems, history
+  const [activeTab, setActiveTab] = useState('browse'); // browse, myListings, myItems, history, allHistory
   const [marketListings, setMarketListings] = useState([]);
   const [tradeHistory, setTradeHistory] = useState([]);
+  const [allTradeHistory, setAllTradeHistory] = useState([]);
   const [itemAveragePrices, setItemAveragePrices] = useState({});
   const [selectedItem, setSelectedItem] = useState(null);
   const [listPrice, setListPrice] = useState('');
@@ -30,6 +31,7 @@ const MarketModal = ({
     
     fetchMarketListings();
     fetchTradeHistory();
+    fetchAllTradeHistory();
     fetchAveragePrices();
     
     // 소켓 이벤트 리스너 설정
@@ -38,7 +40,8 @@ const MarketModal = ({
     const handleMarketUpdate = (data) => {
       console.log('거래소 업데이트:', data);
       fetchMarketListings(); // 거래소 목록 새로고침
-      fetchTradeHistory(); // 거래내역 새로고침
+      fetchTradeHistory(); // 내 거래내역 새로고침
+      fetchAllTradeHistory(); // 전체 거래내역 새로고침
       fetchAveragePrices(); // 평균가 새로고침
     };
     
@@ -51,7 +54,7 @@ const MarketModal = ({
 
   const fetchMarketListings = async () => {
     try {
-      const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+      const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
       const response = await fetch(`${serverUrl}/api/market/listings`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
@@ -69,7 +72,7 @@ const MarketModal = ({
 
   const fetchTradeHistory = async () => {
     try {
-      const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+      const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
       const response = await fetch(`${serverUrl}/api/market/history`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
@@ -85,9 +88,27 @@ const MarketModal = ({
     }
   };
 
+  const fetchAllTradeHistory = async () => {
+    try {
+      const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
+      const response = await fetch(`${serverUrl}/api/market/history/all`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setAllTradeHistory(data);
+      }
+    } catch (error) {
+      console.error('전체 거래 내역 로딩 실패:', error);
+    }
+  };
+
   const fetchAveragePrices = async () => {
     try {
-      const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+      const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
       const response = await fetch(`${serverUrl}/api/market/average-prices`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
@@ -134,7 +155,7 @@ const MarketModal = ({
 
     setLoading(true);
     try {
-      const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+      const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
       const response = await fetch(`${serverUrl}/api/market/list`, {
         method: 'POST',
         headers: {
@@ -186,7 +207,7 @@ const MarketModal = ({
 
     setLoading(true);
     try {
-      const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+      const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
       const listingId = listing._id || listing.id;
       const response = await fetch(`${serverUrl}/api/market/purchase/${listingId}`, {
         method: 'POST',
@@ -221,7 +242,7 @@ const MarketModal = ({
 
     setLoading(true);
     try {
-      const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+      const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
       const listingId = listing._id || listing.id;
       const response = await fetch(`${serverUrl}/api/market/cancel/${listingId}`, {
         method: 'DELETE',
@@ -345,7 +366,22 @@ const MarketModal = ({
               }`}
             >
               <Clock className="w-4 h-4" />
-              최근 거래내역
+              내 거래내역
+            </button>
+            <button
+              onClick={() => setActiveTab('allHistory')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
+                activeTab === 'allHistory'
+                  ? isDarkMode
+                    ? "bg-cyan-500/20 text-cyan-400 border border-cyan-400/30"
+                    : "bg-cyan-500/10 text-cyan-600 border border-cyan-500/30"
+                  : isDarkMode
+                    ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                    : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
+              }`}
+            >
+              <TrendingUp className="w-4 h-4" />
+              전체 거래내역
             </button>
           </div>
         </div>
@@ -670,7 +706,7 @@ const MarketModal = ({
             </div>
           )}
 
-          {/* 최근 거래내역 탭 */}
+          {/* 내 거래내역 탭 */}
           {activeTab === 'history' && (
             <div>
               {tradeHistory.length === 0 ? (
@@ -678,7 +714,7 @@ const MarketModal = ({
                   isDarkMode ? "text-gray-400" : "text-gray-600"
                 }`}>
                   <Clock className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                  <p>최근 거래 내역이 없습니다.</p>
+                  <p>거래 내역이 없습니다.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -719,6 +755,71 @@ const MarketModal = ({
                               {trade.type === 'purchase' 
                                 ? `판매자: ${trade.sellerNickname}` 
                                 : `구매자: ${trade.buyerNickname}`}
+                            </div>
+                            <div>수량: {trade.quantity}개</div>
+                            <div className={`font-bold ${
+                              isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                            }`}>
+                              <Coins className="w-4 h-4 inline mr-1" />
+                              {trade.totalPrice.toLocaleString()}골드
+                              <span className={`text-xs ml-2 ${
+                                isDarkMode ? "text-gray-400" : "text-gray-600"
+                              }`}>
+                                (개당 {trade.pricePerUnit.toLocaleString()})
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 text-xs text-gray-500">
+                              <Clock className="w-3 h-3" />
+                              {new Date(trade.tradedAt).toLocaleString('ko-KR')}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 전체 거래내역 탭 */}
+          {activeTab === 'allHistory' && (
+            <div>
+              {allTradeHistory.length === 0 ? (
+                <div className={`text-center py-12 ${
+                  isDarkMode ? "text-gray-400" : "text-gray-600"
+                }`}>
+                  <TrendingUp className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                  <p>전체 거래 내역이 없습니다.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {allTradeHistory.map((trade, index) => (
+                    <div
+                      key={index}
+                      className={`p-4 rounded-lg border transition-all duration-300 ${
+                        isDarkMode
+                          ? "bg-gray-800/50 border-gray-600/30"
+                          : "bg-white border-gray-300/50"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <h3 className={`text-lg font-bold ${
+                              isDarkMode ? "text-white" : "text-gray-800"
+                            }`}>
+                              📦 {trade.itemName}
+                            </h3>
+                          </div>
+                          <div className={`text-sm space-y-1 ${
+                            isDarkMode ? "text-gray-400" : "text-gray-600"
+                          }`}>
+                            <div className="flex items-center gap-2">
+                              <User className="w-4 h-4" />
+                              <span className="text-red-400">판매:</span> {trade.sellerNickname}
+                              <span className="mx-2">→</span>
+                              <span className="text-blue-400">구매:</span> {trade.buyerNickname}
                             </div>
                             <div>수량: {trade.quantity}개</div>
                             <div className={`font-bold ${
