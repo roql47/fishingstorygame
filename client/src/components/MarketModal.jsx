@@ -188,6 +188,15 @@ const MarketModal = ({
       return;
     }
 
+    // 보증금 체크 (먼저 확인!)
+    const totalPrice = parseInt(listPrice) * listQuantity;
+    const deposit = Math.floor(totalPrice * 0.05);
+    
+    if (gold < deposit) {
+      alert(`보증금이 부족합니다.\n필요한 보증금: ${deposit.toLocaleString()}골드\n현재 골드: ${gold.toLocaleString()}골드`);
+      return;
+    }
+
     setLoading(true);
     try {
       const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
@@ -208,7 +217,10 @@ const MarketModal = ({
       const data = await response.json();
       
       if (response.ok) {
-        // 즉시 로컬 상태 업데이트 (아이템 차감)
+        const totalPrice = parseInt(listPrice) * listQuantity;
+        const deposit = Math.floor(totalPrice * 0.05);
+
+        // 즉시 로컬 상태 업데이트 (아이템 차감 + 보증금 차감)
         if (selectedItem.type === 'material') {
           const updatedMaterials = materials.map(m => {
             if (m.material === selectedItem.name) {
@@ -223,8 +235,11 @@ const MarketModal = ({
         } else if (selectedItem.type === 'starPiece') {
           setStarPieces(prev => prev - listQuantity);
         }
+
+        // 보증금 차감
+        setGold(prev => prev - deposit);
         
-        alert('아이템이 거래소에 등록되었습니다!');
+        alert(`아이템이 거래소에 등록되었습니다!\n보증금 ${deposit.toLocaleString()}골드가 차감되었습니다.`);
         setSelectedItem(null);
         setListPrice('');
         setListQuantity(1);
@@ -329,7 +344,7 @@ const MarketModal = ({
       const data = await response.json();
       
       if (response.ok) {
-        // 즉시 로컬 상태 업데이트 (아이템 반환)
+        // 즉시 로컬 상태 업데이트 (아이템 반환 + 보증금 반환)
         if (listing.itemType === 'material') {
           const existingMaterial = materials.find(m => m.material === listing.itemName);
           if (existingMaterial) {
@@ -347,8 +362,11 @@ const MarketModal = ({
         } else if (listing.itemType === 'starPiece') {
           setStarPieces(prev => prev + listing.quantity);
         }
+
+        // 보증금 반환
+        setGold(prev => prev + listing.deposit);
         
-        alert('등록이 취소되었습니다.');
+        alert(`등록이 취소되었습니다.\n보증금 ${listing.deposit.toLocaleString()}골드가 반환되었습니다.`);
         fetchMarketListings();
         
         if (onCancelListing) onCancelListing();
@@ -662,6 +680,13 @@ const MarketModal = ({
                               (개당 {listing.pricePerUnit.toLocaleString()})
                             </span>
                           </div>
+                          {listing.deposit && (
+                            <div className={`text-xs mt-1 ${
+                              isDarkMode ? "text-orange-400" : "text-orange-600"
+                            }`}>
+                              보증금: {listing.deposit.toLocaleString()}골드 (취소 시 반환)
+                            </div>
+                          )}
                           <div className={`text-xs mt-2 flex items-center gap-1 ${
                             isDarkMode ? "text-gray-500" : "text-gray-500"
                           }`}>
@@ -802,17 +827,17 @@ const MarketModal = ({
                                 <div className={`text-sm ${
                                   isDarkMode ? "text-yellow-400" : "text-yellow-600"
                                 }`}>
-                                  총 가격: {(parseInt(listPrice) * listQuantity).toLocaleString()}골드
+                                  총 판매가: {(parseInt(listPrice) * listQuantity).toLocaleString()}골드
                                 </div>
                                 <div className={`text-xs ${
-                                  isDarkMode ? "text-red-400" : "text-red-600"
+                                  isDarkMode ? "text-orange-400" : "text-orange-600"
                                 }`}>
-                                  수수료 (5%): -{Math.floor((parseInt(listPrice) * listQuantity) * 0.05).toLocaleString()}골드
+                                  등록 보증금 (5%): -{Math.floor((parseInt(listPrice) * listQuantity) * 0.05).toLocaleString()}골드
                                 </div>
-                                <div className={`text-sm font-bold ${
-                                  isDarkMode ? "text-green-400" : "text-green-600"
+                                <div className={`text-xs ${
+                                  isDarkMode ? "text-gray-400" : "text-gray-600"
                                 }`}>
-                                  실제 수령액: {(parseInt(listPrice) * listQuantity - Math.floor((parseInt(listPrice) * listQuantity) * 0.05)).toLocaleString()}골드
+                                  💡 취소 시 보증금 반환, 판매 시 회수 안 됨
                                 </div>
                                 {itemAveragePrices[item.name] && (
                                   <div className={`text-xs ${
@@ -1003,7 +1028,7 @@ const MarketModal = ({
             <div className={`text-sm ${
               isDarkMode ? "text-gray-400" : "text-gray-600"
             }`}>
-              💡 분해 아이템, 호박석, 별조각 거래 가능 • 판매 시 수수료 5% 차감
+              💡 분해 아이템, 호박석, 별조각 거래 가능 • 등록 시 보증금 5% 필요 (낚시 실력 5 이상)
             </div>
             <div className={`text-lg font-bold ${
               isDarkMode ? "text-yellow-400" : "text-yellow-600"

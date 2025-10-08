@@ -18,9 +18,12 @@ export const NOTICE_DATA = [
       "- 플레이어간 아이템 거래 가능",
       "- 물고기, 재료 등록 및 구매",
       "- 실시간 거래 목록 업데이트",
+      "- 아이템 품목 등록시 보증금 5% 차감적용",
       "편지함 시스템 추가:",
       "- 읽지 않은 메일 알림 배지",
-      "악세사리 판매 금액 추가효과 제거"
+      "악세사리 판매 금액 추가효과 제거",
+      "물고기 판매 금액 리모델링",
+      "핑키피쉬 이후 분해 아이템 추가"
     ],
     isNew: true,
     type: "major_update"
@@ -349,5 +352,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.280"
+  version: "v1.283"
 };

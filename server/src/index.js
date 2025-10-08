@@ -1160,6 +1160,7 @@ const marketListingSchema = new mongoose.Schema(
     itemType: { type: String, required: true }, // 'material', 'amber', 'starPiece'
     quantity: { type: Number, required: true },
     pricePerUnit: { type: Number, required: true },
+    deposit: { type: Number, required: true }, // 보증금 (총 판매가의 5%)
     listedAt: { type: Date, default: Date.now }
   },
   { timestamps: { createdAt: true, updatedAt: false } }
@@ -8201,14 +8202,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.280"
+    version: "v1.283"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.280",
+    version: "v1.283",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
@@ -9604,55 +9605,76 @@ app.post("/api/market/list", authenticateJWT, async (req, res) => {
       return res.status(403).json({ message: "거래소는 낚시 실력 5 이상부터 이용할 수 있습니다." });
     }
 
-    // 아이템 타입별 처리
+    // 보증금 계산 및 확인 (먼저 체크!)
+    const totalPrice = pricePerUnit * quantity;
+    const deposit = Math.floor(totalPrice * 0.05);
+
+    const userMoney = await UserMoneyModel.findOne({ userUuid: userUuid });
+    if (!userMoney || userMoney.money < deposit) {
+      return res.status(400).json({ message: `보증금이 부족합니다. 필요한 보증금: ${deposit.toLocaleString()}골드` });
+    }
+
+    // 아이템 보유 확인 (아직 차감하지 않음)
     if (itemType === 'material') {
-      // 사용자의 재료 확인 (MaterialModel은 각 재료가 별도 document)
       const userMaterials = await MaterialModel.find({ 
         userUuid: userUuid,
         material: itemName 
       });
-
       const totalCount = userMaterials.length;
-
       if (totalCount < quantity) {
         console.log(`재료 부족: ${itemName} - 보유 ${totalCount}개, 필요 ${quantity}개`);
         return res.status(400).json({ message: "재료가 부족합니다." });
       }
+    } else if (itemType === 'amber') {
+      const userAmber = await UserAmberModel.findOne({ userUuid: userUuid });
+      if (!userAmber || userAmber.amber < quantity) {
+        return res.status(400).json({ message: "호박석이 부족합니다." });
+      }
+    } else if (itemType === 'starPiece') {
+      const userStarPieces = await StarPieceModel.findOne({ userUuid: userUuid });
+      if (!userStarPieces || userStarPieces.starPieces < quantity) {
+        return res.status(400).json({ message: "별조각이 부족합니다." });
+      }
+    } else {
+      return res.status(400).json({ message: "올바르지 않은 아이템 타입입니다." });
+    }
 
-      // 재료 차감 (필요한 수량만큼 document 삭제)
+    // 모든 검증 통과! 이제 차감 시작
+    
+    // 보증금 차감
+    userMoney.money -= deposit;
+    await userMoney.save();
+    console.log(`💰 보증금 차감: ${deposit.toLocaleString()}골드 (${username})`);
+
+    // 아이템 타입별 차감
+    if (itemType === 'material') {
+      const userMaterials = await MaterialModel.find({ 
+        userUuid: userUuid,
+        material: itemName 
+      });
       const materialsToDelete = userMaterials.slice(0, quantity);
       await MaterialModel.deleteMany({
         _id: { $in: materialsToDelete.map(m => m._id) }
       });
-      
-      console.log(`📦 재료 차감: ${itemName} x${quantity} (${totalCount} → ${totalCount - quantity})`);
+      console.log(`📦 재료 차감: ${itemName} x${quantity}`);
       
     } else if (itemType === 'amber') {
-      // 호박석 확인 및 차감
       const userAmber = await UserAmberModel.findOne({ userUuid: userUuid });
-      
-      if (!userAmber || userAmber.amber < quantity) {
-        return res.status(400).json({ message: "호박석이 부족합니다." });
-      }
-      
       userAmber.amber -= quantity;
       await userAmber.save();
-      console.log(`💎 호박석 차감: x${quantity} (${userAmber.amber + quantity} → ${userAmber.amber})`);
+      console.log(`💎 호박석 차감: x${quantity}`);
       
     } else if (itemType === 'starPiece') {
-      // 별조각 확인 및 차감
       const userStarPieces = await StarPieceModel.findOne({ userUuid: userUuid });
-      
-      if (!userStarPieces || userStarPieces.starPieces < quantity) {
-        return res.status(400).json({ message: "별조각이 부족합니다." });
-      }
-      
       userStarPieces.starPieces -= quantity;
       await userStarPieces.save();
-      console.log(`⭐ 별조각 차감: x${quantity} (${userStarPieces.starPieces + quantity} → ${userStarPieces.starPieces})`);
-      
-    } else {
-      return res.status(400).json({ message: "올바르지 않은 아이템 타입입니다." });
+      console.log(`⭐ 별조각 차감: x${quantity}`);
+    }
+
+    // 골드 업데이트 소켓 전송
+    const socketId = connectedUsersMap.get(userUuid);
+    if (socketId) {
+      io.to(socketId).emit('data:money', { money: userMoney.money });
     }
 
     // 거래소에 등록
@@ -9663,6 +9685,7 @@ app.post("/api/market/list", authenticateJWT, async (req, res) => {
       itemType: itemType,
       quantity: quantity,
       pricePerUnit: pricePerUnit,
+      deposit: deposit,
       listedAt: new Date()
     });
 
@@ -9671,8 +9694,7 @@ app.post("/api/market/list", authenticateJWT, async (req, res) => {
     // 소켓으로 전체 사용자에게 알림
     io.emit('marketUpdate', { type: 'newListing', listing: listing.toObject() });
 
-    // 등록한 사용자에게 아이템 업데이트 전송
-    const socketId = connectedUsersMap.get(userUuid);
+    // 등록한 사용자에게 아이템 업데이트 전송 (socketId는 위에서 이미 선언됨)
     if (socketId) {
       if (itemType === 'material') {
         const updatedMaterials = await MaterialModel.find({ userUuid: userUuid }).lean();
@@ -9721,8 +9743,6 @@ app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) =>
     }
 
     const totalPrice = listing.pricePerUnit * listing.quantity;
-    const fee = Math.floor(totalPrice * 0.05); // 5% 수수료
-    const sellerReceives = totalPrice - fee; // 판매자가 실제로 받는 금액
 
     // 구매자의 골드 확인
     const buyerMoney = await UserMoneyModel.findOne({ userUuid: userUuid });
@@ -9734,14 +9754,14 @@ app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) =>
     buyerMoney.money -= totalPrice;
     await buyerMoney.save();
 
-    // 판매자에게 골드 지급 (수수료 5% 차감)
+    // 판매자에게 골드 지급 (100% 전액 지급, 보증금은 돌려받지 못함)
     const sellerMoney = await UserMoneyModel.findOne({ userUuid: listing.userUuid });
     if (sellerMoney) {
-      sellerMoney.money += sellerReceives;
+      sellerMoney.money += totalPrice;
       await sellerMoney.save();
     }
 
-    console.log(`💰 거래 완료: 총액 ${totalPrice.toLocaleString()}골드, 수수료 ${fee.toLocaleString()}골드, 판매자 수령 ${sellerReceives.toLocaleString()}골드`);
+    console.log(`💰 거래 완료: 총액 ${totalPrice.toLocaleString()}골드, 판매자 수령 ${totalPrice.toLocaleString()}골드, 보증금 ${listing.deposit.toLocaleString()}골드 회수안됨`);
 
     // 구매자에게 골드 업데이트 소켓 전송
     const buyerSocketId = connectedUsersMap.get(userUuid);
@@ -9818,7 +9838,7 @@ app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) =>
         receiverUuid: listing.userUuid,
         receiverNickname: listing.sellerNickname,
         subject: '📦 거래소 판매 완료',
-        message: `${username}님이 거래소에서 ${listing.itemName} ${listing.quantity}개를 ${totalPrice.toLocaleString()}골드(개당 ${listing.pricePerUnit.toLocaleString()}골드)에 구매했습니다.\n\n거래 금액: ${totalPrice.toLocaleString()}골드\n거래 수수료 (5%): -${fee.toLocaleString()}골드\n실제 수령액: ${sellerReceives.toLocaleString()}골드`,
+        message: `${username}님이 거래소에서 ${listing.itemName} ${listing.quantity}개를 ${totalPrice.toLocaleString()}골드(개당 ${listing.pricePerUnit.toLocaleString()}골드)에 구매했습니다.\n\n판매 금액: ${totalPrice.toLocaleString()}골드\n등록 보증금 ${listing.deposit.toLocaleString()}골드는 회수되지 않습니다.`,
         isRead: false,
         sentAt: new Date()
       });
@@ -9957,15 +9977,28 @@ app.delete("/api/market/cancel/:listingId", authenticateJWT, async (req, res) =>
       console.log(`⭐ 별조각 반환: x${listing.quantity} → ${username}`);
     }
 
+    // 보증금 반환
+    const userMoney = await UserMoneyModel.findOne({ userUuid: userUuid });
+    if (userMoney) {
+      userMoney.money += listing.deposit;
+      await userMoney.save();
+      console.log(`💰 보증금 반환: ${listing.deposit.toLocaleString()}골드 → ${username}`);
+    }
+
     // 거래소에서 제거
     await MarketListingModel.deleteOne({ _id: listingId });
 
     // 소켓으로 전체 사용자에게 알림
     io.emit('marketUpdate', { type: 'cancel', listingId: listingId });
 
-    // 취소한 사용자에게 아이템 업데이트 전송
+    // 취소한 사용자에게 아이템 + 골드 업데이트 전송
     const socketId = connectedUsersMap.get(userUuid);
     if (socketId) {
+      // 골드 업데이트
+      if (userMoney) {
+        io.to(socketId).emit('data:money', { money: userMoney.money });
+      }
+      // 아이템 업데이트
       if (listing.itemType === 'material') {
         const updatedMaterials = await MaterialModel.find({ userUuid: userUuid }).lean();
         io.to(socketId).emit('data:materials', { materials: updatedMaterials });
