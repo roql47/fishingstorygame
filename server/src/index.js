@@ -9565,23 +9565,26 @@ app.post("/api/market/list", authenticateJWT, async (req, res) => {
       return res.status(400).json({ message: "올바른 정보를 입력해주세요." });
     }
 
-    // 사용자의 재료 확인
-    const material = await MaterialModel.findOne({ 
+    // 사용자의 재료 확인 (MaterialModel은 각 재료가 별도 document)
+    const userMaterials = await MaterialModel.find({ 
       userUuid: userUuid,
       material: itemName 
     });
 
-    if (!material || material.count < quantity) {
+    const totalCount = userMaterials.length;
+
+    if (totalCount < quantity) {
+      console.log(`재료 부족: ${itemName} - 보유 ${totalCount}개, 필요 ${quantity}개`);
       return res.status(400).json({ message: "재료가 부족합니다." });
     }
 
-    // 재료 차감
-    material.count -= quantity;
-    if (material.count === 0) {
-      await MaterialModel.deleteOne({ _id: material._id });
-    } else {
-      await material.save();
-    }
+    // 재료 차감 (필요한 수량만큼 document 삭제)
+    const materialsToDelete = userMaterials.slice(0, quantity);
+    await MaterialModel.deleteMany({
+      _id: { $in: materialsToDelete.map(m => m._id) }
+    });
+    
+    console.log(`📦 재료 차감: ${itemName} x${quantity} (${totalCount} → ${totalCount - quantity})`);
 
     // 거래소에 등록
     const listing = new MarketListingModel({
@@ -9666,23 +9669,18 @@ app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) =>
       console.log(`💰 판매자 골드 업데이트 전송: ${listing.sellerNickname} - ${sellerMoney.money}`);
     }
 
-    // 구매자에게 재료 지급
-    const buyerMaterial = await MaterialModel.findOne({ 
-      userUuid: userUuid,
-      material: listing.itemName 
-    });
-
-    if (buyerMaterial) {
-      buyerMaterial.count += listing.quantity;
-      await buyerMaterial.save();
-    } else {
-      await MaterialModel.create({
+    // 구매자에게 재료 지급 (MaterialModel은 각 재료가 별도 document)
+    const newMaterials = [];
+    for (let i = 0; i < listing.quantity; i++) {
+      newMaterials.push({
         userUuid: userUuid,
         username: username,
-        material: listing.itemName,
-        count: listing.quantity
+        material: listing.itemName
       });
     }
+    
+    await MaterialModel.insertMany(newMaterials);
+    console.log(`📦 재료 지급: ${listing.itemName} x${listing.quantity} → ${username}`);
 
     // 거래소에서 제거
     await MarketListingModel.deleteOne({ _id: listingId });
@@ -9791,23 +9789,18 @@ app.delete("/api/market/cancel/:listingId", authenticateJWT, async (req, res) =>
       return res.status(403).json({ message: "자신의 물건만 취소할 수 있습니다." });
     }
 
-    // 재료 반환
-    const material = await MaterialModel.findOne({ 
-      userUuid: userUuid,
-      material: listing.itemName 
-    });
-
-    if (material) {
-      material.count += listing.quantity;
-      await material.save();
-    } else {
-      await MaterialModel.create({
+    // 재료 반환 (MaterialModel은 각 재료가 별도 document)
+    const newMaterials = [];
+    for (let i = 0; i < listing.quantity; i++) {
+      newMaterials.push({
         userUuid: userUuid,
         username: username,
-        material: listing.itemName,
-        count: listing.quantity
+        material: listing.itemName
       });
     }
+    
+    await MaterialModel.insertMany(newMaterials);
+    console.log(`📦 재료 반환: ${listing.itemName} x${listing.quantity} → ${username}`);
 
     // 거래소에서 제거
     await MarketListingModel.deleteOne({ _id: listingId });
