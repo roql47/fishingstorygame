@@ -2703,7 +2703,13 @@ function App() {
     const onNewMail = (data) => {
       console.log("📬 새로운 메일 도착:", data);
       setUnreadMailCount(prev => prev + 1);
-      // 메일함 배지만 업데이트 (채팅창 알림 제거)
+      // 알림 메시지 표시
+      setMessages(prev => [...prev, {
+        username: "시스템",
+        message: `📬 ${data.from}님으로부터 새로운 메일이 도착했습니다!`,
+        timestamp: Date.now(),
+        isSystem: true
+      }]);
     };
     
     socket.on("new-mail", onNewMail);
@@ -2948,7 +2954,7 @@ function App() {
         if (!token || !username) return;
 
         const response = await axios.get(
-          `${import.meta.env.VITE_SERVER_URL || 'http://localhost:4000'}/api/mail/unread-count`,
+          `${import.meta.env.VITE_SERVER_URL || window.location.origin}/api/mail/unread-count`,
           {
             headers: { Authorization: `Bearer ${token}` }
           }
@@ -11193,7 +11199,7 @@ function App() {
               if (!token) return;
               
               const response = await axios.get(
-                `${import.meta.env.VITE_SERVER_URL || 'http://localhost:4000'}/api/mail/unread-count`,
+                `${import.meta.env.VITE_SERVER_URL || window.location.origin}/api/mail/unread-count`,
                 {
                   headers: { Authorization: `Bearer ${token}` }
                 }

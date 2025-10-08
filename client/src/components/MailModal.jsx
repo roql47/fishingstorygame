@@ -20,7 +20,7 @@ const MailModal = ({ isOpen, onClose, username, userUuid }) => {
       const endpoint = activeTab === 'inbox' ? '/api/mail/inbox' : '/api/mail/sent';
       const token = localStorage.getItem('jwtToken');
       
-      const response = await axios.get(`${import.meta.env.VITE_SERVER_URL || 'http://localhost:4000'}${endpoint}`, {
+      const response = await axios.get(`${import.meta.env.VITE_SERVER_URL || window.location.origin}${endpoint}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -52,7 +52,7 @@ const MailModal = ({ isOpen, onClose, username, userUuid }) => {
       const token = localStorage.getItem('jwtToken');
       
       const response = await axios.post(
-        `${import.meta.env.VITE_SERVER_URL || 'http://localhost:4000'}/api/mail/send`,
+        `${import.meta.env.VITE_SERVER_URL || window.location.origin}/api/mail/send`,
         {
           receiverNickname,
           subject: subject || '(제목 없음)',
@@ -84,7 +84,7 @@ const MailModal = ({ isOpen, onClose, username, userUuid }) => {
     try {
       const token = localStorage.getItem('jwtToken');
       await axios.post(
-        `${import.meta.env.VITE_SERVER_URL || 'http://localhost:4000'}/api/mail/read/${mailId}`,
+        `${import.meta.env.VITE_SERVER_URL || window.location.origin}/api/mail/read/${mailId}`,
         {},
         {
           headers: { Authorization: `Bearer ${token}` }
@@ -107,7 +107,7 @@ const MailModal = ({ isOpen, onClose, username, userUuid }) => {
     try {
       const token = localStorage.getItem('jwtToken');
       await axios.delete(
-        `${import.meta.env.VITE_SERVER_URL || 'http://localhost:4000'}/api/mail/${mailId}`,
+        `${import.meta.env.VITE_SERVER_URL || window.location.origin}/api/mail/${mailId}`,
         {
           headers: { Authorization: `Bearer ${token}` }
         }
