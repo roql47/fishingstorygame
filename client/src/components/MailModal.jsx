@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Send, Mail, Trash2, Plus, ArrowLeft } from 'lucide-react';
+import { X, Send, Mail, Trash2, Plus, ArrowLeft, CheckCheck, Trash } from 'lucide-react';
 import axios from 'axios';
 
 const MailModal = ({ isOpen, onClose, username, userUuid }) => {
@@ -121,6 +121,56 @@ const MailModal = ({ isOpen, onClose, username, userUuid }) => {
     }
   };
 
+  // 모두 읽음 처리
+  const readAllMails = async () => {
+    if (!confirm('받은 메일을 모두 읽음 처리하시겠습니까?')) return;
+
+    try {
+      const token = localStorage.getItem('jwtToken');
+      const response = await axios.post(
+        `${import.meta.env.VITE_SERVER_URL || window.location.origin}/api/mail/read-all`,
+        {},
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      if (response.data.success) {
+        // 로컬 상태 업데이트
+        setMails(mails.map(mail => ({ ...mail, isRead: true })));
+        alert(response.data.message);
+      }
+    } catch (error) {
+      console.error('모두 읽음 처리 실패:', error);
+      setError('모두 읽음 처리에 실패했습니다.');
+    }
+  };
+
+  // 모두 삭제
+  const deleteAllMails = async () => {
+    const tabName = activeTab === 'inbox' ? '받은 편지함' : '보낸 편지함';
+    if (!confirm(`${tabName}의 모든 메일을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
+
+    try {
+      const token = localStorage.getItem('jwtToken');
+      const response = await axios.delete(
+        `${import.meta.env.VITE_SERVER_URL || window.location.origin}/api/mail/delete-all/${activeTab}`,
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      if (response.data.success) {
+        setMails([]);
+        setSelectedMail(null);
+        alert(response.data.message);
+      }
+    } catch (error) {
+      console.error('모두 삭제 실패:', error);
+      setError('모두 삭제에 실패했습니다.');
+    }
+  };
+
   // 탭 변경 시 메일 다시 불러오기
   useEffect(() => {
     if (isOpen) {
@@ -175,33 +225,56 @@ const MailModal = ({ isOpen, onClose, username, userUuid }) => {
           </div>
 
           {/* 탭 */}
-          <div className="flex border-b border-gray-700">
-            <button
-              onClick={() => {
-                setActiveTab('inbox');
-                setSelectedMail(null);
-              }}
-              className={`flex-1 py-2 text-sm font-medium transition-colors ${
-                activeTab === 'inbox'
-                  ? 'text-white border-b-2 border-blue-500'
-                  : 'text-gray-400 hover:text-gray-300'
-              }`}
-            >
-              받은 메시지
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('sent');
-                setSelectedMail(null);
-              }}
-              className={`flex-1 py-2 text-sm font-medium transition-colors ${
-                activeTab === 'sent'
-                  ? 'text-white border-b-2 border-blue-500'
-                  : 'text-gray-400 hover:text-gray-300'
-              }`}
-            >
-              보낸 메시지
-            </button>
+          <div className="border-b border-gray-700">
+            <div className="flex">
+              <button
+                onClick={() => {
+                  setActiveTab('inbox');
+                  setSelectedMail(null);
+                }}
+                className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                  activeTab === 'inbox'
+                    ? 'text-white border-b-2 border-blue-500'
+                    : 'text-gray-400 hover:text-gray-300'
+                }`}
+              >
+                받은 메시지
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('sent');
+                  setSelectedMail(null);
+                }}
+                className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                  activeTab === 'sent'
+                    ? 'text-white border-b-2 border-blue-500'
+                    : 'text-gray-400 hover:text-gray-300'
+                }`}
+              >
+                보낸 메시지
+              </button>
+            </div>
+            {/* 액션 버튼 */}
+            {mails.length > 0 && (
+              <div className="flex gap-1 p-2 bg-gray-800">
+                {activeTab === 'inbox' && (
+                  <button
+                    onClick={readAllMails}
+                    className="flex-1 py-1.5 px-2 bg-green-600 text-white text-xs rounded hover:bg-green-700 transition-colors flex items-center justify-center gap-1"
+                  >
+                    <CheckCheck className="w-3 h-3" />
+                    모두읽기
+                  </button>
+                )}
+                <button
+                  onClick={deleteAllMails}
+                  className="flex-1 py-1.5 px-2 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors flex items-center justify-center gap-1"
+                >
+                  <Trash className="w-3 h-3" />
+                  모두삭제
+                </button>
+              </div>
+            )}
           </div>
 
           {/* 대화 목록 */}

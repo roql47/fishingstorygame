@@ -4359,7 +4359,6 @@ function App() {
       };
     } else if (equipmentType === 'accessory') {
       const accessoryLevel = getAccessoryLevel(equipmentName);
-      const priceBonus = accessoryLevel * 8;
       const cooldownReduction = accessoryLevel * 15;
       
       // 강화 보너스 계산
@@ -4388,7 +4387,6 @@ function App() {
       }
 
       effects.push(
-        { label: '물고기 판매가격', value: `+${priceBonus}%`, description: '물고기를 더 비싸게 판매할 수 있습니다' },
         { label: '낚시 쿨타임', value: `-${cooldownReduction}초`, description: '낚시 대기시간이 줄어듭니다' }
       );
 
@@ -6708,13 +6706,22 @@ function App() {
             <div className="flex items-center gap-2">
               {/* 거래소 버튼 */}
               <button
-                onClick={() => setShowMarketModal(true)}
+                onClick={() => {
+                  if (fishingSkill < 5) {
+                    alert('거래소는 낚시 실력 5 이상부터 이용할 수 있습니다.');
+                    return;
+                  }
+                  setShowMarketModal(true);
+                }}
                 className={`p-2 rounded-full hover:glow-effect transition-all duration-300 ${
-                  isDarkMode 
-                    ? "glass-input text-green-400 hover:text-green-300" 
-                    : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-green-600 hover:text-green-500"
+                  fishingSkill < 5
+                    ? "glass-input text-gray-500 cursor-not-allowed"
+                    : isDarkMode 
+                      ? "glass-input text-green-400 hover:text-green-300" 
+                      : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-green-600 hover:text-green-500"
                 }`}
-                title="거래소"
+                title={fishingSkill < 5 ? "거래소 (낚시 실력 5 필요)" : "거래소"}
+                disabled={fishingSkill < 5}
               >
                 <ShoppingCart className="w-4 h-4" />
               </button>
@@ -11255,7 +11262,12 @@ function App() {
         setMaterials={setMaterials}
         gold={userMoney}
         setGold={setUserMoney}
+        amber={userAmber}
+        setAmber={setUserAmber}
+        starPieces={userStarPieces}
+        setStarPieces={setUserStarPieces}
         nickname={username}
+        fishingSkill={fishingSkill}
         onPurchase={refreshAllData}
         onListItem={refreshAllData}
         onCancelListing={refreshAllData}

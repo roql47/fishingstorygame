@@ -46,28 +46,15 @@ const getAvailableFish = (skill) => {
   return availableFish;
 };
 
-// 🚀 물고기 판매 가격 정의 (악세사리 효과 적용) - useCallback으로 최적화
+// 🚀 물고기 판매 가격 정의 - useCallback으로 최적화
 const getFishPrice = useCallback((fishName) => {
   if (!allFishTypes.length) return 0; // 데이터가 로드되지 않았으면 0 반환
   
   const fishData = allFishTypes.find(fish => fish.name === fishName);
   if (!fishData) return 0;
   
-  let basePrice = fishData.price;
-  
-  // 악세사리 효과: 각 악세사리마다 8% 증가
-  if (userEquipment.accessory) {
-    const accessoryItems = getAllShopItems().accessories || [];
-    const equippedAccessory = accessoryItems.find(item => item.name === userEquipment.accessory);
-    if (equippedAccessory) {
-      // 악세사리 레벨에 따른 가격 증가 (레벨당 8%)
-      const bonusMultiplier = 1 + (equippedAccessory.requiredSkill + 1) * 0.08;
-      basePrice = Math.floor(basePrice * bonusMultiplier);
-    }
-  }
-  
-  return basePrice;
-}, [allFishTypes, userEquipment.accessory]);
+  return fishData.price;
+}, [allFishTypes]);
 
 // 🚀 물고기 분해 시 얻는 재료 - useCallback으로 최적화
 const getFishMaterial = useCallback((fishName) => {

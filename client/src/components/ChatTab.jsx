@@ -508,16 +508,16 @@ const ChatTab = ({
                         }`}>{m.content}</span>
                       </div>
                       
-                      {/* 반응 버튼들 (호버 시 표시) */}
-                      <div className="absolute -bottom-6 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 transform translate-y-2 group-hover:translate-y-0">
+                      {/* 반응 버튼들 (항상 표시, 모바일 최적화) */}
+                      <div className="absolute -bottom-6 right-2 flex gap-1">
                         <button
                           onClick={() => addReaction(i, 'thumbsup')}
-                          className={`p-1.5 rounded-full backdrop-blur-sm border transition-all duration-200 hover:scale-110 ${
+                          className={`p-1.5 rounded-full backdrop-blur-sm border touch-manipulation ${
                             m.reactions?.thumbsup?.includes(username)
                               ? "bg-blue-500/20 border-blue-400/50 text-blue-500 shadow-lg shadow-blue-500/25" 
                               : isDarkMode 
-                                ? "bg-gray-800/80 border-gray-600/50 text-gray-400 hover:text-blue-400 hover:bg-blue-500/10 hover:border-blue-400/30" 
-                                : "bg-white/80 border-gray-300/50 text-gray-500 hover:text-blue-500 hover:bg-blue-50/80 hover:border-blue-300/50"
+                                ? "bg-gray-800/80 border-gray-600/50 text-gray-400" 
+                                : "bg-white/80 border-gray-300/50 text-gray-500"
                           }`}
                           title="좋아요"
                         >
@@ -527,12 +527,12 @@ const ChatTab = ({
                         </button>
                         <button
                           onClick={() => addReaction(i, 'heart')}
-                          className={`p-1.5 rounded-full backdrop-blur-sm border transition-all duration-200 hover:scale-110 ${
+                          className={`p-1.5 rounded-full backdrop-blur-sm border touch-manipulation ${
                             m.reactions?.heart?.includes(username)
                               ? "bg-red-500/20 border-red-400/50 text-red-500 shadow-lg shadow-red-500/25" 
                               : isDarkMode 
-                                ? "bg-gray-800/80 border-gray-600/50 text-gray-400 hover:text-red-400 hover:bg-red-500/10 hover:border-red-400/30" 
-                                : "bg-white/80 border-gray-300/50 text-gray-500 hover:text-red-500 hover:bg-red-50/80 hover:border-red-300/50"
+                                ? "bg-gray-800/80 border-gray-600/50 text-gray-400" 
+                                : "bg-white/80 border-gray-300/50 text-gray-500"
                           }`}
                           title="하트"
                         >
@@ -542,13 +542,13 @@ const ChatTab = ({
                         </button>
                       </div>
                       
-                      {/* 반응 카운트 표시 (인스타그램 스타일 - 말풍선 오른쪽 하단 모서리) */}
+                      {/* 반응 카운트 표시 (모바일 최적화) */}
                       {m.reactions && Object.keys(m.reactions).length > 0 && (
                         <div className="absolute -bottom-2 -right-1 flex gap-0.5 z-10">
                           {['thumbsup', 'heart'].filter(type => m.reactions[type]).map((reactionType) => (
                             <div
                               key={reactionType}
-                              className={`flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full text-[10px] font-medium border-2 transition-all duration-200 hover:scale-110 cursor-pointer ${
+                              className={`flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full text-[10px] font-medium border-2 cursor-pointer touch-manipulation ${
                                 reactionType === 'heart'
                                   ? isDarkMode
                                     ? "bg-red-500 text-white border-gray-800 shadow-lg shadow-red-500/30"

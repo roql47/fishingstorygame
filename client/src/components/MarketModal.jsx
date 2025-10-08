@@ -12,7 +12,12 @@ const MarketModal = ({
   setMaterials,
   gold,
   setGold,
+  amber,
+  setAmber,
+  starPieces,
+  setStarPieces,
   nickname,
+  fishingSkill,
   onPurchase,
   onListItem,
   onCancelListing
@@ -125,21 +130,50 @@ const MarketModal = ({
     }
   };
 
-  // 분해 아이템 목록 가져오기
-  const getDecomposeMaterials = () => {
-    if (!materials) return [];
+  // 거래 가능한 아이템 목록 가져오기
+  const getTradableItems = () => {
+    const items = [];
     
-    // CRAFTING_RECIPES에 있는 모든 재료 이름 수집
-    const allMaterials = new Set();
-    CRAFTING_RECIPES.forEach(recipe => {
-      allMaterials.add(recipe.inputMaterial);
-      allMaterials.add(recipe.outputMaterial);
-    });
+    // 1. 분해 재료
+    if (materials) {
+      const allMaterials = new Set();
+      CRAFTING_RECIPES.forEach(recipe => {
+        allMaterials.add(recipe.inputMaterial);
+        allMaterials.add(recipe.outputMaterial);
+      });
+      
+      materials.filter(item => item.material && allMaterials.has(item.material))
+        .forEach(item => {
+          items.push({ 
+            type: 'material', 
+            name: item.material, 
+            count: item.count,
+            icon: '📦'
+          });
+        });
+    }
     
-    // materials에서 분해 재료만 필터링
-    return materials.filter(item => 
-      item.material && allMaterials.has(item.material)
-    );
+    // 2. 호박석
+    if (amber && amber > 0) {
+      items.push({ 
+        type: 'amber', 
+        name: '호박석', 
+        count: amber,
+        icon: '💎'
+      });
+    }
+    
+    // 3. 별조각
+    if (starPieces && starPieces > 0) {
+      items.push({ 
+        type: 'starPiece', 
+        name: '별조각', 
+        count: starPieces,
+        icon: '⭐'
+      });
+    }
+    
+    return items;
   };
 
   // 아이템 등록
@@ -164,7 +198,8 @@ const MarketModal = ({
           'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
         },
         body: JSON.stringify({
-          itemName: selectedItem.material,
+          itemName: selectedItem.name,
+          itemType: selectedItem.type,
           quantity: listQuantity,
           pricePerUnit: parseInt(listPrice)
         })
@@ -174,15 +209,20 @@ const MarketModal = ({
       
       if (response.ok) {
         // 즉시 로컬 상태 업데이트 (아이템 차감)
-        const updatedMaterials = materials.map(m => {
-          if (m.material === selectedItem.material) {
-            const newCount = m.count - listQuantity;
-            return newCount > 0 ? { ...m, count: newCount } : null;
-          }
-          return m;
-        }).filter(m => m !== null);
-        
-        setMaterials(updatedMaterials);
+        if (selectedItem.type === 'material') {
+          const updatedMaterials = materials.map(m => {
+            if (m.material === selectedItem.name) {
+              const newCount = m.count - listQuantity;
+              return newCount > 0 ? { ...m, count: newCount } : null;
+            }
+            return m;
+          }).filter(m => m !== null);
+          setMaterials(updatedMaterials);
+        } else if (selectedItem.type === 'amber') {
+          setAmber(prev => prev - listQuantity);
+        } else if (selectedItem.type === 'starPiece') {
+          setStarPieces(prev => prev - listQuantity);
+        }
         
         alert('아이템이 거래소에 등록되었습니다!');
         setSelectedItem(null);
@@ -234,16 +274,22 @@ const MarketModal = ({
       
       if (response.ok) {
         // 즉시 로컬 상태 업데이트 (아이템 추가, 골드 차감)
-        const existingMaterial = materials.find(m => m.material === listing.itemName);
-        if (existingMaterial) {
-          const updatedMaterials = materials.map(m => 
-            m.material === listing.itemName 
-              ? { ...m, count: m.count + listing.quantity }
-              : m
-          );
-          setMaterials(updatedMaterials);
-        } else {
-          setMaterials([...materials, { material: listing.itemName, count: listing.quantity }]);
+        if (listing.itemType === 'material') {
+          const existingMaterial = materials.find(m => m.material === listing.itemName);
+          if (existingMaterial) {
+            const updatedMaterials = materials.map(m => 
+              m.material === listing.itemName 
+                ? { ...m, count: m.count + listing.quantity }
+                : m
+            );
+            setMaterials(updatedMaterials);
+          } else {
+            setMaterials([...materials, { material: listing.itemName, count: listing.quantity }]);
+          }
+        } else if (listing.itemType === 'amber') {
+          setAmber(prev => prev + listing.quantity);
+        } else if (listing.itemType === 'starPiece') {
+          setStarPieces(prev => prev + listing.quantity);
         }
         
         setGold(prev => prev - (listing.pricePerUnit * listing.quantity));
@@ -284,16 +330,22 @@ const MarketModal = ({
       
       if (response.ok) {
         // 즉시 로컬 상태 업데이트 (아이템 반환)
-        const existingMaterial = materials.find(m => m.material === listing.itemName);
-        if (existingMaterial) {
-          const updatedMaterials = materials.map(m => 
-            m.material === listing.itemName 
-              ? { ...m, count: m.count + listing.quantity }
-              : m
-          );
-          setMaterials(updatedMaterials);
-        } else {
-          setMaterials([...materials, { material: listing.itemName, count: listing.quantity }]);
+        if (listing.itemType === 'material') {
+          const existingMaterial = materials.find(m => m.material === listing.itemName);
+          if (existingMaterial) {
+            const updatedMaterials = materials.map(m => 
+              m.material === listing.itemName 
+                ? { ...m, count: m.count + listing.quantity }
+                : m
+            );
+            setMaterials(updatedMaterials);
+          } else {
+            setMaterials([...materials, { material: listing.itemName, count: listing.quantity }]);
+          }
+        } else if (listing.itemType === 'amber') {
+          setAmber(prev => prev + listing.quantity);
+        } else if (listing.itemType === 'starPiece') {
+          setStarPieces(prev => prev + listing.quantity);
         }
         
         alert('등록이 취소되었습니다.');
@@ -313,7 +365,51 @@ const MarketModal = ({
 
   if (!showMarketModal) return null;
 
-  const decomposeMaterials = getDecomposeMaterials();
+  // 낚시 실력 체크
+  if (fishingSkill < 5) {
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className={`max-w-md w-full rounded-2xl overflow-hidden ${
+          isDarkMode 
+            ? "glass-card border border-white/10" 
+            : "bg-white/95 backdrop-blur-md border border-gray-300/30"
+        }`}>
+          <div className="p-6 text-center">
+            <ShoppingCart className={`w-16 h-16 mx-auto mb-4 ${
+              isDarkMode ? "text-gray-500" : "text-gray-400"
+            }`} />
+            <h3 className={`text-xl font-bold mb-2 ${
+              isDarkMode ? "text-white" : "text-gray-800"
+            }`}>
+              거래소 이용 불가
+            </h3>
+            <p className={`text-sm mb-4 ${
+              isDarkMode ? "text-gray-400" : "text-gray-600"
+            }`}>
+              거래소는 낚시 실력 5 이상부터 이용할 수 있습니다.
+            </p>
+            <p className={`text-lg font-bold mb-6 ${
+              isDarkMode ? "text-blue-400" : "text-blue-600"
+            }`}>
+              현재 낚시 실력: {fishingSkill}
+            </p>
+            <button
+              onClick={() => setShowMarketModal(false)}
+              className={`px-6 py-2 rounded-lg font-medium transition-all duration-300 ${
+                isDarkMode
+                  ? "bg-blue-500/20 text-blue-400 border border-blue-400/30 hover:bg-blue-500/30"
+                  : "bg-blue-500 text-white hover:bg-blue-600"
+              }`}
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const tradableItems = getTradableItems();
   const myListings = marketListings.filter(listing => listing.sellerNickname === nickname);
   const allListings = marketListings; // 모든 등록 아이템 표시
 
@@ -392,7 +488,7 @@ const MarketModal = ({
               }`}
             >
               <Package className="w-4 h-4" />
-              내 아이템 ({decomposeMaterials.length})
+              내 아이템 ({tradableItems.length})
             </button>
             <button
               onClick={() => setActiveTab('history')}
@@ -455,7 +551,7 @@ const MarketModal = ({
                           <h3 className={`text-lg font-bold mb-1 ${
                             isDarkMode ? "text-white" : "text-gray-800"
                           }`}>
-                            📦 {listing.itemName}
+                            {listing.itemType === 'amber' ? '💎' : listing.itemType === 'starPiece' ? '⭐' : '📦'} {listing.itemName}
                           </h3>
                           <div className={`flex items-center gap-2 text-sm mb-2 ${
                             isDarkMode ? "text-gray-400" : "text-gray-600"
@@ -542,7 +638,7 @@ const MarketModal = ({
                           <h3 className={`text-lg font-bold mb-1 ${
                             isDarkMode ? "text-white" : "text-gray-800"
                           }`}>
-                            📦 {listing.itemName}
+                            {listing.itemType === 'amber' ? '💎' : listing.itemType === 'starPiece' ? '⭐' : '📦'} {listing.itemName}
                           </h3>
                           <div className={`flex items-center gap-2 text-sm mb-2 ${
                             isDarkMode ? "text-gray-400" : "text-gray-600"
@@ -597,20 +693,20 @@ const MarketModal = ({
           {/* 내 아이템 탭 */}
           {activeTab === 'myItems' && (
             <div>
-              {decomposeMaterials.length === 0 ? (
+              {tradableItems.length === 0 ? (
                 <div className={`text-center py-12 ${
                   isDarkMode ? "text-gray-400" : "text-gray-600"
                 }`}>
                   <Package className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                  <p>거래 가능한 분해 아이템이 없습니다.</p>
+                  <p>거래 가능한 아이템이 없습니다.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {decomposeMaterials.map((item, index) => (
+                  {tradableItems.map((item, index) => (
                     <div
                       key={index}
                       className={`p-4 rounded-lg border transition-all duration-300 ${
-                        selectedItem?.material === item.material
+                        selectedItem?.name === item.name
                           ? isDarkMode
                             ? "bg-purple-500/20 border-purple-400/50"
                             : "bg-purple-100 border-purple-400"
@@ -624,7 +720,7 @@ const MarketModal = ({
                           <h3 className={`text-lg font-bold mb-1 ${
                             isDarkMode ? "text-white" : "text-gray-800"
                           }`}>
-                            📦 {item.material}
+                            {item.icon} {item.name}
                           </h3>
                           <div className={`text-sm ${
                             isDarkMode ? "text-gray-400" : "text-gray-600"
@@ -634,7 +730,7 @@ const MarketModal = ({
                         </div>
                         <button
                           onClick={() => {
-                            if (selectedItem?.material === item.material) {
+                            if (selectedItem?.name === item.name) {
                               setSelectedItem(null);
                               setListPrice('');
                               setListQuantity(1);
@@ -644,7 +740,7 @@ const MarketModal = ({
                             }
                           }}
                           className={`px-3 py-1 rounded-lg text-sm font-medium transition-all duration-300 ${
-                            selectedItem?.material === item.material
+                            selectedItem?.name === item.name
                               ? isDarkMode
                                 ? "bg-purple-500/30 text-purple-300"
                                 : "bg-purple-600 text-white"
@@ -653,12 +749,12 @@ const MarketModal = ({
                                 : "bg-blue-500 text-white hover:bg-blue-600"
                           }`}
                         >
-                          {selectedItem?.material === item.material ? "선택됨" : "등록"}
+                          {selectedItem?.name === item.name ? "선택됨" : "등록"}
                         </button>
                       </div>
 
                       {/* 등록 폼 */}
-                      {selectedItem?.material === item.material && (
+                      {selectedItem?.name === item.name && (
                         <div className={`pt-3 border-t ${
                           isDarkMode ? "border-white/10" : "border-gray-300/30"
                         }`}>
@@ -718,14 +814,14 @@ const MarketModal = ({
                                 }`}>
                                   실제 수령액: {(parseInt(listPrice) * listQuantity - Math.floor((parseInt(listPrice) * listQuantity) * 0.05)).toLocaleString()}골드
                                 </div>
-                                {itemAveragePrices[item.material] && (
+                                {itemAveragePrices[item.name] && (
                                   <div className={`text-xs ${
                                     isDarkMode ? "text-gray-500" : "text-gray-500"
                                   }`}>
-                                    최근 평균가: {Math.round(itemAveragePrices[item.material].avgPrice).toLocaleString()}골드
-                                    {parseInt(listPrice) < itemAveragePrices[item.material].avgPrice ? (
+                                    최근 평균가: {Math.round(itemAveragePrices[item.name].avgPrice).toLocaleString()}골드
+                                    {parseInt(listPrice) < itemAveragePrices[item.name].avgPrice ? (
                                       <span className="ml-1 text-green-500">↓ 평균보다 저렴</span>
-                                    ) : parseInt(listPrice) > itemAveragePrices[item.material].avgPrice ? (
+                                    ) : parseInt(listPrice) > itemAveragePrices[item.name].avgPrice ? (
                                       <span className="ml-1 text-red-500">↑ 평균보다 비쌈</span>
                                     ) : (
                                       <span className="ml-1 text-blue-500">= 평균 가격</span>
@@ -784,7 +880,7 @@ const MarketModal = ({
                             <h3 className={`text-lg font-bold ${
                               isDarkMode ? "text-white" : "text-gray-800"
                             }`}>
-                              📦 {trade.itemName}
+                              {trade.itemType === 'amber' ? '💎' : trade.itemType === 'starPiece' ? '⭐' : '📦'} {trade.itemName}
                             </h3>
                             <span className={`text-xs px-2 py-1 rounded ${
                               trade.type === 'purchase'
@@ -860,7 +956,7 @@ const MarketModal = ({
                             <h3 className={`text-lg font-bold ${
                               isDarkMode ? "text-white" : "text-gray-800"
                             }`}>
-                              📦 {trade.itemName}
+                              {trade.itemType === 'amber' ? '💎' : trade.itemType === 'starPiece' ? '⭐' : '📦'} {trade.itemName}
                             </h3>
                           </div>
                           <div className={`text-sm space-y-1 ${
@@ -907,7 +1003,7 @@ const MarketModal = ({
             <div className={`text-sm ${
               isDarkMode ? "text-gray-400" : "text-gray-600"
             }`}>
-              💡 분해 아이템만 거래 가능 • 판매 시 수수료 5% 차감
+              💡 분해 아이템, 호박석, 별조각 거래 가능 • 판매 시 수수료 5% 차감
             </div>
             <div className={`text-lg font-bold ${
               isDarkMode ? "text-yellow-400" : "text-yellow-600"

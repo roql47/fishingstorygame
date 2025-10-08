@@ -1157,6 +1157,7 @@ const marketListingSchema = new mongoose.Schema(
     userUuid: { type: String, required: true, index: true },
     sellerNickname: { type: String, required: true },
     itemName: { type: String, required: true },
+    itemType: { type: String, required: true }, // 'material', 'amber', 'starPiece'
     quantity: { type: Number, required: true },
     pricePerUnit: { type: Number, required: true },
     listedAt: { type: Date, default: Date.now }
@@ -1174,6 +1175,7 @@ const marketTradeHistorySchema = new mongoose.Schema(
     sellerUuid: { type: String, required: true, index: true },
     sellerNickname: { type: String, required: true },
     itemName: { type: String, required: true },
+    itemType: { type: String, required: true }, // 'material', 'amber', 'starPiece'
     quantity: { type: Number, required: true },
     pricePerUnit: { type: Number, required: true },
     totalPrice: { type: Number, required: true },
@@ -3730,6 +3732,55 @@ app.get("/api/mail/unread-count", authenticateJWT, async (req, res) => {
   } catch (error) {
     console.error("읽지 않은 메일 개수 조회 실패:", error);
     res.status(500).json({ success: false, error: "메일 개수 조회에 실패했습니다." });
+  }
+});
+
+// 받은 메일 모두 읽음 처리
+app.post("/api/mail/read-all", authenticateJWT, async (req, res) => {
+  try {
+    const userUuid = req.user.userUuid;
+    
+    const result = await MailModel.updateMany(
+      { receiverUuid: userUuid, isRead: false },
+      { $set: { isRead: true } }
+    );
+
+    res.json({ 
+      success: true, 
+      message: `${result.modifiedCount}개의 메일을 읽음 처리했습니다.`,
+      count: result.modifiedCount
+    });
+  } catch (error) {
+    console.error("메일 모두 읽음 처리 실패:", error);
+    res.status(500).json({ success: false, error: "메일 읽음 처리에 실패했습니다." });
+  }
+});
+
+// 메일 모두 삭제 (받은편지함 또는 보낸편지함)
+app.delete("/api/mail/delete-all/:type", authenticateJWT, async (req, res) => {
+  try {
+    const { type } = req.params; // 'inbox' or 'sent'
+    const userUuid = req.user.userUuid;
+    
+    let filter;
+    if (type === 'inbox') {
+      filter = { receiverUuid: userUuid };
+    } else if (type === 'sent') {
+      filter = { senderUuid: userUuid };
+    } else {
+      return res.status(400).json({ success: false, error: "잘못된 타입입니다." });
+    }
+
+    const result = await MailModel.deleteMany(filter);
+
+    res.json({ 
+      success: true, 
+      message: `${result.deletedCount}개의 메일을 삭제했습니다.`,
+      count: result.deletedCount
+    });
+  } catch (error) {
+    console.error("메일 모두 삭제 실패:", error);
+    res.status(500).json({ success: false, error: "메일 삭제에 실패했습니다." });
   }
 });
 
@@ -6424,25 +6475,7 @@ const calculateServerFishPrice = async (fishName, userQuery) => {
   }
   if (!fishData) return 0;
   
-  let basePrice = fishData.price;
-  
-  // 악세사리 효과: 각 악세사리마다 8% 증가
-  try {
-    const userEquipment = await UserEquipmentModel.findOne(userQuery);
-    if (userEquipment && userEquipment.accessory) {
-      const serverShopItems = getShopData();
-      const accessoryItems = serverShopItems.accessories || [];
-      const equippedAccessory = accessoryItems.find(item => item.name === userEquipment.accessory);
-      if (equippedAccessory) {
-        // 악세사리 레벨에 따른 가격 증가 (레벨당 8%)
-        const priceIncrease = (equippedAccessory.requiredSkill + 1) * 8; // 8% per level
-        basePrice = Math.floor(basePrice * (1 + priceIncrease / 100));
-      }
-    }
-  } catch (error) {
-    console.error('Failed to calculate accessory bonus for fish price:', error);
-    // 에러 시 기본 가격 사용
-  }
+  const basePrice = fishData.price;
   
   // 계산된 가격을 캐시에 저장
   fishPriceCache.set(cacheKey, {
@@ -9559,38 +9592,75 @@ app.get("/api/market/listings", authenticateJWT, async (req, res) => {
 app.post("/api/market/list", authenticateJWT, async (req, res) => {
   try {
     const { userUuid, username } = req.user;
-    const { itemName, quantity, pricePerUnit } = req.body;
+    const { itemName, itemType, quantity, pricePerUnit } = req.body;
 
-    if (!itemName || !quantity || !pricePerUnit || quantity <= 0 || pricePerUnit <= 0) {
+    if (!itemName || !itemType || !quantity || !pricePerUnit || quantity <= 0 || pricePerUnit <= 0) {
       return res.status(400).json({ message: "올바른 정보를 입력해주세요." });
     }
 
-    // 사용자의 재료 확인 (MaterialModel은 각 재료가 별도 document)
-    const userMaterials = await MaterialModel.find({ 
-      userUuid: userUuid,
-      material: itemName 
-    });
-
-    const totalCount = userMaterials.length;
-
-    if (totalCount < quantity) {
-      console.log(`재료 부족: ${itemName} - 보유 ${totalCount}개, 필요 ${quantity}개`);
-      return res.status(400).json({ message: "재료가 부족합니다." });
+    // 낚시 실력 확인 (5 이상만 거래소 이용 가능)
+    const fishingSkill = await FishingSkillModel.findOne({ userUuid: userUuid });
+    if (!fishingSkill || fishingSkill.skill < 5) {
+      return res.status(403).json({ message: "거래소는 낚시 실력 5 이상부터 이용할 수 있습니다." });
     }
 
-    // 재료 차감 (필요한 수량만큼 document 삭제)
-    const materialsToDelete = userMaterials.slice(0, quantity);
-    await MaterialModel.deleteMany({
-      _id: { $in: materialsToDelete.map(m => m._id) }
-    });
-    
-    console.log(`📦 재료 차감: ${itemName} x${quantity} (${totalCount} → ${totalCount - quantity})`);
+    // 아이템 타입별 처리
+    if (itemType === 'material') {
+      // 사용자의 재료 확인 (MaterialModel은 각 재료가 별도 document)
+      const userMaterials = await MaterialModel.find({ 
+        userUuid: userUuid,
+        material: itemName 
+      });
+
+      const totalCount = userMaterials.length;
+
+      if (totalCount < quantity) {
+        console.log(`재료 부족: ${itemName} - 보유 ${totalCount}개, 필요 ${quantity}개`);
+        return res.status(400).json({ message: "재료가 부족합니다." });
+      }
+
+      // 재료 차감 (필요한 수량만큼 document 삭제)
+      const materialsToDelete = userMaterials.slice(0, quantity);
+      await MaterialModel.deleteMany({
+        _id: { $in: materialsToDelete.map(m => m._id) }
+      });
+      
+      console.log(`📦 재료 차감: ${itemName} x${quantity} (${totalCount} → ${totalCount - quantity})`);
+      
+    } else if (itemType === 'amber') {
+      // 호박석 확인 및 차감
+      const userAmber = await UserAmberModel.findOne({ userUuid: userUuid });
+      
+      if (!userAmber || userAmber.amber < quantity) {
+        return res.status(400).json({ message: "호박석이 부족합니다." });
+      }
+      
+      userAmber.amber -= quantity;
+      await userAmber.save();
+      console.log(`💎 호박석 차감: x${quantity} (${userAmber.amber + quantity} → ${userAmber.amber})`);
+      
+    } else if (itemType === 'starPiece') {
+      // 별조각 확인 및 차감
+      const userStarPieces = await StarPieceModel.findOne({ userUuid: userUuid });
+      
+      if (!userStarPieces || userStarPieces.starPieces < quantity) {
+        return res.status(400).json({ message: "별조각이 부족합니다." });
+      }
+      
+      userStarPieces.starPieces -= quantity;
+      await userStarPieces.save();
+      console.log(`⭐ 별조각 차감: x${quantity} (${userStarPieces.starPieces + quantity} → ${userStarPieces.starPieces})`);
+      
+    } else {
+      return res.status(400).json({ message: "올바르지 않은 아이템 타입입니다." });
+    }
 
     // 거래소에 등록
     const listing = new MarketListingModel({
       userUuid: userUuid,
       sellerNickname: username,
       itemName: itemName,
+      itemType: itemType,
       quantity: quantity,
       pricePerUnit: pricePerUnit,
       listedAt: new Date()
@@ -9601,11 +9671,23 @@ app.post("/api/market/list", authenticateJWT, async (req, res) => {
     // 소켓으로 전체 사용자에게 알림
     io.emit('marketUpdate', { type: 'newListing', listing: listing.toObject() });
 
-    // 등록한 사용자에게 재료 업데이트 전송
-    const updatedMaterials = await MaterialModel.find({ userUuid: userUuid }).lean();
+    // 등록한 사용자에게 아이템 업데이트 전송
     const socketId = connectedUsersMap.get(userUuid);
     if (socketId) {
-      io.to(socketId).emit('data:materials', { materials: updatedMaterials });
+      if (itemType === 'material') {
+        const updatedMaterials = await MaterialModel.find({ userUuid: userUuid }).lean();
+        io.to(socketId).emit('data:materials', { materials: updatedMaterials });
+      } else if (itemType === 'amber') {
+        const userAmber = await UserAmberModel.findOne({ userUuid: userUuid });
+        if (userAmber) {
+          io.to(socketId).emit('data:amber', { amber: userAmber.amber });
+        }
+      } else if (itemType === 'starPiece') {
+        const userStarPieces = await StarPieceModel.findOne({ userUuid: userUuid });
+        if (userStarPieces) {
+          io.to(socketId).emit('data:starPieces', { starPieces: userStarPieces.starPieces });
+        }
+      }
     }
 
     res.json({ message: "아이템이 등록되었습니다.", listing: listing.toObject() });
@@ -9620,6 +9702,12 @@ app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) =>
   try {
     const { userUuid, username } = req.user;
     const { listingId } = req.params;
+
+    // 낚시 실력 확인 (5 이상만 거래소 이용 가능)
+    const fishingSkill = await FishingSkillModel.findOne({ userUuid: userUuid });
+    if (!fishingSkill || fishingSkill.skill < 5) {
+      return res.status(403).json({ message: "거래소는 낚시 실력 5 이상부터 이용할 수 있습니다." });
+    }
 
     // 거래소 등록 확인
     const listing = await MarketListingModel.findById(listingId);
@@ -9669,18 +9757,41 @@ app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) =>
       console.log(`💰 판매자 골드 업데이트 전송: ${listing.sellerNickname} - ${sellerMoney.money}`);
     }
 
-    // 구매자에게 재료 지급 (MaterialModel은 각 재료가 별도 document)
-    const newMaterials = [];
-    for (let i = 0; i < listing.quantity; i++) {
-      newMaterials.push({
-        userUuid: userUuid,
-        username: username,
-        material: listing.itemName
-      });
+    // 구매자에게 아이템 지급
+    if (listing.itemType === 'material') {
+      // MaterialModel은 각 재료가 별도 document
+      const newMaterials = [];
+      for (let i = 0; i < listing.quantity; i++) {
+        newMaterials.push({
+          userUuid: userUuid,
+          username: username,
+          material: listing.itemName
+        });
+      }
+      
+      await MaterialModel.insertMany(newMaterials);
+      console.log(`📦 재료 지급: ${listing.itemName} x${listing.quantity} → ${username}`);
+      
+    } else if (listing.itemType === 'amber') {
+      // 호박석 지급
+      let userAmber = await UserAmberModel.findOne({ userUuid: userUuid });
+      if (!userAmber) {
+        userAmber = new UserAmberModel({ userUuid: userUuid, username: username, amber: 0 });
+      }
+      userAmber.amber += listing.quantity;
+      await userAmber.save();
+      console.log(`💎 호박석 지급: x${listing.quantity} → ${username}`);
+      
+    } else if (listing.itemType === 'starPiece') {
+      // 별조각 지급
+      let userStarPieces = await StarPieceModel.findOne({ userUuid: userUuid });
+      if (!userStarPieces) {
+        userStarPieces = new StarPieceModel({ userUuid: userUuid, username: username, starPieces: 0 });
+      }
+      userStarPieces.starPieces += listing.quantity;
+      await userStarPieces.save();
+      console.log(`⭐ 별조각 지급: x${listing.quantity} → ${username}`);
     }
-    
-    await MaterialModel.insertMany(newMaterials);
-    console.log(`📦 재료 지급: ${listing.itemName} x${listing.quantity} → ${username}`);
 
     // 거래소에서 제거
     await MarketListingModel.deleteOne({ _id: listingId });
@@ -9692,6 +9803,7 @@ app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) =>
       sellerUuid: listing.userUuid,
       sellerNickname: listing.sellerNickname,
       itemName: listing.itemName,
+      itemType: listing.itemType,
       quantity: listing.quantity,
       pricePerUnit: listing.pricePerUnit,
       totalPrice: totalPrice,
@@ -9753,11 +9865,25 @@ app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) =>
     // 소켓으로 전체 사용자에게 알림
     io.emit('marketUpdate', { type: 'purchase', listingId: listingId });
 
-    // 구매자에게 재료 업데이트 전송
-    const buyerMaterials = await MaterialModel.find({ userUuid: userUuid }).lean();
+    // 구매자에게 아이템 업데이트 소켓 전송
     if (buyerSocketId) {
-      io.to(buyerSocketId).emit('data:materials', { materials: buyerMaterials });
-      console.log(`📦 구매자 재료 업데이트 전송: ${username}`);
+      if (listing.itemType === 'material') {
+        const buyerMaterials = await MaterialModel.find({ userUuid: userUuid }).lean();
+        io.to(buyerSocketId).emit('data:materials', { materials: buyerMaterials });
+        console.log(`📦 구매자 재료 업데이트 전송: ${username}`);
+      } else if (listing.itemType === 'amber') {
+        const userAmber = await UserAmberModel.findOne({ userUuid: userUuid });
+        if (userAmber) {
+          io.to(buyerSocketId).emit('data:amber', { amber: userAmber.amber });
+          console.log(`💎 구매자 호박석 업데이트 전송: ${username} - ${userAmber.amber}`);
+        }
+      } else if (listing.itemType === 'starPiece') {
+        const userStarPieces = await StarPieceModel.findOne({ userUuid: userUuid });
+        if (userStarPieces) {
+          io.to(buyerSocketId).emit('data:starPieces', { starPieces: userStarPieces.starPieces });
+          console.log(`⭐ 구매자 별조각 업데이트 전송: ${username} - ${userStarPieces.starPieces}`);
+        }
+      }
     }
 
     res.json({ 
@@ -9778,6 +9904,12 @@ app.delete("/api/market/cancel/:listingId", authenticateJWT, async (req, res) =>
     const { userUuid, username } = req.user;
     const { listingId } = req.params;
 
+    // 낚시 실력 확인 (5 이상만 거래소 이용 가능)
+    const fishingSkill = await FishingSkillModel.findOne({ userUuid: userUuid });
+    if (!fishingSkill || fishingSkill.skill < 5) {
+      return res.status(403).json({ message: "거래소는 낚시 실력 5 이상부터 이용할 수 있습니다." });
+    }
+
     // 거래소 등록 확인
     const listing = await MarketListingModel.findById(listingId);
     if (!listing) {
@@ -9789,18 +9921,41 @@ app.delete("/api/market/cancel/:listingId", authenticateJWT, async (req, res) =>
       return res.status(403).json({ message: "자신의 물건만 취소할 수 있습니다." });
     }
 
-    // 재료 반환 (MaterialModel은 각 재료가 별도 document)
-    const newMaterials = [];
-    for (let i = 0; i < listing.quantity; i++) {
-      newMaterials.push({
-        userUuid: userUuid,
-        username: username,
-        material: listing.itemName
-      });
+    // 아이템 반환
+    if (listing.itemType === 'material') {
+      // MaterialModel은 각 재료가 별도 document
+      const newMaterials = [];
+      for (let i = 0; i < listing.quantity; i++) {
+        newMaterials.push({
+          userUuid: userUuid,
+          username: username,
+          material: listing.itemName
+        });
+      }
+      
+      await MaterialModel.insertMany(newMaterials);
+      console.log(`📦 재료 반환: ${listing.itemName} x${listing.quantity} → ${username}`);
+      
+    } else if (listing.itemType === 'amber') {
+      // 호박석 반환
+      let userAmber = await UserAmberModel.findOne({ userUuid: userUuid });
+      if (!userAmber) {
+        userAmber = new UserAmberModel({ userUuid: userUuid, username: username, amber: 0 });
+      }
+      userAmber.amber += listing.quantity;
+      await userAmber.save();
+      console.log(`💎 호박석 반환: x${listing.quantity} → ${username}`);
+      
+    } else if (listing.itemType === 'starPiece') {
+      // 별조각 반환
+      let userStarPieces = await StarPieceModel.findOne({ userUuid: userUuid });
+      if (!userStarPieces) {
+        userStarPieces = new StarPieceModel({ userUuid: userUuid, username: username, starPieces: 0 });
+      }
+      userStarPieces.starPieces += listing.quantity;
+      await userStarPieces.save();
+      console.log(`⭐ 별조각 반환: x${listing.quantity} → ${username}`);
     }
-    
-    await MaterialModel.insertMany(newMaterials);
-    console.log(`📦 재료 반환: ${listing.itemName} x${listing.quantity} → ${username}`);
 
     // 거래소에서 제거
     await MarketListingModel.deleteOne({ _id: listingId });
@@ -9808,11 +9963,23 @@ app.delete("/api/market/cancel/:listingId", authenticateJWT, async (req, res) =>
     // 소켓으로 전체 사용자에게 알림
     io.emit('marketUpdate', { type: 'cancel', listingId: listingId });
 
-    // 취소한 사용자에게 재료 업데이트 전송
-    const updatedMaterials = await MaterialModel.find({ userUuid: userUuid }).lean();
+    // 취소한 사용자에게 아이템 업데이트 전송
     const socketId = connectedUsersMap.get(userUuid);
     if (socketId) {
-      io.to(socketId).emit('data:materials', { materials: updatedMaterials });
+      if (listing.itemType === 'material') {
+        const updatedMaterials = await MaterialModel.find({ userUuid: userUuid }).lean();
+        io.to(socketId).emit('data:materials', { materials: updatedMaterials });
+      } else if (listing.itemType === 'amber') {
+        const userAmber = await UserAmberModel.findOne({ userUuid: userUuid });
+        if (userAmber) {
+          io.to(socketId).emit('data:amber', { amber: userAmber.amber });
+        }
+      } else if (listing.itemType === 'starPiece') {
+        const userStarPieces = await StarPieceModel.findOne({ userUuid: userUuid });
+        if (userStarPieces) {
+          io.to(socketId).emit('data:starPieces', { starPieces: userStarPieces.starPieces });
+        }
+      }
     }
 
     res.json({ message: "등록이 취소되었습니다." });
