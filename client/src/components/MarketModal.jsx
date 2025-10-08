@@ -180,7 +180,7 @@ const MarketModal = ({
         
         // 재료 강제 새로고침
         const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
-        const materialsResponse = await fetch(`${serverUrl}/api/materials/user`, {
+        const materialsResponse = await fetch(`${serverUrl}/api/market/my-materials`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
           }
@@ -240,7 +240,7 @@ const MarketModal = ({
         
         // 재료 강제 새로고침
         const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
-        const materialsResponse = await fetch(`${serverUrl}/api/materials/user`, {
+        const materialsResponse = await fetch(`${serverUrl}/api/market/my-materials`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
           }
@@ -289,7 +289,7 @@ const MarketModal = ({
         
         // 재료 강제 새로고침
         const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
-        const materialsResponse = await fetch(`${serverUrl}/api/materials/user`, {
+        const materialsResponse = await fetch(`${serverUrl}/api/market/my-materials`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
           }

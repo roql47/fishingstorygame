@@ -7233,8 +7233,8 @@ app.get("/api/user-equipment/:userId", optionalJWT, async (req, res) => {
   }
 });
 
-// Materials Inventory API (JWT 인증)
-app.get("/api/materials/user", authenticateJWT, async (req, res) => {
+// Materials Inventory API (JWT 인증 - 거래소용)
+app.get("/api/market/my-materials", authenticateJWT, async (req, res) => {
   try {
     const { userUuid, username } = req.user;
     
