@@ -11252,7 +11252,9 @@ function App() {
         isDarkMode={isDarkMode}
         inventory={inventory}
         materials={materials}
+        setMaterials={setMaterials}
         gold={userMoney}
+        setGold={setUserMoney}
         nickname={username}
         onPurchase={refreshAllData}
         onListItem={refreshAllData}

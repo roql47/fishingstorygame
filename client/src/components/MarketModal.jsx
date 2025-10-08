@@ -9,7 +9,9 @@ const MarketModal = ({
   isDarkMode,
   inventory,
   materials,
+  setMaterials,
   gold,
+  setGold,
   nickname,
   onPurchase,
   onListItem,
@@ -172,25 +174,22 @@ const MarketModal = ({
       const data = await response.json();
       
       if (response.ok) {
+        // 즉시 로컬 상태 업데이트 (아이템 차감)
+        const updatedMaterials = materials.map(m => {
+          if (m.material === selectedItem.material) {
+            const newCount = m.count - listQuantity;
+            return newCount > 0 ? { ...m, count: newCount } : null;
+          }
+          return m;
+        }).filter(m => m !== null);
+        
+        setMaterials(updatedMaterials);
+        
         alert('아이템이 거래소에 등록되었습니다!');
         setSelectedItem(null);
         setListPrice('');
         setListQuantity(1);
         fetchMarketListings();
-        
-        // 재료 강제 새로고침
-        const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
-        const materialsResponse = await fetch(`${serverUrl}/api/market/my-materials`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
-          }
-        });
-        
-        if (materialsResponse.ok) {
-          const materialsData = await materialsResponse.json();
-          // 이벤트 발생시켜 App.jsx의 materials 상태 업데이트
-          window.dispatchEvent(new CustomEvent('materialsUpdate', { detail: materialsData }));
-        }
         
         if (onListItem) onListItem();
       } else {
@@ -235,22 +234,23 @@ const MarketModal = ({
       const data = await response.json();
       
       if (response.ok) {
+        // 즉시 로컬 상태 업데이트 (아이템 추가, 골드 차감)
+        const existingMaterial = materials.find(m => m.material === listing.itemName);
+        if (existingMaterial) {
+          const updatedMaterials = materials.map(m => 
+            m.material === listing.itemName 
+              ? { ...m, count: m.count + listing.quantity }
+              : m
+          );
+          setMaterials(updatedMaterials);
+        } else {
+          setMaterials([...materials, { material: listing.itemName, count: listing.quantity }]);
+        }
+        
+        setGold(prev => prev - (listing.pricePerUnit * listing.quantity));
+        
         alert('구매가 완료되었습니다!');
         fetchMarketListings();
-        
-        // 재료 강제 새로고침
-        const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
-        const materialsResponse = await fetch(`${serverUrl}/api/market/my-materials`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
-          }
-        });
-        
-        if (materialsResponse.ok) {
-          const materialsData = await materialsResponse.json();
-          // 이벤트 발생시켜 App.jsx의 materials 상태 업데이트
-          window.dispatchEvent(new CustomEvent('materialsUpdate', { detail: materialsData }));
-        }
         
         if (onPurchase) onPurchase();
       } else {
@@ -284,22 +284,21 @@ const MarketModal = ({
       const data = await response.json();
       
       if (response.ok) {
+        // 즉시 로컬 상태 업데이트 (아이템 반환)
+        const existingMaterial = materials.find(m => m.material === listing.itemName);
+        if (existingMaterial) {
+          const updatedMaterials = materials.map(m => 
+            m.material === listing.itemName 
+              ? { ...m, count: m.count + listing.quantity }
+              : m
+          );
+          setMaterials(updatedMaterials);
+        } else {
+          setMaterials([...materials, { material: listing.itemName, count: listing.quantity }]);
+        }
+        
         alert('등록이 취소되었습니다.');
         fetchMarketListings();
-        
-        // 재료 강제 새로고침
-        const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
-        const materialsResponse = await fetch(`${serverUrl}/api/market/my-materials`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
-          }
-        });
-        
-        if (materialsResponse.ok) {
-          const materialsData = await materialsResponse.json();
-          // 이벤트 발생시켜 App.jsx의 materials 상태 업데이트
-          window.dispatchEvent(new CustomEvent('materialsUpdate', { detail: materialsData }));
-        }
         
         if (onCancelListing) onCancelListing();
       } else {
