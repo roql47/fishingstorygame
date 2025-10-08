@@ -177,6 +177,21 @@ const MarketModal = ({
         setListPrice('');
         setListQuantity(1);
         fetchMarketListings();
+        
+        // 재료 강제 새로고침
+        const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
+        const materialsResponse = await fetch(`${serverUrl}/api/materials/user`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+          }
+        });
+        
+        if (materialsResponse.ok) {
+          const materialsData = await materialsResponse.json();
+          // 이벤트 발생시켜 App.jsx의 materials 상태 업데이트
+          window.dispatchEvent(new CustomEvent('materialsUpdate', { detail: materialsData }));
+        }
+        
         if (onListItem) onListItem();
       } else {
         alert(data.message || '등록에 실패했습니다.');
@@ -222,6 +237,21 @@ const MarketModal = ({
       if (response.ok) {
         alert('구매가 완료되었습니다!');
         fetchMarketListings();
+        
+        // 재료 강제 새로고침
+        const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
+        const materialsResponse = await fetch(`${serverUrl}/api/materials/user`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+          }
+        });
+        
+        if (materialsResponse.ok) {
+          const materialsData = await materialsResponse.json();
+          // 이벤트 발생시켜 App.jsx의 materials 상태 업데이트
+          window.dispatchEvent(new CustomEvent('materialsUpdate', { detail: materialsData }));
+        }
+        
         if (onPurchase) onPurchase();
       } else {
         alert(data.message || '구매에 실패했습니다.');
@@ -256,6 +286,21 @@ const MarketModal = ({
       if (response.ok) {
         alert('등록이 취소되었습니다.');
         fetchMarketListings();
+        
+        // 재료 강제 새로고침
+        const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
+        const materialsResponse = await fetch(`${serverUrl}/api/materials/user`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+          }
+        });
+        
+        if (materialsResponse.ok) {
+          const materialsData = await materialsResponse.json();
+          // 이벤트 발생시켜 App.jsx의 materials 상태 업데이트
+          window.dispatchEvent(new CustomEvent('materialsUpdate', { detail: materialsData }));
+        }
+        
         if (onCancelListing) onCancelListing();
       } else {
         alert(data.message || '취소에 실패했습니다.');
@@ -667,6 +712,16 @@ const MarketModal = ({
                                 }`}>
                                   총 가격: {(parseInt(listPrice) * listQuantity).toLocaleString()}골드
                                 </div>
+                                <div className={`text-xs ${
+                                  isDarkMode ? "text-red-400" : "text-red-600"
+                                }`}>
+                                  수수료 (5%): -{Math.floor((parseInt(listPrice) * listQuantity) * 0.05).toLocaleString()}골드
+                                </div>
+                                <div className={`text-sm font-bold ${
+                                  isDarkMode ? "text-green-400" : "text-green-600"
+                                }`}>
+                                  실제 수령액: {(parseInt(listPrice) * listQuantity - Math.floor((parseInt(listPrice) * listQuantity) * 0.05)).toLocaleString()}골드
+                                </div>
                                 {itemAveragePrices[item.material] && (
                                   <div className={`text-xs ${
                                     isDarkMode ? "text-gray-500" : "text-gray-500"
@@ -856,7 +911,7 @@ const MarketModal = ({
             <div className={`text-sm ${
               isDarkMode ? "text-gray-400" : "text-gray-600"
             }`}>
-              💡 분해 아이템만 거래 가능합니다
+              💡 분해 아이템만 거래 가능 • 판매 시 수수료 5% 차감
             </div>
             <div className={`text-lg font-bold ${
               isDarkMode ? "text-yellow-400" : "text-yellow-600"

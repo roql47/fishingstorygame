@@ -3227,7 +3227,14 @@ function App() {
       const safeInventory = Array.isArray(data) ? data : [];
       setInventory(safeInventory);
     };
-    const handleMaterialsUpdate = (data) => setMaterials(data);
+    const handleMaterialsUpdate = (data) => {
+      console.log('🔄 Materials updated:', data);
+      if (data.materials) {
+        setMaterials(data.materials);
+      } else if (Array.isArray(data)) {
+        setMaterials(data);
+      }
+    };
     const handleUsersUpdate = (users) => {
       console.log('Received users update via WebSocket:', users);
       // 빈 배열이 아닌 경우에만 업데이트 (기존 목록 유지)
@@ -3236,6 +3243,15 @@ function App() {
         setIsLoadingUsers(false);
       }
     };
+
+    // CustomEvent 리스너 (거래소에서 재료 업데이트)
+    const handleCustomMaterialsUpdate = (event) => {
+      console.log('🔄 Custom materials update:', event.detail);
+      if (Array.isArray(event.detail)) {
+        setMaterials(event.detail);
+      }
+    };
+    window.addEventListener('materialsUpdate', handleCustomMaterialsUpdate);
 
     socket.on('data:update', handleDataUpdate);
     socket.on('data:inventory', handleInventoryUpdate);
@@ -3323,6 +3339,7 @@ function App() {
     });
 
     return () => {
+      window.removeEventListener('materialsUpdate', handleCustomMaterialsUpdate);
       socket.off('data:update', handleDataUpdate);
       socket.off('data:inventory', handleInventoryUpdate);
       socket.off('data:materials', handleMaterialsUpdate);

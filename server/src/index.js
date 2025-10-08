@@ -7233,6 +7233,31 @@ app.get("/api/user-equipment/:userId", optionalJWT, async (req, res) => {
   }
 });
 
+// Materials Inventory API (JWT 인증)
+app.get("/api/materials/user", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid, username } = req.user;
+    
+    const materials = await MaterialModel.find({ userUuid: userUuid }).lean();
+    
+    // 재료별로 갯수를 세어서 그룹화
+    const materialCount = {};
+    materials.forEach(m => {
+      materialCount[m.material] = (materialCount[m.material] || 0) + m.count;
+    });
+    
+    // 갯수 순으로 정렬해서 반환
+    const materialInventory = Object.entries(materialCount)
+      .map(([material, count]) => ({ material, count }))
+      .sort((a, b) => b.count - a.count);
+    
+    res.json(materialInventory);
+  } catch (error) {
+    console.error("Failed to fetch user materials:", error);
+    res.status(500).json({ error: "Failed to fetch user materials" });
+  }
+});
+
 // Materials Inventory API
 app.get("/api/materials/:userId", optionalJWT, async (req, res) => {
   try {
@@ -9573,6 +9598,13 @@ app.post("/api/market/list", authenticateJWT, async (req, res) => {
     // 소켓으로 전체 사용자에게 알림
     io.emit('marketUpdate', { type: 'newListing', listing: listing.toObject() });
 
+    // 등록한 사용자에게 재료 업데이트 전송
+    const updatedMaterials = await MaterialModel.find({ userUuid: userUuid }).lean();
+    const socketId = connectedUsersMap.get(userUuid);
+    if (socketId) {
+      io.to(socketId).emit('data:materials', { materials: updatedMaterials });
+    }
+
     res.json({ message: "아이템이 등록되었습니다.", listing: listing.toObject() });
   } catch (error) {
     console.error("아이템 등록 실패:", error);
@@ -9598,6 +9630,8 @@ app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) =>
     }
 
     const totalPrice = listing.pricePerUnit * listing.quantity;
+    const fee = Math.floor(totalPrice * 0.05); // 5% 수수료
+    const sellerReceives = totalPrice - fee; // 판매자가 실제로 받는 금액
 
     // 구매자의 골드 확인
     const buyerMoney = await UserMoneyModel.findOne({ userUuid: userUuid });
@@ -9609,12 +9643,14 @@ app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) =>
     buyerMoney.money -= totalPrice;
     await buyerMoney.save();
 
-    // 판매자에게 골드 지급
+    // 판매자에게 골드 지급 (수수료 5% 차감)
     const sellerMoney = await UserMoneyModel.findOne({ userUuid: listing.userUuid });
     if (sellerMoney) {
-      sellerMoney.money += totalPrice;
+      sellerMoney.money += sellerReceives;
       await sellerMoney.save();
     }
+
+    console.log(`💰 거래 완료: 총액 ${totalPrice.toLocaleString()}골드, 수수료 ${fee.toLocaleString()}골드, 판매자 수령 ${sellerReceives.toLocaleString()}골드`);
 
     // 구매자에게 재료 지급
     const buyerMaterial = await MaterialModel.findOne({ 
@@ -9658,7 +9694,7 @@ app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) =>
         receiverUuid: listing.userUuid,
         receiverNickname: listing.sellerNickname,
         subject: '📦 거래소 판매 완료',
-        message: `${username}님이 거래소에서 ${listing.itemName} ${listing.quantity}개를 ${totalPrice.toLocaleString()}골드(개당 ${listing.pricePerUnit.toLocaleString()}골드)에 구매했습니다.`,
+        message: `${username}님이 거래소에서 ${listing.itemName} ${listing.quantity}개를 ${totalPrice.toLocaleString()}골드(개당 ${listing.pricePerUnit.toLocaleString()}골드)에 구매했습니다.\n\n거래 금액: ${totalPrice.toLocaleString()}골드\n거래 수수료 (5%): -${fee.toLocaleString()}골드\n실제 수령액: ${sellerReceives.toLocaleString()}골드`,
         isRead: false,
         sentAt: new Date()
       });
@@ -9706,6 +9742,13 @@ app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) =>
 
     // 소켓으로 전체 사용자에게 알림
     io.emit('marketUpdate', { type: 'purchase', listingId: listingId });
+
+    // 구매자에게 재료 업데이트 전송
+    const buyerMaterials = await MaterialModel.find({ userUuid: userUuid }).lean();
+    const buyerSocketId = connectedUsersMap.get(userUuid);
+    if (buyerSocketId) {
+      io.to(buyerSocketId).emit('data:materials', { materials: buyerMaterials });
+    }
 
     res.json({ 
       message: "구매가 완료되었습니다!",
@@ -9759,6 +9802,13 @@ app.delete("/api/market/cancel/:listingId", authenticateJWT, async (req, res) =>
 
     // 소켓으로 전체 사용자에게 알림
     io.emit('marketUpdate', { type: 'cancel', listingId: listingId });
+
+    // 취소한 사용자에게 재료 업데이트 전송
+    const updatedMaterials = await MaterialModel.find({ userUuid: userUuid }).lean();
+    const socketId = connectedUsersMap.get(userUuid);
+    if (socketId) {
+      io.to(socketId).emit('data:materials', { materials: updatedMaterials });
+    }
 
     res.json({ message: "등록이 취소되었습니다." });
   } catch (error) {
