@@ -7628,19 +7628,24 @@ app.post("/api/craft-material", authenticateJWT, async (req, res) => {
   }
 });
 
-// 재료 분해 API (상위 재료 1개 → 하위 재료 2개)
+// 재료 분해 API (상위 재료 여러개 → 하위 재료 여러개)
 app.post("/api/decompose-material", authenticateJWT, async (req, res) => {
   try {
-    const { inputMaterial, outputMaterial, outputCount } = req.body;
+    const { inputMaterial, outputMaterial, outputCount, quantity = 1 } = req.body;
     // 🔐 JWT에서 사용자 정보 추출
     const { userUuid, username } = req.user;
     
-    console.log("Decompose material request:", { inputMaterial, outputMaterial, outputCount, username, userUuid });
+    console.log("Decompose material request:", { inputMaterial, outputMaterial, outputCount, quantity, username, userUuid });
     
     // 레시피 유효성 검증
     const recipe = getDecomposeRecipe(inputMaterial);
     if (!recipe || recipe.inputMaterial !== outputMaterial) {
       return res.status(400).json({ error: "Invalid decompose recipe" });
+    }
+    
+    // 수량 검증
+    if (quantity < 1 || !Number.isInteger(quantity)) {
+      return res.status(400).json({ error: "잘못된 수량입니다." });
     }
     
     // UUID 기반 사용자 조회
@@ -7653,24 +7658,25 @@ app.post("/api/decompose-material", authenticateJWT, async (req, res) => {
       query = queryResult;
     }
     
-    // 사용자가 해당 재료를 가지고 있는지 확인
-    const userMaterial = await MaterialModel.findOne({ ...query, material: inputMaterial });
+    // 사용자가 해당 재료를 충분히 가지고 있는지 확인
+    const userMaterials = await MaterialModel.find({ ...query, material: inputMaterial }).limit(quantity);
     
-    if (!userMaterial) {
-      console.log(`Material not found: ${inputMaterial}`);
-      return res.status(400).json({ error: "분해할 재료가 없습니다." });
+    if (!userMaterials || userMaterials.length < quantity) {
+      console.log(`Not enough material: ${inputMaterial} (need ${quantity}, have ${userMaterials?.length || 0})`);
+      return res.status(400).json({ error: `분해할 재료가 부족합니다. (${userMaterials?.length || 0}/${quantity})` });
     }
     
-    // 재료 제거 (1개 삭제)
-    const deleteResult = await MaterialModel.deleteOne({ _id: userMaterial._id });
-    console.log(`Deleted 1 ${inputMaterial}`);
+    // 재료 제거 (quantity개 삭제)
+    const materialIdsToDelete = userMaterials.map(m => m._id);
+    const deleteResult = await MaterialModel.deleteMany({ _id: { $in: materialIdsToDelete } });
+    console.log(`Deleted ${deleteResult.deletedCount} ${inputMaterial}`);
     
-    if (deleteResult.deletedCount !== 1) {
-      console.error(`Material deletion failed`);
+    if (deleteResult.deletedCount !== quantity) {
+      console.error(`Material deletion failed (expected ${quantity}, deleted ${deleteResult.deletedCount})`);
       return res.status(500).json({ error: "분해 중 오류가 발생했습니다." });
     }
     
-    // 새로운 재료 추가 (outputCount만큼)
+    // 새로운 재료 추가 (outputCount * quantity만큼)
     const materialData = {
       ...query,
       material: outputMaterial,
@@ -7681,8 +7687,9 @@ app.post("/api/decompose-material", authenticateJWT, async (req, res) => {
       materialData.username = username;
     }
     
-    // outputCount만큼 재료 생성
-    const materialsToCreate = Array(outputCount).fill().map(() => ({ insertOne: { document: materialData } }));
+    // outputCount * quantity만큼 재료 생성
+    const totalOutputCount = outputCount * quantity;
+    const materialsToCreate = Array(totalOutputCount).fill().map(() => ({ insertOne: { document: materialData } }));
     const bulkCreateResult = await MaterialModel.bulkWrite(materialsToCreate, {
       ordered: false,
       writeConcern: { w: 1, j: false }
@@ -7690,7 +7697,7 @@ app.post("/api/decompose-material", authenticateJWT, async (req, res) => {
     
     console.log(`Created ${bulkCreateResult.insertedCount} ${outputMaterial}`);
     
-    res.json({ success: true });
+    res.json({ success: true, decomposedCount: quantity, gainedCount: totalOutputCount });
   } catch (error) {
     console.error("Failed to decompose material:", error);
     res.status(500).json({ error: "재료 분해에 실패했습니다." });
@@ -8202,14 +8209,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.283"
+    version: "v1.284"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.283",
+    version: "v1.284",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [

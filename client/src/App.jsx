@@ -6009,8 +6009,8 @@ function App() {
   // 🔧 상점 아이템 조회는 useGameData 훅의 getAvailableShopItem 사용
 
   // 수량 모달 열기
-  const openQuantityModal = (type, fishName, maxQuantity) => {
-    setQuantityModalData({ type, fishName, maxQuantity });
+  const openQuantityModal = (type, fishName, maxQuantity, materialName = null, recipe = null) => {
+    setQuantityModalData({ type, fishName, maxQuantity, materialName, recipe });
     setInputQuantity(1);
     setShowQuantityModal(true);
   };
@@ -6019,13 +6019,15 @@ function App() {
   const handleQuantityConfirm = () => {
     if (!quantityModalData) return;
     
-    const { type, fishName } = quantityModalData;
+    const { type, fishName, materialName, recipe } = quantityModalData;
     const quantity = Math.min(inputQuantity, quantityModalData.maxQuantity);
     
     if (type === 'sell') {
       sellFish(fishName, quantity);
     } else if (type === 'decompose') {
       decomposeFish(fishName, quantity);
+    } else if (type === 'material_decompose') {
+      handleDecompose(materialName, recipe, quantity);
     }
     
     setShowQuantityModal(false);
@@ -6329,8 +6331,8 @@ function App() {
     }
   };
 
-  // 재료 분해 함수 (상위 재료 1개 → 하위 재료 2개)
-  const handleDecompose = async (materialName, recipe) => {
+  // 재료 분해 함수 (상위 재료 여러개 → 하위 재료 여러개)
+  const handleDecompose = async (materialName, recipe, quantity = 1) => {
     if (!username) {
       alert('사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.');
       return;
@@ -6344,16 +6346,18 @@ function App() {
       const response = await authenticatedRequest.post(`${serverUrl}/api/decompose-material`, {
         inputMaterial: recipe.outputMaterial, // 분해할 재료 (상위)
         outputMaterial: recipe.inputMaterial, // 얻을 재료 (하위)
-        outputCount: 2 // 분해 시 2개 획득
+        outputCount: 2, // 분해 시 2개 획득
+        quantity: quantity // 분해할 개수
       });
 
       if (response.data.success) {
         // 재료 목록 새로고침
         await fetchMaterials();
         
+        const totalGained = quantity * 2; // 1개당 2개씩 획득
         setMessages(prev => [...prev, {
           system: true,
-          content: `🔨 ${recipe.outputMaterial} 1개를 분해하여 ${recipe.inputMaterial} 2개를 획득했습니다!`,
+          content: `🔨 ${recipe.outputMaterial} ${quantity}개를 분해하여 ${recipe.inputMaterial} ${totalGained}개를 획득했습니다!`,
           timestamp: new Date().toISOString()
         }]);
       } else {
@@ -7810,7 +7814,7 @@ function App() {
                                 {/* 분해 버튼 */}
                                 {decomposeRecipe && (
                                   <button
-                                    onClick={() => handleDecompose(item.material, decomposeRecipe)}
+                                    onClick={() => openQuantityModal('material_decompose', decomposeRecipe.outputMaterial, item.count, item.material, decomposeRecipe)}
                                     disabled={!canDecompose}
                                     className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
                                       canDecompose
@@ -7819,7 +7823,7 @@ function App() {
                                           : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border border-blue-500/30 hover:scale-105"
                                         : "opacity-50 cursor-not-allowed bg-gray-500/10 text-gray-500 border border-gray-500/20"
                                     }`}
-                                    title={canDecompose ? `${decomposeRecipe.outputMaterial} 1개 → ${decomposeRecipe.inputMaterial} 2개` : "재료가 부족합니다"}
+                                    title={canDecompose ? `${decomposeRecipe.outputMaterial} → ${decomposeRecipe.inputMaterial} (1개당 2개 획득)` : "재료가 부족합니다"}
                                   >
                                     <Trash2 className="w-4 h-4" />
                                     <span className="text-sm">분해 (1개 → {decomposeRecipe.inputMaterial} 2개)</span>
@@ -9903,6 +9907,8 @@ function App() {
                 <div className={`flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br ${
                   quantityModalData.type === 'sell' 
                     ? "from-emerald-500/20 to-green-500/20" 
+                    : quantityModalData.type === 'material_decompose'
+                    ? "from-blue-500/20 to-cyan-500/20"
                     : "from-purple-500/20 to-pink-500/20"
                 } border ${
                   isDarkMode ? "border-white/10" : "border-gray-300/30"
@@ -9910,6 +9916,10 @@ function App() {
                   {quantityModalData.type === 'sell' ? (
                     <Coins className={`w-5 h-5 ${
                       isDarkMode ? "text-emerald-400" : "text-emerald-600"
+                    }`} />
+                  ) : quantityModalData.type === 'material_decompose' ? (
+                    <Gem className={`w-5 h-5 ${
+                      isDarkMode ? "text-blue-400" : "text-blue-600"
                     }`} />
                   ) : (
                     <Trash2 className={`w-5 h-5 ${
@@ -9921,7 +9931,7 @@ function App() {
                   <h2 className={`text-lg font-semibold ${
                     isDarkMode ? "text-white" : "text-gray-800"
                   }`}>
-                    {quantityModalData.type === 'sell' ? '물고기 판매' : '물고기 분해'}
+                    {quantityModalData.type === 'sell' ? '물고기 판매' : quantityModalData.type === 'material_decompose' ? '재료 분해' : '물고기 분해'}
                   </h2>
                   <p className={`text-sm ${
                     isDarkMode ? "text-gray-400" : "text-gray-600"
@@ -9951,7 +9961,7 @@ function App() {
                   }`}>보유량:</span>
                   <span className={`font-bold ${
                     isDarkMode ? "text-white" : "text-gray-800"
-                  }`}>{quantityModalData.maxQuantity}마리</span>
+                  }`}>{quantityModalData.maxQuantity}{quantityModalData.type === 'material_decompose' ? '개' : '마리'}</span>
                 </div>
                 
                 <div className="space-y-3">
@@ -10040,6 +10050,23 @@ function App() {
                     </div>
                   </div>
                 )}
+                
+                {quantityModalData.type === 'material_decompose' && quantityModalData.recipe && (
+                  <div className={`mt-4 p-3 rounded-lg ${
+                    isDarkMode ? "bg-blue-500/10 border border-blue-400/20" : "bg-blue-500/5 border border-blue-500/20"
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <span className={`text-sm ${
+                        isDarkMode ? "text-blue-300" : "text-blue-700"
+                      }`}>획득 재료:</span>
+                      <span className={`font-bold ${
+                        isDarkMode ? "text-blue-400" : "text-blue-600"
+                      }`}>
+                        {quantityModalData.recipe.inputMaterial} {inputQuantity * 2}개
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
               
               <div className="flex gap-3">
@@ -10060,9 +10087,13 @@ function App() {
                       ? isDarkMode
                         ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
                         : "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20"
-                      : isDarkMode
-                        ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30"
-                        : "bg-purple-500/10 text-purple-600 hover:bg-purple-500/20"
+                      : quantityModalData.type === 'material_decompose'
+                        ? isDarkMode
+                          ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                          : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20"
+                        : isDarkMode
+                          ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30"
+                          : "bg-purple-500/10 text-purple-600 hover:bg-purple-500/20"
                   }`}
                 >
                   {quantityModalData.type === 'sell' ? '판매하기' : '분해하기'}
