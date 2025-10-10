@@ -16,7 +16,10 @@ export const NOTICE_DATA = [
       "- 총 34,566개 → 176개 documents (99.5% 감소)",
       "- 서버 부하 최적화화",
       "- 메모리 사용량 최적화",
-      "불필요한 로그 출력 제거로 성능 향상"
+      "불필요한 로그 출력 제거로 성능 향상",
+      "상점에서 장비구매가 되지 않던 버그 수정",
+      "조합재료 조합/분해시 수수료 추가",
+      "조합재료 분해시 하위트리 아이템 2개에서 3개로 증가"
     ],
     isNew: true,
     type: "major_update"
@@ -28,6 +31,7 @@ export const NOTICE_DATA = [
     content: [
       "동료 공격력 계산 방식을 탐사와 동일하게 수정",
       "동료 경험치 배율 증가",
+      "동료 레벨과 경험치 총경험치 보존하에 새로운 공식으로 재계산",
       "인벤토리 총 개수 9999개 제한 설정 (물고기 + 재료)"
     ],
     isNew: false,
@@ -386,5 +390,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.291"
+  version: "v1.292"
 };

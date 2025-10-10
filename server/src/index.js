@@ -1671,6 +1671,12 @@ const getAvailableFishData = (skill) => {
   return availableFish;
 };
 
+// 물고기 이름으로 재료 조회
+const getFishMaterial = (fishName) => {
+  const fish = allFishData.find(f => f.name === fishName);
+  return fish?.material || null;
+};
+
 function randomFish(fishingSkill = 0) {
   const availableFish = getAvailableFishData(fishingSkill);
   const random = Math.random() * 100;
@@ -4557,13 +4563,12 @@ app.post("/api/update-companion-stats", authenticateJWT, async (req, res) => {
       console.log(`✅ [DUPLICATE CLEANED] ${idsToDelete.length}개의 중복 레코드 삭제`);
     }
     
-    // 🔧 findOneAndUpdate로 upsert (중복 방지)
+    // 🔐 보안 강화: 레벨/경험치는 클라이언트가 변경할 수 없음
+    // 클라이언트는 isInBattle만 업데이트 가능
     const updateData = {};
-    if (level !== undefined) updateData.level = Math.max(level, 1);
-    if (experience !== undefined) updateData.experience = Math.max(experience, 0);
     if (isInBattle !== undefined) updateData.isInBattle = isInBattle;
     
-    // 🔧 level이나 experience가 없으면 기존 값 유지 (초기화 방지)
+    // 🔧 기존 데이터 확인
     const existingStat = await CompanionStatsModel.findOne({
       ...query,
       companionName: companionName
@@ -4574,13 +4579,14 @@ app.post("/api/update-companion-stats", authenticateJWT, async (req, res) => {
       userId: query.userId || 'user',
       username: query.username || username,
       userUuid: query.userUuid || userUuid,
-      companionName: companionName
+      companionName: companionName,
+      level: 1, // 새 동료는 항상 레벨 1부터 시작
+      experience: 0 // 새 동료는 항상 경험치 0부터 시작
     };
     
-    // 레벨이나 경험치가 전달되지 않았고, 기존 레코드도 없으면 기본값 설정
-    if (!existingStat) {
-      if (level === undefined) setOnInsertData.level = 1;
-      if (experience === undefined) setOnInsertData.experience = 0;
+    // ⚠️ 클라이언트가 보낸 레벨/경험치는 무시 (보안)
+    if (level !== undefined || experience !== undefined) {
+      console.log(`🚫 [SECURITY] 클라이언트가 레벨/경험치 변경 시도 차단: ${companionName} (클라이언트: Lv.${level}, 경험치: ${experience})`);
     }
     
     const companionStat = await CompanionStatsModel.findOneAndUpdate(
@@ -6687,6 +6693,78 @@ app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
   }
 });
 
+// 전체 물고기 판매 API (일괄 처리로 동기화 문제 해결)
+app.post("/api/sell-all-fish", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid, username } = req.user;
+    console.log(`🔐 JWT Sell all fish request by ${username} (${userUuid})`);
+    
+    // UUID 기반 사용자 조회
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    // 사용자의 모든 물고기 조회
+    const allUserFish = await CatchModel.find(query).lean();
+    
+    if (!allUserFish || allUserFish.length === 0) {
+      return res.json({ success: true, totalEarned: 0, soldCount: 0, message: "판매할 물고기가 없습니다." });
+    }
+    
+    let totalEarned = 0;
+    let soldCount = 0;
+    
+    // 모든 물고기 판매 처리
+    for (const fishItem of allUserFish) {
+      const fishName = fishItem.fish;
+      const quantity = fishItem.count;
+      
+      // 서버에서 가격 계산
+      const serverFishPrice = await calculateServerFishPrice(fishName, query);
+      const serverTotalPrice = serverFishPrice * quantity;
+      
+      totalEarned += serverTotalPrice;
+      soldCount += quantity;
+    }
+    
+    // 모든 물고기 삭제 (일괄 처리)
+    await CatchModel.deleteMany(query);
+    console.log(`⚡ Sold all fish for user (${soldCount} fish total)`);
+    
+    // 돈 업데이트
+    const updateData = {
+      $inc: { money: totalEarned },
+      $setOnInsert: {
+        ...query,
+        ...(username && { username })
+      }
+    };
+    
+    const [userMoney] = await Promise.all([
+      UserMoneyModel.findOneAndUpdate(
+        query,
+        updateData,
+        { upsert: true, new: true }
+      ),
+      userUuid ? Promise.resolve(invalidateCache('userMoney', userUuid)) : Promise.resolve()
+    ]);
+    
+    res.json({ 
+      success: true, 
+      totalEarned, 
+      soldCount, 
+      newBalance: userMoney.money 
+    });
+  } catch (error) {
+    console.error("Failed to sell all fish:", error);
+    res.status(500).json({ error: "Failed to sell all fish" });
+  }
+});
+
 // 🔒 서버 측 아이템 데이터는 gameData.js에서 관리 (중복 제거)
 
 // Item Buying API (재료 기반 구매 시스템 - 서버에서 재료 검증 + JWT 인증)
@@ -6755,25 +6833,34 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: "User not found" });
     }
     
-    // 재료 확인 및 차감
-    const userMaterials = await MaterialModel.find({
+    // 🎯 성능 최적화: count 필드로 재료 개수 확인
+    const userMaterial = await MaterialModel.findOne({
       ...query,
       material: requiredMaterial
     });
     
-    const userMaterialCount = userMaterials.length;
+    const userMaterialCount = userMaterial?.count || 0;
     
     if (userMaterialCount < requiredCount) {
       console.log(`Material shortage: User has ${userMaterialCount}, needs ${requiredCount}`);
       return res.status(400).json({ error: "Not enough materials" });
     }
     
-    // 재료 차감 (requiredCount만큼의 문서 삭제)
-    const materialsToDelete = userMaterials.slice(0, requiredCount);
-    await MaterialModel.deleteMany({
-      _id: { $in: materialsToDelete.map(m => m._id) }
-    });
-    console.log(`Material ${requiredMaterial} reduced by ${requiredCount} (${userMaterialCount} → ${userMaterialCount - requiredCount})`);
+    // 🚀 재료 차감 (count 필드 업데이트)
+    const newCount = userMaterialCount - requiredCount;
+    
+    if (newCount <= 0) {
+      // 남은 개수가 0 이하면 document 삭제
+      await MaterialModel.deleteOne({ ...query, material: requiredMaterial });
+      console.log(`Material ${requiredMaterial} completely consumed (deleted document)`);
+    } else {
+      // 남은 개수가 있으면 count만 업데이트
+      await MaterialModel.updateOne(
+        { ...query, material: requiredMaterial },
+        { $inc: { count: -requiredCount } }
+      );
+      console.log(`Material ${requiredMaterial} reduced by ${requiredCount} (${userMaterialCount} → ${newCount})`);
+    }
 
     
     // 장비 자동 장착
@@ -7565,6 +7652,123 @@ app.post("/api/decompose-fish", authenticateJWT, async (req, res) => {
   }
 });
 
+// 전체 물고기 분해 API (일괄 처리로 동기화 문제 해결)
+app.post("/api/decompose-all-fish", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid, username } = req.user;
+    console.log(`🔐 JWT Decompose all fish request by ${username} (${userUuid})`);
+    
+    // UUID 기반 사용자 조회
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    // 사용자의 모든 물고기 조회
+    const allUserFish = await CatchModel.find(query).lean();
+    
+    if (!allUserFish || allUserFish.length === 0) {
+      return res.json({ success: true, totalMaterials: 0, decomposeCount: 0, message: "분해할 물고기가 없습니다." });
+    }
+    
+    let totalMaterials = 0;
+    let decomposeCount = 0;
+    let totalStarPieces = 0;
+    const materialsGained = {}; // 재료별 획득량 추적
+    
+    // 모든 물고기 분해 처리
+    for (const fishItem of allUserFish) {
+      const fishName = fishItem.fish;
+      const quantity = fishItem.count;
+      
+      // 스타피쉬 처리
+      if (fishName === "스타피쉬") {
+        const starPiecesPerFish = 1;
+        totalStarPieces += quantity * starPiecesPerFish;
+        decomposeCount += quantity;
+        continue;
+      }
+      
+      // 일반 물고기 분해 - 재료 계산
+      const material = getFishMaterial(fishName);
+      if (material) {
+        if (!materialsGained[material]) {
+          materialsGained[material] = 0;
+        }
+        materialsGained[material] += quantity;
+        totalMaterials += quantity;
+        decomposeCount += quantity;
+      }
+    }
+    
+    // 모든 물고기 삭제 (일괄 처리)
+    await CatchModel.deleteMany(query);
+    console.log(`⚡ Decomposed all fish for user (${decomposeCount} fish total)`);
+    
+    // 스타피쉬 별조각 추가
+    if (totalStarPieces > 0) {
+      const updateData = {
+        $inc: { starPieces: totalStarPieces },
+        $setOnInsert: {
+          userId: query.userId || 'user',
+          username: query.username || username,
+          userUuid: query.userUuid || userUuid
+        }
+      };
+      
+      await StarPieceModel.findOneAndUpdate(
+        query,
+        updateData,
+        { upsert: true, new: true }
+      );
+      
+      console.log(`Added ${totalStarPieces} star pieces from starfish decomposition`);
+    }
+    
+    // 재료 추가 (일괄 처리)
+    const materialUpdates = [];
+    for (const [material, count] of Object.entries(materialsGained)) {
+      const materialData = {
+        ...query,
+        material: material,
+        displayName: query.username || username || 'User'
+      };
+      
+      if (username) {
+        materialData.username = username;
+      }
+      
+      materialUpdates.push(
+        MaterialModel.findOneAndUpdate(
+          { ...query, material },
+          {
+            $inc: { count },
+            $setOnInsert: materialData
+          },
+          { upsert: true, new: true }
+        )
+      );
+    }
+    
+    // 모든 재료 업데이트를 병렬로 처리
+    await Promise.all(materialUpdates);
+    
+    res.json({ 
+      success: true, 
+      totalMaterials,
+      totalStarPieces,
+      decomposeCount,
+      materialsGained
+    });
+  } catch (error) {
+    console.error("Failed to decompose all fish:", error);
+    res.status(500).json({ error: "Failed to decompose all fish" });
+  }
+});
+
 // Material Consumption API (for exploration)
 app.post("/api/consume-material", authenticateJWT, async (req, res) => {
   const { materialName, quantity } = req.body;
@@ -7635,7 +7839,7 @@ app.post("/api/consume-material", authenticateJWT, async (req, res) => {
 });
 
 // 조합 레시피 데이터 임포트
-const { getCraftingRecipe, getDecomposeRecipe } = require('./data/craftingData');
+const { getCraftingRecipe, getDecomposeRecipe, getSourceFishForMaterial } = require('./data/craftingData');
 
 // 재료 조합 API (하위 재료 3개 → 상위 재료 1개)
 app.post("/api/craft-material", authenticateJWT, async (req, res) => {
@@ -7671,6 +7875,33 @@ app.post("/api/craft-material", authenticateJWT, async (req, res) => {
     if (currentInputCount < inputCount) {
       console.log(`Not enough materials: has ${currentInputCount}, needs ${inputCount}`);
       return res.status(400).json({ error: `재료가 부족합니다. (${currentInputCount}/${inputCount})` });
+    }
+    
+    // 💰 조합 비용 계산 및 차감 (원형 물고기 가격 기반)
+    const sourceFish = getSourceFishForMaterial(inputMaterial);
+    if (!sourceFish) {
+      console.log(`Warning: No source fish found for material ${inputMaterial}`);
+    }
+    
+    const craftingCost = sourceFish ? sourceFish.price : 0;
+    
+    if (craftingCost > 0) {
+      // 사용자 정보 조회 (골드 확인)
+      const user = await UserModel.findOne(query);
+      const currentGold = user?.gold || 0;
+      
+      if (currentGold < craftingCost) {
+        console.log(`Not enough gold: has ${currentGold}, needs ${craftingCost}`);
+        return res.status(400).json({ 
+          error: `골드가 부족합니다. (${currentGold}/${craftingCost})`,
+          requiredGold: craftingCost,
+          currentGold: currentGold
+        });
+      }
+      
+      // 골드 차감
+      await UserModel.updateOne(query, { $inc: { gold: -craftingCost } });
+      console.log(`Deducted ${craftingCost} gold for crafting (remaining: ${currentGold - craftingCost})`);
     }
     
     // 📦 인벤토리 제한 확인 (재료 조합 시)
@@ -7725,7 +7956,17 @@ app.post("/api/craft-material", authenticateJWT, async (req, res) => {
     
     console.log(`Created/Updated ${outputMaterial}: +${outputCount} (total: ${updateResult.count})`);
     
-    res.json({ success: true, inputRemaining: Math.max(0, newInputCount), outputTotal: updateResult.count });
+    // 최종 골드 조회
+    const finalUser = await UserModel.findOne(query);
+    const finalGold = finalUser?.gold || 0;
+    
+    res.json({ 
+      success: true, 
+      inputRemaining: Math.max(0, newInputCount), 
+      outputTotal: updateResult.count,
+      craftingCost: craftingCost || 0,
+      currentGold: finalGold
+    });
   } catch (error) {
     console.error("Failed to craft material:", error);
     res.status(500).json({ error: "재료 조합에 실패했습니다." });
@@ -9765,11 +10006,12 @@ app.post("/api/market/list", authenticateJWT, async (req, res) => {
 
     // 아이템 보유 확인 (아직 차감하지 않음)
     if (itemType === 'material') {
-      const userMaterials = await MaterialModel.find({ 
+      // 🎯 성능 최적화: count 필드로 재료 개수 확인
+      const userMaterial = await MaterialModel.findOne({ 
         userUuid: userUuid,
         material: itemName 
       });
-      const totalCount = userMaterials.length;
+      const totalCount = userMaterial?.count || 0;
       if (totalCount < quantity) {
         console.log(`재료 부족: ${itemName} - 보유 ${totalCount}개, 필요 ${quantity}개`);
         return res.status(400).json({ message: "재료가 부족합니다." });
@@ -9797,15 +10039,25 @@ app.post("/api/market/list", authenticateJWT, async (req, res) => {
 
     // 아이템 타입별 차감
     if (itemType === 'material') {
-      const userMaterials = await MaterialModel.find({ 
+      // 🚀 재료 차감 (count 필드 업데이트)
+      const userMaterial = await MaterialModel.findOne({ 
         userUuid: userUuid,
         material: itemName 
       });
-      const materialsToDelete = userMaterials.slice(0, quantity);
-      await MaterialModel.deleteMany({
-        _id: { $in: materialsToDelete.map(m => m._id) }
-      });
-      console.log(`📦 재료 차감: ${itemName} x${quantity}`);
+      
+      const currentCount = userMaterial?.count || 0;
+      const newCount = currentCount - quantity;
+      
+      if (newCount <= 0) {
+        await MaterialModel.deleteOne({ userUuid: userUuid, material: itemName });
+        console.log(`📦 재료 차감: ${itemName} x${quantity} (전부 소진, document 삭제)`);
+      } else {
+        await MaterialModel.updateOne(
+          { userUuid: userUuid, material: itemName },
+          { $inc: { count: -quantity } }
+        );
+        console.log(`📦 재료 차감: ${itemName} x${quantity} (${currentCount} → ${newCount})`);
+      }
       
     } else if (itemType === 'amber') {
       const userAmber = await UserAmberModel.findOne({ userUuid: userUuid });
@@ -9928,17 +10180,22 @@ app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) =>
 
     // 구매자에게 아이템 지급
     if (listing.itemType === 'material') {
-      // MaterialModel은 각 재료가 별도 document
-      const newMaterials = [];
-      for (let i = 0; i < listing.quantity; i++) {
-        newMaterials.push({
-          userUuid: userUuid,
-          username: username,
-          material: listing.itemName
-        });
-      }
+      // 🎯 성능 최적화: upsert로 재료 개수 증가
+      const materialData = {
+        userUuid: userUuid,
+        username: username,
+        material: listing.itemName,
+        displayName: username
+      };
       
-      await MaterialModel.insertMany(newMaterials);
+      await MaterialModel.findOneAndUpdate(
+        { userUuid: userUuid, material: listing.itemName },
+        {
+          $inc: { count: listing.quantity },
+          $setOnInsert: materialData
+        },
+        { upsert: true, new: true }
+      );
       console.log(`📦 재료 지급: ${listing.itemName} x${listing.quantity} → ${username}`);
       
     } else if (listing.itemType === 'amber') {

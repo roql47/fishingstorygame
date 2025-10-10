@@ -1,6 +1,6 @@
 // 조합 레시피 데이터
 // 하위 재료 3개 → 상위 재료 1개
-// 상위 재료 1개 → 하위 재료 2개 (분해)
+// 상위 재료 1개 → 하위 재료 3개 (분해)
 
 const CRAFTING_RECIPES = [
   // rank 1 → rank 2
@@ -259,10 +259,21 @@ const getMaterialTier = (materialName) => {
   return 999;
 };
 
+// 재료 이름으로 원형 물고기 찾기 (조합 비용 계산용)
+const getSourceFishForMaterial = (materialName) => {
+  const { getFishData } = require('./gameData');
+  const fishData = getFishData();
+  
+  // 재료 이름으로 물고기 찾기
+  const fish = fishData.find(f => f.material === materialName);
+  return fish;
+};
+
 module.exports = {
   CRAFTING_RECIPES,
   getCraftingRecipe,
   getDecomposeRecipe,
   getAllRecipes,
-  getMaterialTier
+  getMaterialTier,
+  getSourceFishForMaterial
 };

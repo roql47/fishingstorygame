@@ -207,6 +207,33 @@ function App() {
     }
   }, []);
 
+  // 🔄 버전 업데이트 시 캐시 초기화 (v1.292)
+  useEffect(() => {
+    const CURRENT_VERSION = "v1.292";
+    const CACHE_VERSION_KEY = "app_cache_version";
+    const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
+    
+    if (savedVersion !== CURRENT_VERSION) {
+      console.log(`🔄 버전 업데이트 감지: ${savedVersion || '없음'} → ${CURRENT_VERSION}`);
+      console.log('📦 동료 경험치 캐시 초기화 중...');
+      
+      // 동료 관련 캐시 삭제
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('companionStats_') || 
+            key.startsWith('companions_') ||
+            key.startsWith('companion-')) {
+          console.log(`   🗑️  삭제: ${key}`);
+          localStorage.removeItem(key);
+        }
+      });
+      
+      // 새 버전 저장
+      localStorage.setItem(CACHE_VERSION_KEY, CURRENT_VERSION);
+      console.log('✅ 캐시 초기화 완료!');
+      console.log('💡 동료 레벨/경험치가 서버에서 새로 로드됩니다.');
+    }
+  }, []);
+
   // 🚀 게임 데이터 훅 사용 (변수 초기화 문제 해결)
   const {
     isLoading: gameDataLoading,
@@ -6152,21 +6179,57 @@ function App() {
     setIsProcessingSellAll(true);
     
     try {
-      let totalEarned = 0;
+      // 🔐 JWT 인증을 사용한 API 호출 - 한 번에 모든 물고기 판매
+      const response = await authenticatedRequest.post(`${serverUrl}/api/sell-all-fish`);
       
-      for (const item of inventory) {
-        const price = getFishPrice(item.fish);
-        const totalPrice = price * item.count;
-        totalEarned += totalPrice;
+      if (response.data.success) {
+        const { totalEarned, soldCount, newBalance } = response.data;
         
-        await sellFish(item.fish, item.count);
+        // 로컬 상태 업데이트
+        setUserMoney(newBalance);
+        setInventory([]);
+        setMyCatches(0);
+        
+        // [퀘스트] 물고기 판매 퀘스트 진행도 업데이트
+        setDailyQuests(prev => {
+          if (!prev.quests) return prev;
+          
+          const updatedQuests = prev.quests.map(quest => {
+            if (quest.type === 'fish_sold' && !quest.completed) {
+              return {
+                ...quest,
+                progress: Math.min(quest.progress + soldCount, quest.target)
+              };
+            }
+            return quest;
+          });
+          
+          return { ...prev, quests: updatedQuests };
+        });
+        
+        // 서버에도 업데이트 (백그라운드)
+        updateQuestProgress('fish_sold', soldCount);
+        
+        setMessages(prev => [...prev, {
+          system: true,
+          content: `모든 물고기를 판매하여 총 ${(totalEarned || 0).toLocaleString()}골드를 획득했습니다! (${soldCount}마리)`,
+          timestamp: new Date().toISOString()
+        }]);
+        
+        // 서버와 동기화
+        setTimeout(async () => {
+          try {
+            const inventoryResponse = await authenticatedRequest.get(`${serverUrl}/api/inventory`);
+            if (inventoryResponse.data) {
+              setInventory(inventoryResponse.data);
+              const totalCount = inventoryResponse.data.reduce((sum, item) => sum + item.count, 0);
+              setMyCatches(totalCount);
+            }
+          } catch (error) {
+            console.error('Failed to sync inventory:', error);
+          }
+        }, 500);
       }
-      
-      setMessages(prev => [...prev, {
-        system: true,
-        content: `모든 물고기를 판매하여 총 ${(totalEarned || 0).toLocaleString()}골드를 획득했습니다!`,
-        timestamp: new Date().toISOString()
-      }]);
     } catch (error) {
       console.error('Failed to sell all fish:', error);
       alert('전체 판매에 실패했습니다.');
@@ -6291,21 +6354,78 @@ function App() {
     setIsProcessingDecomposeAll(true);
     
     try {
-      let totalMaterials = 0;
+      // 🔐 JWT 인증을 사용한 API 호출 - 한 번에 모든 물고기 분해
+      const response = await authenticatedRequest.post(`${serverUrl}/api/decompose-all-fish`);
       
-      for (const item of inventory) {
-        const material = getFishMaterial(item.fish);
-        if (material) {
-          await decomposeFish(item.fish, item.count);
-          totalMaterials += item.count;
+      if (response.data.success) {
+        const { totalMaterials, totalStarPieces, decomposeCount, materialsGained } = response.data;
+        
+        // 로컬 상태 업데이트
+        setInventory([]);
+        setMyCatches(0);
+        
+        // 별조각 업데이트
+        if (totalStarPieces > 0) {
+          setUserStarPieces(prev => prev + totalStarPieces);
         }
+        
+        // 재료 업데이트
+        if (materialsGained && Object.keys(materialsGained).length > 0) {
+          setMaterials(prev => {
+            const updated = [...prev];
+            
+            for (const [material, count] of Object.entries(materialsGained)) {
+              const existingIndex = updated.findIndex(m => m.material === material);
+              if (existingIndex >= 0) {
+                updated[existingIndex] = {
+                  ...updated[existingIndex],
+                  count: updated[existingIndex].count + count
+                };
+              } else {
+                updated.push({ material, count });
+              }
+            }
+            
+            return updated;
+          });
+        }
+        
+        // 메시지 생성
+        let message = `모든 물고기를 분해하여 `;
+        if (totalMaterials > 0) {
+          message += `총 ${totalMaterials}개의 재료`;
+        }
+        if (totalStarPieces > 0) {
+          if (totalMaterials > 0) message += `와 `;
+          message += `별조각 ${totalStarPieces}개`;
+        }
+        message += `를 획득했습니다! (${decomposeCount}마리)`;
+        
+        setMessages(prev => [...prev, {
+          system: true,
+          content: message,
+          timestamp: new Date().toISOString()
+        }]);
+        
+        // 서버와 동기화
+        setTimeout(async () => {
+          try {
+            const userId = idToken ? 'user' : 'null';
+            const [inventoryRes, materialsRes] = await Promise.all([
+              authenticatedRequest.get(`${serverUrl}/api/inventory/${userId}`),
+              authenticatedRequest.get(`${serverUrl}/api/materials/${userId}`)
+            ]);
+            
+            const safeInventory = Array.isArray(inventoryRes.data) ? inventoryRes.data : [];
+            setInventory(safeInventory);
+            const totalCount = safeInventory.reduce((sum, item) => sum + item.count, 0);
+            setMyCatches(totalCount);
+            setMaterials(materialsRes.data || []);
+          } catch (error) {
+            console.error('Failed to sync after decompose all:', error);
+          }
+        }, 500);
       }
-      
-      setMessages(prev => [...prev, {
-        system: true,
-        content: `모든 물고기를 분해하여 총 ${totalMaterials}개의 재료를 획득했습니다!`,
-        timestamp: new Date().toISOString()
-      }]);
     } catch (error) {
       console.error('Failed to decompose all fish:', error);
       alert('전체 분해에 실패했습니다.');
@@ -6337,9 +6457,18 @@ function App() {
         // 재료 목록 새로고침
         await fetchMaterials();
         
+        // 골드 업데이트
+        if (response.data.currentGold !== undefined) {
+          setGold(response.data.currentGold);
+        }
+        
+        const costMessage = response.data.craftingCost > 0 
+          ? ` (비용: ${response.data.craftingCost.toLocaleString()}골드)` 
+          : '';
+        
         setMessages(prev => [...prev, {
           system: true,
-          content: `✨ ${recipe.inputMaterial} ${recipe.inputCount}개를 조합하여 ${recipe.outputMaterial} ${recipe.outputCount}개를 획득했습니다!`,
+          content: `✨ ${recipe.inputMaterial} ${recipe.inputCount}개를 조합하여 ${recipe.outputMaterial} ${recipe.outputCount}개를 획득했습니다!${costMessage}`,
           timestamp: new Date().toISOString()
         }]);
       } else {
@@ -6366,7 +6495,7 @@ function App() {
       const response = await authenticatedRequest.post(`${serverUrl}/api/decompose-material`, {
         inputMaterial: recipe.outputMaterial, // 분해할 재료 (상위)
         outputMaterial: recipe.inputMaterial, // 얻을 재료 (하위)
-        outputCount: 2, // 분해 시 2개 획득
+        outputCount: 3, // 분해 시 3개 획득
         quantity: quantity // 분해할 개수
       });
 
@@ -6374,7 +6503,7 @@ function App() {
         // 재료 목록 새로고침
         await fetchMaterials();
         
-        const totalGained = quantity * 2; // 1개당 2개씩 획득
+        const totalGained = quantity * 3; // 1개당 3개씩 획득
         setMessages(prev => [...prev, {
           system: true,
           content: `🔨 ${recipe.outputMaterial} ${quantity}개를 분해하여 ${recipe.inputMaterial} ${totalGained}개를 획득했습니다!`,
@@ -6566,7 +6695,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.291
+                여우이야기 v1.292
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -7752,7 +7881,7 @@ function App() {
                       isDarkMode ? "text-gray-400" : "text-gray-600"
                     }`}>
                       • 하위 재료 3개를 조합하여 상위 재료 1개를 만들 수 있습니다<br />
-                      • 상위 재료 1개를 분해하여 하위 재료 2개를 얻을 수 있습니다
+                      • 상위 재료 1개를 분해하여 하위 재료 3개를 얻을 수 있습니다
                     </p>
                   </div>
 
