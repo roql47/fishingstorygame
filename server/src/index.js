@@ -8592,14 +8592,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.291"
+    version: "v1.292"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.291",
+    version: "v1.292",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
@@ -9845,27 +9845,99 @@ app.post("/api/fishing", authenticateJWT, async (req, res) => {
   }
 });
 
-// 🛡️ 레이트 리미팅을 위한 메모리 캐시
-const fishingRateLimit = new Map();
-
-// 🎣 낚시 로직 함수
+// 🎣 낚시 로직 함수 (실제 낚시 로직 구현)
 async function performFishing(user) {
-  // 실제 낚시 로직 구현
-  // 이 부분은 기존 클라이언트 로직을 서버로 이동
-  const success = Math.random() > 0.3; // 70% 성공률 (예시)
-  
-  if (success) {
-    // 물고기 선택, 인벤토리 업데이트 등
+  try {
+    const userUuid = user.userUuid;
+    const username = user.username || user.displayName;
+    
+    // 사용자 쿼리 생성
+    const query = { userUuid };
+    
+    // 낚시 스킬 조회 (기본 실력)
+    const fishingSkill = await FishingSkillModel.findOne(query);
+    const baseSkill = fishingSkill ? fishingSkill.skill : 0;
+    
+    // 🏆 업적 보너스 계산 및 최종 낚시실력 산정
+    let achievementBonus = 0;
+    try {
+      if (userUuid) {
+        achievementBonus = await achievementSystem.calculateAchievementBonus(userUuid);
+      }
+    } catch (error) {
+      console.error("Failed to calculate achievement bonus in fishing:", error);
+    }
+    
+    const finalSkill = baseSkill + achievementBonus;
+    console.log(`🎣 낚시 실력 정보 - 기본: ${baseSkill}, 업적보너스: ${achievementBonus}, 최종: ${finalSkill}`);
+    
+    // 물고기 선택 (업적 보너스가 반영된 최종 실력 사용)
+    const fishingResult = randomFish(finalSkill);
+    const { fish, probability, fishIndex, rank } = fishingResult;
+    
+    // 물고기 저장 데이터 준비
+    const catchData = {
+      fish,
+      probability: probability, // 업적 체크를 위한 확률 정보 저장
+    };
+    
+    // 사용자 식별 정보 추가
+    if (userUuid) {
+      catchData.userUuid = userUuid;
+    } else if (username) {
+      catchData.username = username;
+    }
+    
+    // 물고기를 CatchModel에 upsert (count 증가)
+    await CatchModel.updateOne(
+      { 
+        ...(userUuid ? { userUuid } : { username }), 
+        fish 
+      },
+      { 
+        $inc: { count: 1 },
+        $set: catchData
+      },
+      { upsert: true }
+    );
+    
+    console.log(`🎣 Fish caught: ${fish} (probability: ${probability}%, rank: ${rank}) by ${username}`);
+    
+    // 낚시 스킬 증가
+    const skillIncrease = 1;
+    await FishingSkillModel.updateOne(
+      query,
+      { $inc: { skill: skillIncrease } },
+      { upsert: true }
+    );
+    
+    // 물고기 재료 지급
+    const material = getFishMaterial(fish);
+    if (material) {
+      await MaterialModel.updateOne(
+        query,
+        { 
+          $inc: { [material]: 1 },
+          $setOnInsert: { userUuid }
+        },
+        { upsert: true }
+      );
+      console.log(`📦 Material given: ${material} to ${username}`);
+    }
+    
     return {
       success: true,
-      fish: "참치", // 예시
+      fish,
+      probability,
+      rank,
+      skillIncrease,
+      material,
       message: "낚시에 성공했습니다!"
     };
-  } else {
-    return {
-      success: false,
-      message: "물고기가 도망갔습니다."
-    };
+    
+  } catch (error) {
+    console.error("performFishing error:", error);
+    throw error;
   }
 }
 
