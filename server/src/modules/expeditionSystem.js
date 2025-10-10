@@ -2084,9 +2084,9 @@ class ExpeditionSystem {
                     let newExp = companionStat.experience + baseExpReward;
                     let newLevel = companionStat.level;
                     
-                    // 레벨업 체크 (레벨당 필요 경험치 공식: 100 + (level - 1) * 50)
+                    // 레벨업 체크 (레벨당 필요 경험치 공식: 100 + level^2.1 * 25)
                     const calculateExpToNextLevel = (level) => {
-                        return 100 + (level - 1) * 50;
+                        return Math.floor(100 + Math.pow(level, 2.1) * 25);
                     };
                     
                     let expToNextLevel = calculateExpToNextLevel(newLevel + 1);

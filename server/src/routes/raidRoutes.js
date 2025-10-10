@@ -199,19 +199,68 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       const fishingRodEnhancementBonus = calculateTotalEnhancementBonus(userEquipment?.fishingRodEnhancement || 0);
       const playerDamage = calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus);
       
-      // 동료 공격력 계산
+      // 동료 공격력 계산 (탐사와 동일한 방식)
       let companionDamage = 0;
       const companionAttacks = [];
       
+      // 동료 기본 데이터 (탐사와 동일)
+      const COMPANION_DATA = {
+        "실": {
+          name: "실",
+          baseAttack: 9,
+          growthAttack: 2,
+          description: "민첩한 검사"
+        },
+        "피에나": {
+          name: "피에나", 
+          baseAttack: 8,
+          growthAttack: 2,
+          description: "강인한 방패병"
+        },
+        "애비게일": {
+          name: "애비게일",
+          baseAttack: 12,
+          growthAttack: 3,
+          description: "화염 마법사"
+        },
+        "클로에": {
+          name: "클로에",
+          baseAttack: 14,
+          growthAttack: 3,
+          description: "암살자"
+        },
+        "나하트라": {
+          name: "나하트라",
+          baseAttack: 11,
+          growthAttack: 3,
+          description: "용족 전사"
+        },
+        "림스&베리": {
+          name: "림스&베리",
+          baseAttack: 9,
+          growthAttack: 2,
+          description: "쌍둥이 궁수"
+        }
+      };
+      
       for (const companion of companions) {
-        // 동료 공격력 계산 (동료 레벨 기반)
         const companionLevel = companion.level || 1;
-        const companionAttack = Math.floor(companionLevel * 2 + Math.random() * 5); // 레벨 * 2 + 0~4 랜덤
-        companionDamage += companionAttack;
-        companionAttacks.push({
-          name: companion.companionName, // CompanionStatsModel에서는 companionName 사용
-          attack: companionAttack
-        });
+        const companionName = companion.companionName;
+        
+        // 동료별 기본 공격력과 성장률 적용 (탐사와 동일)
+        const baseData = COMPANION_DATA[companionName];
+        if (baseData) {
+          const baseAttack = baseData.baseAttack + (baseData.growthAttack * (companionLevel - 1));
+          // 랜덤 요소 추가 (±20%)
+          const randomFactor = 0.8 + Math.random() * 0.4;
+          const companionAttack = Math.floor(baseAttack * randomFactor);
+          
+          companionDamage += companionAttack;
+          companionAttacks.push({
+            name: companionName,
+            attack: companionAttack
+          });
+        }
       }
       
       const finalDamage = playerDamage + companionDamage;

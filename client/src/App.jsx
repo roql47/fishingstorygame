@@ -4782,7 +4782,7 @@ function App() {
 
   // 레벨별 필요 경험치 계산 함수
   const calculateExpToNextLevel = (level) => {
-    return Math.floor(100 + Math.pow(level, 1.8) * 25);
+    return Math.floor(100 + Math.pow(level, 2.1) * 25);
   };
 
   // 모든 동료 경험치 강제 재계산 함수
@@ -6566,7 +6566,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.283
+                여우이야기 v1.291
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다

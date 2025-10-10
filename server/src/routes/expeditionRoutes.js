@@ -447,6 +447,38 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
             });
         }
         
+        // 📦 인벤토리 제한 확인 (보상 수령 전)
+        // 보상으로 받을 총 물고기 개수 계산
+        const totalRewardCount = playerRewards.reduce((sum, reward) => sum + reward.quantity, 0);
+        
+        // 인벤토리 체크: 물고기 개수 + 재료 개수(count 필드 합산)
+        const query = { userUuid };
+        const MaterialModel = mongoose.model('Material');
+        const [fishCount, materialDocs] = await Promise.all([
+            CatchModel.countDocuments(query),
+            MaterialModel.find(query, { count: 1 }).lean()
+        ]);
+        
+        // 재료는 각 document의 count 필드를 합산
+        const materialCount = materialDocs.reduce((sum, doc) => sum + (doc.count || 1), 0);
+        
+        const currentTotal = fishCount + materialCount;
+        const afterReceiving = currentTotal + totalRewardCount;
+        const MAX_INVENTORY = 9999;
+        
+        if (afterReceiving > MAX_INVENTORY) {
+            console.log(`❌ Cannot claim expedition rewards - inventory full: ${currentTotal}/${MAX_INVENTORY} (trying to add ${totalRewardCount})`);
+            return res.status(400).json({ 
+                success: false, 
+                error: `인벤토리가 부족합니다. (현재: ${currentTotal}/${MAX_INVENTORY})`,
+                message: `보상 ${totalRewardCount}개를 받으려면 최소 ${totalRewardCount}칸의 공간이 필요합니다.`,
+                current: currentTotal,
+                max: MAX_INVENTORY,
+                remaining: MAX_INVENTORY - currentTotal,
+                rewardCount: totalRewardCount
+            });
+        }
+        
         for (const reward of playerRewards) {
             // 물고기 발견 기록 저장 (중복 방지)
             try {
@@ -463,17 +495,22 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
                 }
             }
             
-            // CatchModel 스키마에 맞게 각 물고기를 개별적으로 추가
-            for (let i = 0; i < reward.quantity; i++) {
-                const newCatch = new CatchModel({
-                    userUuid: userUuid,
-                    username: username,
-                    fish: reward.fishName, // String 타입
-                    weight: Math.floor(Math.random() * 100) + 50, // 50-149 랜덤 무게
-                    probability: 1.0 // 기본 확률
-                });
-                await newCatch.save();
-            }
+            // 🎯 성능 최적화: upsert로 물고기 개수 증가 (document 1개만 사용)
+            const catchData = {
+                userUuid: userUuid,
+                username: username,
+                fish: reward.fishName,
+                probability: 1.0 // 기본 확률
+            };
+            
+            await CatchModel.findOneAndUpdate(
+                { userUuid: userUuid, fish: reward.fishName },
+                {
+                    $inc: { count: reward.quantity },
+                    $setOnInsert: catchData
+                },
+                { upsert: true, new: true }
+            );
         }
 
         // 🔒 DB에 보상 수령 기록 저장 (중복 방지)

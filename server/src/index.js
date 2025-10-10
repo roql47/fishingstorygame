@@ -799,18 +799,23 @@ io.on('connection', (socket) => {
 });
 
 // Mongo Models
+// Catch Schema (최적화: count 필드로 통합 관리, weight 제거)
 const catchSchema = new mongoose.Schema(
   {
     userUuid: { type: String, index: true }, // 새로운 UUID 기반 식별자
     username: { type: String, required: true, index: true },
     fish: { type: String, required: true },
-    weight: { type: Number, required: true },
+    count: { type: Number, default: 1, min: 0 }, // 물고기 개수 (최적화)
     userId: { type: String, index: true },
     displayName: { type: String },
     probability: { type: Number }, // 업적 체크를 위한 확률 정보
   },
   { timestamps: { createdAt: true, updatedAt: false } }
 );
+
+// 🚀 성능 최적화: 사용자당 물고기별 unique index (중복 방지)
+catchSchema.index({ userUuid: 1, fish: 1 }, { unique: true, sparse: true });
+catchSchema.index({ username: 1, fish: 1 }, { unique: true, sparse: true });
 
 const CatchModel = mongoose.model("Catch", catchSchema);
 
@@ -860,17 +865,22 @@ const userEquipmentSchema = new mongoose.Schema(
 
 const UserEquipmentModel = mongoose.model("UserEquipment", userEquipmentSchema);
 
-// Material Schema
+// Material Schema (최적화: count 필드로 통합 관리)
 const materialSchema = new mongoose.Schema(
   {
     userUuid: { type: String, index: true }, // UUID 기반 식별자
     username: { type: String, required: true, index: true },
     userId: { type: String, index: true },
     material: { type: String, required: true },
+    count: { type: Number, default: 1, min: 0 }, // 재료 개수 (최적화)
     displayName: { type: String },
   },
   { timestamps: { createdAt: true, updatedAt: false } }
 );
+
+// 🚀 성능 최적화: 사용자당 재료별 unique index (중복 방지)
+materialSchema.index({ userUuid: 1, material: 1 }, { unique: true, sparse: true });
+materialSchema.index({ username: 1, material: 1 }, { unique: true, sparse: true });
 
 const MaterialModel = mongoose.model("Material", materialSchema);
 
@@ -1500,6 +1510,48 @@ async function getUserQuery(userId, username, userUuid = null) {
   } else {
     console.log("Using fallback with default user");
     return { userId: 'user', user: null };
+  }
+}
+
+// 인벤토리 총 개수 확인 함수 (물고기 + 재료)
+async function checkInventoryLimit(query, additionalItems = 0) {
+  try {
+    const MAX_INVENTORY = 9999;
+    
+    // 물고기 개수와 재료 개수(count 필드 합산) 확인
+    const [fishCount, materialDocs] = await Promise.all([
+      CatchModel.countDocuments(query),
+      MaterialModel.find(query, { count: 1 }).lean()
+    ]);
+    
+    // 재료는 각 document의 count 필드를 합산
+    const materialCount = materialDocs.reduce((sum, doc) => sum + (doc.count || 1), 0);
+    
+    const totalCount = fishCount + materialCount;
+    const afterAddition = totalCount + additionalItems;
+    
+    console.log(`📦 Inventory check: ${totalCount}/${MAX_INVENTORY} (fish: ${fishCount}, materials: ${materialCount}, adding: ${additionalItems})`);
+    
+    if (afterAddition > MAX_INVENTORY) {
+      return {
+        allowed: false,
+        current: totalCount,
+        max: MAX_INVENTORY,
+        afterAddition,
+        remaining: MAX_INVENTORY - totalCount
+      };
+    }
+    
+    return {
+      allowed: true,
+      current: totalCount,
+      max: MAX_INVENTORY,
+      afterAddition,
+      remaining: MAX_INVENTORY - totalCount
+    };
+  } catch (error) {
+    console.error("Failed to check inventory limit:", error);
+    return { allowed: false, error: error.message };
   }
 }
 
@@ -2815,10 +2867,9 @@ io.on("connection", (socket) => {
         const fishingResult = randomFish(finalSkill);
         const { fish, probability, fishIndex, rank } = fishingResult;
         
-        // 물고기 저장 데이터 준비
+        // 물고기 저장 데이터 준비 (weight 제거, count는 upsert 시 자동 처리)
         const catchData = {
           fish,
-          weight: 0,
           probability: probability, // 업적 체크를 위한 확률 정보 저장
         };
         
@@ -2836,8 +2887,37 @@ io.on("connection", (socket) => {
           catchData.displayName = socket.data.displayName || socket.data.username || "사용자";
         }
         
-        // 물고기 저장
-        await CatchModel.create(catchData);
+        // 📦 인벤토리 제한 확인 (물고기 잡을 때)
+        let inventoryQuery;
+        if (catchData.userUuid) {
+          inventoryQuery = { userUuid: catchData.userUuid };
+        } else if (catchData.username) {
+          inventoryQuery = { username: catchData.username };
+        } else {
+          inventoryQuery = { userId: catchData.userId };
+        }
+        
+        const inventoryCheck = await checkInventoryLimit(inventoryQuery, 1);
+        if (!inventoryCheck.allowed) {
+          console.log(`❌ Cannot catch fish - inventory full: ${inventoryCheck.current}/${inventoryCheck.max}`);
+          callback({ 
+            success: false, 
+            error: `인벤토리가 가득 찼습니다! (${inventoryCheck.current}/${inventoryCheck.max})`,
+            message: "인벤토리 공간을 확보한 후 다시 시도해주세요.",
+            inventoryFull: true
+          });
+          return;
+        }
+        
+        // 🎯 성능 최적화: upsert로 물고기 개수 증가 (document 1개만 사용)
+        await CatchModel.findOneAndUpdate(
+          { ...inventoryQuery, fish },
+          {
+            $inc: { count: 1 },
+            $setOnInsert: catchData
+          },
+          { upsert: true, new: true }
+        );
 
         // 물고기 발견 기록 저장 (중복 방지)
         if (socket.data.userUuid) {
@@ -6531,14 +6611,12 @@ app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: "Invalid fish price" });
     }
     
-    // 사용자가 해당 물고기를 충분히 가지고 있는지 확인 (보안 강화 + 성능 최적화)
+    // 🎯 성능 최적화: count 필드로 물고기 개수 확인
     const userFish = await measureDBQuery(`물고기판매-조회-${fishName}`, () =>
-      CatchModel.find({ ...query, fish: fishName }, { _id: 1 }) // fish 필드 제거 (이미 알고 있음)
-        .sort({ _id: 1 }) // 일관된 순서 (인덱스 활용)
-        .limit(quantity + 10) // 필요한 수량보다 약간 많이만 조회 (성능 향상)
-        .lean() // Mongoose 오버헤드 제거
+      CatchModel.findOne({ ...query, fish: fishName }).lean()
     );
-    debugLog(`Found ${userFish.length} ${fishName} for user`);
+    const currentCount = userFish?.count || 0;
+    debugLog(`Found ${currentCount} ${fishName} for user`);
     
     // 🚀 물고기 존재 여부 확인 (두 데이터에서 모두 확인)
     const serverFishData = getServerFishData();
@@ -6555,32 +6633,29 @@ app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
       console.warn(`🚀 Fish data mismatch detected for ${fishName} - using allFishData`);
     }
     
-    if (userFish.length < quantity) {
-      debugLog(`Not enough fish: has ${userFish.length}, needs ${quantity}`);
+    if (currentCount < quantity) {
+      debugLog(`Not enough fish: has ${currentCount}, needs ${quantity}`);
       return res.status(400).json({ error: "Not enough fish to sell" });
     }
     
-    // 🚀 물고기 판매 (수량에 따른 최적화)
-    let deleteResult;
-    if (quantity === 1) {
-      // 단일 아이템은 직접 삭제 (더 빠름)
-      deleteResult = await measureDBQuery(`물고기판매-단일삭제`, () =>
-        CatchModel.deleteOne({ _id: userFish[0]._id }, { writeConcern: { w: 1, j: false } })
+    // 🚀 물고기 판매 (count 필드 업데이트로 최적화)
+    const newCount = currentCount - quantity;
+    
+    if (newCount <= 0) {
+      // 남은 개수가 0 이하면 document 삭제
+      await measureDBQuery(`물고기판매-document삭제`, () =>
+        CatchModel.deleteOne({ ...query, fish: fishName })
       );
-      debugLog(`⚡ Single deleted ${deleteResult.deletedCount}/1 ${fishName}`);
+      debugLog(`⚡ Sold all ${fishName} (deleted document)`);
     } else {
-      // 다중 아이템은 bulkWrite 사용
-      const fishToDelete = userFish.slice(0, quantity).map(fish => ({
-        deleteOne: { filter: { _id: fish._id } }
-      }));
-      
-      deleteResult = await measureDBQuery(`물고기판매-대량삭제-${quantity}개`, () =>
-        CatchModel.bulkWrite(fishToDelete, {
-          ordered: false, // 순서 상관없이 병렬 처리
-          writeConcern: { w: 1, j: false } // 저널링 비활성화로 속도 향상
-        })
+      // 남은 개수가 있으면 count만 업데이트
+      await measureDBQuery(`물고기판매-count감소`, () =>
+        CatchModel.updateOne(
+          { ...query, fish: fishName },
+          { $inc: { count: -quantity } }
+        )
       );
-      debugLog(`⚡ Bulk deleted ${deleteResult.deletedCount}/${quantity} ${fishName}`);
+      debugLog(`⚡ Sold ${quantity} ${fishName} (${newCount} remaining)`);
     }
     
     // 🚀 돈 업데이트와 캐시 무효화를 병렬 처리 (성능 최적화)
@@ -7330,7 +7405,6 @@ app.get("/api/materials/:userId", optionalJWT, async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for materials:", query);
     } else {
       // 🔧 존재하지 않는 사용자에 대한 반복 요청 방지
       if (userUuid === '#0002' && username === '아딸') {
@@ -7338,29 +7412,18 @@ app.get("/api/materials/:userId", optionalJWT, async (req, res) => {
         return res.status(404).json({ error: "User not found. Please refresh and login again." });
       }
       query = queryResult;
-      console.log("Using fallback query for materials:", query);
     }
     
-    console.log("Database query for materials:", query);
+    // 🎯 성능 최적화: count 필드를 그대로 사용 (그룹화 불필요)
+    const materials = await MaterialModel.find(query).lean();
     
-    const materials = await MaterialModel.find(query);
-    console.log(`Found ${materials.length} materials for query:`, query);
-    
-    // 재료별로 갯수를 세어서 그룹화
-    const materialCount = {};
-    materials.forEach(m => {
-      console.log("Processing material:", { material: m.material, userUuid: m.userUuid, username: m.username });
-      materialCount[m.material] = (materialCount[m.material] || 0) + 1;
-    });
-    
-    console.log("Material count result:", materialCount);
-    
-    // 갯수 순으로 정렬해서 반환
-    const materialInventory = Object.entries(materialCount)
-      .map(([material, count]) => ({ material, count }))
+    // count 필드를 사용하여 재료 목록 생성
+    const materialInventory = materials
+      .map(m => ({ 
+        material: m.material, 
+        count: m.count || 1 // 혹시 없으면 1로 fallback
+      }))
       .sort((a, b) => b.count - a.count);
-    
-    console.log("Final material inventory:", materialInventory);
     res.json(materialInventory);
   } catch (error) {
     console.error("Failed to fetch materials:", error);
@@ -7390,41 +7453,53 @@ app.post("/api/decompose-fish", authenticateJWT, async (req, res) => {
     
     console.log("Database query for decompose fish:", query);
     
-    // 사용자가 해당 물고기를 충분히 가지고 있는지 확인 (성능 최적화)
+    // 🎯 성능 최적화: count 필드로 물고기 개수 확인
     const userFish = await measureDBQuery(`물고기분해-조회-${fishName}`, () =>
-      CatchModel.find({ ...query, fish: fishName }, { _id: 1 }) // fish 필드 제거 (이미 알고 있음)
-        .sort({ _id: 1 }) // 일관된 순서 (인덱스 활용)
-        .limit(quantity + 10) // 필요한 수량보다 약간 많이만 조회 (성능 향상)
-        .lean() // Mongoose 오버헤드 제거
+      CatchModel.findOne({ ...query, fish: fishName }).lean()
     );
-    console.log(`Found ${userFish.length} ${fishName} for user`);
+    const currentCount = userFish?.count || 0;
+    console.log(`Found ${currentCount} ${fishName} for user`);
     
-    if (userFish.length < quantity) {
-      console.log(`Not enough fish: has ${userFish.length}, needs ${quantity}`);
+    if (currentCount < quantity) {
+      console.log(`Not enough fish: has ${currentCount}, needs ${quantity}`);
       return res.status(400).json({ error: "Not enough fish to decompose" });
     }
     
-    // 🚀 물고기 제거 (수량에 따른 최적화)
-    let deleteResult;
-    if (quantity === 1) {
-      // 단일 아이템은 직접 삭제 (더 빠름)
-      deleteResult = await measureDBQuery(`물고기분해-단일삭제`, () =>
-        CatchModel.deleteOne({ _id: userFish[0]._id }, { writeConcern: { w: 1, j: false } })
-      );
-      console.log(`⚡ Single deleted ${deleteResult.deletedCount}/1 ${fishName} for decompose`);
-    } else {
-      // 다중 아이템은 bulkWrite 사용
-      const fishToDelete = userFish.slice(0, quantity).map(fish => ({
-        deleteOne: { filter: { _id: fish._id } }
-      }));
+    // 📦 인벤토리 제한 확인 (물고기 분해 시)
+    // 스타피쉬는 별조각으로 전환되므로 재료가 증가하지 않음
+    if (fishName !== "스타피쉬") {
+      // 물고기 quantity개를 분해하면 재료가 quantity개 증가 (순수 증가는 0, 물고기 -quantity + 재료 +quantity)
+      const netChange = 0; // 물고기 줄고 재료 늘어나서 총합은 동일
+      const inventoryCheck = await checkInventoryLimit(query, netChange);
       
-      deleteResult = await measureDBQuery(`물고기분해-대량삭제-${quantity}개`, () =>
-        CatchModel.bulkWrite(fishToDelete, {
-          ordered: false, // 순서 상관없이 병렬 처리
-          writeConcern: { w: 1, j: false } // 저널링 비활성화로 속도 향상
-        })
+      if (!inventoryCheck.allowed) {
+        console.log(`❌ Inventory limit exceeded: ${inventoryCheck.current}/${inventoryCheck.max}`);
+        return res.status(400).json({ 
+          error: `인벤토리가 가득 찼습니다. (${inventoryCheck.current}/${inventoryCheck.max})`,
+          current: inventoryCheck.current,
+          max: inventoryCheck.max
+        });
+      }
+    }
+    
+    // 🚀 물고기 제거 (count 필드 업데이트로 최적화)
+    const newCount = currentCount - quantity;
+    
+    if (newCount <= 0) {
+      // 남은 개수가 0 이하면 document 삭제
+      await measureDBQuery(`물고기분해-document삭제`, () =>
+        CatchModel.deleteOne({ ...query, fish: fishName })
       );
-      console.log(`⚡ Bulk deleted ${deleteResult.deletedCount}/${quantity} ${fishName} for decompose`);
+      console.log(`⚡ Decomposed all ${fishName} (deleted document)`);
+    } else {
+      // 남은 개수가 있으면 count만 업데이트
+      await measureDBQuery(`물고기분해-count감소`, () =>
+        CatchModel.updateOne(
+          { ...query, fish: fishName },
+          { $inc: { count: -quantity } }
+        )
+      );
+      console.log(`⚡ Decomposed ${quantity} ${fishName} (${newCount} remaining)`);
     }
     
     // 스타피쉬 분해 시 별조각 지급 (성능 최적화 - upsert 사용)
@@ -7459,7 +7534,7 @@ app.post("/api/decompose-fish", authenticateJWT, async (req, res) => {
       return;
     }
     
-    // 🚀 일반 물고기 분해 시 재료 추가 (대량 삽입으로 성능 최적화)
+    // 🚀 일반 물고기 분해 시 재료 추가 (count 필드 업데이트로 최적화)
     const materialData = {
       ...query,
       material,
@@ -7471,21 +7546,19 @@ app.post("/api/decompose-fish", authenticateJWT, async (req, res) => {
       materialData.username = username;
     }
     
-    // 단일 재료는 직접 삽입, 다중 재료는 bulkWrite
-    let bulkCreateResult;
-    if (quantity === 1) {
-      bulkCreateResult = await MaterialModel.create(materialData);
-      console.log(`⚡ Single created 1 ${material}`);
-    } else {
-      const materialsToCreate = Array(quantity).fill().map(() => ({ insertOne: { document: materialData } }));
-      bulkCreateResult = await MaterialModel.bulkWrite(materialsToCreate, {
-        ordered: false, // 순서 상관없이 병렬 처리
-        writeConcern: { w: 1, j: false } // 저널링 비활성화로 속도 향상
-      });
-      console.log(`⚡ Bulk created ${bulkCreateResult.insertedCount}/${quantity} ${material}`);
-    }
+    // 🎯 성능 최적화: upsert로 재료 개수 증가 (document 1개만 사용)
+    const updateResult = await MaterialModel.findOneAndUpdate(
+      { ...query, material },
+      {
+        $inc: { count: quantity },
+        $setOnInsert: materialData
+      },
+      { upsert: true, new: true }
+    );
     
-    res.json({ success: true });
+    console.log(`⚡ Updated material count: ${material} +${quantity} (total: ${updateResult.count})`);
+    
+    res.json({ success: true, materialCount: updateResult.count });
   } catch (error) {
     console.error("Failed to decompose fish:", error);
     res.status(500).json({ error: "Failed to decompose fish" });
@@ -7524,42 +7597,34 @@ app.post("/api/consume-material", authenticateJWT, async (req, res) => {
     
     console.log("Database query for consume material:", query);
     
-    // 사용자가 해당 재료를 충분히 가지고 있는지 확인
-    const userMaterials = await MaterialModel.find({ ...query, material: materialName });
-    console.log(`Found ${userMaterials.length} ${materialName} for user`);
+    // 🎯 성능 최적화: count 필드로 재료 개수 확인
+    const userMaterial = await MaterialModel.findOne({ ...query, material: materialName });
+    const currentCount = userMaterial?.count || 0;
     
-    if (userMaterials.length < quantity) {
-      console.log(`Not enough materials: has ${userMaterials.length}, needs ${quantity}`);
+    console.log(`Found ${currentCount} ${materialName} for user`);
+    
+    if (currentCount < quantity) {
+      console.log(`Not enough materials: has ${currentCount}, needs ${quantity}`);
       return res.status(400).json({ error: "Not enough materials" });
     }
     
-    // 재료 제거 (quantity만큼 삭제) - 더 안전한 방식으로 처리
-    let deletedCount = 0;
-    for (let i = 0; i < quantity; i++) {
-      try {
-        const deletedMaterial = await MaterialModel.findOneAndDelete({ ...query, material: materialName });
-        if (deletedMaterial) {
-          deletedCount++;
-          console.log(`Successfully deleted material ${deletedCount}/${quantity}: ${materialName}`);
-        } else {
-          console.log(`Failed to delete material ${i + 1}/${quantity} - material not found`);
-          // 일부만 삭제된 경우에도 성공으로 처리 (이미 삭제된 것은 되돌릴 수 없음)
-          break;
-        }
-      } catch (deleteError) {
-        console.error(`Error deleting material ${i + 1}/${quantity}:`, deleteError);
-        break;
-      }
+    // 🚀 재료 개수 감소 (count 필드 업데이트)
+    const newCount = currentCount - quantity;
+    
+    if (newCount <= 0) {
+      // 남은 개수가 0 이하면 document 삭제
+      await MaterialModel.deleteOne({ ...query, material: materialName });
+      console.log(`Successfully consumed all ${materialName} (deleted document)`);
+    } else {
+      // 남은 개수가 있으면 count만 업데이트
+      await MaterialModel.updateOne(
+        { ...query, material: materialName },
+        { $inc: { count: -quantity } }
+      );
+      console.log(`Successfully consumed ${quantity} ${materialName} (${newCount} remaining)`);
     }
     
-    if (deletedCount === 0) {
-      console.log("No materials were deleted");
-      return res.status(400).json({ error: "Failed to consume material" });
-    }
-    
-    console.log(`Successfully consumed ${deletedCount} ${materialName} (requested: ${quantity})`);
-    
-    res.json({ success: true });
+    res.json({ success: true, remaining: Math.max(0, newCount) });
   } catch (error) {
     console.error("Failed to consume material:", error);
     res.status(500).json({ error: "Failed to consume material" });
@@ -7597,26 +7662,48 @@ app.post("/api/craft-material", authenticateJWT, async (req, res) => {
       query = queryResult;
     }
     
-    // 사용자가 해당 재료를 충분히 가지고 있는지 확인
-    const userMaterials = await MaterialModel.find({ ...query, material: inputMaterial });
-    console.log(`Found ${userMaterials.length} ${inputMaterial} for user`);
+    // 🎯 성능 최적화: count 필드로 재료 개수 확인
+    const userInputMaterial = await MaterialModel.findOne({ ...query, material: inputMaterial });
+    const currentInputCount = userInputMaterial?.count || 0;
     
-    if (userMaterials.length < inputCount) {
-      console.log(`Not enough materials: has ${userMaterials.length}, needs ${inputCount}`);
-      return res.status(400).json({ error: `재료가 부족합니다. (${userMaterials.length}/${inputCount})` });
+    console.log(`Found ${currentInputCount} ${inputMaterial} for user`);
+    
+    if (currentInputCount < inputCount) {
+      console.log(`Not enough materials: has ${currentInputCount}, needs ${inputCount}`);
+      return res.status(400).json({ error: `재료가 부족합니다. (${currentInputCount}/${inputCount})` });
     }
     
-    // 재료 제거 (inputCount만큼 삭제)
-    const materialsToDelete = userMaterials.slice(0, inputCount).map(m => m._id);
-    const deleteResult = await MaterialModel.deleteMany({ _id: { $in: materialsToDelete } });
-    console.log(`Deleted ${deleteResult.deletedCount} ${inputMaterial}`);
-    
-    if (deleteResult.deletedCount !== inputCount) {
-      console.error(`Material deletion failed: expected ${inputCount}, deleted ${deleteResult.deletedCount}`);
-      return res.status(500).json({ error: "조합 중 오류가 발생했습니다." });
+    // 📦 인벤토리 제한 확인 (재료 조합 시)
+    // inputCount개 소비, outputCount개 생성 → 순 증가는 (outputCount - inputCount)
+    const netChange = outputCount - inputCount;
+    if (netChange > 0) {
+      const inventoryCheck = await checkInventoryLimit(query, netChange);
+      
+      if (!inventoryCheck.allowed) {
+        console.log(`❌ Inventory limit exceeded: ${inventoryCheck.current}/${inventoryCheck.max}`);
+        return res.status(400).json({ 
+          error: `인벤토리가 가득 찼습니다. (${inventoryCheck.current}/${inventoryCheck.max})`,
+          current: inventoryCheck.current,
+          max: inventoryCheck.max,
+          remaining: inventoryCheck.remaining
+        });
+      }
     }
     
-    // 새로운 재료 추가
+    // 🚀 입력 재료 감소 (count 필드 업데이트)
+    const newInputCount = currentInputCount - inputCount;
+    if (newInputCount <= 0) {
+      await MaterialModel.deleteOne({ ...query, material: inputMaterial });
+      console.log(`Consumed all ${inputMaterial} (deleted document)`);
+    } else {
+      await MaterialModel.updateOne(
+        { ...query, material: inputMaterial },
+        { $inc: { count: -inputCount } }
+      );
+      console.log(`Consumed ${inputCount} ${inputMaterial} (${newInputCount} remaining)`);
+    }
+    
+    // 🚀 출력 재료 증가 (upsert로 count 증가)
     const materialData = {
       ...query,
       material: outputMaterial,
@@ -7627,16 +7714,18 @@ app.post("/api/craft-material", authenticateJWT, async (req, res) => {
       materialData.username = username;
     }
     
-    // outputCount만큼 재료 생성
-    const materialsToCreate = Array(outputCount).fill().map(() => ({ insertOne: { document: materialData } }));
-    const bulkCreateResult = await MaterialModel.bulkWrite(materialsToCreate, {
-      ordered: false,
-      writeConcern: { w: 1, j: false }
-    });
+    const updateResult = await MaterialModel.findOneAndUpdate(
+      { ...query, material: outputMaterial },
+      {
+        $inc: { count: outputCount },
+        $setOnInsert: materialData
+      },
+      { upsert: true, new: true }
+    );
     
-    console.log(`Created ${bulkCreateResult.insertedCount} ${outputMaterial}`);
+    console.log(`Created/Updated ${outputMaterial}: +${outputCount} (total: ${updateResult.count})`);
     
-    res.json({ success: true });
+    res.json({ success: true, inputRemaining: Math.max(0, newInputCount), outputTotal: updateResult.count });
   } catch (error) {
     console.error("Failed to craft material:", error);
     res.status(500).json({ error: "재료 조합에 실패했습니다." });
@@ -7679,25 +7768,56 @@ app.post("/api/decompose-material", authenticateJWT, async (req, res) => {
       query = queryResult;
     }
     
-    // 사용자가 해당 재료를 충분히 가지고 있는지 확인
-    const userMaterials = await MaterialModel.find({ ...query, material: inputMaterial }).limit(quantity);
+    // 🎯 성능 최적화: count 필드로 재료 개수 확인
+    const userInputMaterial = await MaterialModel.findOne({ ...query, material: inputMaterial });
+    const currentInputCount = userInputMaterial?.count || 0;
     
-    if (!userMaterials || userMaterials.length < quantity) {
-      console.log(`Not enough material: ${inputMaterial} (need ${quantity}, have ${userMaterials?.length || 0})`);
-      return res.status(400).json({ error: `분해할 재료가 부족합니다. (${userMaterials?.length || 0}/${quantity})` });
+    if (currentInputCount < quantity) {
+      console.log(`Not enough material: ${inputMaterial} (need ${quantity}, have ${currentInputCount})`);
+      return res.status(400).json({ error: `분해할 재료가 부족합니다. (${currentInputCount}/${quantity})` });
     }
     
-    // 재료 제거 (quantity개 삭제)
-    const materialIdsToDelete = userMaterials.map(m => m._id);
-    const deleteResult = await MaterialModel.deleteMany({ _id: { $in: materialIdsToDelete } });
-    console.log(`Deleted ${deleteResult.deletedCount} ${inputMaterial}`);
+    // 📦 인벤토리 제한 확인 (재료 분해 시)
+    // quantity개 소비, (outputCount * quantity)개 생성 → 순 증가는 (outputCount * quantity - quantity)
+    const totalOutputCount = outputCount * quantity;
+    const netChange = totalOutputCount - quantity;
     
-    if (deleteResult.deletedCount !== quantity) {
-      console.error(`Material deletion failed (expected ${quantity}, deleted ${deleteResult.deletedCount})`);
-      return res.status(500).json({ error: "분해 중 오류가 발생했습니다." });
+    if (netChange > 0) {
+      const inventoryCheck = await checkInventoryLimit(query, netChange);
+      
+      if (!inventoryCheck.allowed) {
+        console.log(`❌ Inventory limit exceeded: ${inventoryCheck.current}/${inventoryCheck.max} (would add ${netChange})`);
+        
+        // 분해 가능한 최대 수량 계산
+        const maxPossibleQuantity = Math.floor(inventoryCheck.remaining / (outputCount - 1));
+        
+        return res.status(400).json({ 
+          error: `인벤토리가 부족합니다. (${inventoryCheck.current}/${inventoryCheck.max})`,
+          message: maxPossibleQuantity > 0 
+            ? `최대 ${maxPossibleQuantity}개까지만 분해할 수 있습니다.` 
+            : "인벤토리 공간이 부족하여 분해할 수 없습니다.",
+          current: inventoryCheck.current,
+          max: inventoryCheck.max,
+          remaining: inventoryCheck.remaining,
+          maxPossibleQuantity
+        });
+      }
     }
     
-    // 새로운 재료 추가 (outputCount * quantity만큼)
+    // 🚀 입력 재료 감소 (count 필드 업데이트)
+    const newInputCount = currentInputCount - quantity;
+    if (newInputCount <= 0) {
+      await MaterialModel.deleteOne({ ...query, material: inputMaterial });
+      console.log(`Decomposed all ${inputMaterial} (deleted document)`);
+    } else {
+      await MaterialModel.updateOne(
+        { ...query, material: inputMaterial },
+        { $inc: { count: -quantity } }
+      );
+      console.log(`Decomposed ${quantity} ${inputMaterial} (${newInputCount} remaining)`);
+    }
+    
+    // 🚀 출력 재료 증가 (upsert로 count 증가)
     const materialData = {
       ...query,
       material: outputMaterial,
@@ -7708,17 +7828,18 @@ app.post("/api/decompose-material", authenticateJWT, async (req, res) => {
       materialData.username = username;
     }
     
-    // outputCount * quantity만큼 재료 생성
-    const totalOutputCount = outputCount * quantity;
-    const materialsToCreate = Array(totalOutputCount).fill().map(() => ({ insertOne: { document: materialData } }));
-    const bulkCreateResult = await MaterialModel.bulkWrite(materialsToCreate, {
-      ordered: false,
-      writeConcern: { w: 1, j: false }
-    });
+    const updateResult = await MaterialModel.findOneAndUpdate(
+      { ...query, material: outputMaterial },
+      {
+        $inc: { count: totalOutputCount },
+        $setOnInsert: materialData
+      },
+      { upsert: true, new: true }
+    );
     
-    console.log(`Created ${bulkCreateResult.insertedCount} ${outputMaterial}`);
+    console.log(`Created/Updated ${outputMaterial}: +${totalOutputCount} (total: ${updateResult.count})`);
     
-    res.json({ success: true, decomposedCount: quantity, gainedCount: totalOutputCount });
+    res.json({ success: true, decomposedCount: quantity, gainedCount: totalOutputCount, outputTotal: updateResult.count });
   } catch (error) {
     console.error("Failed to decompose material:", error);
     res.status(500).json({ error: "재료 분해에 실패했습니다." });
@@ -8230,14 +8351,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.284"
+    version: "v1.291"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.284",
+    version: "v1.291",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
