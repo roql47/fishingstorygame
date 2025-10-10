@@ -4483,6 +4483,26 @@ app.post("/api/update-companion-stats", authenticateJWT, async (req, res) => {
     if (experience !== undefined) updateData.experience = Math.max(experience, 0);
     if (isInBattle !== undefined) updateData.isInBattle = isInBattle;
     
+    // 🔧 level이나 experience가 없으면 기존 값 유지 (초기화 방지)
+    const existingStat = await CompanionStatsModel.findOne({
+      ...query,
+      companionName: companionName
+    });
+    
+    // 새로 생성하는 경우에만 기본값 설정
+    const setOnInsertData = {
+      userId: query.userId || 'user',
+      username: query.username || username,
+      userUuid: query.userUuid || userUuid,
+      companionName: companionName
+    };
+    
+    // 레벨이나 경험치가 전달되지 않았고, 기존 레코드도 없으면 기본값 설정
+    if (!existingStat) {
+      if (level === undefined) setOnInsertData.level = 1;
+      if (experience === undefined) setOnInsertData.experience = 0;
+    }
+    
     const companionStat = await CompanionStatsModel.findOneAndUpdate(
       {
         ...query,
@@ -4490,12 +4510,7 @@ app.post("/api/update-companion-stats", authenticateJWT, async (req, res) => {
       },
       {
         $set: updateData,
-        $setOnInsert: {
-          userId: query.userId || 'user',
-          username: query.username || username,
-          userUuid: query.userUuid || userUuid,
-          companionName: companionName
-        }
+        $setOnInsert: setOnInsertData
       },
       {
         new: true, // 업데이트된 문서 반환
@@ -7640,6 +7655,12 @@ app.post("/api/decompose-material", authenticateJWT, async (req, res) => {
     // 레시피 유효성 검증
     const recipe = getDecomposeRecipe(inputMaterial);
     if (!recipe || recipe.inputMaterial !== outputMaterial) {
+      console.log("Recipe validation failed:", { 
+        inputMaterial, 
+        outputMaterial, 
+        foundRecipe: recipe,
+        expectedInputMaterial: recipe?.inputMaterial 
+      });
       return res.status(400).json({ error: "Invalid decompose recipe" });
     }
     

@@ -628,7 +628,7 @@ function App() {
               console.log('[SPEED] setBattleState 실행됨', currentState);
               
               // 플레이어가 죽었으면 공격 안 함
-              if (currentState.playerHp <= 0) {
+              if (currentState?.playerHp <= 0) {
                 console.log('[SPEED] 플레이어 사망 - 공격 불가');
                 return currentState;
               }
@@ -669,7 +669,7 @@ function App() {
                 // 플레이어 속도바 재시작 (살아있을 때만)
                 setTimeout(() => {
                   setBattleState(state => {
-                    if (state && state.playerHp > 0) {
+                    if (state && state?.playerHp > 0) {
                       startSpeedBar('player', 100, 'player');
                     }
                     return state;
@@ -737,7 +737,7 @@ function App() {
               const damage = calculateEnemyAttack(fishData?.rank || 1);
               
               const newLog = [...currentState.log];
-              let newPlayerHp = currentState.playerHp;
+              let newPlayerHp = currentState?.playerHp || 0;
               let newCompanionHp = { ...currentState.companionHp };
               let newCompanionMorale = { ...currentState.companionMorale };
               
@@ -837,7 +837,7 @@ function App() {
                   let lowestHpRatio = 1;
                   
                   // 플레이어 체크 (살아있을 때만)
-                  if (currentState.playerHp > 0) {
+                  if (currentState?.playerHp > 0) {
                     const playerHpRatio = currentState.playerHp / currentState.playerMaxHp;
                     if (playerHpRatio < lowestHpRatio) {
                       lowestHpRatio = playerHpRatio;
@@ -861,7 +861,7 @@ function App() {
                   
                   if (lowestHpTarget) {
                     if (lowestHpTarget.type === 'player') {
-                      const newHp = Math.min(currentState.playerMaxHp, currentState.playerHp + healAmount);
+                      const newHp = Math.min(currentState.playerMaxHp, (currentState?.playerHp || 0) + healAmount);
                       currentState.playerHp = newHp;
                       newLog.push(`✨ ${companionName}이(가) ${skill.name}을(를) 사용!`);
                       newLog.push(`💚 플레이어의 체력이 ${healAmount} 회복! (${newHp}/${currentState.playerMaxHp})`);
@@ -1693,7 +1693,7 @@ function App() {
       enemy: battleState.enemy,
       result: battleState.turn === 'victory' ? '승리' : battleState.turn === 'defeat' ? '패배' : '도망',
       round: battleState.round,
-      playerHp: battleState.playerHp,
+      playerHp: battleState?.playerHp || 0,
       playerMaxHp: battleState.playerMaxHp,
       amberReward: battleState.amberReward || 0,
       companions: battleState.companions || [],
@@ -4846,9 +4846,9 @@ function App() {
 
 
   // 전투 참여 동료 토글 함수
-  const toggleBattleCompanion = (companionName) => {
-    // 동료 능력치 초기화
-    initializeCompanionStats(companionName);
+  const toggleBattleCompanion = async (companionName) => {
+    // 🔧 동료 능력치를 먼저 로드 (await로 완료될 때까지 대기)
+    await initializeCompanionStats(companionName);
     
     setBattleCompanions(prev => {
       const isCurrentlyInBattle = prev.includes(companionName);
@@ -4905,7 +4905,27 @@ function App() {
     if (!jwtToken) return;
     
     try {
-      const currentStats = companionStats[companionName] || { level: 1, exp: 0 };
+      // 🔧 동료 능력치가 로드되지 않았으면 서버에서 먼저 가져오기
+      if (!companionStats[companionName]) {
+        console.warn(`⚠️ ${companionName} 능력치가 로드되지 않았습니다. 서버에서 가져오는 중...`);
+        await initializeCompanionStats(companionName);
+      }
+      
+      const currentStats = companionStats[companionName];
+      
+      // 여전히 없으면 isInBattle만 업데이트 (level, experience는 보내지 않음)
+      if (!currentStats) {
+        console.warn(`⚠️ ${companionName} 능력치를 가져올 수 없습니다. isInBattle만 업데이트합니다.`);
+        const response = await authenticatedRequest.post(`${serverUrl}/api/update-companion-stats`, {
+          companionName,
+          isInBattle
+        });
+        
+        if (response.data.success) {
+          console.log(`✅ 동료 ${companionName} 전투 상태만 업데이트: ${isInBattle}`);
+        }
+        return;
+      }
       
       const response = await authenticatedRequest.post(`${serverUrl}/api/update-companion-stats`, {
         companionName,
@@ -4915,7 +4935,7 @@ function App() {
       });
       
       if (response.data.success) {
-        console.log(`✅ 동료 ${companionName} 전투 상태 업데이트: ${isInBattle}`);
+        console.log(`✅ 동료 ${companionName} 전투 상태 업데이트: ${isInBattle} (레벨 ${currentStats.level}, 경험치 ${currentStats.exp})`);
       }
     } catch (error) {
       console.error(`❌ 동료 전투 상태 업데이트 실패 (${companionName}):`, error);
@@ -5647,7 +5667,7 @@ function App() {
       
       const newEnemyHp = Math.max(0, prevState.enemyHp - damage);
       const newLog = [...prevState.log];
-      const newPlayerHp = prevState.playerHp;
+      const newPlayerHp = prevState?.playerHp || 0;
       const newCompanionHp = { ...prevState.companionHp };
       
       if (attackType === 'buff_skill') {
@@ -5930,14 +5950,14 @@ function App() {
       
       const newCompanionHp = { ...prevState.companionHp };
       const newCompanionMorale = { ...prevState.companionMorale };
-      let newPlayerHp = prevState.playerHp;
+      let newPlayerHp = prevState?.playerHp || 0;
       
       const attackMessage = isCritical ? `💥 크리티컬! ${prevState.enemy}가 공격했습니다!` : `${prevState.enemy}가 공격했습니다!`;
       const newLog = [...currentLog, attackMessage];
       
       if (target === 'player') {
         // 플레이어 공격
-        newPlayerHp = Math.max(0, prevState.playerHp - damage);
+        newPlayerHp = Math.max(0, (prevState?.playerHp || 0) - damage);
         newLog.push(`플레이어가 ${damage} 데미지를 받았습니다! (${newPlayerHp}/${prevState.playerMaxHp})`);
       } else {
         // 동료 공격
@@ -10815,14 +10835,14 @@ function App() {
                     <div className="flex items-center gap-2">
                       <span className={`text-sm ${
                         isDarkMode ? "text-white" : "text-gray-800"
-                      }`}>{battleState ? Math.floor(battleState.playerHp) : 0}/{battleState ? Math.floor(battleState.playerMaxHp) : 0}</span>
+                      }`}>{battleState?.playerHp ? Math.floor(battleState.playerHp) : 0}/{battleState?.playerMaxHp ? Math.floor(battleState.playerMaxHp) : 0}</span>
                       <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                        battleState && (battleState.playerHp / battleState.playerMaxHp) >= 0.8 
+                        battleState?.playerHp && battleState?.playerMaxHp && (battleState.playerHp / battleState.playerMaxHp) >= 0.8 
                           ? isDarkMode ? "bg-green-500/20 text-green-400" : "bg-green-500/10 text-green-600"
-                          : battleState && (battleState.playerHp / battleState.playerMaxHp) >= 0.5 
+                          : battleState?.playerHp && battleState?.playerMaxHp && (battleState.playerHp / battleState.playerMaxHp) >= 0.5 
                           ? isDarkMode ? "bg-yellow-500/20 text-yellow-400" : "bg-yellow-500/10 text-yellow-600"
                           : isDarkMode ? "bg-red-500/20 text-red-400" : "bg-red-500/10 text-red-600"
-                      }`}>{battleState ? Math.round((battleState.playerHp / battleState.playerMaxHp) * 100) : 0}%</span>
+                      }`}>{battleState?.playerHp && battleState?.playerMaxHp ? Math.round((battleState.playerHp / battleState.playerMaxHp) * 100) : 0}%</span>
                     </div>
                   </div>
                   <div className={`w-full h-4 rounded-full ${
@@ -10830,7 +10850,7 @@ function App() {
                   }`}>
                     <div 
                       className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full transition-all duration-500"
-                      style={{ width: `${battleState ? (battleState.playerHp / battleState.playerMaxHp) * 100 : 0}%` }}
+                      style={{ width: `${battleState?.playerHp && battleState?.playerMaxHp ? (battleState.playerHp / battleState.playerMaxHp) * 100 : 0}%` }}
                     ></div>
                   </div>
                   

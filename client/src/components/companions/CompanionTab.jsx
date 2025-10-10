@@ -208,9 +208,9 @@ const CompanionTab = ({
                         </div>
                       </div>
                       <button
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
-                          toggleBattleCompanion(companion);
+                          await toggleBattleCompanion(companion);
                         }}
                         disabled={!isInBattle && !canAddToBattle}
                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:scale-105 ${
