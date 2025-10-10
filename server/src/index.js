@@ -3911,10 +3911,10 @@ app.get("/api/inventory/:userId", optionalJWT, async (req, res) => {
     
     console.log("Database query for inventory:", query);
     
-    // 🚀 MongoDB Aggregation으로 성능 최적화
+    // 🚀 MongoDB Aggregation으로 성능 최적화 (count 필드 사용)
     const fishCountAggregation = await CatchModel.aggregate([
       { $match: query },
-      { $group: { _id: "$fish", count: { $sum: 1 } } }
+      { $group: { _id: "$fish", count: { $sum: "$count" } } }
     ]);
     
     const fishCount = {};
@@ -7887,8 +7887,8 @@ app.post("/api/craft-material", authenticateJWT, async (req, res) => {
     
     if (craftingCost > 0) {
       // 사용자 정보 조회 (골드 확인)
-      const user = await UserModel.findOne(query);
-      const currentGold = user?.gold || 0;
+      const userMoney = await UserMoneyModel.findOne(query);
+      const currentGold = userMoney?.money || 0;
       
       if (currentGold < craftingCost) {
         console.log(`Not enough gold: has ${currentGold}, needs ${craftingCost}`);
@@ -7900,7 +7900,7 @@ app.post("/api/craft-material", authenticateJWT, async (req, res) => {
       }
       
       // 골드 차감
-      await UserModel.updateOne(query, { $inc: { gold: -craftingCost } });
+      await UserMoneyModel.updateOne(query, { $inc: { money: -craftingCost } });
       console.log(`Deducted ${craftingCost} gold for crafting (remaining: ${currentGold - craftingCost})`);
     }
     
@@ -7957,8 +7957,8 @@ app.post("/api/craft-material", authenticateJWT, async (req, res) => {
     console.log(`Created/Updated ${outputMaterial}: +${outputCount} (total: ${updateResult.count})`);
     
     // 최종 골드 조회
-    const finalUser = await UserModel.findOne(query);
-    const finalGold = finalUser?.gold || 0;
+    const finalUserMoney = await UserMoneyModel.findOne(query);
+    const finalGold = finalUserMoney?.money || 0;
     
     res.json({ 
       success: true, 
@@ -8016,6 +8016,33 @@ app.post("/api/decompose-material", authenticateJWT, async (req, res) => {
     if (currentInputCount < quantity) {
       console.log(`Not enough material: ${inputMaterial} (need ${quantity}, have ${currentInputCount})`);
       return res.status(400).json({ error: `분해할 재료가 부족합니다. (${currentInputCount}/${quantity})` });
+    }
+    
+    // 💰 분해 비용 계산 및 차감 (원형 물고기 가격 기반)
+    const sourceFish = getSourceFishForMaterial(inputMaterial);
+    if (!sourceFish) {
+      console.log(`Warning: No source fish found for material ${inputMaterial}`);
+    }
+    
+    const decomposeCost = sourceFish ? sourceFish.price * quantity : 0;
+    
+    if (decomposeCost > 0) {
+      // 사용자 정보 조회 (골드 확인)
+      const userMoney = await UserMoneyModel.findOne(query);
+      const currentGold = userMoney?.money || 0;
+      
+      if (currentGold < decomposeCost) {
+        console.log(`Not enough gold: has ${currentGold}, needs ${decomposeCost}`);
+        return res.status(400).json({ 
+          error: `골드가 부족합니다. (${currentGold}/${decomposeCost})`,
+          requiredGold: decomposeCost,
+          currentGold: currentGold
+        });
+      }
+      
+      // 골드 차감
+      await UserMoneyModel.updateOne(query, { $inc: { money: -decomposeCost } });
+      console.log(`Deducted ${decomposeCost} gold for decomposing (remaining: ${currentGold - decomposeCost})`);
     }
     
     // 📦 인벤토리 제한 확인 (재료 분해 시)
@@ -8080,7 +8107,18 @@ app.post("/api/decompose-material", authenticateJWT, async (req, res) => {
     
     console.log(`Created/Updated ${outputMaterial}: +${totalOutputCount} (total: ${updateResult.count})`);
     
-    res.json({ success: true, decomposedCount: quantity, gainedCount: totalOutputCount, outputTotal: updateResult.count });
+    // 최종 골드 조회
+    const finalUserMoney = await UserMoneyModel.findOne(query);
+    const finalGold = finalUserMoney?.money || 0;
+    
+    res.json({ 
+      success: true, 
+      decomposedCount: quantity, 
+      gainedCount: totalOutputCount, 
+      outputTotal: updateResult.count,
+      decomposeCost: decomposeCost || 0,
+      currentGold: finalGold
+    });
   } catch (error) {
     console.error("Failed to decompose material:", error);
     res.status(500).json({ error: "재료 분해에 실패했습니다." });

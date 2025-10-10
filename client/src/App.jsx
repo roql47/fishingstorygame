@@ -6503,10 +6503,19 @@ function App() {
         // 재료 목록 새로고침
         await fetchMaterials();
         
+        // 골드 업데이트
+        if (response.data.currentGold !== undefined) {
+          setGold(response.data.currentGold);
+        }
+        
         const totalGained = quantity * 3; // 1개당 3개씩 획득
+        const costMessage = response.data.decomposeCost > 0 
+          ? ` (비용: ${response.data.decomposeCost.toLocaleString()}골드)` 
+          : '';
+        
         setMessages(prev => [...prev, {
           system: true,
-          content: `🔨 ${recipe.outputMaterial} ${quantity}개를 분해하여 ${recipe.inputMaterial} ${totalGained}개를 획득했습니다!`,
+          content: `🔨 ${recipe.outputMaterial} ${quantity}개를 분해하여 ${recipe.inputMaterial} ${totalGained}개를 획득했습니다!${costMessage}`,
           timestamp: new Date().toISOString()
         }]);
       } else {
@@ -7917,6 +7926,11 @@ function App() {
                           const canCraft = craftRecipe && item.count >= craftRecipe.inputCount;
                           const canDecompose = decomposeRecipe && item.count >= 1;
                           
+                          // 조합/분해 비용 계산
+                          const sourceFish = getMaterialToFish(item.material);
+                          const craftCost = sourceFish ? getFishPrice(sourceFish.name) : 0;
+                          const decomposeCost = sourceFish ? getFishPrice(sourceFish.name) : 0;
+                          
                           return (
                             <div key={index} className={`p-4 rounded-xl hover:glow-effect transition-all duration-300 group ${
                               isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
@@ -7953,10 +7967,10 @@ function App() {
                                           : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border border-amber-500/30 hover:scale-105"
                                         : "opacity-50 cursor-not-allowed bg-gray-500/10 text-gray-500 border border-gray-500/20"
                                     }`}
-                                    title={canCraft ? `${craftRecipe.inputMaterial} 3개 → ${craftRecipe.outputMaterial} 1개` : `재료가 부족합니다 (${item.count}/3)`}
+                                    title={canCraft ? `${craftRecipe.inputMaterial} 3개 → ${craftRecipe.outputMaterial} 1개 (비용: ${craftCost.toLocaleString()}G)` : `재료가 부족합니다 (${item.count}/3)`}
                                   >
                                     <Hammer className="w-4 h-4" />
-                                    <span className="text-sm">조합 ({craftRecipe.inputCount}개 → {craftRecipe.outputMaterial})</span>
+                                    <span className="text-sm">조합 ({craftCost.toLocaleString()}G)</span>
                                   </button>
                                 )}
 
@@ -7972,10 +7986,10 @@ function App() {
                                           : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border border-blue-500/30 hover:scale-105"
                                         : "opacity-50 cursor-not-allowed bg-gray-500/10 text-gray-500 border border-gray-500/20"
                                     }`}
-                                    title={canDecompose ? `${decomposeRecipe.outputMaterial} → ${decomposeRecipe.inputMaterial} (1개당 2개 획득)` : "재료가 부족합니다"}
+                                    title={canDecompose ? `${decomposeRecipe.outputMaterial} → ${decomposeRecipe.inputMaterial} (1개당 3개 획득, 비용: ${decomposeCost.toLocaleString()}G/개)` : "재료가 부족합니다"}
                                   >
                                     <Trash2 className="w-4 h-4" />
-                                    <span className="text-sm">분해 (1개 → {decomposeRecipe.inputMaterial} 2개)</span>
+                                    <span className="text-sm">분해 ({decomposeCost.toLocaleString()}G/개)</span>
                                   </button>
                                 )}
                               </div>
@@ -10204,14 +10218,28 @@ function App() {
                   <div className={`mt-4 p-3 rounded-lg ${
                     isDarkMode ? "bg-blue-500/10 border border-blue-400/20" : "bg-blue-500/5 border border-blue-500/20"
                   }`}>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between mb-2">
                       <span className={`text-sm ${
                         isDarkMode ? "text-blue-300" : "text-blue-700"
                       }`}>획득 재료:</span>
                       <span className={`font-bold ${
                         isDarkMode ? "text-blue-400" : "text-blue-600"
                       }`}>
-                        {quantityModalData.recipe.inputMaterial} {inputQuantity * 2}개
+                        {quantityModalData.recipe.inputMaterial} {inputQuantity * 3}개
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t border-blue-400/20">
+                      <span className={`text-sm ${
+                        isDarkMode ? "text-yellow-300" : "text-yellow-700"
+                      }`}>예상 소모 골드:</span>
+                      <span className={`font-bold ${
+                        isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                      }`}>
+                        {(() => {
+                          const sourceFish = getMaterialToFish(quantityModalData.materialName);
+                          const cost = sourceFish ? getFishPrice(sourceFish.name) * inputQuantity : 0;
+                          return cost.toLocaleString();
+                        })()}G
                       </span>
                     </div>
                   </div>
