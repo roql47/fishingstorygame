@@ -1566,8 +1566,21 @@ async function validateUserOwnership(requestedUserQuery, requestingUserUuid, req
       requestingUser = await UserUuidModel.findOne({ username: requestingUsername });
     }
     
+    // 🔧 Guest 사용자인 경우: username과 userUuid가 일치하면 허용
     if (!requestingUser) {
-      console.warn("Requesting user not found:", { requestingUserUuid, requestingUsername });
+      console.log("Guest user validation:", { requestingUserUuid, requestingUsername, requestedUserQuery });
+      
+      // 요청하는 사용자의 정보와 조회하려는 데이터의 정보가 일치하는지 확인
+      const isOwnData = 
+        (requestingUserUuid && requestedUserQuery.userUuid === requestingUserUuid) ||
+        (requestingUsername && requestedUserQuery.username === requestingUsername);
+      
+      if (isOwnData) {
+        console.log("✅ Guest user accessing own data - allowed");
+        return { isValid: true, user: null, isGuest: true };
+      }
+      
+      console.warn("❌ Requesting user not found and not accessing own data:", { requestingUserUuid, requestingUsername });
       return { isValid: false, reason: "Requesting user not found" };
     }
     
@@ -1581,6 +1594,16 @@ async function validateUserOwnership(requestedUserQuery, requestingUserUuid, req
     
     if (!targetUser) {
       console.warn("Target user not found:", requestedUserQuery);
+      // 🔧 Guest 사용자가 자신의 데이터를 조회하는 경우 허용
+      const isOwnData = 
+        (requestingUser.userUuid && requestedUserQuery.userUuid === requestingUser.userUuid) ||
+        (requestingUser.username && requestedUserQuery.username === requestingUser.username);
+      
+      if (isOwnData) {
+        console.log("✅ User accessing own data (not yet in DB) - allowed");
+        return { isValid: true, user: requestingUser };
+      }
+      
       return { isValid: false, reason: "Target user not found" };
     }
     

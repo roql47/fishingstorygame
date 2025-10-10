@@ -5437,7 +5437,7 @@ function App() {
     try {
       const response = await authenticatedRequest.post(`${serverUrl}/api/start-battle`, {
         material: material.material,
-        baseFish: baseFish,
+        baseFish: baseFish?.name || baseFish,  // 객체면 이름만, 문자열이면 그대로
         selectedPrefix: null, // 서버에서 랜덤 선택
         materialQuantity: materialQuantity
       });
@@ -10813,7 +10813,7 @@ function App() {
                         <div className="text-right">
                           <p className={`text-sm font-medium ${
                             isDarkMode ? "text-orange-400" : "text-orange-600"
-                          }`}>vs {enemyFish}</p>
+                          }`}>vs {enemyFish?.name || '알 수 없음'}</p>
                           <p className={`text-xs ${
                             isDarkMode ? "text-gray-500" : "text-gray-600"
                             }`}>선택하기</p>
@@ -10875,7 +10875,7 @@ function App() {
                       <p className={`text-xs mt-2 ${
                         isDarkMode ? "text-gray-500" : "text-gray-600"
                       }`}>
-                        {selectedMaterialQuantity}마리의 {getMaterialToFish(selectedExplorationMaterial.material)}와(과) 전투합니다
+                        {selectedMaterialQuantity}마리의 {getMaterialToFish(selectedExplorationMaterial.material)?.name}와(과) 전투합니다
                       </p>
                     </div>
                   </div>
