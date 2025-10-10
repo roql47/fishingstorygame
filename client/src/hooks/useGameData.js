@@ -146,7 +146,7 @@ export const useGameData = () => {
     if (!allFishTypes.length) return null;
     
     const fishData = allFishTypes.find(fish => fish.material === materialName);
-    return fishData ? fishData.name : null;
+    return fishData || null;  // 전체 객체 반환
   }, [allFishTypes]);
   
   // 🚀 접두어 선택 함수
