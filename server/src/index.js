@@ -3119,19 +3119,20 @@ io.on("connection", (socket) => {
         );
 
         // 물고기 발견 기록 저장 (중복 방지)
-        if (socket.data.userUuid) {
-          try {
-            await FishDiscoveryModel.create({
-              userUuid: socket.data.userUuid,
-              username: socket.data.username || "사용자",
-              fishName: selectedFish.name
-            });
-            console.log(`🎣 New fish discovered: ${selectedFish.name} by ${socket.data.username}`);
-          } catch (error) {
-            // 이미 발견한 물고기인 경우 무시 (unique index 에러)
-            if (error.code !== 11000) {
-              console.error("Failed to save fish discovery:", error);
-            }
+        const discoveryUserUuid = socket.data.userUuid || socket.data.username || "guest";
+        const discoveryUsername = socket.data.username || socket.data.displayName || "게스트";
+        
+        try {
+          await FishDiscoveryModel.create({
+            userUuid: discoveryUserUuid,
+            username: discoveryUsername,
+            fishName: selectedFish.name
+          });
+          console.log(`🎣 New fish discovered: ${selectedFish.name} by ${discoveryUsername} (UUID: ${discoveryUserUuid})`);
+        } catch (error) {
+          // 이미 발견한 물고기인 경우 무시 (unique index 에러)
+          if (error.code !== 11000) {
+            console.error("Failed to save fish discovery:", error);
           }
         }
 
@@ -7528,24 +7529,27 @@ app.get("/api/fish-discoveries/:userId", optionalJWT, async (req, res) => {
     
     console.log("Fish discoveries query:", query);
     
-    // FishDiscoveryModel에서 먼저 조회
+    // FishDiscoveryModel에서 조회
     const discoveries = await FishDiscoveryModel.find(query).select('fishName firstCaughtAt');
-    let discoveredFishNames = discoveries.map(d => d.fishName);
+    let discoveredFishNames = new Set(discoveries.map(d => d.fishName));
     
-    console.log(`Found ${discoveredFishNames.length} fish in FishDiscovery collection`);
+    console.log(`Found ${discoveredFishNames.size} fish in FishDiscovery collection`);
     
-    // FishDiscoveryModel에 없으면 CatchModel에서도 조회 (레거시 데이터 호환)
-    if (discoveredFishNames.length === 0) {
-      console.log("No fish in FishDiscovery, checking CatchModel...");
-      const catchAggregation = await CatchModel.aggregate([
-        { $match: query },
-        { $group: { _id: "$fish" } }
-      ]);
-      discoveredFishNames = catchAggregation.map(c => c._id).filter(name => name); // null 제거
-      console.log(`Found ${discoveredFishNames.length} fish in Catch collection`);
-    }
+    // CatchModel에서도 조회 (레거시 데이터 호환 및 누락된 데이터 보완)
+    const catchAggregation = await CatchModel.aggregate([
+      { $match: query },
+      { $group: { _id: "$fish" } }
+    ]);
+    const catchFishNames = catchAggregation.map(c => c._id).filter(name => name); // null 제거
+    console.log(`Found ${catchFishNames.length} fish in Catch collection`);
     
-    res.json(discoveredFishNames);
+    // 두 곳의 데이터를 합침 (중복 제거)
+    catchFishNames.forEach(name => discoveredFishNames.add(name));
+    
+    const result = Array.from(discoveredFishNames);
+    console.log(`Total unique fish: ${result.length}`);
+    
+    res.json(result);
   } catch (error) {
     console.error("Failed to fetch fish discoveries:", error);
     res.status(500).json({ error: "Failed to fetch fish discoveries" });
@@ -7586,10 +7590,10 @@ app.post("/api/enhance-equipment", authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: "Invalid amber cost" });
     }
     
-    // 강화 공식: f(x) = 0.2x³ - 0.4x² + 1.6x
+    // 강화 공식: f(x) = 0.2x³ - 0.55x² + 1.2x
     const calculateEnhancementBonus = (level) => {
       if (level <= 0) return 0;
-      return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
+      return 0.2 * Math.pow(level, 3) - 0.55 * Math.pow(level, 2) + 1.2 * level;
     };
     
     // 장비 등급별 강화 비용 배율 (3차방정식: f(x) = 0.1x³ - 0.5x² + 2x + 0.4)
@@ -7604,8 +7608,8 @@ app.post("/api/enhance-equipment", authenticateJWT, async (req, res) => {
         ];
         const grade = fishingRodOrder.indexOf(equipmentName);
         if (grade === -1) return 1.0;
-        // 3차방정식: f(x) = 0.1x³ - 0.35x² + 1.7x + 0.4
-        return Math.max(1.0, 0.1 * Math.pow(grade, 3) - 0.35 * Math.pow(grade, 2) + 1.7 * grade + 0.4);
+        // 1차방정식: f(x) = 1.75x + 1.1
+        return Math.max(1.0, 1.75 * grade + 1.1);
       } else if (equipmentType === 'accessory') {
         const accessoryOrder = [
           '오래된반지', '은목걸이', '금귀걸이', '마법의펜던트', '에메랄드브로치',
@@ -7614,8 +7618,8 @@ app.post("/api/enhance-equipment", authenticateJWT, async (req, res) => {
         ];
         const grade = accessoryOrder.indexOf(equipmentName);
         if (grade === -1) return 1.0;
-        // 3차방정식: f(x) = 0.1x³ - 0.35x² + 1.7x + 0.4
-        return Math.max(1.0, 0.1 * Math.pow(grade, 3) - 0.35 * Math.pow(grade, 2) + 1.7 * grade + 0.4);
+        // 1차방정식: f(x) = 1.75x + 1.1
+        return Math.max(1.0, 1.75 * grade + 1.1);
       }
       return 1.0;
     };
@@ -10499,6 +10503,23 @@ async function performFishing(user) {
     );
     
     console.log(`🎣 Fish caught: ${fish} (probability: ${probability}%, rank: ${rank}) by ${username}`);
+    
+    // 물고기 발견 기록 저장 (중복 방지)
+    if (userUuid) {
+      try {
+        await FishDiscoveryModel.create({
+          userUuid: userUuid,
+          username: username,
+          fishName: fish
+        });
+        console.log(`🎣 New fish discovered: ${fish} by ${username}`);
+      } catch (error) {
+        // 이미 발견한 물고기인 경우 무시 (unique index 에러)
+        if (error.code !== 11000) {
+          console.error("Failed to save fish discovery:", error);
+        }
+      }
+    }
     
     // 낚시 스킬 증가
     const skillIncrease = 1;

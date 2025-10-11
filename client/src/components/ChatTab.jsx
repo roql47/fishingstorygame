@@ -547,8 +547,8 @@ const ChatTab = ({
                         }`}>{m.content}</span>
                       </div>
                       
-                      {/* 반응 버튼들 (항상 표시, 모바일 최적화) */}
-                      <div className="absolute -bottom-6 right-2 flex gap-1">
+                      {/* 반응 버튼들 (호버 시 표시, 모바일 최적화) */}
+                      <div className="absolute -bottom-6 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                         <button
                           onClick={() => addReaction(i, 'thumbsup')}
                           className={`p-1.5 rounded-full backdrop-blur-sm border touch-manipulation ${

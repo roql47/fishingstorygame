@@ -542,7 +542,7 @@ function App() {
   // 강화 보너스 계산 함수 (3차방정식 - 퍼센트로 표시)
   const calculateEnhancementBonus = (level) => {
     if (level <= 0) return 0;
-    return 0.1 * Math.pow(level, 3) - 0.2 * Math.pow(level, 2) + 0.8 * level;
+    return 0.0015 * Math.pow(level, 3) + 0.07 * Math.pow(level, 2) + 1.6 * level;
   };
 
   // 누적 강화 보너스 계산 (퍼센트)

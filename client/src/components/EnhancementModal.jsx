@@ -19,16 +19,16 @@ const EnhancementModal = ({
   // 한 번에 한 레벨씩만 강화
   const targetLevel = currentEnhancementLevel + 1;
 
-  // 강화 보너스 공식: f(x) = 0.2x³ - 0.4x² + 1.6x (퍼센트로 표시) - 2배 증가
+  // 강화 보너스 공식: f(x) = 0.0015x³ + 0.07x² + 1.6x (퍼센트로 표시)
   const calculateEnhancementBonus = (level) => {
     if (level <= 0) return 0;
-    return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
+    return 0.0015 * Math.pow(level, 3) + 0.07 * Math.pow(level, 2) + 1.6 * level;
   };
 
-  // 호박석 비용 계산용 공식 (원래 공식 유지): f(x) = 0.2x³ - 0.4x² + 1.6x
+  // 호박석 비용 계산용 공식: f(x) = 0.2x³ - 0.55x² + 1.2x
   const calculateAmberCostBonus = (level) => {
     if (level <= 0) return 0;
-    return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
+    return 0.2 * Math.pow(level, 3) - 0.55 * Math.pow(level, 2) + 1.2 * level;
   };
 
   // 장비 등급별 강화 비용 배율 (3차방정식: f(x) = 0.1x³ - 0.5x² + 2x + 0.4)
@@ -43,8 +43,8 @@ const EnhancementModal = ({
       ];
       const grade = fishingRodOrder.indexOf(equipmentName);
       if (grade === -1) return 1.0;
-      // 3차방정식: f(x) = 0.1x³ - 0.35x² + 1.7x + 0.4
-      return Math.max(1.0, 0.1 * Math.pow(grade, 3) - 0.35 * Math.pow(grade, 2) + 1.7 * grade + 0.4);
+      // 1차방정식: f(x) = 1.75x + 1.1
+      return Math.max(1.0, 1.75 * grade + 1.1);
     } else if (equipmentType === 'accessory') {
       const accessoryOrder = [
         '오래된반지', '은목걸이', '금귀걸이', '마법의펜던트', '에메랄드브로치',
@@ -53,8 +53,8 @@ const EnhancementModal = ({
       ];
       const grade = accessoryOrder.indexOf(equipmentName);
       if (grade === -1) return 1.0;
-      // 3차방정식: f(x) = 0.1x³ - 0.35x² + 1.7x + 0.4
-      return Math.max(1.0, 0.1 * Math.pow(grade, 3) - 0.35 * Math.pow(grade, 2) + 1.7 * grade + 0.4);
+      // 1차방정식: f(x) = 1.75x + 1.1
+      return Math.max(1.0, 1.75 * grade + 1.1);
     }
     return 1.0;
   };

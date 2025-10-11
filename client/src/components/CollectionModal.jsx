@@ -19,9 +19,11 @@ const CollectionModal = ({
     const fetchDiscoveredFish = async () => {
       try {
         const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
-        const userId = localStorage.getItem('idToken') ? 'user' : 'null';
         const username = localStorage.getItem('nickname') || '';
         const userUuid = localStorage.getItem('userUuid') || '';
+        
+        // userUuid가 없으면 username을 userId로 사용
+        const userId = userUuid || (username ? username : 'guest');
         
         console.log('🔍 CollectionModal - Fetching discovered fish with:', { 
           serverUrl, 
@@ -57,50 +59,50 @@ const CollectionModal = ({
 
   if (!showCollectionModal) return null;
 
-  // 낚시대 목록 (실제 상점 데이터 기반 - 전체 24개)
+  // 낚시대 목록 (실제 상점 가격과 동일하게 계산)
   const fishingRods = [
     { name: '나무낚시대', price: 0, description: '기본 낚시대', currency: 'gold' },
-    { name: '낡은낚시대', price: 10000, description: '오래된 낚시대입니다', currency: 'gold' },
-    { name: '기본낚시대', price: 50000, description: '기본적인 낚시대입니다', currency: 'gold' },
-    { name: '단단한낚시대', price: 140000, description: '견고한 낚시대입니다', currency: 'gold' },
-    { name: '은낚시대', price: 370000, description: '은으로 만든 고급 낚시대입니다', currency: 'gold' },
-    { name: '금낚시대', price: 820000, description: '금으로 만든 최고급 낚시대입니다', currency: 'gold' },
-    { name: '강철낚시대', price: 2390000, description: '강철로 제련된 견고한 낚시대입니다', currency: 'gold' },
-    { name: '사파이어낚시대', price: 6100000, description: '사파이어가 박힌 신비로운 낚시대입니다', currency: 'gold' },
-    { name: '루비낚시대', price: 15000000, description: '루비의 힘이 깃든 화려한 낚시대입니다', currency: 'gold' },
-    { name: '다이아몬드낚시대', price: 45000000, description: '다이아몬드의 광채가 빛나는 낚시대입니다', currency: 'gold' },
-    { name: '레드다이아몬드낚시대', price: 100000000, description: '희귀한 레드다이아몬드로 만든 전설적인 낚시대입니다', currency: 'gold' },
-    { name: '벚꽃낚시대', price: 300000000, description: '벚꽃의 아름다움을 담은 환상적인 낚시대입니다', currency: 'gold' },
-    { name: '꽃망울낚시대', price: 732000000, description: '꽃망울처럼 생긴 신비한 낚시대입니다', currency: 'gold' },
-    { name: '호롱불낚시대', price: 1980000000, description: '호롱불처럼 따뜻한 빛을 내는 낚시대입니다', currency: 'gold' },
-    { name: '산고등낚시대', price: 4300000000, description: '바다 깊은 곳의 산고로 만든 낚시대입니다', currency: 'gold' },
-    { name: '피크닉', price: 8800000000, description: '즐거운 피크닉 분위기의 특별한 낚시대입니다', currency: 'gold' },
-    { name: '마녀빗자루', price: 25000000000, description: '마녀의 마법이 깃든 신비로운 빗자루 낚시대입니다', currency: 'gold' },
-    { name: '에테르낚시대', price: 64800000000, description: '에테르의 힘으로 만들어진 초월적인 낚시대입니다', currency: 'gold' },
-    { name: '별조각낚시대', price: 147600000000, description: '별의 조각으로 만든 우주적인 낚시대입니다', currency: 'gold' },
-    { name: '여우꼬리낚시대', price: 320000000000, description: '여우의 꼬리처럼 유연한 신비한 낚시대입니다', currency: 'gold' },
-    { name: '초콜릿롤낚시대', price: 780000000000, description: '달콤한 초콜릿롤 모양의 귀여운 낚시대입니다', currency: 'gold' },
-    { name: '호박유령낚시대', price: 2800000000000, description: '호박 속 유령의 힘이 깃든 무서운 낚시대입니다', currency: 'gold' },
-    { name: '핑크버니낚시대', price: 6100000000000, description: '핑크빛 토끼의 귀여움이 담긴 낚시대입니다', currency: 'gold' },
-    { name: '할로우낚시대', price: 15100000000000, description: '할로윈의 신비로운 힘이 깃든 낚시대입니다', currency: 'gold' },
-    { name: '여우불낚시대', price: 40400000000000, description: '여우불의 환상적인 힘을 지닌 최고급 낚시대입니다', currency: 'gold' }
+    { name: '낡은낚시대', price: 1500, description: '오래된 낚시대입니다', currency: 'gold' },
+    { name: '기본낚시대', price: 5000, description: '기본적인 낚시대입니다', currency: 'gold' },
+    { name: '단단한낚시대', price: 12000, description: '견고한 낚시대입니다', currency: 'gold' },
+    { name: '은낚시대', price: 24000, description: '은으로 만든 고급 낚시대입니다', currency: 'gold' },
+    { name: '금낚시대', price: 45000, description: '금으로 만든 최고급 낚시대입니다', currency: 'gold' },
+    { name: '강철낚시대', price: 90000, description: '강철로 제련된 견고한 낚시대입니다', currency: 'gold' },
+    { name: '사파이어낚시대', price: 164500, description: '사파이어가 박힌 신비로운 낚시대입니다', currency: 'gold' },
+    { name: '루비낚시대', price: 288000, description: '루비의 힘이 깃든 화려한 낚시대입니다', currency: 'gold' },
+    { name: '다이아몬드낚시대', price: 441000, description: '다이아몬드의 광채가 빛나는 낚시대입니다', currency: 'gold' },
+    { name: '레드다이아몬드낚시대', price: 665000, description: '희귀한 레드다이아몬드로 만든 전설적인 낚시대입니다', currency: 'gold' },
+    { name: '벚꽃낚시대', price: 968000, description: '벚꽃의 아름다움을 담은 환상적인 낚시대입니다', currency: 'gold' },
+    { name: '꽃망울낚시대', price: 1434000, description: '꽃망울처럼 생긴 신비한 낚시대입니다', currency: 'gold' },
+    { name: '호롱불낚시대', price: 1885000, description: '호롱불처럼 따뜻한 빛을 내는 낚시대입니다', currency: 'gold' },
+    { name: '산고등낚시대', price: 2485000, description: '바다 깊은 곳의 산고로 만든 낚시대입니다', currency: 'gold' },
+    { name: '피크닉', price: 3240000, description: '즐거운 피크닉 분위기의 특별한 낚시대입니다', currency: 'gold' },
+    { name: '마녀빗자루', price: 4168000, description: '마녀의 마법이 깃든 신비로운 빗자루 낚시대입니다', currency: 'gold' },
+    { name: '에테르낚시대', price: 6247500, description: '에테르의 힘으로 만들어진 초월적인 낚시대입니다', currency: 'gold' },
+    { name: '별조각낚시대', price: 7740000, description: '별의 조각으로 만든 우주적인 낚시대입니다', currency: 'gold' },
+    { name: '여우꼬리낚시대', price: 9471500, description: '여우의 꼬리처럼 유연한 신비한 낚시대입니다', currency: 'gold' },
+    { name: '초콜릿롤낚시대', price: 11460000, description: '달콤한 초콜릿롤 모양의 귀여운 낚시대입니다', currency: 'gold' },
+    { name: '호박유령낚시대', price: 13723500, description: '호박 속 유령의 힘이 깃든 무서운 낚시대입니다', currency: 'gold' },
+    { name: '핑크버니낚시대', price: 16280000, description: '핑크빛 토끼의 귀여움이 담긴 낚시대입니다', currency: 'gold' },
+    { name: '할로우낚시대', price: 19147500, description: '할로윈의 신비로운 힘이 깃든 낚시대입니다', currency: 'gold' },
+    { name: '여우불낚시대', price: 22344000, description: '여우불의 환상적인 힘을 지닌 최고급 낚시대입니다', currency: 'gold' }
   ];
 
-  // 악세사리 목록 (실제 상점 데이터 기반)
+  // 악세사리 목록 (실제 상점 가격과 동일하게 계산 - 골드 단위)
   const accessories = [
-    { name: '오래된반지', price: 10, description: '낡았지만 의미있는 반지입니다', currency: 'amber' },
-    { name: '은목걸이', price: 25, description: '은으로 만든 아름다운 목걸이입니다', currency: 'amber' },
-    { name: '금귀걸이', price: 50, description: '금으로 만든 화려한 귀걸이입니다', currency: 'amber' },
-    { name: '마법의펜던트', price: 80, description: '마법의 힘이 깃든 신비한 펜던트입니다', currency: 'amber' },
-    { name: '에메랄드브로치', price: 120, description: '에메랄드가 박힌 고급스러운 브로치입니다', currency: 'amber' },
-    { name: '토파즈이어링', price: 180, description: '토파즈의 빛이 아름다운 이어링입니다', currency: 'amber' },
-    { name: '자수정팔찌', price: 250, description: '자수정으로 만든 우아한 팔찌입니다', currency: 'amber' },
-    { name: '백금티아라', price: 465, description: '백금으로 제작된 고귀한 티아라입니다', currency: 'amber' },
-    { name: '만드라고라허브', price: 700, description: '신비한 만드라고라 허브입니다', currency: 'amber' },
-    { name: '에테르나무묘목', price: 1000, description: '에테르 나무의 신비한 묘목입니다', currency: 'amber' },
-    { name: '몽마의조각상', price: 1800, description: '몽마의 힘이 깃든 신비한 조각상입니다', currency: 'amber' },
-    { name: '마카롱훈장', price: 3200, description: '달콤한 마카롱 모양의 특별한 훈장입니다', currency: 'amber' },
-    { name: '빛나는마력순환체', price: 5000, description: '마력이 순환하는 빛나는 신비한 구슬입니다', currency: 'amber' }
+    { name: '오래된반지', price: 3000, description: '낡았지만 의미있는 반지입니다', currency: 'gold' },
+    { name: '은목걸이', price: 10000, description: '은으로 만든 아름다운 목걸이입니다', currency: 'gold' },
+    { name: '금귀걸이', price: 24000, description: '금으로 만든 화려한 귀걸이입니다', currency: 'gold' },
+    { name: '마법의펜던트', price: 48000, description: '마법의 힘이 깃든 신비한 펜던트입니다', currency: 'gold' },
+    { name: '에메랄드브로치', price: 90000, description: '에메랄드가 박힌 고급스러운 브로치입니다', currency: 'gold' },
+    { name: '토파즈이어링', price: 180000, description: '토파즈의 빛이 아름다운 이어링입니다', currency: 'gold' },
+    { name: '자수정팔찌', price: 329000, description: '자수정으로 만든 우아한 팔찌입니다', currency: 'gold' },
+    { name: '백금티아라', price: 576000, description: '백금으로 제작된 고귀한 티아라입니다', currency: 'gold' },
+    { name: '만드라고라허브', price: 882000, description: '신비한 만드라고라 허브입니다', currency: 'gold' },
+    { name: '에테르나무묘목', price: 1330000, description: '에테르 나무의 신비한 묘목입니다', currency: 'gold' },
+    { name: '몽마의조각상', price: 1936000, description: '몽마의 힘이 깃든 신비한 조각상입니다', currency: 'gold' },
+    { name: '마카롱훈장', price: 2868000, description: '달콤한 마카롱 모양의 특별한 훈장입니다', currency: 'gold' },
+    { name: '빛나는마력순환체', price: 3770000, description: '마력이 순환하는 빛나는 신비한 구슬입니다', currency: 'gold' }
   ];
 
   // 보유 여부 확인 함수
@@ -402,7 +404,7 @@ const CollectionModal = ({
                             <p className={`text-sm mb-1 ${
                               isDarkMode ? "text-purple-400" : "text-purple-600"
                             }`}>
-                              Lv.{index + 1} • {accessory.price.toLocaleString()}호박석
+                              Lv.{index + 1} • {accessory.price.toLocaleString()}골드
                             </p>
                             <p className={`text-xs ${
                               isDarkMode ? "text-gray-400" : "text-gray-600"

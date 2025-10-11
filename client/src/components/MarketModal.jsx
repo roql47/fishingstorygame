@@ -383,50 +383,6 @@ const MarketModal = ({
 
   if (!showMarketModal) return null;
 
-  // 낚시 실력 체크
-  if (fishingSkill < 5) {
-    return (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className={`max-w-md w-full rounded-2xl overflow-hidden ${
-          isDarkMode 
-            ? "glass-card border border-white/10" 
-            : "bg-white/95 backdrop-blur-md border border-gray-300/30"
-        }`}>
-          <div className="p-6 text-center">
-            <ShoppingCart className={`w-16 h-16 mx-auto mb-4 ${
-              isDarkMode ? "text-gray-500" : "text-gray-400"
-            }`} />
-            <h3 className={`text-xl font-bold mb-2 ${
-              isDarkMode ? "text-white" : "text-gray-800"
-            }`}>
-              거래소 이용 불가
-            </h3>
-            <p className={`text-sm mb-4 ${
-              isDarkMode ? "text-gray-400" : "text-gray-600"
-            }`}>
-              거래소는 낚시 실력 5 이상부터 이용할 수 있습니다.
-            </p>
-            <p className={`text-lg font-bold mb-6 ${
-              isDarkMode ? "text-blue-400" : "text-blue-600"
-            }`}>
-              현재 낚시 실력: {fishingSkill}
-            </p>
-            <button
-              onClick={() => setShowMarketModal(false)}
-              className={`px-6 py-2 rounded-lg font-medium transition-all duration-300 ${
-                isDarkMode
-                  ? "bg-blue-500/20 text-blue-400 border border-blue-400/30 hover:bg-blue-500/30"
-                  : "bg-blue-500 text-white hover:bg-blue-600"
-              }`}
-            >
-              확인
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const tradableItems = getTradableItems();
   const myListings = marketListings.filter(listing => listing.sellerNickname === nickname);
   const allListings = marketListings; // 모든 등록 아이템 표시
