@@ -190,6 +190,11 @@ const getFishByName = (name) => {
   return FISH_DATA.find(fish => fish.name === name);
 };
 
+// 재료명으로 물고기 정보 조회
+const getFishByMaterial = (material) => {
+  return FISH_DATA.find(fish => fish.material === material);
+};
+
 // 낚시 스킬에 따른 사용 가능한 물고기 조회
 const getAvailableFishBySkill = (skill) => {
   const normalFish = FISH_DATA.filter(f => f.name !== "스타피쉬");
@@ -227,6 +232,7 @@ module.exports = {
   getPrefixData,
   getShopData,
   getFishByName,
+  getFishByMaterial,
   getAvailableFishBySkill,
   getShopItemsByCategory
 };

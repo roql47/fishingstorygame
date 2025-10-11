@@ -19,10 +19,10 @@ const EnhancementModal = ({
   // 한 번에 한 레벨씩만 강화
   const targetLevel = currentEnhancementLevel + 1;
 
-  // 강화 보너스 공식: f(x) = 0.1x³ - 0.2x² + 0.8x (퍼센트로 표시)
+  // 강화 보너스 공식: f(x) = 0.2x³ - 0.4x² + 1.6x (퍼센트로 표시) - 2배 증가
   const calculateEnhancementBonus = (level) => {
     if (level <= 0) return 0;
-    return 0.1 * Math.pow(level, 3) - 0.2 * Math.pow(level, 2) + 0.8 * level;
+    return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
   };
 
   // 호박석 비용 계산용 공식 (원래 공식 유지): f(x) = 0.2x³ - 0.4x² + 1.6x

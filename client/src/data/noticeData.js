@@ -1,6 +1,19 @@
 // 공지사항 데이터 (ID 내림차순 정렬 - 최신이 가장 높은 ID)
 export const NOTICE_DATA = [
   {
+    id: 26,
+    date: "2025.10.11",
+    title: "⚡ 장비 강화 버프 패치",
+    content: [
+      "낚시대 강화 보너스 2배 증가:",
+      "낚시대/악세사리 구매시 골드 비용 추가",
+      "레이드 동료 공격 안되던 버그 수정",
+      "재료 조합/분해시 에러메세지 수정"
+    ],
+    isNew: true,
+    type: "balance"
+  },
+  {
     id: 25,
     date: "2025.10.11",
     title: "🧪 연금술포션 시스템 & 신규 쿠폰 추가",
@@ -19,7 +32,7 @@ export const NOTICE_DATA = [
       "보안 시스템 강화:",
       "- IP 차단 시 해당 IP의 모든 소켓 연결 강제 종료"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
@@ -85,7 +98,7 @@ export const NOTICE_DATA = [
       "물고기 판매 금액 리모델링",
       "핑키피쉬 이후 분해 아이템 추가"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
@@ -412,5 +425,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.293"
+  version: "v1.294"
 };

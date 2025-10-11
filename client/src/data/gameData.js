@@ -66,6 +66,10 @@ export const getFishByName = async (name) => {
   return await fetchGameData(`fish/${encodeURIComponent(name)}`);
 };
 
+export const getFishByMaterial = async (material) => {
+  return await fetchGameData(`fish-by-material/${encodeURIComponent(material)}`);
+};
+
 export const getShopItemsByCategory = async (category) => {
   return await fetchGameData(`shop/${category}`);
 };

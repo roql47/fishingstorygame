@@ -250,6 +250,7 @@ const {
   getPrefixData,
   getShopData,
   getFishByName,
+  getFishByMaterial,
   getAvailableFishBySkill,
   getShopItemsByCategory
 } = require("./data/gameData");
@@ -3859,6 +3860,21 @@ app.get("/api/game-data/fish/:name", (req, res) => {
   }
 });
 
+// 재료명으로 물고기 정보 조회
+app.get("/api/game-data/fish-by-material/:material", (req, res) => {
+  try {
+    const materialName = decodeURIComponent(req.params.material);
+    const fish = getFishByMaterial(materialName);
+    if (!fish) {
+      return res.status(404).json({ success: false, error: "Fish not found for material" });
+    }
+    res.json({ success: true, data: fish });
+  } catch (error) {
+    console.error("Failed to get fish by material:", error);
+    res.status(500).json({ success: false, error: "Failed to load fish data" });
+  }
+});
+
 // 상점 카테고리별 아이템 조회
 app.get("/api/game-data/shop/:category", (req, res) => {
   try {
@@ -5844,10 +5860,10 @@ const getServerFishHealthMap = () => {
 };
 
 // 서버 측 전투 계산 함수들
-// 강화 보너스 계산 함수 (3차방정식 - 퍼센트로 표시)
+// 강화 보너스 계산 함수 (3차방정식 - 퍼센트로 표시) - 2배 증가
 const calculateServerEnhancementBonus = (level) => {
   if (level <= 0) return 0;
-  return 0.1 * Math.pow(level, 3) - 0.2 * Math.pow(level, 2) + 0.8 * level;
+  return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
 };
 
 const calculateServerTotalEnhancementBonus = (level) => {
@@ -7274,6 +7290,36 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: "User not found" });
     }
     
+    // 💰 낚시대와 악세사리는 골드도 필요함 (재료 물고기 판매가의 1/10)
+    let requiredGold = 0;
+    if (category === 'fishing_rod' || category === 'accessories') {
+      // 재료에 해당하는 물고기 찾기
+      const sourceFish = getFishByMaterial(requiredMaterial);
+      if (sourceFish) {
+        // 물고기 판매가의 1/10 * 필요한 재료 개수
+        requiredGold = Math.floor((sourceFish.price / 10) * requiredCount);
+        console.log(`Required gold for ${itemName}: ${requiredGold} (${sourceFish.name} price: ${sourceFish.price}, material: ${requiredMaterial} x${requiredCount})`);
+        
+        // 사용자 골드 확인
+        const userMoney = await UserMoneyModel.findOne(query);
+        const userGold = userMoney?.money || 0;
+        
+        if (userGold < requiredGold) {
+          console.log(`Gold shortage: User has ${userGold}, needs ${requiredGold}`);
+          return res.status(400).json({ error: "Not enough gold", requiredGold });
+        }
+        
+        // 골드 차감
+        await UserMoneyModel.updateOne(
+          query,
+          { $inc: { money: -requiredGold } }
+        );
+        console.log(`Gold deducted: -${requiredGold} (${userGold} → ${userGold - requiredGold})`);
+      } else {
+        console.warn(`Source fish not found for material: ${requiredMaterial}`);
+      }
+    }
+    
     // 🎯 성능 최적화: count 필드로 재료 개수 확인
     const userMaterial = await MaterialModel.findOne({
       ...query,
@@ -8319,7 +8365,14 @@ app.post("/api/craft-material", authenticateJWT, async (req, res) => {
     // 레시피 유효성 검증
     const recipe = getCraftingRecipe(inputMaterial);
     if (!recipe || recipe.outputMaterial !== outputMaterial || recipe.inputCount !== inputCount) {
-      return res.status(400).json({ error: "Invalid crafting recipe" });
+      console.log("❌ 조합 레시피 검증 실패:", { 
+        inputMaterial, 
+        outputMaterial, 
+        foundRecipe: recipe,
+        expectedOutput: recipe?.outputMaterial,
+        expectedInputCount: recipe?.inputCount
+      });
+      return res.status(400).json({ error: "잘못된 조합 레시피입니다." });
     }
     
     // UUID 기반 사용자 조회
@@ -8339,8 +8392,8 @@ app.post("/api/craft-material", authenticateJWT, async (req, res) => {
     console.log(`Found ${currentInputCount} ${inputMaterial} for user`);
     
     if (currentInputCount < inputCount) {
-      console.log(`Not enough materials: has ${currentInputCount}, needs ${inputCount}`);
-      return res.status(400).json({ error: `재료가 부족합니다. (${currentInputCount}/${inputCount})` });
+      console.log(`❌ 재료 부족: ${inputMaterial} (보유: ${currentInputCount}, 필요: ${inputCount})`);
+      return res.status(400).json({ error: `재료가 부족합니다. (보유: ${currentInputCount}/${inputCount})` });
     }
     
     // 💰 조합 비용 계산 및 차감 (원형 물고기 가격 기반)
@@ -8357,9 +8410,9 @@ app.post("/api/craft-material", authenticateJWT, async (req, res) => {
       const currentGold = userMoney?.money || 0;
       
       if (currentGold < craftingCost) {
-        console.log(`Not enough gold: has ${currentGold}, needs ${craftingCost}`);
+        console.log(`❌ 골드 부족: ${inputMaterial} 조합 (보유: ${currentGold}, 필요: ${craftingCost})`);
         return res.status(400).json({ 
-          error: `골드가 부족합니다. (${currentGold}/${craftingCost})`,
+          error: `골드가 부족합니다. (보유: ${currentGold.toLocaleString()}G / 필요: ${craftingCost.toLocaleString()}G)`,
           requiredGold: craftingCost,
           currentGold: currentGold
         });
@@ -8420,7 +8473,7 @@ app.post("/api/craft-material", authenticateJWT, async (req, res) => {
       { upsert: true, new: true }
     );
     
-    console.log(`Created/Updated ${outputMaterial}: +${outputCount} (total: ${updateResult.count})`);
+    console.log(`✅ 조합 성공: ${inputMaterial} ${inputCount}개 → ${outputMaterial} ${outputCount}개 (총 ${updateResult.count}개 보유)`);
     
     // 최종 골드 조회
     const finalUserMoney = await UserMoneyModel.findOne(query);
@@ -8451,13 +8504,13 @@ app.post("/api/decompose-material", authenticateJWT, async (req, res) => {
     // 레시피 유효성 검증
     const recipe = getDecomposeRecipe(inputMaterial);
     if (!recipe || recipe.inputMaterial !== outputMaterial) {
-      console.log("Recipe validation failed:", { 
+      console.log("❌ 분해 레시피 검증 실패:", { 
         inputMaterial, 
         outputMaterial, 
         foundRecipe: recipe,
         expectedInputMaterial: recipe?.inputMaterial 
       });
-      return res.status(400).json({ error: "Invalid decompose recipe" });
+      return res.status(400).json({ error: "잘못된 분해 레시피입니다." });
     }
     
     // 수량 검증
@@ -8480,8 +8533,8 @@ app.post("/api/decompose-material", authenticateJWT, async (req, res) => {
     const currentInputCount = userInputMaterial?.count || 0;
     
     if (currentInputCount < quantity) {
-      console.log(`Not enough material: ${inputMaterial} (need ${quantity}, have ${currentInputCount})`);
-      return res.status(400).json({ error: `분해할 재료가 부족합니다. (${currentInputCount}/${quantity})` });
+      console.log(`❌ 재료 부족: ${inputMaterial} 분해 (보유: ${currentInputCount}, 필요: ${quantity})`);
+      return res.status(400).json({ error: `분해할 재료가 부족합니다. (보유: ${currentInputCount}/${quantity})` });
     }
     
     // 💰 분해 비용 계산 및 차감 (원형 물고기 가격 기반)
@@ -8498,9 +8551,9 @@ app.post("/api/decompose-material", authenticateJWT, async (req, res) => {
       const currentGold = userMoney?.money || 0;
       
       if (currentGold < decomposeCost) {
-        console.log(`Not enough gold: has ${currentGold}, needs ${decomposeCost}`);
+        console.log(`❌ 골드 부족: ${inputMaterial} 분해 (보유: ${currentGold}, 필요: ${decomposeCost})`);
         return res.status(400).json({ 
-          error: `골드가 부족합니다. (${currentGold}/${decomposeCost})`,
+          error: `골드가 부족합니다. (보유: ${currentGold.toLocaleString()}G / 필요: ${decomposeCost.toLocaleString()}G)`,
           requiredGold: decomposeCost,
           currentGold: currentGold
         });
@@ -8571,7 +8624,7 @@ app.post("/api/decompose-material", authenticateJWT, async (req, res) => {
       { upsert: true, new: true }
     );
     
-    console.log(`Created/Updated ${outputMaterial}: +${totalOutputCount} (total: ${updateResult.count})`);
+    console.log(`✅ 분해 성공: ${inputMaterial} ${quantity}개 → ${outputMaterial} ${totalOutputCount}개 (총 ${updateResult.count}개 보유)`);
     
     // 최종 골드 조회
     const finalUserMoney = await UserMoneyModel.findOne(query);
@@ -9096,14 +9149,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.293"
+    version: "v1.294"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.293",
+    version: "v1.294",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [

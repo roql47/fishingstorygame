@@ -3,8 +3,9 @@
  * 낚시대와 악세서리 구매 기능
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ShoppingCart, Coins, Gem, Star, Fish, Diamond, Package } from 'lucide-react';
+import { getFishData } from '../data/gameData';
 
 const ShopTab = ({
   // 상태
@@ -22,11 +23,32 @@ const ShopTab = ({
   exchangeEtherKeys
 }) => {
   const [activeShopTab, setActiveShopTab] = useState('equipment'); // equipment, items
+  const [fishData, setFishData] = useState([]);
+  
+  // 물고기 데이터 가져오기
+  useEffect(() => {
+    const loadFishData = async () => {
+      try {
+        const data = await getFishData();
+        setFishData(data);
+      } catch (error) {
+        console.error('Failed to load fish data:', error);
+      }
+    };
+    loadFishData();
+  }, []);
   
   // 재료 수량 가져오기 함수
   const getMaterialCount = (materialName) => {
     const material = materials?.find(m => m.material === materialName);
     return material?.count || 0;
+  };
+  
+  // 💰 필요한 골드 계산 함수 (재료 물고기 판매가의 1/10)
+  const calculateRequiredGold = (materialName, materialCount) => {
+    const fish = fishData.find(f => f.material === materialName);
+    if (!fish) return 0;
+    return Math.floor((fish.price / 10) * materialCount);
   };
   
   // 구매 가능 여부 체크 함수
@@ -176,7 +198,11 @@ const ShopTab = ({
                   .map((item, index) => {
                   const userMaterialCount = getMaterialCount(item.material);
                   const hasEnoughMaterial = userMaterialCount >= item.materialCount;
-                  const canBuy = hasEnoughMaterial;
+                  const requiredGold = calculateRequiredGold(item.material, item.materialCount);
+                  const hasEnoughGold = userMoney >= requiredGold;
+                  const canBuy = hasEnoughMaterial && hasEnoughGold;
+                  // buyItem에 전달할 때 필요한 골드 정보 추가
+                  const itemWithGold = { ...item, requiredGold, category: 'fishing_rod' };
                   
                   return (
                     <div key={index} className={`p-4 rounded-xl border transition-all duration-300 hover:scale-105 ${
@@ -227,9 +253,31 @@ const ShopTab = ({
                           }`}>
                             보유: {userMaterialCount}개
                           </span>
+                          <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${
+                            isDarkMode 
+                              ? "bg-yellow-500/20 border border-yellow-500/30" 
+                              : "bg-yellow-500/10 border border-yellow-500/20"
+                          }`}>
+                            <Coins className={`w-4 h-4 ${
+                              isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                            }`} />
+                            <span className={`text-sm font-bold ${
+                              isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                            }`}>{requiredGold.toLocaleString()}</span>
+                            <span className={`text-xs ${
+                              isDarkMode ? "text-gray-400" : "text-gray-600"
+                            }`}>골드</span>
+                          </div>
+                          <span className={`text-xs ml-2 ${
+                            hasEnoughGold
+                              ? isDarkMode ? "text-green-400" : "text-green-600"
+                              : isDarkMode ? "text-red-400" : "text-red-600"
+                          }`}>
+                            보유: {userMoney.toLocaleString()}골드
+                          </span>
                         </div>
                         <button
-                          onClick={() => buyItem(item)}
+                          onClick={() => buyItem(itemWithGold)}
                           disabled={!canBuy}
                           className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
                             !canBuy
@@ -264,7 +312,11 @@ const ShopTab = ({
                   .map((item, index) => {
                   const userMaterialCount = getMaterialCount(item.material);
                   const hasEnoughMaterial = userMaterialCount >= item.materialCount;
-                  const canBuy = hasEnoughMaterial;
+                  const requiredGold = calculateRequiredGold(item.material, item.materialCount);
+                  const hasEnoughGold = userMoney >= requiredGold;
+                  const canBuy = hasEnoughMaterial && hasEnoughGold;
+                  // buyItem에 전달할 때 필요한 골드 정보 추가
+                  const itemWithGold = { ...item, requiredGold, category: 'accessories' };
                   
                   return (
                     <div key={index} className={`p-4 rounded-xl border transition-all duration-300 hover:scale-105 ${
@@ -315,9 +367,31 @@ const ShopTab = ({
                           }`}>
                             보유: {userMaterialCount}개
                           </span>
+                          <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${
+                            isDarkMode 
+                              ? "bg-yellow-500/20 border border-yellow-500/30" 
+                              : "bg-yellow-500/10 border border-yellow-500/20"
+                          }`}>
+                            <Coins className={`w-4 h-4 ${
+                              isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                            }`} />
+                            <span className={`text-sm font-bold ${
+                              isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                            }`}>{requiredGold.toLocaleString()}</span>
+                            <span className={`text-xs ${
+                              isDarkMode ? "text-gray-400" : "text-gray-600"
+                            }`}>골드</span>
+                          </div>
+                          <span className={`text-xs ml-2 ${
+                            hasEnoughGold
+                              ? isDarkMode ? "text-green-400" : "text-green-600"
+                              : isDarkMode ? "text-red-400" : "text-red-600"
+                          }`}>
+                            보유: {userMoney.toLocaleString()}골드
+                          </span>
                         </div>
                         <button
-                          onClick={() => buyItem(item)}
+                          onClick={() => buyItem(itemWithGold)}
                           disabled={!canBuy}
                           className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
                             !canBuy

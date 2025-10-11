@@ -207,9 +207,9 @@ function App() {
     }
   }, []);
 
-  // 🔄 버전 업데이트 시 캐시 초기화 (v1.293)
+  // 🔄 버전 업데이트 시 캐시 초기화 (v1.294)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.293";
+    const CURRENT_VERSION = "v1.294";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -1254,7 +1254,7 @@ function App() {
     const isCompanion = source.includes("동료");
     const isPlayer = source.includes("플레이어");
     
-    // 데미지 숫자 애니메이션 - 레이드 영역 내 랜덤 위치
+    // 데미지 숫자 애니메이션 - 레이드 영역 내 랜덤 위치 (오른쪽으로 이동)
     const newDamageNumber = {
       id: animationId,
       damage,
@@ -1262,7 +1262,7 @@ function App() {
       source,
       isCompanion,
       isPlayer,
-      x: Math.random() * 400 + 50, // 50px ~ 450px (레이드 카드 내부)
+      x: Math.random() * 400 + 150, // 150px ~ 550px (레이드 카드 내부, 오른쪽으로 이동)
       y: Math.random() * 300 + 100, // 100px ~ 400px (보스 주변)
       rotation: (Math.random() - 0.5) * 30, // -15도 ~ +15도 랜덤 회전
       scale: isCritical ? 1.2 + Math.random() * 0.3 : 1 + Math.random() * 0.2 // 랜덤 크기
@@ -1303,13 +1303,17 @@ function App() {
     if (!raidBoss || !raidBoss.isActive || isAttacking || attackCooldown > 0) return;
     
     console.log(`⚔️ 공격 시작 - 현재 상태: 공격중=${isAttacking}, 쿨타임=${attackCooldown}`);
+    console.log(`⚔️ 전투 참여 동료:`, battleCompanions);
     setIsAttacking(true);
 
     // 레이드 공격 전에 동료 전투 상태를 서버에 동기화
     await syncBattleCompanionsToServer();
     
     try {
-      const response = await authenticatedRequest.post(`${serverUrl}/api/raid/attack`);
+      // 전투 참여 동료 정보를 직접 전달
+      const response = await authenticatedRequest.post(`${serverUrl}/api/raid/attack`, {
+        battleCompanions: battleCompanions // 클라이언트에서 직접 전달
+      });
       if (response.data.success) {
         console.log(`🎯 공격 성공 응답: ${response.data.damage} 데미지`);
         console.log(`📊 데미지 세부사항:`, response.data.damageBreakdown);
@@ -2802,6 +2806,18 @@ function App() {
       };
       setDamageNumbers(prev => [...prev, victoryDamage]);
       console.log("🎉 승리 애니메이션 트리거");
+      
+      // 🔄 별조각 상태 업데이트 (막타 보너스)
+      if (data.lastAttackBonus && data.lastAttackBonus.starPieces > 0) {
+        console.log(`⭐ 막타 보너스 별조각 ${data.lastAttackBonus.starPieces}개 지급`);
+        setUserStarPieces(prev => prev + data.lastAttackBonus.starPieces);
+      }
+      
+      // 🔄 호박석 상태 업데이트 (일반 보상)
+      if (data.reward && data.reward.amount > 0) {
+        console.log(`🟡 호박석 ${data.reward.amount}개 지급`);
+        setUserAmber(prev => prev + data.reward.amount);
+      }
       
       // 3초 후 정리
       setTimeout(() => {
@@ -6465,6 +6481,8 @@ function App() {
       return;
     }
 
+    console.log('🔨 조합 시도:', { materialName, recipe });
+
     try {
       const userId = idToken ? 'user' : 'null';
       const params = { username, userUuid };
@@ -6476,6 +6494,8 @@ function App() {
         outputMaterial: recipe.outputMaterial,
         outputCount: recipe.outputCount
       });
+
+      console.log('✅ 조합 응답:', response.data);
 
       if (response.data.success) {
         // 재료 목록 새로고침
@@ -6496,10 +6516,12 @@ function App() {
           timestamp: new Date().toISOString()
         }]);
       } else {
+        console.error('❌ 조합 실패 (success:false):', response.data);
         alert(response.data.error || '조합에 실패했습니다.');
       }
     } catch (error) {
-      console.error('Failed to craft material:', error);
+      console.error('❌ 조합 에러:', error);
+      console.error('에러 응답:', error.response?.data);
       alert(error.response?.data?.error || '조합에 실패했습니다.');
     }
   };
@@ -6510,6 +6532,8 @@ function App() {
       alert('사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.');
       return;
     }
+
+    console.log('🔧 분해 시도:', { materialName, recipe, quantity });
 
     try {
       const userId = idToken ? 'user' : 'null';
@@ -6522,6 +6546,8 @@ function App() {
         outputCount: 3, // 분해 시 3개 획득
         quantity: quantity // 분해할 개수
       });
+
+      console.log('✅ 분해 응답:', response.data);
 
       if (response.data.success) {
         // 재료 목록 새로고침
@@ -6543,10 +6569,12 @@ function App() {
           timestamp: new Date().toISOString()
         }]);
       } else {
+        console.error('❌ 분해 실패 (success:false):', response.data);
         alert(response.data.error || '분해에 실패했습니다.');
       }
     } catch (error) {
-      console.error('Failed to decompose material:', error);
+      console.error('❌ 분해 에러:', error);
+      console.error('에러 응답:', error.response?.data);
       alert(error.response?.data?.error || '분해에 실패했습니다.');
     }
   };
@@ -6567,6 +6595,14 @@ function App() {
     if (userMaterialCount < item.materialCount) {
       alert(`재료가 부족합니다! (${item.material} ${userMaterialCount}/${item.materialCount})`);
       return;
+    }
+    
+    // 💰 낚시대와 악세사리는 골드도 필요함 (재료 물고기 판매가의 1/10)
+    if (item.category === 'fishing_rod' || item.category === 'accessories') {
+      if (item.requiredGold && userMoney < item.requiredGold) {
+        alert(`골드가 부족합니다! (${userMoney.toLocaleString()}/${item.requiredGold.toLocaleString()})`);
+        return;
+      }
     }
     
     try {
@@ -6599,6 +6635,11 @@ function App() {
           ).filter(m => m.count > 0);
           return updated;
         });
+        
+        // 💰 낚시대/악세사리 구매 시 골드 차감 (로컬)
+        if ((item.category === 'fishing_rod' || item.category === 'accessories') && item.requiredGold) {
+          setUserMoney(prev => prev - item.requiredGold);
+        }
         
         // 장비 자동 장착
         if (item.category === 'fishing_rod') {
@@ -6683,6 +6724,9 @@ function App() {
       console.error('Failed to buy item:', error);
       if (error.response?.data?.error === 'Not enough materials') {
         alert('재료가 부족합니다!');
+      } else if (error.response?.data?.error === 'Not enough gold') {
+        const requiredGold = error.response?.data?.requiredGold;
+        alert(`골드가 부족합니다! (필요: ${requiredGold?.toLocaleString() || '?'}골드)`);
       } else {
         alert('아이템 구매에 실패했습니다.');
       }
@@ -6728,7 +6772,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.293
+                여우이야기 v1.294
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -7973,13 +8017,20 @@ function App() {
                         .map((item, index) => {
                           const craftRecipe = getCraftingRecipe(item.material);
                           const decomposeRecipe = getDecomposeRecipe(item.material);
-                          const canCraft = craftRecipe && item.count >= craftRecipe.inputCount;
-                          const canDecompose = decomposeRecipe && item.count >= 1;
                           
                           // 조합/분해 비용 계산
                           const sourceFish = getMaterialToFish(item.material);
                           const craftCost = sourceFish ? getFishPrice(sourceFish.name) : 0;
                           const decomposeCost = sourceFish ? getFishPrice(sourceFish.name) : 0;
+                          
+                          // 골드 체크 포함
+                          const hasEnoughMaterialsForCraft = craftRecipe && item.count >= craftRecipe.inputCount;
+                          const hasEnoughGoldForCraft = gold >= craftCost;
+                          const canCraft = hasEnoughMaterialsForCraft && hasEnoughGoldForCraft;
+                          
+                          const hasEnoughMaterialsForDecompose = decomposeRecipe && item.count >= 1;
+                          const hasEnoughGoldForDecompose = gold >= decomposeCost;
+                          const canDecompose = hasEnoughMaterialsForDecompose && hasEnoughGoldForDecompose;
                           
                           return (
                             <div key={index} className={`p-4 rounded-xl hover:glow-effect transition-all duration-300 group ${
@@ -8017,7 +8068,15 @@ function App() {
                                           : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border border-amber-500/30 hover:scale-105"
                                         : "opacity-50 cursor-not-allowed bg-gray-500/10 text-gray-500 border border-gray-500/20"
                                     }`}
-                                    title={canCraft ? `${craftRecipe.inputMaterial} 3개 → ${craftRecipe.outputMaterial} 1개 (비용: ${craftCost.toLocaleString()}G)` : `재료가 부족합니다 (${item.count}/3)`}
+                                    title={
+                                      canCraft 
+                                        ? `${craftRecipe.inputMaterial} 3개 → ${craftRecipe.outputMaterial} 1개 (비용: ${craftCost.toLocaleString()}G)` 
+                                        : !hasEnoughMaterialsForCraft && !hasEnoughGoldForCraft
+                                        ? `재료와 골드가 부족합니다 (재료: ${item.count}/${craftRecipe.inputCount}, 골드: ${gold.toLocaleString()}/${craftCost.toLocaleString()})`
+                                        : !hasEnoughMaterialsForCraft
+                                        ? `재료가 부족합니다 (${item.count}/${craftRecipe.inputCount})`
+                                        : `골드가 부족합니다 (${gold.toLocaleString()}/${craftCost.toLocaleString()})`
+                                    }
                                   >
                                     <Hammer className="w-4 h-4" />
                                     <span className="text-sm">조합 ({craftCost.toLocaleString()}G)</span>
@@ -8036,7 +8095,15 @@ function App() {
                                           : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border border-blue-500/30 hover:scale-105"
                                         : "opacity-50 cursor-not-allowed bg-gray-500/10 text-gray-500 border border-gray-500/20"
                                     }`}
-                                    title={canDecompose ? `${decomposeRecipe.outputMaterial} → ${decomposeRecipe.inputMaterial} (1개당 3개 획득, 비용: ${decomposeCost.toLocaleString()}G/개)` : "재료가 부족합니다"}
+                                    title={
+                                      canDecompose 
+                                        ? `${decomposeRecipe.outputMaterial} → ${decomposeRecipe.inputMaterial} (1개당 3개 획득, 비용: ${decomposeCost.toLocaleString()}G/개)` 
+                                        : !hasEnoughMaterialsForDecompose && !hasEnoughGoldForDecompose
+                                        ? `재료와 골드가 부족합니다 (재료: ${item.count}/1, 골드: ${gold.toLocaleString()}/${decomposeCost.toLocaleString()})`
+                                        : !hasEnoughMaterialsForDecompose
+                                        ? "재료가 부족합니다"
+                                        : `골드가 부족합니다 (${gold.toLocaleString()}/${decomposeCost.toLocaleString()})`
+                                    }
                                   >
                                     <Trash2 className="w-4 h-4" />
                                     <span className="text-sm">분해 ({decomposeCost.toLocaleString()}G/개)</span>

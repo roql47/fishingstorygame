@@ -112,6 +112,7 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
   router.post("/attack", authenticateJWT, async (req, res) => {
     try {
       const { userUuid } = req.user;
+      const { battleCompanions } = req.body; // 클라이언트에서 전달한 전투 참여 동료 목록
       
       // 사용자 정보 가져오기
       const user = await UserUuidModel.findOne({ userUuid }).lean();
@@ -152,19 +153,35 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         최종_낚시실력: fishingSkill
       });
       
-      // 전투 참전 동료 가져오기 (CompanionStatsModel 사용)
-      const companions = await CompanionStatsModel.find({ 
-        userUuid, 
-        isInBattle: true 
-      }).lean();
+      // 🔧 전투 참전 동료 가져오기 (클라이언트에서 전달한 목록 우선 사용)
+      let companions = [];
+      if (battleCompanions && Array.isArray(battleCompanions) && battleCompanions.length > 0) {
+        console.log(`[Raid] 클라이언트에서 전달한 전투 참여 동료:`, battleCompanions);
+        
+        // 클라이언트가 전달한 동료 이름으로 DB에서 조회
+        companions = await CompanionStatsModel.find({ 
+          userUuid, 
+          companionName: { $in: battleCompanions }
+        }).lean();
+        
+        console.log(`[Raid] DB에서 조회한 동료 데이터:`, companions.map(c => ({ name: c.companionName, level: c.level })));
+      } else {
+        // 클라이언트에서 전달하지 않은 경우 DB의 isInBattle 플래그 사용 (기존 방식)
+        console.log(`[Raid] 클라이언트에서 동료 정보 없음. DB의 isInBattle 플래그 사용`);
+        companions = await CompanionStatsModel.find({ 
+          userUuid, 
+          isInBattle: true 
+        }).lean();
+      }
       
       // 모든 동료도 확인 (디버깅용)
       const allCompanions = await CompanionStatsModel.find({ userUuid }).lean();
       
       console.log(`[Raid] ${user.displayName} 동료 데이터:`, {
         전투_참전_동료: companions.length,
+        전투_참전_동료_목록: companions.map(c => ({ name: c.companionName, level: c.level })),
         전체_동료: allCompanions.length,
-        동료_목록: allCompanions.map(c => ({ name: c.companionName, isInBattle: c.isInBattle, level: c.level }))
+        전체_동료_목록: allCompanions.map(c => ({ name: c.companionName, isInBattle: c.isInBattle, level: c.level }))
       });
       
       // 사용자 장비 정보 조회 (강화 보너스 계산용)
