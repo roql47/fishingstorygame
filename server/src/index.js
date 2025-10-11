@@ -4860,14 +4860,12 @@ app.post("/api/update-companion-stats", authenticateJWT, async (req, res) => {
       console.log(`✅ ${companionName} 신규 생성: 레벨 ${updateData.level}, 경험치 ${updateData.experience}`);
     }
     
-    // 새로 생성하는 경우에만 기본값 설정
+    // 새로 생성하는 경우에만 기본값 설정 (중복 필드 제거)
     const setOnInsertData = {
       userId: query.userId || 'user',
       username: query.username || username,
       userUuid: query.userUuid || userUuid,
-      companionName: companionName,
-      level: level || 1,
-      experience: experience || 0
+      companionName: companionName
     };
     
     const companionStat = await CompanionStatsModel.findOneAndUpdate(
@@ -7320,33 +7318,54 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
       }
     }
     
-    // 🎯 성능 최적화: count 필드로 재료 개수 확인
-    const userMaterial = await MaterialModel.findOne({
-      ...query,
-      material: requiredMaterial
-    });
+    // 🎯 재료 확인 및 차감 (별조각과 일반 재료 구분)
+    let userMaterialCount = 0;
     
-    const userMaterialCount = userMaterial?.count || 0;
-    
-    if (userMaterialCount < requiredCount) {
-      console.log(`Material shortage: User has ${userMaterialCount}, needs ${requiredCount}`);
-      return res.status(400).json({ error: "Not enough materials" });
-    }
-    
-    // 🚀 재료 차감 (count 필드 업데이트)
-    const newCount = userMaterialCount - requiredCount;
-    
-    if (newCount <= 0) {
-      // 남은 개수가 0 이하면 document 삭제
-      await MaterialModel.deleteOne({ ...query, material: requiredMaterial });
-      console.log(`Material ${requiredMaterial} completely consumed (deleted document)`);
-    } else {
-      // 남은 개수가 있으면 count만 업데이트
-      await MaterialModel.updateOne(
-        { ...query, material: requiredMaterial },
-        { $inc: { count: -requiredCount } }
+    if (requiredMaterial === '별조각') {
+      // 별조각인 경우 StarPieceModel에서 확인
+      const userStarPieces = await StarPieceModel.findOne(query);
+      userMaterialCount = userStarPieces?.starPieces || 0;
+      
+      if (userMaterialCount < requiredCount) {
+        console.log(`Star pieces shortage: User has ${userMaterialCount}, needs ${requiredCount}`);
+        return res.status(400).json({ error: "Not enough star pieces" });
+      }
+      
+      // 별조각 차감
+      await StarPieceModel.updateOne(
+        query,
+        { $inc: { starPieces: -requiredCount } }
       );
-      console.log(`Material ${requiredMaterial} reduced by ${requiredCount} (${userMaterialCount} → ${newCount})`);
+      console.log(`Star pieces reduced by ${requiredCount} (${userMaterialCount} → ${userMaterialCount - requiredCount})`);
+    } else {
+      // 일반 재료인 경우 MaterialModel에서 확인
+      const userMaterial = await MaterialModel.findOne({
+        ...query,
+        material: requiredMaterial
+      });
+      
+      userMaterialCount = userMaterial?.count || 0;
+      
+      if (userMaterialCount < requiredCount) {
+        console.log(`Material shortage: User has ${userMaterialCount}, needs ${requiredCount}`);
+        return res.status(400).json({ error: "Not enough materials" });
+      }
+      
+      // 재료 차감 (count 필드 업데이트)
+      const newCount = userMaterialCount - requiredCount;
+      
+      if (newCount <= 0) {
+        // 남은 개수가 0 이하면 document 삭제
+        await MaterialModel.deleteOne({ ...query, material: requiredMaterial });
+        console.log(`Material ${requiredMaterial} completely consumed (deleted document)`);
+      } else {
+        // 남은 개수가 있으면 count만 업데이트
+        await MaterialModel.updateOne(
+          { ...query, material: requiredMaterial },
+          { $inc: { count: -requiredCount } }
+        );
+        console.log(`Material ${requiredMaterial} reduced by ${requiredCount} (${userMaterialCount} → ${newCount})`);
+      }
     }
 
     

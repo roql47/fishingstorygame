@@ -40,6 +40,11 @@ const ShopTab = ({
   
   // 재료 수량 가져오기 함수
   const getMaterialCount = (materialName) => {
+    // 별조각인 경우 userStarPieces에서 가져오기
+    if (materialName === '별조각') {
+      return userStarPieces || 0;
+    }
+    // 일반 재료는 materials 배열에서 찾기
     const material = materials?.find(m => m.material === materialName);
     return material?.count || 0;
   };
@@ -190,9 +195,9 @@ const ShopTab = ({
                   isDarkMode ? "text-blue-400" : "text-blue-600"
               }`}>
                 <Fish className="w-5 h-5" />
-                <h3 className="font-semibold">낚시대</h3>
+                <h3 className="font-semibold text-lg">낚시대</h3>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-4">
                 {getAllShopItems('fishing_rod')
                   .filter(item => canPurchaseItem(item, 'fishing_rod'))
                   .map((item, index) => {
@@ -205,92 +210,103 @@ const ShopTab = ({
                   const itemWithGold = { ...item, requiredGold, category: 'fishing_rod' };
                   
                   return (
-                    <div key={index} className={`p-4 rounded-xl border transition-all duration-300 hover:scale-105 ${
+                    <div key={index} className={`group relative overflow-hidden rounded-2xl transition-all duration-300 ${
                       isDarkMode 
-                        ? "bg-blue-500/10 border-blue-500/30 hover:border-blue-400/50" 
-                        : "bg-blue-500/5 border-blue-500/20 hover:border-blue-400/40"
+                        ? "bg-gradient-to-br from-blue-500/15 via-blue-500/10 to-transparent border border-blue-500/30 hover:border-blue-400/50" 
+                        : "bg-gradient-to-br from-blue-50 via-white to-transparent border border-blue-200 hover:border-blue-300"
                     }`}>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-lg ${
-                            isDarkMode ? "bg-blue-500/20" : "bg-blue-500/10"
+                      {/* 배경 장식 효과 */}
+                      <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl opacity-0 group-hover:opacity-20 transition-opacity duration-500 ${
+                        isDarkMode ? "bg-blue-500" : "bg-blue-300"
+                      }`}></div>
+                      
+                      <div className="relative p-5">
+                        <div className="flex items-start gap-4 mb-4">
+                          {/* 아이콘 */}
+                          <div className={`flex-shrink-0 w-14 h-14 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 ${
+                            isDarkMode 
+                              ? "bg-gradient-to-br from-blue-500/30 to-blue-600/20" 
+                              : "bg-gradient-to-br from-blue-400/20 to-blue-500/10"
                           }`}>
-                            <Fish className={`w-6 h-6 ${
-                              isDarkMode ? "text-blue-400" : "text-blue-600"
-                            }`} />
+                            <Fish className={`w-7 h-7 ${isDarkMode ? "text-blue-300" : "text-blue-600"}`} />
                           </div>
-                          <div>
-                            <h4 className={`font-bold ${
-                              isDarkMode ? "text-white" : "text-gray-800"
+                          
+                          {/* 아이템 정보 */}
+                          <div className="flex-1 min-w-0">
+                            <h4 className={`text-lg font-bold mb-1 ${
+                              isDarkMode ? "text-white" : "text-gray-900"
                             }`}>{item.name}</h4>
-                            <p className={`text-sm ${
+                            <p className={`text-sm leading-relaxed ${
                               isDarkMode ? "text-gray-400" : "text-gray-600"
                             }`}>{item.description}</p>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex flex-col gap-1">
-                          <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${
-                            isDarkMode 
-                              ? "bg-purple-500/20 border border-purple-500/30" 
-                              : "bg-purple-500/10 border border-purple-500/20"
-                          }`}>
-                            <Package className={`w-4 h-4 ${
-                              isDarkMode ? "text-purple-400" : "text-purple-600"
-                            }`} />
-                            <span className={`text-sm font-bold ${
-                              isDarkMode ? "text-purple-400" : "text-purple-600"
-                            }`}>{item.material}</span>
-                            <span className={`text-xs ${
-                              isDarkMode ? "text-gray-400" : "text-gray-600"
-                            }`}>x{item.materialCount}</span>
+                        
+                        {/* 가격 정보와 버튼 */}
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex flex-col gap-2">
+                            {/* 재료 */}
+                            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${
+                              isDarkMode 
+                                ? hasEnoughMaterial 
+                                  ? "bg-purple-500/20 border border-purple-500/40"
+                                  : "bg-red-500/20 border border-red-500/40"
+                                : hasEnoughMaterial
+                                  ? "bg-purple-50 border border-purple-200"
+                                  : "bg-red-50 border border-red-200"
+                            }`}>
+                              <Package className={`w-4 h-4 ${
+                                hasEnoughMaterial
+                                  ? isDarkMode ? "text-purple-300" : "text-purple-600"
+                                  : isDarkMode ? "text-red-400" : "text-red-500"
+                              }`} />
+                              <span className={`text-sm font-semibold ${
+                                hasEnoughMaterial
+                                  ? isDarkMode ? "text-purple-300" : "text-purple-700"
+                                  : isDarkMode ? "text-red-400" : "text-red-600"
+                              }`}>{item.material} ×{item.materialCount}</span>
+                            </div>
+                            
+                            {/* 골드 */}
+                            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${
+                              isDarkMode 
+                                ? hasEnoughGold
+                                  ? "bg-yellow-500/20 border border-yellow-500/40"
+                                  : "bg-red-500/20 border border-red-500/40"
+                                : hasEnoughGold
+                                  ? "bg-yellow-50 border border-yellow-200"
+                                  : "bg-red-50 border border-red-200"
+                            }`}>
+                              <Coins className={`w-4 h-4 ${
+                                hasEnoughGold
+                                  ? isDarkMode ? "text-yellow-300" : "text-yellow-600"
+                                  : isDarkMode ? "text-red-400" : "text-red-500"
+                              }`} />
+                              <span className={`text-sm font-semibold ${
+                                hasEnoughGold
+                                  ? isDarkMode ? "text-yellow-300" : "text-yellow-700"
+                                  : isDarkMode ? "text-red-400" : "text-red-600"
+                              }`}>{requiredGold.toLocaleString()}G</span>
+                            </div>
                           </div>
-                          <span className={`text-xs ml-2 ${
-                            hasEnoughMaterial
-                              ? isDarkMode ? "text-green-400" : "text-green-600"
-                              : isDarkMode ? "text-red-400" : "text-red-600"
-                          }`}>
-                            보유: {userMaterialCount}개
-                          </span>
-                          <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${
-                            isDarkMode 
-                              ? "bg-yellow-500/20 border border-yellow-500/30" 
-                              : "bg-yellow-500/10 border border-yellow-500/20"
-                          }`}>
-                            <Coins className={`w-4 h-4 ${
-                              isDarkMode ? "text-yellow-400" : "text-yellow-600"
-                            }`} />
-                            <span className={`text-sm font-bold ${
-                              isDarkMode ? "text-yellow-400" : "text-yellow-600"
-                            }`}>{requiredGold.toLocaleString()}</span>
-                            <span className={`text-xs ${
-                              isDarkMode ? "text-gray-400" : "text-gray-600"
-                            }`}>골드</span>
-                          </div>
-                          <span className={`text-xs ml-2 ${
-                            hasEnoughGold
-                              ? isDarkMode ? "text-green-400" : "text-green-600"
-                              : isDarkMode ? "text-red-400" : "text-red-600"
-                          }`}>
-                            보유: {userMoney.toLocaleString()}골드
-                          </span>
+                          
+                          {/* 구매 버튼 */}
+                          <button
+                            onClick={() => buyItem(itemWithGold)}
+                            disabled={!canBuy}
+                            className={`px-6 py-3 rounded-xl font-bold text-sm transition-all duration-200 ${
+                              !canBuy
+                                ? isDarkMode
+                                  ? "bg-gray-700 text-gray-500 cursor-not-allowed opacity-50"
+                                  : "bg-gray-200 text-gray-400 cursor-not-allowed opacity-50"
+                                : isDarkMode
+                                  ? "bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white hover:scale-105 active:scale-95"
+                                  : "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white hover:scale-105 active:scale-95"
+                            }`}
+                          >
+                            구매하기
+                          </button>
                         </div>
-                        <button
-                          onClick={() => buyItem(itemWithGold)}
-                          disabled={!canBuy}
-                          className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
-                            !canBuy
-                              ? isDarkMode
-                                ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                                : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                              : isDarkMode
-                                ? "bg-blue-600 hover:bg-blue-500 text-white"
-                                : "bg-blue-500 hover:bg-blue-600 text-white"
-                          } hover:scale-105 active:scale-95`}
-                        >
-                          구매하기
-                        </button>
                       </div>
                     </div>
                   );
@@ -304,9 +320,9 @@ const ShopTab = ({
                   isDarkMode ? "text-orange-400" : "text-orange-600"
               }`}>
                 <Diamond className="w-5 h-5" />
-                <h3 className="font-semibold">악세서리</h3>
+                <h3 className="font-semibold text-lg">악세서리</h3>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-4">
                 {getAllShopItems('accessories')
                   .filter(item => canPurchaseItem(item, 'accessories'))
                   .map((item, index) => {
@@ -319,92 +335,103 @@ const ShopTab = ({
                   const itemWithGold = { ...item, requiredGold, category: 'accessories' };
                   
                   return (
-                    <div key={index} className={`p-4 rounded-xl border transition-all duration-300 hover:scale-105 ${
+                    <div key={index} className={`group relative overflow-hidden rounded-2xl transition-all duration-300 ${
                       isDarkMode 
-                        ? "bg-orange-500/10 border-orange-500/30 hover:border-orange-400/50" 
-                        : "bg-orange-500/5 border-orange-500/20 hover:border-orange-400/40"
+                        ? "bg-gradient-to-br from-orange-500/15 via-orange-500/10 to-transparent border border-orange-500/30 hover:border-orange-400/50" 
+                        : "bg-gradient-to-br from-orange-50 via-white to-transparent border border-orange-200 hover:border-orange-300"
                     }`}>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-lg ${
-                            isDarkMode ? "bg-orange-500/20" : "bg-orange-500/10"
+                      {/* 배경 장식 효과 */}
+                      <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl opacity-0 group-hover:opacity-20 transition-opacity duration-500 ${
+                        isDarkMode ? "bg-orange-500" : "bg-orange-300"
+                      }`}></div>
+                      
+                      <div className="relative p-5">
+                        <div className="flex items-start gap-4 mb-4">
+                          {/* 아이콘 */}
+                          <div className={`flex-shrink-0 w-14 h-14 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 ${
+                            isDarkMode 
+                              ? "bg-gradient-to-br from-orange-500/30 to-orange-600/20" 
+                              : "bg-gradient-to-br from-orange-400/20 to-orange-500/10"
                           }`}>
-                            <Diamond className={`w-6 h-6 ${
-                              isDarkMode ? "text-orange-400" : "text-orange-600"
-                            }`} />
+                            <Diamond className={`w-7 h-7 ${isDarkMode ? "text-orange-300" : "text-orange-600"}`} />
                           </div>
-                          <div>
-                            <h4 className={`font-bold ${
-                              isDarkMode ? "text-white" : "text-gray-800"
+                          
+                          {/* 아이템 정보 */}
+                          <div className="flex-1 min-w-0">
+                            <h4 className={`text-lg font-bold mb-1 ${
+                              isDarkMode ? "text-white" : "text-gray-900"
                             }`}>{item.name}</h4>
-                            <p className={`text-sm ${
+                            <p className={`text-sm leading-relaxed ${
                               isDarkMode ? "text-gray-400" : "text-gray-600"
                             }`}>{item.description}</p>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex flex-col gap-1">
-                          <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${
-                            isDarkMode 
-                              ? "bg-purple-500/20 border border-purple-500/30" 
-                              : "bg-purple-500/10 border border-purple-500/20"
-                          }`}>
-                            <Package className={`w-4 h-4 ${
-                              isDarkMode ? "text-purple-400" : "text-purple-600"
-                            }`} />
-                            <span className={`text-sm font-bold ${
-                              isDarkMode ? "text-purple-400" : "text-purple-600"
-                            }`}>{item.material}</span>
-                            <span className={`text-xs ${
-                              isDarkMode ? "text-gray-400" : "text-gray-600"
-                            }`}>x{item.materialCount}</span>
+                        
+                        {/* 가격 정보와 버튼 */}
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex flex-col gap-2">
+                            {/* 재료 */}
+                            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${
+                              isDarkMode 
+                                ? hasEnoughMaterial 
+                                  ? "bg-purple-500/20 border border-purple-500/40"
+                                  : "bg-red-500/20 border border-red-500/40"
+                                : hasEnoughMaterial
+                                  ? "bg-purple-50 border border-purple-200"
+                                  : "bg-red-50 border border-red-200"
+                            }`}>
+                              <Package className={`w-4 h-4 ${
+                                hasEnoughMaterial
+                                  ? isDarkMode ? "text-purple-300" : "text-purple-600"
+                                  : isDarkMode ? "text-red-400" : "text-red-500"
+                              }`} />
+                              <span className={`text-sm font-semibold ${
+                                hasEnoughMaterial
+                                  ? isDarkMode ? "text-purple-300" : "text-purple-700"
+                                  : isDarkMode ? "text-red-400" : "text-red-600"
+                              }`}>{item.material} ×{item.materialCount}</span>
+                            </div>
+                            
+                            {/* 골드 */}
+                            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${
+                              isDarkMode 
+                                ? hasEnoughGold
+                                  ? "bg-yellow-500/20 border border-yellow-500/40"
+                                  : "bg-red-500/20 border border-red-500/40"
+                                : hasEnoughGold
+                                  ? "bg-yellow-50 border border-yellow-200"
+                                  : "bg-red-50 border border-red-200"
+                            }`}>
+                              <Coins className={`w-4 h-4 ${
+                                hasEnoughGold
+                                  ? isDarkMode ? "text-yellow-300" : "text-yellow-600"
+                                  : isDarkMode ? "text-red-400" : "text-red-500"
+                              }`} />
+                              <span className={`text-sm font-semibold ${
+                                hasEnoughGold
+                                  ? isDarkMode ? "text-yellow-300" : "text-yellow-700"
+                                  : isDarkMode ? "text-red-400" : "text-red-600"
+                              }`}>{requiredGold.toLocaleString()}G</span>
+                            </div>
                           </div>
-                          <span className={`text-xs ml-2 ${
-                            hasEnoughMaterial
-                              ? isDarkMode ? "text-green-400" : "text-green-600"
-                              : isDarkMode ? "text-red-400" : "text-red-600"
-                          }`}>
-                            보유: {userMaterialCount}개
-                          </span>
-                          <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${
-                            isDarkMode 
-                              ? "bg-yellow-500/20 border border-yellow-500/30" 
-                              : "bg-yellow-500/10 border border-yellow-500/20"
-                          }`}>
-                            <Coins className={`w-4 h-4 ${
-                              isDarkMode ? "text-yellow-400" : "text-yellow-600"
-                            }`} />
-                            <span className={`text-sm font-bold ${
-                              isDarkMode ? "text-yellow-400" : "text-yellow-600"
-                            }`}>{requiredGold.toLocaleString()}</span>
-                            <span className={`text-xs ${
-                              isDarkMode ? "text-gray-400" : "text-gray-600"
-                            }`}>골드</span>
-                          </div>
-                          <span className={`text-xs ml-2 ${
-                            hasEnoughGold
-                              ? isDarkMode ? "text-green-400" : "text-green-600"
-                              : isDarkMode ? "text-red-400" : "text-red-600"
-                          }`}>
-                            보유: {userMoney.toLocaleString()}골드
-                          </span>
+                          
+                          {/* 구매 버튼 */}
+                          <button
+                            onClick={() => buyItem(itemWithGold)}
+                            disabled={!canBuy}
+                            className={`px-6 py-3 rounded-xl font-bold text-sm transition-all duration-200 ${
+                              !canBuy
+                                ? isDarkMode
+                                  ? "bg-gray-700 text-gray-500 cursor-not-allowed opacity-50"
+                                  : "bg-gray-200 text-gray-400 cursor-not-allowed opacity-50"
+                                : isDarkMode
+                                  ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white hover:scale-105 active:scale-95"
+                                  : "bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white hover:scale-105 active:scale-95"
+                            }`}
+                          >
+                            구매하기
+                          </button>
                         </div>
-                        <button
-                          onClick={() => buyItem(itemWithGold)}
-                          disabled={!canBuy}
-                          className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
-                            !canBuy
-                              ? isDarkMode
-                                ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                                : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                              : isDarkMode
-                                ? "bg-orange-600 hover:bg-orange-500 text-white"
-                                : "bg-orange-500 hover:bg-orange-600 text-white"
-                          } hover:scale-105 active:scale-95`}
-                        >
-                          구매하기
-                        </button>
                       </div>
                     </div>
                   );
@@ -499,75 +526,85 @@ const ShopTab = ({
                 <span className="text-xl">🧪</span>
                 <h3 className="font-semibold">연금술포션</h3>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-3">
                 {getAllShopItems('items').map((item, index) => {
                   const userMaterialCount = getMaterialCount(item.material);
                   const hasEnoughMaterial = userMaterialCount >= item.materialCount;
                   const canBuy = hasEnoughMaterial;
+                  // buyItem에 전달할 때 필요한 카테고리 정보 추가
+                  const itemWithCategory = { ...item, category: 'items' };
                   
                   return (
-                    <div key={index} className={`p-4 rounded-xl border transition-all duration-300 hover:scale-105 ${
+                    <div key={index} className={`p-4 rounded-xl border ${
                       isDarkMode 
-                        ? "bg-green-500/10 border-green-500/30 hover:border-green-400/50" 
-                        : "bg-green-500/5 border-green-500/20 hover:border-green-400/40"
+                        ? "bg-green-500/10 border-green-500/30" 
+                        : "bg-green-500/5 border-green-500/20"
                     }`}>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-lg ${
-                            isDarkMode ? "bg-green-500/20" : "bg-green-500/10"
-                          }`}>
-                            <span className="text-2xl">🧪</span>
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className={`p-2 rounded-lg ${
+                              isDarkMode ? "bg-green-500/20" : "bg-green-500/10"
+                            }`}>
+                              <span className="text-2xl">🧪</span>
+                            </div>
+                            <div>
+                              <h4 className={`font-bold ${
+                                isDarkMode ? "text-white" : "text-gray-800"
+                              }`}>{item.name}</h4>
+                              <p className={`text-sm ${
+                                isDarkMode ? "text-gray-400" : "text-gray-600"
+                              }`}>{item.description}</p>
+                            </div>
                           </div>
-                          <div>
-                            <h4 className={`font-bold ${
-                              isDarkMode ? "text-white" : "text-gray-800"
-                            }`}>{item.name}</h4>
-                            <p className={`text-sm ${
-                              isDarkMode ? "text-gray-400" : "text-gray-600"
-                            }`}>{item.description}</p>
+                          <div className={`text-xs ${
+                            isDarkMode ? "text-gray-400" : "text-gray-600"
+                          }`}>
+                            낚시 쿨타임을 10초로 줄여주는 신비한 포션입니다.
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex flex-col gap-1">
+                        <div className="flex flex-col items-end gap-2">
                           <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${
                             isDarkMode 
-                              ? "bg-blue-500/20 border border-blue-500/30" 
-                              : "bg-blue-500/10 border border-blue-500/20"
+                              ? hasEnoughMaterial
+                                ? "bg-blue-500/20 border border-blue-500/30"
+                                : "bg-red-500/20 border border-red-500/40"
+                              : hasEnoughMaterial
+                                ? "bg-blue-500/10 border border-blue-500/20"
+                                : "bg-red-50 border border-red-200"
                           }`}>
                             <Star className={`w-4 h-4 ${
-                              isDarkMode ? "text-blue-400" : "text-blue-600"
+                              hasEnoughMaterial
+                                ? isDarkMode ? "text-blue-400" : "text-blue-600"
+                                : isDarkMode ? "text-red-400" : "text-red-500"
                             }`} />
                             <span className={`text-sm font-bold ${
-                              isDarkMode ? "text-blue-400" : "text-blue-600"
-                            }`}>{item.material}</span>
+                              hasEnoughMaterial
+                                ? isDarkMode ? "text-blue-400" : "text-blue-600"
+                                : isDarkMode ? "text-red-400" : "text-red-600"
+                            }`}>{item.materialCount}</span>
                             <span className={`text-xs ${
-                              isDarkMode ? "text-gray-400" : "text-gray-600"
-                            }`}>x{item.materialCount}</span>
+                              hasEnoughMaterial
+                                ? isDarkMode ? "text-gray-400" : "text-gray-600"
+                                : isDarkMode ? "text-red-400" : "text-red-600"
+                            }`}>{item.material}</span>
                           </div>
-                          <span className={`text-xs ml-2 ${
-                            hasEnoughMaterial
-                              ? isDarkMode ? "text-green-400" : "text-green-600"
-                              : isDarkMode ? "text-red-400" : "text-red-600"
-                          }`}>
-                            보유: {userMaterialCount}개
-                          </span>
+                          <button
+                            onClick={() => buyItem(itemWithCategory)}
+                            disabled={!canBuy}
+                            className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                              !canBuy
+                                ? isDarkMode
+                                  ? "bg-gray-600 text-gray-400 cursor-not-allowed"
+                                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                : isDarkMode
+                                  ? "bg-green-600 hover:bg-green-500 text-white"
+                                  : "bg-green-500 hover:bg-green-600 text-white"
+                            } hover:scale-105 active:scale-95`}
+                          >
+                            교환하기
+                          </button>
                         </div>
-                        <button
-                          onClick={() => buyItem(item)}
-                          disabled={!canBuy}
-                          className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
-                            !canBuy
-                              ? isDarkMode
-                                ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                                : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                              : isDarkMode
-                                ? "bg-green-600 hover:bg-green-500 text-white"
-                                : "bg-green-500 hover:bg-green-600 text-white"
-                          } hover:scale-105 active:scale-95`}
-                        >
-                          구매하기
-                        </button>
                       </div>
                     </div>
                   );

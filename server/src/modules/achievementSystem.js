@@ -326,14 +326,10 @@ class AchievementSystem {
   // 사용자 업적 목록 조회 (진행상황 포함)
   async getUserAchievements(userUuid) {
     try {
-      console.log('🏆 getUserAchievements called for userUuid:', userUuid);
-      
       // 사용자의 완료된 업적 조회
       const completedAchievements = await AchievementModel.find({ 
         userUuid 
       }).lean();
-      
-      console.log('🏆 Completed achievements found:', completedAchievements.length);
       
       // 진행상황 데이터 조회
       const [totalFish, rareFishRecord, raidDamageRecord] = await Promise.all([
@@ -343,11 +339,7 @@ class AchievementSystem {
       ]);
       
       const rareFishCount = rareFishRecord?.rareFishCount || 0;
-      
       const totalRaidDamage = raidDamageRecord?.totalDamage || 0;
-      
-      console.log('🏆 Progress data:', { totalFish, rareFishCount, totalRaidDamage });
-      console.log('🏆 Raw records:', { rareFishRecord, raidDamageRecord });
       
       // 모든 업적 정의와 완료 상태 및 진행상황 매핑
       const achievements = Object.values(ACHIEVEMENT_DEFINITIONS).map(def => {
@@ -381,8 +373,6 @@ class AchievementSystem {
         };
       });
       
-      console.log('🏆 Final achievements array:', achievements);
-      
       const result = {
         success: true,
         achievements,
@@ -390,7 +380,7 @@ class AchievementSystem {
         completedCount: completedAchievements.length
       };
       
-      console.log('🏆 Returning result:', result);
+      console.log(`🏆 [${userUuid}] 업적 조회 완료: ${completedAchievements.length}/${achievements.length} 달성`);
       
       return result;
     } catch (error) {

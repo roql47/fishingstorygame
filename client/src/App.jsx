@@ -4983,13 +4983,17 @@ function App() {
       // 여전히 없으면 isInBattle만 업데이트 (level, experience는 보내지 않음)
       if (!currentStats) {
         console.warn(`⚠️ ${companionName} 능력치를 가져올 수 없습니다. isInBattle만 업데이트합니다.`);
-        const response = await authenticatedRequest.post(`${serverUrl}/api/update-companion-stats`, {
-          companionName,
-          isInBattle
-        });
-        
-        if (response.data.success) {
-          console.log(`✅ 동료 ${companionName} 전투 상태만 업데이트: ${isInBattle}`);
+        try {
+          const response = await authenticatedRequest.post(`${serverUrl}/api/update-companion-stats`, {
+            companionName,
+            isInBattle
+          });
+          
+          if (response.data.success) {
+            console.log(`✅ 동료 ${companionName} 전투 상태만 업데이트: ${isInBattle}`);
+          }
+        } catch (error) {
+          console.error(`❌ 동료 ${companionName} 전투 상태 업데이트 실패:`, error);
         }
         return;
       }
@@ -6503,7 +6507,7 @@ function App() {
         
         // 골드 업데이트
         if (response.data.currentGold !== undefined) {
-          setGold(response.data.currentGold);
+          setUserMoney(response.data.currentGold);
         }
         
         const costMessage = response.data.craftingCost > 0 
@@ -6555,7 +6559,7 @@ function App() {
         
         // 골드 업데이트
         if (response.data.currentGold !== undefined) {
-          setGold(response.data.currentGold);
+          setUserMoney(response.data.currentGold);
         }
         
         const totalGained = quantity * 3; // 1개당 3개씩 획득
@@ -6588,9 +6592,16 @@ function App() {
       return;
     }
     
-    // 재료 확인
-    const userMaterial = materials.find(m => m.material === item.material);
-    const userMaterialCount = userMaterial?.count || 0;
+    // 재료 확인 (별조각과 일반 재료 구분)
+    let userMaterialCount = 0;
+    if (item.material === '별조각') {
+      // 별조각인 경우 userStarPieces에서 가져오기
+      userMaterialCount = userStarPieces || 0;
+    } else {
+      // 일반 재료는 materials 배열에서 찾기
+      const userMaterial = materials.find(m => m.material === item.material);
+      userMaterialCount = userMaterial?.count || 0;
+    }
     
     if (userMaterialCount < item.materialCount) {
       alert(`재료가 부족합니다! (${item.material} ${userMaterialCount}/${item.materialCount})`);
@@ -6626,15 +6637,21 @@ function App() {
       });
       
       if (response.data.success) {
-        // 재료 차감 (로컬)
-        setMaterials(prev => {
-          const updated = prev.map(m => 
-            m.material === item.material
-              ? { ...m, count: m.count - item.materialCount }
-              : m
-          ).filter(m => m.count > 0);
-          return updated;
-        });
+        // 재료 차감 (로컬) - 별조각과 일반 재료 구분
+        if (item.material === '별조각') {
+          // 별조각 차감
+          setUserStarPieces(prev => prev - item.materialCount);
+        } else {
+          // 일반 재료 차감
+          setMaterials(prev => {
+            const updated = prev.map(m => 
+              m.material === item.material
+                ? { ...m, count: m.count - item.materialCount }
+                : m
+            ).filter(m => m.count > 0);
+            return updated;
+          });
+        }
         
         // 💰 낚시대/악세사리 구매 시 골드 차감 (로컬)
         if ((item.category === 'fishing_rod' || item.category === 'accessories') && item.requiredGold) {
@@ -6672,6 +6689,14 @@ function App() {
             console.error('Failed to recalculate fishing cooldown:', error);
             // 실패 시 클라이언트에서만 임시로 감소 (서버와 동기화는 다음 로그인 시)
             setFishingCooldown(prev => Math.max(0, prev - 15000));
+          }
+        } else if (item.category === 'items') {
+          // 기타 아이템 구매 시 처리
+          if (item.name === '연금술포션') {
+            // 서버에서 받는 개수만큼 증가 (기본 10개)
+            const purchaseCount = 10;
+            setAlchemyPotions(prev => prev + purchaseCount);
+            console.log(`연금술포션 구매: +${purchaseCount}개`);
           }
         }
         
@@ -6713,10 +6738,18 @@ function App() {
         }, 500);
         
         // 구매 메시지 채팅에 추가
-        const skillMessage = (item.category === 'fishing_rod') ? ' (낚시실력 +1)' : '';
+        let purchaseMessage = '';
+        if (item.category === 'items') {
+          // 연금술포션 등 소모품
+          purchaseMessage = `${item.name} 10개를 ${item.material} x${item.materialCount}(으)로 교환했습니다!`;
+        } else {
+          // 장비 (낚시대, 악세사리)
+          const skillMessage = (item.category === 'fishing_rod') ? ' (낚시실력 +1)' : '';
+          purchaseMessage = `${item.name}을(를) ${item.material} x${item.materialCount}(으)로 구매하고 장착했습니다!${skillMessage}`;
+        }
         setMessages(prev => [...prev, {
           system: true,
-          content: `${item.name}을(를) ${item.material} x${item.materialCount}(으)로 구매하고 장착했습니다!${skillMessage}`,
+          content: purchaseMessage,
           timestamp: new Date().toISOString()
         }]);
       }
@@ -6724,6 +6757,8 @@ function App() {
       console.error('Failed to buy item:', error);
       if (error.response?.data?.error === 'Not enough materials') {
         alert('재료가 부족합니다!');
+      } else if (error.response?.data?.error === 'Not enough star pieces') {
+        alert('별조각이 부족합니다!');
       } else if (error.response?.data?.error === 'Not enough gold') {
         const requiredGold = error.response?.data?.requiredGold;
         alert(`골드가 부족합니다! (필요: ${requiredGold?.toLocaleString() || '?'}골드)`);
@@ -8025,11 +8060,11 @@ function App() {
                           
                           // 골드 체크 포함
                           const hasEnoughMaterialsForCraft = craftRecipe && item.count >= craftRecipe.inputCount;
-                          const hasEnoughGoldForCraft = gold >= craftCost;
+                          const hasEnoughGoldForCraft = userMoney >= craftCost;
                           const canCraft = hasEnoughMaterialsForCraft && hasEnoughGoldForCraft;
                           
                           const hasEnoughMaterialsForDecompose = decomposeRecipe && item.count >= 1;
-                          const hasEnoughGoldForDecompose = gold >= decomposeCost;
+                          const hasEnoughGoldForDecompose = userMoney >= decomposeCost;
                           const canDecompose = hasEnoughMaterialsForDecompose && hasEnoughGoldForDecompose;
                           
                           return (
@@ -8072,10 +8107,10 @@ function App() {
                                       canCraft 
                                         ? `${craftRecipe.inputMaterial} 3개 → ${craftRecipe.outputMaterial} 1개 (비용: ${craftCost.toLocaleString()}G)` 
                                         : !hasEnoughMaterialsForCraft && !hasEnoughGoldForCraft
-                                        ? `재료와 골드가 부족합니다 (재료: ${item.count}/${craftRecipe.inputCount}, 골드: ${gold.toLocaleString()}/${craftCost.toLocaleString()})`
+                                        ? `재료와 골드가 부족합니다 (재료: ${item.count}/${craftRecipe.inputCount}, 골드: ${userMoney.toLocaleString()}/${craftCost.toLocaleString()})`
                                         : !hasEnoughMaterialsForCraft
                                         ? `재료가 부족합니다 (${item.count}/${craftRecipe.inputCount})`
-                                        : `골드가 부족합니다 (${gold.toLocaleString()}/${craftCost.toLocaleString()})`
+                                        : `골드가 부족합니다 (${userMoney.toLocaleString()}/${craftCost.toLocaleString()})`
                                     }
                                   >
                                     <Hammer className="w-4 h-4" />
@@ -8099,10 +8134,10 @@ function App() {
                                       canDecompose 
                                         ? `${decomposeRecipe.outputMaterial} → ${decomposeRecipe.inputMaterial} (1개당 3개 획득, 비용: ${decomposeCost.toLocaleString()}G/개)` 
                                         : !hasEnoughMaterialsForDecompose && !hasEnoughGoldForDecompose
-                                        ? `재료와 골드가 부족합니다 (재료: ${item.count}/1, 골드: ${gold.toLocaleString()}/${decomposeCost.toLocaleString()})`
+                                        ? `재료와 골드가 부족합니다 (재료: ${item.count}/1, 골드: ${userMoney.toLocaleString()}/${decomposeCost.toLocaleString()})`
                                         : !hasEnoughMaterialsForDecompose
                                         ? "재료가 부족합니다"
-                                        : `골드가 부족합니다 (${gold.toLocaleString()}/${decomposeCost.toLocaleString()})`
+                                        : `골드가 부족합니다 (${userMoney.toLocaleString()}/${decomposeCost.toLocaleString()})`
                                     }
                                   >
                                     <Trash2 className="w-4 h-4" />

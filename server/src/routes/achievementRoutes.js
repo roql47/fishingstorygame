@@ -12,8 +12,6 @@ function setupAchievementRoutes(authenticateJWT, UserUuidModel, CatchModel, Fish
       const { userUuid, username } = req.user;
       const { targetUsername } = req.query;
       
-      console.log('🏆 Achievement API called by:', { userUuid, username, targetUsername });
-      
       let targetUserUuid = userUuid;
       
       // 다른 사용자의 업적을 조회하는 경우
@@ -24,13 +22,9 @@ function setupAchievementRoutes(authenticateJWT, UserUuidModel, CatchModel, Fish
           return res.status(404).json({ error: "User not found" });
         }
         targetUserUuid = targetUser.userUuid;
-        console.log('🏆 Target user found:', { targetUsername, targetUserUuid });
       }
       
-      console.log('🏆 Getting achievements for userUuid:', targetUserUuid);
       const result = await achievementSystem.getUserAchievements(targetUserUuid);
-      console.log('🏆 Achievement result:', result);
-      
       res.json(result);
     } catch (error) {
       console.error("Failed to fetch achievements:", error);
