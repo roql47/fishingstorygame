@@ -21,7 +21,7 @@ export const useGameData = () => {
     fishHealthMap: {},
     fishSpeedMap: {},
     fishPrefixes: [],
-    shopData: { fishing_rod: [], accessories: [] }
+    shopData: { fishing_rod: [], accessories: [], items: [] }
   });
   
   // 🔧 로딩 상태

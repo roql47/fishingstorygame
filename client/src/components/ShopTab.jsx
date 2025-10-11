@@ -416,6 +416,90 @@ const ShopTab = ({
                 </div>
               </div>
             </div>
+
+            {/* 연금술포션 섹션 */}
+            <div>
+              <div className={`flex items-center gap-2 mb-4 px-2 ${
+                  isDarkMode ? "text-green-400" : "text-green-600"
+              }`}>
+                <span className="text-xl">🧪</span>
+                <h3 className="font-semibold">연금술포션</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {getAllShopItems('items').map((item, index) => {
+                  const userMaterialCount = getMaterialCount(item.material);
+                  const hasEnoughMaterial = userMaterialCount >= item.materialCount;
+                  const canBuy = hasEnoughMaterial;
+                  
+                  return (
+                    <div key={index} className={`p-4 rounded-xl border transition-all duration-300 hover:scale-105 ${
+                      isDarkMode 
+                        ? "bg-green-500/10 border-green-500/30 hover:border-green-400/50" 
+                        : "bg-green-500/5 border-green-500/20 hover:border-green-400/40"
+                    }`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-lg ${
+                            isDarkMode ? "bg-green-500/20" : "bg-green-500/10"
+                          }`}>
+                            <span className="text-2xl">🧪</span>
+                          </div>
+                          <div>
+                            <h4 className={`font-bold ${
+                              isDarkMode ? "text-white" : "text-gray-800"
+                            }`}>{item.name}</h4>
+                            <p className={`text-sm ${
+                              isDarkMode ? "text-gray-400" : "text-gray-600"
+                            }`}>{item.description}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col gap-1">
+                          <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${
+                            isDarkMode 
+                              ? "bg-blue-500/20 border border-blue-500/30" 
+                              : "bg-blue-500/10 border border-blue-500/20"
+                          }`}>
+                            <Star className={`w-4 h-4 ${
+                              isDarkMode ? "text-blue-400" : "text-blue-600"
+                            }`} />
+                            <span className={`text-sm font-bold ${
+                              isDarkMode ? "text-blue-400" : "text-blue-600"
+                            }`}>{item.material}</span>
+                            <span className={`text-xs ${
+                              isDarkMode ? "text-gray-400" : "text-gray-600"
+                            }`}>x{item.materialCount}</span>
+                          </div>
+                          <span className={`text-xs ml-2 ${
+                            hasEnoughMaterial
+                              ? isDarkMode ? "text-green-400" : "text-green-600"
+                              : isDarkMode ? "text-red-400" : "text-red-600"
+                          }`}>
+                            보유: {userMaterialCount}개
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => buyItem(item)}
+                          disabled={!canBuy}
+                          className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                            !canBuy
+                              ? isDarkMode
+                                ? "bg-gray-600 text-gray-400 cursor-not-allowed"
+                                : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                              : isDarkMode
+                                ? "bg-green-600 hover:bg-green-500 text-white"
+                                : "bg-green-500 hover:bg-green-600 text-white"
+                          } hover:scale-105 active:scale-95`}
+                        >
+                          구매하기
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
       </div>

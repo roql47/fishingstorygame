@@ -171,6 +171,9 @@ const SHOP_DATA = {
     { name: '몽마의조각상', material: '꽃술', materialCount: 110, description: '몽마의 힘이 깃든 신비한 조각상입니다', requiredSkill: 10 },
     { name: '마카롱훈장', material: '프레첼', materialCount: 120, description: '달콤한 마카롱 모양의 특별한 훈장입니다', requiredSkill: 11 },
     { name: '빛나는마력순환체', material: '베놈', materialCount: 130, description: '마력이 순환하는 빛나는 신비한 구슬입니다', requiredSkill: 12 }
+  ],
+  items: [
+    { name: '연금술포션', material: '별조각', materialCount: 1, count: 10, description: '낚시 쿨타임을 10초로 줄여주는 신비한 포션입니다 (10개 구매)', requiredSkill: 0 }
   ]
 };
 

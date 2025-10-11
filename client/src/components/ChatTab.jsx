@@ -43,7 +43,9 @@ const ChatTab = ({
   grantAchievement,
   revokeAchievement,
   refreshFishingSkill,
-  authenticatedRequest
+  authenticatedRequest,
+  alchemyPotions,
+  setAlchemyPotions
 }) => {
   const messagesEndRef = useRef(null);
   
@@ -311,6 +313,43 @@ const ChatTab = ({
                   🛡️
                 </button>
               )}
+              
+              {/* 연금술포션 사용 버튼 */}
+              <button
+                className={`p-2 rounded-lg hover:glow-effect transition-all duration-300 text-green-400 ${
+                  isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+                }`}
+                onClick={async () => {
+                  try {
+                    const response = await authenticatedRequest.post(`${serverUrl}/api/use-alchemy-potion`);
+                    
+                    if (response.data.success) {
+                      // 쿨타임 업데이트
+                      setFishingCooldown(response.data.newCooldown);
+                      
+                      // localStorage에 쿨타임 종료 시간 저장
+                      const fishingEndTime = new Date(Date.now() + response.data.newCooldown);
+                      localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
+                      
+                      // 연금술포션 개수 업데이트
+                      setAlchemyPotions(response.data.remainingPotions);
+                      
+                      // 성공 메시지 (세션 유지)
+                      setMessages(prev => [...prev, {
+                        system: true,
+                        content: `🧪 연금술포션을 사용했습니다! 낚시 쿨타임이 10초로 감소했습니다. (남은 포션: ${response.data.remainingPotions}개)`,
+                        timestamp: new Date().toISOString()
+                      }]);
+                    }
+                  } catch (error) {
+                    console.error('연금술포션 사용 실패:', error);
+                    alert(error.response?.data?.error || '연금술포션 사용에 실패했습니다.');
+                  }
+                }}
+                title="연금술포션 사용 (낚시 쿨타임 10초로 감소)"
+              >
+                🧪
+              </button>
               
               {/* 로그아웃 버튼 */}
               <button

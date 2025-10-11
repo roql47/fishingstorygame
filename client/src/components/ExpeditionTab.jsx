@@ -1122,6 +1122,16 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                     3: "text-red-400", 
                     4: "text-purple-400"
                   };
+                  
+                  // 지역별 필요 낚시 실력
+                  const requiredSkills = {
+                    1: 1,   // 쓸쓸한 부두
+                    2: 6,   // 노스트라
+                    3: 11,  // 가을초입길
+                    4: 16   // 폭풍이 치는 곳
+                  };
+                  const requiredSkill = requiredSkills[area.id] || 1;
+                  const meetsRequirement = fishingSkill >= requiredSkill;
 
                    return (
                      <button
@@ -1130,10 +1140,13 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                          setSelectedArea(area);
                          setShowAreaDropdown(false);
                        }}
+                       disabled={!meetsRequirement}
                        className={`w-full p-4 text-left border-l-4 transition-all duration-200 ${
-                         isDarkMode
-                           ? `hover:bg-white/10 ${difficultyColors[area.id]}`
-                           : `hover:bg-gray-50 ${difficultyColors[area.id]}`
+                         meetsRequirement
+                           ? isDarkMode
+                             ? `hover:bg-white/10 ${difficultyColors[area.id]}`
+                             : `hover:bg-gray-50 ${difficultyColors[area.id]}`
+                           : `opacity-50 cursor-not-allowed ${difficultyColors[area.id]}`
                        }`}
                      >
                        <div className="flex items-center justify-between">
@@ -1155,6 +1168,14 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                                  : "bg-blue-500/10 text-blue-600"
                              }`}>
                                🗝️ {area.id}개
+                             </span>
+                             {/* 필요 낚시 실력 표시 */}
+                             <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                               meetsRequirement
+                                 ? (isDarkMode ? "bg-green-500/20 text-green-400" : "bg-green-500/10 text-green-600")
+                                 : (isDarkMode ? "bg-red-500/20 text-red-400" : "bg-red-500/10 text-red-600")
+                             }`}>
+                               🎣 {requiredSkill} 이상
                              </span>
                            </div>
                            <p className={`text-sm ${
@@ -1233,7 +1254,18 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
             </div>
           ) : (
             <div className="space-y-3">
-              {availableRooms.map(room => (
+              {availableRooms.map(room => {
+                // 지역별 필요 낚시 실력 매핑
+                const areaRequirements = {
+                  '쓸쓸한 부두': 1,
+                  '노스트라': 6,
+                  '가을초입길': 11,
+                  '폭풍이 치는 곳': 16
+                };
+                const requiredSkill = areaRequirements[room.areaName] || 1;
+                const canJoin = fishingSkill >= requiredSkill;
+                
+                return (
                 <div key={room.id} className={`rounded-2xl border p-4 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg ${
                   isDarkMode 
                     ? "bg-white/5 border-white/10 hover:bg-white/10" 
@@ -1252,6 +1284,14 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                           <span className={`text-sm ${
                             isDarkMode ? "text-gray-300" : "text-gray-600"
                           }`}>{room.areaName}</span>
+                          {/* 필요 낚시 실력 표시 */}
+                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                            canJoin 
+                              ? (isDarkMode ? "bg-green-500/20 text-green-400 border border-green-500/30" : "bg-green-500/10 text-green-600 border border-green-500/30")
+                              : (isDarkMode ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-red-500/10 text-red-600 border border-red-500/30")
+                          }`}>
+                            필요 실력: {requiredSkill}
+                          </span>
                           <div className="flex items-center gap-1">
                             <Users className="w-4 h-4 text-blue-400" />
                             <span className={`text-sm font-medium ${
@@ -1266,18 +1306,24 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                     
                     <button
                       onClick={() => joinRoom(room.id)}
-                      disabled={loading}
-                      className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 transform hover:scale-105 disabled:opacity-50 ${
-                        isDarkMode
-                          ? "bg-gradient-to-r from-green-500/80 to-emerald-500/80 hover:from-green-500 hover:to-emerald-500 text-white"
-                          : "bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
+                      disabled={loading || !canJoin}
+                      className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed ${
+                        canJoin
+                          ? isDarkMode
+                            ? "bg-gradient-to-r from-green-500/80 to-emerald-500/80 hover:from-green-500 hover:to-emerald-500 text-white"
+                            : "bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
+                          : isDarkMode
+                            ? "bg-gray-500/30 text-gray-500"
+                            : "bg-gray-400/30 text-gray-600"
                       }`}
+                      title={!canJoin ? `낚시 실력 ${requiredSkill} 이상 필요 (현재: ${fishingSkill})` : ''}
                     >
-                      참가하기
+                      {canJoin ? '참가하기' : '조건 미달'}
                     </button>
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>

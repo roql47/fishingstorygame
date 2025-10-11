@@ -53,12 +53,50 @@ router.post('/rooms/create', authenticateJWT, async (req, res) => {
 });
 
 // 방 참가
-router.post('/rooms/:roomId/join', authenticateJWT, (req, res) => {
+router.post('/rooms/:roomId/join', authenticateJWT, async (req, res) => {
     try {
         const { roomId } = req.params;
         const { userUuid, username } = req.user; // JWT에서 사용자 정보 추출
 
         console.log(`[EXPEDITION] Join attempt - roomId: ${roomId}, user: ${username} (${userUuid})`);
+        
+        // 🔒 방 정보 확인 (입장 조건 체크를 위해)
+        const targetRoom = expeditionSystem.getRoomById(roomId);
+        if (!targetRoom) {
+            return res.status(400).json({ 
+                success: false, 
+                error: '존재하지 않는 방입니다.' 
+            });
+        }
+        
+        // 🎣 낚시 실력 조건 체크
+        const fishingSkillData = await FishingSkillModel.findOne({ userUuid: userUuid }).lean();
+        const playerFishingSkill = fishingSkillData?.skill || 1;
+        
+        // 지역별 필요 낚시 실력
+        const requiredSkills = {
+            1: 1,   // 쓸쓸한 부두
+            2: 6,   // 노스트라
+            3: 11,  // 가을초입길
+            4: 16   // 폭풍이 치는 곳
+        };
+        
+        const areaId = targetRoom.area.id;
+        const requiredSkill = requiredSkills[areaId] || 1;
+        
+        if (playerFishingSkill < requiredSkill) {
+            const areaNames = {
+                1: '쓸쓸한 부두',
+                2: '노스트라',
+                3: '가을초입길',
+                4: '폭풍이 치는 곳'
+            };
+            
+            return res.status(400).json({ 
+                success: false, 
+                error: `${areaNames[areaId]}에 입장하려면 낚시 실력 ${requiredSkill} 이상이 필요합니다. (현재: ${playerFishingSkill})` 
+            });
+        }
         
         const room = expeditionSystem.joinExpeditionRoom(roomId, userUuid, username);
         

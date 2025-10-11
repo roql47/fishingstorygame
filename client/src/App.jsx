@@ -207,9 +207,9 @@ function App() {
     }
   }, []);
 
-  // 🔄 버전 업데이트 시 캐시 초기화 (v1.292)
+  // 🔄 버전 업데이트 시 캐시 초기화 (v1.293)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.292";
+    const CURRENT_VERSION = "v1.293";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -278,6 +278,7 @@ function App() {
   const [userAmber, setUserAmber] = useState(0);
   const [userStarPieces, setUserStarPieces] = useState(0);
   const [userEtherKeys, setUserEtherKeys] = useState(0);
+  const [alchemyPotions, setAlchemyPotions] = useState(0); // 연금술포션 개수
   const [companions, setCompanions] = useState([]);
   const [battleCompanions, setBattleCompanions] = useState([]); // 전투 참여 동료 (최대 3명)
   const [companionStats, setCompanionStats] = useState({}); // 동료별 레벨/경험치 관리
@@ -419,73 +420,64 @@ function App() {
   };
 
   // 동료 경험치 추가 함수 (TDZ 문제 해결을 위해 상단에 선언)
-  const addCompanionExp = (companionName, expAmount) => {
+  const addCompanionExp = async (companionName, expAmount) => {
     console.log(`📈 addCompanionExp 호출: ${companionName}에게 경험치 ${expAmount} 추가`);
-    setCompanionStats(prev => {
-      const current = prev[companionName] || {
-        level: 1,
-        exp: 0,
-        expToNext: calculateExpToNextLevel(2), // 레벨 2까지 필요한 경험치
-        hp: calculateCompanionStats(companionName, 1)?.hp || 100,
-        maxHp: calculateCompanionStats(companionName, 1)?.hp || 100
-      };
-      console.log(`📊 ${companionName} 현재 상태:`, current);
-      
-      const expCalc = (() => {
-        let newExp = current.exp + expAmount;
-        let newLevel = current.level;
-        let newExpToNext = current.expToNext;
-        
-        return { newExp, newLevel, newExpToNext };
-      })();
-      
-      let { newExp, newLevel, newExpToNext } = expCalc;
-      
-      // 레벨업 체크
-      while (newExp >= newExpToNext) {
-        newExp -= newExpToNext;
-        newLevel++;
-        // 새로운 경험치 공식 사용
-        newExpToNext = calculateExpToNextLevel(newLevel + 1);
-        console.log(`🎉 ${companionName} 레벨업! ${newLevel-1} → ${newLevel} (다음 레벨까지: ${newExpToNext})`);
-      }
-      
-      console.log(`📊 ${companionName} 최종 능력치: 레벨 ${newLevel}, 경험치 ${newExp}/${newExpToNext}`);
-      
-      // 레벨업 시 능력치 재계산
-      const newStats = calculateCompanionStats(companionName, newLevel);
-      
-      const updated = {
-        ...prev,
-        [companionName]: {
-          level: newLevel,
-          exp: newExp,
-          expToNext: newExpToNext,
-          hp: newStats?.hp || current.hp,
-          maxHp: newStats?.hp || current.maxHp
+    
+    if (!jwtToken) {
+      console.warn('⚠️ JWT 토큰이 없어서 경험치 추가를 건너뜁니다.');
+      return;
+    }
+    
+    try {
+      // 🚀 서버에 경험치 추가 요청
+      const response = await axios.post(`${serverUrl}/api/add-companion-exp`, {
+        companionName,
+        expAmount
+      }, {
+        headers: {
+          'Authorization': `Bearer ${jwtToken}`
         }
-      };
+      });
       
-      // localStorage에 저장
-      localStorage.setItem(`companionStats_${userUuid || username}`, JSON.stringify(updated));
-      
-      // 서버에 즉시 저장 (경험치 변경 시)
-      const updatedStats = updated[companionName];
-      if (jwtToken) {
-        setTimeout(() => {
-          saveCompanionStatsToServer(companionName, updatedStats);
-        }, 100); // 상태 업데이트 후 저장
+      if (response.data.success) {
+        const serverStats = response.data.companionStats;
+        console.log(`✅ 서버에서 경험치 추가 완료:`, serverStats);
+        
+        // 서버에서 받은 데이터로 상태 업데이트
+        setCompanionStats(prev => {
+          const newStats = calculateCompanionStats(companionName, serverStats.level);
+          
+          const updated = {
+            ...prev,
+            [companionName]: {
+              level: serverStats.level,
+              exp: serverStats.experience,
+              expToNext: serverStats.expToNextLevel,
+              hp: newStats?.hp || prev[companionName]?.hp || 100,
+              maxHp: newStats?.hp || prev[companionName]?.maxHp || 100,
+              isInBattle: serverStats.isInBattle
+            }
+          };
+          
+          // localStorage에 저장
+          localStorage.setItem(`companionStats_${userUuid || username}`, JSON.stringify(updated));
+          
+          return updated;
+        });
+        
+        // 레벨업 알림
+        if (response.data.leveledUp && response.data.levelUps.length > 0) {
+          const levelUps = response.data.levelUps;
+          setTimeout(() => {
+            alert(`🎉 ${companionName}이(가) 레벨업했습니다!\n레벨: ${levelUps[0] - 1} → ${levelUps[levelUps.length - 1]}`);
+          }, 300);
+        }
       }
       
-      // 레벨업 알림
-      if (newLevel > current.level) {
-        setTimeout(() => {
-          alert(`${companionName}이(가) 레벨 ${newLevel}로 레벨업했습니다!`);
-        }, 500);
-      }
-      
-      return updated;
-    });
+    } catch (error) {
+      console.error('❌ 동료 경험치 추가 실패:', error);
+      console.warn(`⚠️ 서버 오류로 경험치 추가 실패. 다음 새로고침 시 서버 데이터로 복구됩니다.`);
+    }
   };
 
   // 퀘스트 진행도 업데이트 함수 (TDZ 문제 해결을 위해 상단에 선언)
@@ -722,7 +714,9 @@ function App() {
                     await addAmber(totalAmberReward);
                     updateQuestProgress('exploration_win', 1);
                     if (currentState.companions) {
-                      currentState.companions.forEach(c => addCompanionExp(c, totalExpReward));
+                      for (const c of currentState.companions) {
+                        await addCompanionExp(c, totalExpReward);
+                      }
                     }
                     setTimeout(() => {
                       setShowBattleModal(false);
@@ -1014,7 +1008,11 @@ function App() {
                 setTimeout(async () => {
                   await addAmber(totalAmberReward);
                   updateQuestProgress('exploration_win', 1);
-                  if (currentState.companions) currentState.companions.forEach(c => addCompanionExp(c, totalExpReward));
+                  if (currentState.companions) {
+                    for (const c of currentState.companions) {
+                      await addCompanionExp(c, totalExpReward);
+                    }
+                  }
                   setTimeout(() => {
                     setShowBattleModal(false);
                     setBattleState(null);
@@ -1519,6 +1517,14 @@ function App() {
           params,
           headers: { Authorization: `Bearer ${localStorage.getItem('jwtToken')}` }
         }).then(res => setUserStarPieces(res.data.starPieces || 0)).catch(e => console.error("Failed to refresh starPieces:", e))
+      );
+      
+      // 연금술포션
+      currencyPromises.push(
+        axios.get(`${serverUrl}/api/alchemy-potions/${userId}`, { 
+          params,
+          headers: { Authorization: `Bearer ${localStorage.getItem('jwtToken')}` }
+        }).then(res => setAlchemyPotions(res.data.alchemyPotions || 0)).catch(e => console.error("Failed to refresh alchemyPotions:", e))
       );
       
       // 돈
@@ -2924,7 +2930,17 @@ function App() {
       window.location.reload();
     };
     
+    // IP 차단 알림 처리
+    const onIPBlocked = (blockInfo) => {
+      console.error("IP blocked:", blockInfo);
+      alert(`🚫 귀하의 IP가 차단되었습니다.\n\n차단 사유: ${blockInfo.reason}\n차단 일시: ${blockInfo.blockedAt}\n차단자: ${blockInfo.blockedBy}\n\n관리자에게 문의하세요.`);
+      // 로그아웃 처리
+      localStorage.clear();
+      window.location.reload();
+    };
+    
     socket.on("account-blocked", onAccountBlocked);
+    socket.on("ip-blocked", onIPBlocked);
     
     console.log("=== CLIENT CHAT:JOIN DEBUG ===");
     
@@ -2964,6 +2980,7 @@ function App() {
       socket.off("chat:error", onChatError);
       socket.off("connect_error", onConnectError);
       socket.off("account-blocked", onAccountBlocked);
+      socket.off("ip-blocked", onIPBlocked);
       socket.off("new-mail", onNewMail);
       
       // 레이드 관련 이벤트 정리
@@ -3179,6 +3196,18 @@ function App() {
             console.log('✅ Direct money loaded:', moneyRes.data.money);
           } catch (e) {
             console.error("❌ Failed to fetch money directly:", e);
+          }
+          
+          // 연금술포션 데이터 로드
+          try {
+            const potionsRes = await axios.get(`${serverUrl}/api/alchemy-potions/${userId}`, { 
+              params,
+              headers: { Authorization: `Bearer ${localStorage.getItem('jwtToken')}` }
+            });
+            setAlchemyPotions(potionsRes.data.alchemyPotions || 0);
+            console.log('✅ Direct alchemyPotions loaded:', potionsRes.data.alchemyPotions);
+          } catch (e) {
+            console.error("❌ Failed to fetch alchemyPotions directly:", e);
           }
           
         } catch (error) {
@@ -3489,18 +3518,13 @@ function App() {
     }
   }, [activeTab, companionStats]);
 
-  // 🔄 동료 능력치 변경 시 서버에 저장
+  // 🔄 동료 능력치 변경 시 localStorage에 백업 저장 (경험치는 서버에서 관리)
   useEffect(() => {
-    if (!jwtToken || !username || Object.keys(companionStats).length === 0) return;
+    if (!username || Object.keys(companionStats).length === 0) return;
     
-    // 각 동료의 능력치를 서버에 저장
-    Object.entries(companionStats).forEach(([companionName, stats]) => {
-      saveCompanionStatsToServer(companionName, stats);
-    });
-    
-    // localStorage에도 백업 저장
+    // localStorage에 백업 저장 (서버는 addCompanionExp에서 관리)
     localStorage.setItem(`companionStats_${userUuid || username}`, JSON.stringify(companionStats));
-  }, [companionStats, jwtToken, username, userUuid]);
+  }, [companionStats, username, userUuid]);
 
   // 채팅 메시지의 사용자들 관리자 상태 확인
   useEffect(() => {
@@ -5756,10 +5780,10 @@ function App() {
           if (prevState.companions && prevState.companions.length > 0) {
             const expReward = Math.floor(prevState.enemyMaxHp / 5) + 10;
             console.log(`🎯 전투 승리! 동료들에게 경험치 ${expReward} 지급:`, prevState.companions);
-            prevState.companions.forEach(companion => {
+            for (const companion of prevState.companions) {
               console.log(`📈 ${companion}에게 경험치 ${expReward} 지급 중...`);
-              addCompanionExp(companion, expReward);
-            });
+              await addCompanionExp(companion, expReward);
+            }
           }
           
           setTimeout(() => {
@@ -5855,9 +5879,9 @@ function App() {
             // 동료들에게 경험치 지급
             if (prevState.companions && prevState.companions.length > 0) {
               console.log(`🎯 다중 전투 승리! 동료들에게 경험치 ${totalExpReward} 지급:`, prevState.companions);
-              prevState.companions.forEach(companion => {
-                addCompanionExp(companion, totalExpReward);
-              });
+              for (const companion of prevState.companions) {
+                await addCompanionExp(companion, totalExpReward);
+              }
             }
             
             setTimeout(() => {
@@ -5913,10 +5937,10 @@ function App() {
           updateQuestProgress('exploration_win', 1);
           
           if (prevState.companions && prevState.companions.length > 0) {
-              const expReward = Math.floor(prevState.enemyMaxHp / 5) + 10;
-            prevState.companions.forEach(companion => {
-              addCompanionExp(companion, expReward);
-            });
+            const expReward = Math.floor(prevState.enemyMaxHp / 5) + 10;
+            for (const companion of prevState.companions) {
+              await addCompanionExp(companion, expReward);
+            }
           }
           
             setTimeout(() => {
@@ -6704,7 +6728,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.292
+                여우이야기 v1.293
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -7343,6 +7367,8 @@ function App() {
               revokeAchievement={revokeAchievement}
               refreshFishingSkill={refreshFishingSkill}
               authenticatedRequest={authenticatedRequest}
+              alchemyPotions={alchemyPotions}
+              setAlchemyPotions={setAlchemyPotions}
             />
           )}
 
@@ -7683,6 +7709,30 @@ function App() {
                               <div className={`text-xs ${
                                 isDarkMode ? "text-gray-400" : "text-gray-600"
                               }`}>보유량: {userEtherKeys || 0}개</div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* 연금술포션 */}
+                      <div className={`p-4 rounded-xl hover:glow-effect transition-all duration-300 group ${
+                        isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-green-500/20 to-emerald-500/20">
+                              <span className="text-2xl group-hover:scale-110 transition-transform">🧪</span>
+                            </div>
+                            <div>
+                              <div className={`font-medium text-base ${
+                                isDarkMode ? "text-white" : "text-gray-800"
+                              }`}>연금술포션</div>
+                              <div className={`text-xs ${
+                                isDarkMode ? "text-gray-400" : "text-gray-600"
+                              }`}>보유량: {alchemyPotions || 0}개</div>
+                              <div className={`text-xs mt-1 ${
+                                isDarkMode ? "text-green-400" : "text-green-600"
+                              }`}>낚시 쿨타임 10초로 감소</div>
                             </div>
                           </div>
                         </div>

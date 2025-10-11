@@ -959,6 +959,16 @@ const etherKeySchema = new mongoose.Schema({
 
 const EtherKeyModel = mongoose.model("EtherKey", etherKeySchema);
 
+// Alchemy Potion Schema (연금술포션 - 낚시 쿨타임 감소 아이템)
+const alchemyPotionSchema = new mongoose.Schema({
+  userId: { type: String, required: true },
+  username: { type: String, required: true },
+  userUuid: { type: String, index: true },
+  alchemyPotions: { type: Number, default: 0 }, // 보유한 연금술포션 수
+}, { timestamps: true });
+
+const AlchemyPotionModel = mongoose.model("AlchemyPotion", alchemyPotionSchema);
+
 // Coupon Usage Schema (쿠폰 사용 기록)
 const couponUsageSchema = new mongoose.Schema(
   {
@@ -2917,7 +2927,7 @@ io.on("connection", (socket) => {
           userUuid: user.userUuid,
           username: user.username,
           couponCode: "신작게임 평가단",
-          reward: "gold:100000,amber:50,starPieces:3"
+          reward: "gold:100000,amber:50,starPieces:3,alchemyPotions:20"
         });
         await couponUsage.save();
 
@@ -2972,18 +2982,35 @@ io.on("connection", (socket) => {
         }
         await userStarPieces.save();
 
+        // 4. 연금술포션 20개 지급
+        const alchemyPotionsRewardAmount = 20;
+        let userAlchemyPotions = await AlchemyPotionModel.findOne(query);
+        
+        if (!userAlchemyPotions) {
+          const createData = {
+            userId: query.userId || 'user',
+            username: query.username || user.username,
+            userUuid: query.userUuid || user.userUuid,
+            alchemyPotions: alchemyPotionsRewardAmount
+          };
+          userAlchemyPotions = new AlchemyPotionModel(createData);
+        } else {
+          userAlchemyPotions.alchemyPotions = (userAlchemyPotions.alchemyPotions || 0) + alchemyPotionsRewardAmount;
+        }
+        await userAlchemyPotions.save();
+
         // 성공 메시지 전송
         socket.emit("chat:message", {
           system: true,
           username: "system",
-          content: `🎉 축하합니다! 신작게임 평가단 쿠폰이 성공적으로 사용되었습니다!\n💰 골드 ${goldRewardAmount.toLocaleString()}개\n💎 호박석 ${amberRewardAmount}개\n⭐ 별조각 ${starPiecesRewardAmount}개를 받았습니다!`,
+          content: `🎉 축하합니다! 신작게임 평가단 쿠폰이 성공적으로 사용되었습니다!\n💰 골드 ${goldRewardAmount.toLocaleString()}개\n💎 호박석 ${amberRewardAmount}개\n⭐ 별조각 ${starPiecesRewardAmount}개\n🧪 연금술포션 ${alchemyPotionsRewardAmount}개를 받았습니다!`,
           timestamp: new Date().toISOString()
         });
 
         // 사용자 데이터 업데이트 전송
         sendUserDataUpdate(socket, user.userUuid, user.username);
 
-        console.log(`🎁 신작게임 평가단 쿠폰 사용: ${user.username} (${user.userUuid}) - gold +${goldRewardAmount}, amber +${amberRewardAmount}, starPieces +${starPiecesRewardAmount}`);
+        console.log(`🎁 신작게임 평가단 쿠폰 사용: ${user.username} (${user.userUuid}) - gold +${goldRewardAmount}, amber +${amberRewardAmount}, starPieces +${starPiecesRewardAmount}, alchemyPotions +${alchemyPotionsRewardAmount}`);
         return;
 
       } catch (error) {
@@ -4318,6 +4345,56 @@ app.get("/api/ether-keys/:userId", authenticateJWT, async (req, res) => {
   }
 });
 
+// Alchemy Potion API (연금술포션 조회)
+app.get("/api/alchemy-potions/:userId", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid, username } = req.user || {};
+    const { userId } = req.params;
+    
+    debugLog(`🔐 JWT Alchemy potions request: ${username} (${userUuid})`);
+    
+    const queryResult = await getUserQuery(userId, username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+      console.log("Using UUID query for alchemy potions:", query);
+    } else {
+      query = queryResult;
+      console.log("Using fallback query for alchemy potions:", query);
+    }
+    
+    // 🔒 보안 검증: 본인 데이터만 조회 가능
+    const ownershipValidation = await validateUserOwnership(query, userUuid, username);
+    if (!ownershipValidation.isValid) {
+      console.warn("Unauthorized alchemy potion access:", ownershipValidation.reason);
+      return res.status(403).json({ error: "Access denied: You can only view your own data" });
+    }
+    
+    let userPotions = await AlchemyPotionModel.findOne(query);
+    
+    if (!userPotions) {
+      // 새 사용자인 경우 초기 연금술포션 0개로 생성
+      const createData = {
+        userId: query.userId || 'user',
+        username: query.username || username,
+        userUuid: query.userUuid || userUuid,
+        alchemyPotions: 0
+      };
+      
+      console.log("Creating new alchemy potions record with data:", createData);
+      userPotions = new AlchemyPotionModel(createData);
+      await userPotions.save();
+      console.log("Created new user alchemy potions record:", userPotions);
+    }
+    
+    res.json({ alchemyPotions: userPotions.alchemyPotions || 0 });
+  } catch (error) {
+    console.error("Failed to fetch alchemy potions:", error);
+    console.error("Error stack:", error.stack);
+    res.status(500).json({ error: "Failed to fetch alchemy potions", details: error.message });
+  }
+});
+
 // Add Star Pieces API (별조각 추가)
 app.post("/api/add-star-pieces", authenticateJWT, async (req, res) => {
   try {
@@ -4728,16 +4805,44 @@ app.post("/api/update-companion-stats", authenticateJWT, async (req, res) => {
       console.log(`✅ [DUPLICATE CLEANED] ${idsToDelete.length}개의 중복 레코드 삭제`);
     }
     
-    // 🔐 보안 강화: 레벨/경험치는 클라이언트가 변경할 수 없음
-    // 클라이언트는 isInBattle만 업데이트 가능
-    const updateData = {};
-    if (isInBattle !== undefined) updateData.isInBattle = isInBattle;
-    
     // 🔧 기존 데이터 확인
     const existingStat = await CompanionStatsModel.findOne({
       ...query,
       companionName: companionName
     });
+    
+    // 🔐 보안 강화: 레벨/경험치 검증 (롤백 방지 + 치팅 방지)
+    const updateData = {};
+    if (isInBattle !== undefined) updateData.isInBattle = isInBattle;
+    
+    // 레벨/경험치 업데이트 검증 로직
+    if (existingStat) {
+      // 기존 동료가 있는 경우
+      const currentLevel = existingStat.level || 1;
+      const currentExp = existingStat.experience || 0;
+      
+      // 레벨이 제공되고, 현재 레벨보다 높은 경우만 업데이트 허용 (롤백 방지)
+      if (level !== undefined && level > currentLevel) {
+        // 한 번에 10레벨 이상 증가는 의심스러움 (치팅 방지)
+        if (level - currentLevel <= 10) {
+          updateData.level = level;
+          console.log(`✅ ${companionName} 레벨 업데이트: ${currentLevel} → ${level}`);
+        } else {
+          console.warn(`⚠️ [SECURITY] ${companionName} 급격한 레벨 증가 차단: ${currentLevel} → ${level}`);
+        }
+      }
+      
+      // 경험치는 현재 경험치보다 높거나 레벨업으로 인해 낮아진 경우 허용
+      if (experience !== undefined && (experience >= currentExp || (level !== undefined && level > currentLevel))) {
+        updateData.experience = experience;
+        console.log(`✅ ${companionName} 경험치 업데이트: ${currentExp} → ${experience}`);
+      }
+    } else {
+      // 새 동료인 경우 - 클라이언트가 보낸 값 또는 기본값 사용
+      updateData.level = level || 1;
+      updateData.experience = experience || 0;
+      console.log(`✅ ${companionName} 신규 생성: 레벨 ${updateData.level}, 경험치 ${updateData.experience}`);
+    }
     
     // 새로 생성하는 경우에만 기본값 설정
     const setOnInsertData = {
@@ -4745,14 +4850,9 @@ app.post("/api/update-companion-stats", authenticateJWT, async (req, res) => {
       username: query.username || username,
       userUuid: query.userUuid || userUuid,
       companionName: companionName,
-      level: 1, // 새 동료는 항상 레벨 1부터 시작
-      experience: 0 // 새 동료는 항상 경험치 0부터 시작
+      level: level || 1,
+      experience: experience || 0
     };
-    
-    // ⚠️ 클라이언트가 보낸 레벨/경험치는 무시 (보안)
-    if (level !== undefined || experience !== undefined) {
-      console.log(`🚫 [SECURITY] 클라이언트가 레벨/경험치 변경 시도 차단: ${companionName} (클라이언트: Lv.${level}, 경험치: ${experience})`);
-    }
     
     const companionStat = await CompanionStatsModel.findOneAndUpdate(
       {
@@ -4784,6 +4884,106 @@ app.post("/api/update-companion-stats", authenticateJWT, async (req, res) => {
   } catch (error) {
     console.error("Failed to update companion stats:", error);
     res.status(500).json({ error: "동료 능력치 업데이트에 실패했습니다." });
+  }
+});
+
+// 동료 경험치 추가 API (서버에서 경험치 계산 관리)
+app.post("/api/add-companion-exp", authenticateJWT, async (req, res) => {
+  try {
+    const { companionName, expAmount } = req.body;
+    const { userUuid, username } = req.user;
+    
+    console.log(`📈 동료 경험치 추가 요청: ${companionName}에게 ${expAmount} 경험치`);
+    
+    // 🔧 입력값 검증
+    if (!companionName || typeof companionName !== 'string') {
+      return res.status(400).json({ error: "유효한 동료 이름이 필요합니다." });
+    }
+    
+    if (!expAmount || typeof expAmount !== 'number' || expAmount <= 0) {
+      return res.status(400).json({ error: "유효한 경험치 양이 필요합니다." });
+    }
+    
+    // 너무 많은 경험치 한 번에 추가 방지 (치팅 방지)
+    if (expAmount > 10000) {
+      return res.status(400).json({ error: "한 번에 너무 많은 경험치를 추가할 수 없습니다." });
+    }
+    
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    // 🔧 동료 능력치 조회
+    let companionStat = await CompanionStatsModel.findOne({
+      ...query,
+      companionName: companionName
+    });
+    
+    // 동료 능력치가 없으면 초기화
+    if (!companionStat) {
+      companionStat = new CompanionStatsModel({
+        userId: query.userId || 'user',
+        username: query.username || username,
+        userUuid: query.userUuid || userUuid,
+        companionName: companionName,
+        level: 1,
+        experience: 0,
+        isInBattle: false
+      });
+    }
+    
+    // 경험치 계산 함수
+    const calculateExpToNextLevel = (level) => {
+      return Math.floor(100 + Math.pow(level, 2.1) * 25);
+    };
+    
+    // 현재 상태
+    const oldLevel = companionStat.level;
+    let newExp = companionStat.experience + expAmount;
+    let newLevel = companionStat.level;
+    
+    // 레벨업 체크
+    let expToNextLevel = calculateExpToNextLevel(newLevel + 1);
+    const levelUps = [];
+    
+    while (newExp >= expToNextLevel && newLevel < 100) {
+      newExp -= expToNextLevel;
+      newLevel++;
+      levelUps.push(newLevel);
+      expToNextLevel = calculateExpToNextLevel(newLevel + 1);
+    }
+    
+    // 능력치 업데이트
+    companionStat.level = newLevel;
+    companionStat.experience = newExp;
+    await companionStat.save();
+    
+    console.log(`✅ ${companionName} 경험치 추가 완료: Lv.${oldLevel} → Lv.${newLevel}, 경험치: ${newExp}/${expToNextLevel}`);
+    
+    // 레벨업 로그
+    if (levelUps.length > 0) {
+      console.log(`🎉 ${companionName} 레벨업! ${levelUps.join(' → ')}`);
+    }
+    
+    res.json({
+      success: true,
+      companionStats: {
+        level: companionStat.level,
+        experience: companionStat.experience,
+        expToNextLevel: expToNextLevel,
+        isInBattle: companionStat.isInBattle
+      },
+      leveledUp: levelUps.length > 0,
+      levelUps: levelUps
+    });
+    
+  } catch (error) {
+    console.error("Failed to add companion exp:", error);
+    res.status(500).json({ error: "동료 경험치 추가에 실패했습니다." });
   }
 });
 
@@ -5501,6 +5701,82 @@ app.post("/api/recalculate-fishing-cooldown", authenticateJWT, async (req, res) 
   } catch (error) {
     console.error("Failed to recalculate fishing cooldown:", error);
     res.status(500).json({ error: "낚시 쿨타임 재계산에 실패했습니다." });
+  }
+});
+
+// 🧪 연금술포션 사용 API (낚시 쿨타임 10초로 변경)
+app.post("/api/use-alchemy-potion", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid, username } = req.user;
+    
+    console.log(`🧪 연금술포션 사용 요청: ${username} (${userUuid})`);
+    
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    // 포션 보유 확인
+    const userPotions = await AlchemyPotionModel.findOne(query);
+    
+    if (!userPotions || userPotions.alchemyPotions <= 0) {
+      return res.status(400).json({ 
+        success: false,
+        error: "연금술포션을 보유하고 있지 않습니다." 
+      });
+    }
+    
+    // 포션 차감
+    userPotions.alchemyPotions -= 1;
+    await userPotions.save();
+    console.log(`연금술포션 사용: ${userPotions.alchemyPotions}개 남음`);
+    
+    // 낚시 쿨타임을 10초로 설정
+    const now = new Date();
+    const newCooldownEnd = new Date(now.getTime() + 10000); // 10초
+    
+    const updateData = {
+      userId: query.userId || 'user',
+      username: query.username || username,
+      userUuid: query.userUuid || userUuid,
+      fishingCooldownEnd: newCooldownEnd
+    };
+    
+    // CooldownModel 업데이트
+    await CooldownModel.findOneAndUpdate(
+      query,
+      updateData,
+      { upsert: true, new: true }
+    );
+    
+    // UserUuidModel도 업데이트
+    if (query.userUuid) {
+      await UserUuidModel.updateOne(
+        { userUuid: query.userUuid },
+        { fishingCooldownEnd: newCooldownEnd }
+      );
+      
+      // 쿨타임 캐시 무효화
+      const cacheKey = userUuid || username;
+      if (cacheKey) {
+        cooldownCache.delete(cacheKey);
+      }
+    }
+    
+    console.log(`🧪 연금술포션 사용 완료: 낚시 쿨타임 10초로 설정`);
+    
+    res.json({ 
+      success: true,
+      remainingPotions: userPotions.alchemyPotions,
+      newCooldown: 10000, // 10초 (밀리초)
+      message: "연금술포션을 사용했습니다! 낚시 쿨타임이 10초로 감소했습니다."
+    });
+  } catch (error) {
+    console.error("연금술포션 사용 실패:", error);
+    res.status(500).json({ error: "연금술포션 사용에 실패했습니다." });
   }
 });
 
@@ -7125,6 +7401,31 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
         if (userKey) setCachedFishingSkill(userKey, fishingSkill.skill);
       }
       console.log(`낚시 실력 증가 완료: 낚시대 구매로 ${fishingSkill.skill}`);
+    }
+    
+    // 기타 아이템 구매 시 인벤토리에 추가
+    if (category === 'items') {
+      if (itemName === '연금술포션') {
+        // 서버 데이터에서 구매 시 받는 개수 확인
+        const purchaseCount = serverItem.count || 10; // 별조각 1개로 10개 구매
+        
+        let userPotions = await AlchemyPotionModel.findOne(query);
+        
+        if (!userPotions) {
+          const createData = {
+            userId: query.userId || 'user',
+            username: query.username || username,
+            userUuid: query.userUuid || userUuid,
+            alchemyPotions: purchaseCount
+          };
+          userPotions = await AlchemyPotionModel.create(createData);
+          console.log(`연금술포션 최초 구매: ${purchaseCount}개`, createData);
+        } else {
+          userPotions.alchemyPotions += purchaseCount;
+          await userPotions.save();
+          console.log(`연금술포션 구매: +${purchaseCount}개 (총 ${userPotions.alchemyPotions}개 보유)`);
+        }
+      }
     }
     
     // 구매 성공 응답 (재료 기반)
@@ -8795,14 +9096,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.292"
+    version: "v1.293"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.292",
+    version: "v1.293",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
@@ -9210,13 +9511,34 @@ app.post("/api/admin/block-ip", authenticateJWT, async (req, res) => {
 
     console.log(`🚫 [ADMIN] IP ${ipAddress} blocked by ${adminUsername}: ${blockInfo.reason}`);
 
+    // 해당 IP의 모든 Socket 연결 강제 종료
+    let disconnectedCount = 0;
+    if (global.io) {
+      global.io.sockets.sockets.forEach((socket) => {
+        const socketIP = getClientIP({ headers: socket.handshake.headers, connection: socket.conn });
+        if (socketIP === ipAddress) {
+          console.log(`🚫 [ADMIN] Disconnecting blocked IP socket: ${socket.username || 'Unknown'} from ${socketIP}`);
+          socket.emit('ip-blocked', { 
+            reason: blockInfo.reason,
+            blockedAt: blockInfo.blockedAt,
+            blockedBy: blockInfo.blockedBy
+          });
+          socket.disconnect(true);
+          disconnectedCount++;
+        }
+      });
+    }
+
+    console.log(`🚫 [ADMIN] Disconnected ${disconnectedCount} socket(s) from IP ${ipAddress}`);
+
     res.json({ 
       success: true, 
-      message: `IP ${ipAddress}가 차단되었습니다.`,
+      message: `IP ${ipAddress}가 차단되었습니다. ${disconnectedCount}개의 연결이 종료되었습니다.`,
       blockedIP: {
         address: ipAddress,
         ...blockInfo
-      }
+      },
+      disconnectedCount
     });
 
   } catch (error) {

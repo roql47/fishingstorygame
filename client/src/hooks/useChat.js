@@ -245,9 +245,16 @@ export const useChat = ({
 
   const onAccountBlocked = useCallback((blockInfo) => {
     console.log("Account blocked:", blockInfo);
-    alert(`🚫 ${blockInfo.message}`);
+    alert(`🚫 계정이 차단되었습니다.\n\n차단 사유: ${blockInfo.reason}\n차단 일시: ${blockInfo.blockedAt}\n차단자: ${blockInfo.blockedBy}`);
     
     // 계정 차단의 경우 로그아웃 처리는 App.jsx에서
+  }, []);
+
+  const onIPBlocked = useCallback((blockInfo) => {
+    console.log("IP blocked:", blockInfo);
+    alert(`🚫 귀하의 IP가 차단되었습니다.\n\n차단 사유: ${blockInfo.reason}\n차단 일시: ${blockInfo.blockedAt}\n차단자: ${blockInfo.blockedBy}`);
+    
+    // IP 차단의 경우 로그아웃 처리는 App.jsx에서
   }, []);
 
   // 소켓 연결 및 이벤트 리스너 설정
@@ -279,6 +286,7 @@ export const useChat = ({
     socket.on("chat:error", onChatError);
     socket.on("connect_error", onConnectError);
     socket.on("account-blocked", onAccountBlocked);
+    socket.on("ip-blocked", onIPBlocked);
 
     // 사용자명 결정 로직
     const currentStoredNickname = localStorage.getItem("nickname");
@@ -312,9 +320,10 @@ export const useChat = ({
       socket.off("chat:error", onChatError);
       socket.off("connect_error", onConnectError);
       socket.off("account-blocked", onAccountBlocked);
+      socket.off("ip-blocked", onIPBlocked);
     };
   }, [username, idToken, onMessage, onUsersUpdate, onUserUuid, onReactionUpdate, 
-      onDuplicateLogin, onJoinError, onChatError, onConnectError, onAccountBlocked, setJwtToken, userUuid]);
+      onDuplicateLogin, onJoinError, onChatError, onConnectError, onAccountBlocked, onIPBlocked, setJwtToken, userUuid]);
 
   // 메시지 스크롤 관리
   useEffect(() => {
