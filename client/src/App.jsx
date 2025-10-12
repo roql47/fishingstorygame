@@ -2981,9 +2981,13 @@ function App() {
     console.log("Emergency UUID from localStorage:", emergencyUuid);
     console.log("Safe username (final):", safeUsername);
     
+    // 디바이스 정보 감지 (PC/Mobile)
+    const isMobileDevice = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const deviceType = isMobileDevice ? 'Mobile' : 'PC';
+    
     // username이 없어도 idToken이 있으면 소켓 연결 (이용약관 모달을 위해)
     if (safeUsername || idToken) {
-    socket.emit("chat:join", { username: safeUsername, idToken, userUuid });
+    socket.emit("chat:join", { username: safeUsername, idToken, userUuid, deviceType });
     }
 
     return () => {
@@ -6977,6 +6981,23 @@ function App() {
                     </div>
                     <span>채널방</span>
                   </a>
+                  {/* 후원 링크 */}
+                  <a
+                    href="https://buymeacoffee.com/r4823120"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-all duration-300 hover:scale-105 ${
+                      isDarkMode 
+                        ? "bg-pink-500/20 text-pink-400 hover:bg-pink-500/30 border border-pink-400/30" 
+                        : "bg-pink-500/10 text-pink-600 hover:bg-pink-500/20 border border-pink-500/30"
+                    }`}
+                    title="개발자 후원하기"
+                  >
+                    <div className="w-3 h-3 flex items-center justify-center">
+                      <span className="text-[10px]">☕</span>
+                    </div>
+                    <span>여우밥주기</span>
+                  </a>
                 </div>
                 <p className={`text-xs ${
                   isDarkMode ? "text-gray-400" : "text-gray-600"
@@ -9999,58 +10020,176 @@ function App() {
                 </div>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div className="text-center">
-                    <div className={`font-bold text-lg ${
-                      isDarkMode ? "text-red-400" : "text-red-600"
-                    }`}>
-                      {(() => {
-                        if (selectedUserProfile) {
-                          // 다른 사용자의 공격력 계산
-                          const fishingSkill = otherUserData?.fishingSkill || 0;
-                          const fishingRodEnhancement = otherUserData?.equipment?.fishingRodEnhancement || 0;
-                          const enhancementBonus = calculateTotalEnhancementBonus(fishingRodEnhancement);
-                          const baseAttack = 0.00225 * Math.pow(fishingSkill, 3) + 0.165 * Math.pow(fishingSkill, 2) + 2 * fishingSkill + 3;
-                          const totalAttack = Math.floor(baseAttack + (baseAttack * enhancementBonus / 100));
-                          return Math.floor(totalAttack);
-                        } else {
-                          // 내 공격력 계산
-                          const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
-                          const attackRange = getAttackRange(fishingSkill, enhancementBonus);
-                          return Math.floor(attackRange.base);
-                        }
-                      })()}
+                    <div className="relative group">
+                      <div className={`font-bold text-lg cursor-help ${
+                        isDarkMode ? "text-red-400" : "text-red-600"
+                      }`}>
+                        {(() => {
+                          if (selectedUserProfile) {
+                            // 다른 사용자의 공격력 계산
+                            const fishingSkill = otherUserData?.fishingSkill || 0;
+                            const fishingRodEnhancement = otherUserData?.equipment?.fishingRodEnhancement || 0;
+                            const enhancementBonus = calculateTotalEnhancementBonus(fishingRodEnhancement);
+                            const baseAttack = 0.00225 * Math.pow(fishingSkill, 3) + 0.165 * Math.pow(fishingSkill, 2) + 2 * fishingSkill + 3;
+                            const totalAttack = Math.floor(baseAttack + (baseAttack * enhancementBonus / 100));
+                            return Math.floor(totalAttack);
+                          } else {
+                            // 내 공격력 계산
+                            const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
+                            const attackRange = getAttackRange(fishingSkill, enhancementBonus);
+                            return Math.floor(attackRange.base);
+                          }
+                        })()}
+                      </div>
+                      
+                      {/* 툴팁 표시 - 공격력 세부 정보 */}
+                      <div className={`absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 ${
+                        isDarkMode 
+                          ? "bg-gray-800 text-white border border-gray-700" 
+                          : "bg-white text-gray-800 border border-gray-300 shadow-lg"
+                      }`}>
+                        <div className="space-y-1">
+                          {(() => {
+                            if (selectedUserProfile) {
+                              const fishingSkill = otherUserData?.fishingSkill || 0;
+                              const fishingRodEnhancement = otherUserData?.equipment?.fishingRodEnhancement || 0;
+                              const enhancementBonus = calculateTotalEnhancementBonus(fishingRodEnhancement);
+                              const baseAttack = 0.00225 * Math.pow(fishingSkill, 3) + 0.165 * Math.pow(fishingSkill, 2) + 2 * fishingSkill + 3;
+                              const enhancementAttack = (baseAttack * enhancementBonus / 100);
+                              const totalAttack = baseAttack + enhancementAttack;
+                              
+                              return (
+                                <>
+                                  <div>낚시실력 기본: {Math.floor(baseAttack)}</div>
+                                  {fishingRodEnhancement > 0 && (
+                                    <div>강화 보너스: +{Math.floor(enhancementAttack)} (+{enhancementBonus}%)</div>
+                                  )}
+                                  <div className="border-t border-gray-500 pt-1">
+                                    <div className="font-semibold">총 공격력: {Math.floor(totalAttack)}</div>
+                                  </div>
+                                </>
+                              );
+                            } else {
+                              const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
+                              const baseAttack = 0.00225 * Math.pow(fishingSkill, 3) + 0.165 * Math.pow(fishingSkill, 2) + 2 * fishingSkill + 3;
+                              const enhancementAttack = (baseAttack * enhancementBonus / 100);
+                              const totalAttack = baseAttack + enhancementAttack;
+                              
+                              return (
+                                <>
+                                  <div>낚시실력 기본: {Math.floor(baseAttack)}</div>
+                                  {userEquipment.fishingRodEnhancement > 0 && (
+                                    <div>강화 보너스: +{Math.floor(enhancementAttack)} (+{enhancementBonus}%)</div>
+                                  )}
+                                  <div className="border-t border-gray-500 pt-1">
+                                    <div className="font-semibold">총 공격력: {Math.floor(totalAttack)}</div>
+                                  </div>
+                                </>
+                              );
+                            }
+                          })()}
+                        </div>
+                        {/* 화살표 */}
+                        <div className={`absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent ${
+                          isDarkMode ? "border-t-gray-800" : "border-t-white"
+                        }`}></div>
+                      </div>
                     </div>
                     <div className={`text-xs ${
                       isDarkMode ? "text-gray-500" : "text-gray-600"
                     }`}>기본 공격력</div>
                   </div>
                   <div className="text-center">
-                    <div className={`font-bold text-lg ${
-                      isDarkMode ? "text-green-400" : "text-green-600"
-                    }`}>
-                      {(() => {
-                        if (selectedUserProfile) {
-                          // 다른 사용자의 체력 계산
-                          const accessoryName = otherUserData?.equipment?.accessory;
-                          const accessoryEnhancement = otherUserData?.equipment?.accessoryEnhancement || 0;
-                          const enhancementBonus = calculateTotalEnhancementBonus(accessoryEnhancement);
-                          
-                          // 악세사리 레벨 계산
-                          const accessories = [
-                            '오래된반지', '은목걸이', '금귀걸이', '마법의펜던트', '에메랄드브로치',
-                            '토파즈이어링', '자수정팔찌', '백금티아라', '만드라고라허브', '에테르나무묘목',
-                            '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
-                          ];
-                          const accessoryLevel = accessoryName ? accessories.indexOf(accessoryName) + 1 : 0;
-                          const maxHp = calculatePlayerMaxHp(accessoryLevel, enhancementBonus);
-                          return Math.floor(maxHp);
-                        } else {
-                          // 내 체력 계산
-                          const accessoryLevel = getAccessoryLevel(userEquipment.accessory);
-                          const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement || 0);
-                          const maxHp = calculatePlayerMaxHp(accessoryLevel, enhancementBonus);
-                          return Math.floor(maxHp);
-                        }
-                      })()}
+                    <div className="relative group">
+                      <div className={`font-bold text-lg cursor-help ${
+                        isDarkMode ? "text-green-400" : "text-green-600"
+                      }`}>
+                        {(() => {
+                          if (selectedUserProfile) {
+                            // 다른 사용자의 체력 계산
+                            const accessoryName = otherUserData?.equipment?.accessory;
+                            const accessoryEnhancement = otherUserData?.equipment?.accessoryEnhancement || 0;
+                            const enhancementBonus = calculateTotalEnhancementBonus(accessoryEnhancement);
+                            
+                            // 악세사리 레벨 계산
+                            const accessories = [
+                              '오래된반지', '은목걸이', '금귀걸이', '마법의펜던트', '에메랄드브로치',
+                              '토파즈이어링', '자수정팔찌', '백금티아라', '만드라고라허브', '에테르나무묘목',
+                              '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
+                            ];
+                            const accessoryLevel = accessoryName ? accessories.indexOf(accessoryName) + 1 : 0;
+                            const maxHp = calculatePlayerMaxHp(accessoryLevel, enhancementBonus);
+                            return Math.floor(maxHp);
+                          } else {
+                            // 내 체력 계산
+                            const accessoryLevel = getAccessoryLevel(userEquipment.accessory);
+                            const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement || 0);
+                            const maxHp = calculatePlayerMaxHp(accessoryLevel, enhancementBonus);
+                            return Math.floor(maxHp);
+                          }
+                        })()}
+                      </div>
+                      
+                      {/* 툴팁 표시 - 체력 세부 정보 */}
+                      <div className={`absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 ${
+                        isDarkMode 
+                          ? "bg-gray-800 text-white border border-gray-700" 
+                          : "bg-white text-gray-800 border border-gray-300 shadow-lg"
+                      }`}>
+                        <div className="space-y-1">
+                          {(() => {
+                            if (selectedUserProfile) {
+                              const accessoryName = otherUserData?.equipment?.accessory;
+                              const accessoryEnhancement = otherUserData?.equipment?.accessoryEnhancement || 0;
+                              const enhancementBonus = calculateTotalEnhancementBonus(accessoryEnhancement);
+                              
+                              const accessories = [
+                                '오래된반지', '은목걸이', '금귀걸이', '마법의펜던트', '에메랄드브로치',
+                                '토파즈이어링', '자수정팔찌', '백금티아라', '만드라고라허브', '에테르나무묘목',
+                                '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
+                              ];
+                              const accessoryLevel = accessoryName ? accessories.indexOf(accessoryName) + 1 : 0;
+                              const baseHp = calculatePlayerMaxHp(accessoryLevel, 0);
+                              const enhancementHp = (baseHp * enhancementBonus / 100);
+                              const totalHp = baseHp + enhancementHp;
+                              
+                              return (
+                                <>
+                                  <div>악세사리 기본: {Math.floor(baseHp)}</div>
+                                  {accessoryEnhancement > 0 && (
+                                    <div>강화 보너스: +{Math.floor(enhancementHp)} (+{enhancementBonus}%)</div>
+                                  )}
+                                  <div className="border-t border-gray-500 pt-1">
+                                    <div className="font-semibold">총 체력: {Math.floor(totalHp)}</div>
+                                  </div>
+                                </>
+                              );
+                            } else {
+                              const accessoryLevel = getAccessoryLevel(userEquipment.accessory);
+                              const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement || 0);
+                              const baseHp = calculatePlayerMaxHp(accessoryLevel, 0);
+                              const enhancementHp = (baseHp * enhancementBonus / 100);
+                              const totalHp = baseHp + enhancementHp;
+                              
+                              return (
+                                <>
+                                  <div>악세사리 기본: {Math.floor(baseHp)}</div>
+                                  {userEquipment.accessoryEnhancement > 0 && (
+                                    <div>강화 보너스: +{Math.floor(enhancementHp)} (+{enhancementBonus}%)</div>
+                                  )}
+                                  <div className="border-t border-gray-500 pt-1">
+                                    <div className="font-semibold">총 체력: {Math.floor(totalHp)}</div>
+                                  </div>
+                                </>
+                              );
+                            }
+                          })()}
+                        </div>
+                        {/* 화살표 */}
+                        <div className={`absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent ${
+                          isDarkMode ? "border-t-gray-800" : "border-t-white"
+                        }`}></div>
+                      </div>
                     </div>
                     <div className={`text-xs ${
                       isDarkMode ? "text-gray-500" : "text-gray-600"

@@ -2041,7 +2041,7 @@ io.on("connection", (socket) => {
     
     console.log(`🔌 Socket 연결 해제: ${clientIP} (${socket.id}) - ${reason}`);
   });
-  socket.on("chat:join", async ({ username, idToken, userUuid, isReconnection }) => {
+  socket.on("chat:join", async ({ username, idToken, userUuid, isReconnection, deviceType }) => {
     // 📱 유예 시간 중이면 취소 (재연결 시)
     if (userUuid && disconnectionGracePeriod.has(userUuid)) {
       const graceData = disconnectionGracePeriod.get(userUuid);
@@ -2330,13 +2330,17 @@ io.on("connection", (socket) => {
         .some(userData => userData.userUuid === user.userUuid && userData.socketId !== socket.id);
       
       // 접속자 목록에 추가/업데이트
+      const baseLoginType = provider === 'google' ? 'Google' : provider === 'kakao' ? 'Kakao' : 'Guest';
+      const deviceInfo = deviceType || 'PC'; // 기본값은 PC
+      const loginTypeWithDevice = `${baseLoginType}/${deviceInfo}`;
+      
       connectedUsers.set(socket.id, {
         userUuid: user.userUuid,
         username: user.username,
         displayName: user.displayName || user.username, // 데이터베이스에 저장된 displayName 사용
         userId: socket.data.userId,
         hasIdToken: !!idToken, // ID 토큰 보유 여부
-        loginType: provider === 'google' ? 'Google' : provider === 'kakao' ? 'Kakao' : 'Guest',
+        loginType: loginTypeWithDevice,
         joinTime: new Date(),
         socketId: socket.id,
         originalGoogleId: user.originalGoogleId, // 구글 ID 정보
@@ -10722,12 +10726,6 @@ app.post("/api/market/list", authenticateJWT, async (req, res) => {
       return res.status(400).json({ message: "올바른 정보를 입력해주세요." });
     }
 
-    // 낚시 실력 확인 (5 이상만 거래소 이용 가능)
-    const fishingSkill = await FishingSkillModel.findOne({ userUuid: userUuid });
-    if (!fishingSkill || fishingSkill.skill < 5) {
-      return res.status(403).json({ message: "거래소는 낚시 실력 5 이상부터 이용할 수 있습니다." });
-    }
-
     // 보증금 계산 및 확인 (먼저 체크!)
     const totalPrice = pricePerUnit * quantity;
     const deposit = Math.floor(totalPrice * 0.05);
@@ -10858,12 +10856,6 @@ app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) =>
   try {
     const { userUuid, username } = req.user;
     const { listingId } = req.params;
-
-    // 낚시 실력 확인 (5 이상만 거래소 이용 가능)
-    const fishingSkill = await FishingSkillModel.findOne({ userUuid: userUuid });
-    if (!fishingSkill || fishingSkill.skill < 5) {
-      return res.status(403).json({ message: "거래소는 낚시 실력 5 이상부터 이용할 수 있습니다." });
-    }
 
     // 거래소 등록 확인
     const listing = await MarketListingModel.findById(listingId);
@@ -11062,12 +11054,6 @@ app.delete("/api/market/cancel/:listingId", authenticateJWT, async (req, res) =>
   try {
     const { userUuid, username } = req.user;
     const { listingId } = req.params;
-
-    // 낚시 실력 확인 (5 이상만 거래소 이용 가능)
-    const fishingSkill = await FishingSkillModel.findOne({ userUuid: userUuid });
-    if (!fishingSkill || fishingSkill.skill < 5) {
-      return res.status(403).json({ message: "거래소는 낚시 실력 5 이상부터 이용할 수 있습니다." });
-    }
 
     // 거래소 등록 확인
     const listing = await MarketListingModel.findById(listingId);

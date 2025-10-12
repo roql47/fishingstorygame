@@ -694,7 +694,7 @@ const MarketModal = ({
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {paginatedListings.map((listing) => (
                     <div
                       key={listing._id || listing.id}
@@ -849,7 +849,7 @@ const MarketModal = ({
                       >
                         <ChevronRight className="w-5 h-5" />
                       </button>
-                    </div>
+                </div>
                   )}
                 </>
               )}
@@ -1254,7 +1254,7 @@ const MarketModal = ({
             <div className={`text-sm ${
               isDarkMode ? "text-gray-400" : "text-gray-600"
             }`}>
-              💡 분해 아이템, 호박석, 별조각 거래 가능 • 등록 시 보증금 5% 필요 (낚시 실력 5 이상)
+              💡 분해 아이템, 호박석, 별조각 거래 가능 • 등록 시 보증금 5% 필요
             </div>
             <div className={`text-lg font-bold ${
               isDarkMode ? "text-yellow-400" : "text-yellow-600"

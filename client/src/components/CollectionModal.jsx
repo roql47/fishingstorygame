@@ -26,8 +26,15 @@ const CollectionModal = ({
         const username = localStorage.getItem('nickname') || '';
         const userUuid = localStorage.getItem('userUuid') || '';
         
+        // 로그인하지 않았거나 username이 없으면 빈 배열 반환
+        if (!username || !userUuid) {
+          console.log('⚠️ No username or userUuid, skipping fish discoveries fetch');
+          setDiscoveredFish([]);
+          return;
+        }
+        
         // userUuid가 없으면 username을 userId로 사용
-        const userId = userUuid || (username ? username : 'guest');
+        const userId = userUuid || username;
         
         console.log('🔍 CollectionModal - Fetching discovered fish with:', { 
           serverUrl, 
