@@ -4279,12 +4279,22 @@ function App() {
         }
       }
       console.log("Other user profile data:", response.data);
+      console.log("📊 Setting otherUserData with userUuid:", response.data.userUuid);
       setOtherUserData(response.data);
       
-      // 📸 프로필 이미지도 함께 로드
+      // 📸 프로필 이미지도 함께 로드 (관리자 권한 불필요)
+      console.log("🔍 [DEBUG] Checking if userUuid exists:", !!response.data.userUuid);
       if (response.data.userUuid) {
-        console.log("📸 Loading profile image for userUuid:", response.data.userUuid);
+        console.log("📸 [NO ADMIN CHECK] Loading profile image for userUuid:", response.data.userUuid);
         const targetUserUuid = response.data.userUuid;
+        
+        console.log("🔍 [DEBUG] UUID validation:");
+        console.log("  - exists:", !!targetUserUuid);
+        console.log("  - is string:", typeof targetUserUuid === 'string');
+        console.log("  - not empty:", targetUserUuid && targetUserUuid.trim() !== '');
+        console.log("  - not 'undefined':", targetUserUuid !== 'undefined');
+        console.log("  - not 'null':", targetUserUuid !== 'null');
+        console.log("  - length check:", targetUserUuid && targetUserUuid.replace(/#/g, '').length >= 3);
         
         // 엄격한 UUID 검증
         if (targetUserUuid && 
@@ -4293,6 +4303,8 @@ function App() {
             targetUserUuid !== 'undefined' &&
             targetUserUuid !== 'null' &&
             targetUserUuid.replace(/#/g, '').length >= 3) {
+          
+          console.log("✅ [DEBUG] UUID validation passed, loading image...");
           
           try {
             const safeUuid = targetUserUuid.replace(/#/g, '');
@@ -4310,23 +4322,30 @@ function App() {
               const baseImageUrl = serverUrl + imageResponse.data.imageUrl;
               const imageUrl = baseImageUrl + '?t=' + Date.now();
               
-              console.log('✅ Profile image loaded for:', targetUserUuid, '→', imageUrl);
+              console.log('✅ [NO ADMIN CHECK] Profile image loaded for:', targetUserUuid, '→', imageUrl);
               
-              // 캐시에 저장
+              // 캐시에 저장 (관리자 권한과 무관)
               setUserProfileImages(prev => {
                 const newCache = {
                   ...prev,
                   [targetUserUuid]: imageUrl
                 };
+                console.log('💾 [NO ADMIN CHECK] Saving to localStorage:', targetUserUuid);
                 localStorage.setItem('userProfileImages', JSON.stringify(newCache));
+                console.log('✅ [NO ADMIN CHECK] localStorage updated, cache keys:', Object.keys(newCache));
                 return newCache;
               });
             }
           } catch (imageError) {
             // 이미지 로드 실패는 조용히 무시 (404 등)
             console.log('ℹ️ No profile image found for:', targetUserUuid);
+            console.log('❌ [DEBUG] Image load error:', imageError.message);
           }
+        } else {
+          console.log("❌ [DEBUG] UUID validation failed!");
         }
+      } else {
+        console.log("❌ [DEBUG] No userUuid in response data");
       }
     } catch (error) {
       console.error("Failed to fetch other user profile:", error);
@@ -5559,6 +5578,28 @@ function App() {
       }
     });
   }, [connectedUsers.length]); // connectedUsers.length만 의존성에 추가 (무한 루프 방지)
+
+  // 📸 프로필 모달이 열릴 때 자동으로 프로필 이미지 로드 (관리자 권한 불필요)
+  useEffect(() => {
+    if (!showProfile) return;
+    
+    const targetUserUuid = selectedUserProfile ? otherUserData?.userUuid : userUuid;
+    
+    console.log('🖼️ [PROFILE MODAL OPEN] 프로필 모달 열림, targetUserUuid:', targetUserUuid);
+    console.log('🖼️ [PROFILE MODAL OPEN] selectedUserProfile:', selectedUserProfile);
+    console.log('🖼️ [PROFILE MODAL OPEN] otherUserData:', otherUserData);
+    
+    if (targetUserUuid && 
+        typeof targetUserUuid === 'string' && 
+        targetUserUuid.trim() !== '' && 
+        targetUserUuid !== 'undefined' &&
+        targetUserUuid.replace(/#/g, '').length >= 3) {
+      
+      // 관리자 권한과 무관하게 무조건 이미지 로드 시도
+      console.log('📸 [PROFILE MODAL OPEN] 프로필 이미지 자동 로드:', targetUserUuid);
+      loadProfileImage(targetUserUuid);
+    }
+  }, [showProfile, otherUserData?.userUuid, userUuid, loadProfileImage]);
 
   // 🔑 관리자 권한: 다른 사용자 계정 초기화
   const adminResetUserAccount = async (targetUsername) => {
@@ -10156,29 +10197,10 @@ function App() {
               isDarkMode ? "border-white/10" : "border-gray-300/20"
             }`}>
               <div className="flex items-center gap-3">
-                {/* 📸 프로필 이미지 - 조건 없이 항상 표시 */}
+                {/* 📸 프로필 이미지 - 접속자 명단과 동일하게 단순화 */}
                 {(() => {
                   const currentUserUuid = selectedUserProfile ? otherUserData?.userUuid : userUuid;
-                  
-                  // localStorage에서 직접 읽기
-                  let currentImage = null;
-                  if (currentUserUuid) {
-                    // state 먼저 확인
-                    currentImage = userProfileImages[currentUserUuid];
-                    
-                    // state에 없으면 localStorage 확인
-                    if (!currentImage) {
-                      try {
-                        const cached = localStorage.getItem('userProfileImages');
-                        if (cached) {
-                          const parsed = JSON.parse(cached);
-                          currentImage = parsed[currentUserUuid];
-                        }
-                      } catch (e) {}
-                    }
-                  }
-                  
-                  console.log('🖼️ [ALWAYS SHOW] Rendering image. UUID:', currentUserUuid, 'Image:', currentImage, 'isAdmin:', isAdmin);
+                  const currentImage = userProfileImages[currentUserUuid];
                   
                   if (currentImage) {
                     return (
@@ -10211,7 +10233,13 @@ function App() {
                           isDarkMode ? "border-white/10" : "border-blue-300/30"
                         }`}
                         onClick={() => {
+                          // 이미지가 없어도 모달은 열림 (다시 로드 시도)
+                          setModalImageUrl(null); // 초기화
                           setShowImageModal(true);
+                          // 이미지 다시 로드 시도
+                          if (currentUserUuid) {
+                            loadProfileImage(currentUserUuid);
+                          }
                         }}
                         title="프로필 이미지 보기"
                       >

@@ -9413,6 +9413,7 @@ async function getUserProfileHandler(req, res) {
       return res.json({
         username: user.username,
         displayName: user.displayName,
+        userUuid: user.userUuid, // 📸 프로필 이미지 로드를 위해 필요
         isGuest: user.isGuest,
         money: userMoney?.money || 0, // 보유 골드 공개
         amber: userAmber?.amber || 0, // 보유 호박석 공개
