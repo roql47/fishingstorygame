@@ -5271,8 +5271,8 @@ function App() {
     }
   };
 
-  // 📸 프로필 이미지 업로드 함수 (관리자 전용)
-  const handleProfileImageUpload = async (event) => {
+  // 📸 프로필 이미지 업로드 함수 (관리자 전용 - 자신 또는 다른 사용자)
+  const handleProfileImageUpload = async (event, targetUserUuid = null, targetUsername = null) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -5288,11 +5288,17 @@ function App() {
       return;
     }
 
+    // 대상 사용자 정보 (없으면 자기 자신)
+    const finalTargetUserUuid = targetUserUuid || userUuid;
+    const finalTargetUsername = targetUsername || username;
+
     try {
       setUploadingImage(true);
 
       const formData = new FormData();
       formData.append('profileImage', file);
+      formData.append('targetUserUuid', finalTargetUserUuid);
+      formData.append('targetUsername', finalTargetUsername);
 
       const response = await authenticatedRequest.post(
         `${serverUrl}/api/profile-image/upload`,
@@ -5316,30 +5322,28 @@ function App() {
         console.log('📸 Base image URL:', baseUrl);
         console.log('📸 Full image URL:', fullUrl);
         console.log('📸 Final image URL with cache busting:', finalUrl);
+        console.log('📸 Target User UUID:', finalTargetUserUuid);
         
-        setProfileImage(finalUrl);
-        
-        // localStorage에 저장 (새로고침해도 유지)
-        localStorage.setItem('profileImage', finalUrl);
-        
-        // 캐시에도 저장 (접속자 명단/채팅에서 사용)
-        if (userUuid) {
-          const newCache = {
-            ...userProfileImages,
-            [userUuid]: finalUrl
-          };
-          setUserProfileImages(newCache);
-          localStorage.setItem('userProfileImages', JSON.stringify(newCache));
-          console.log('💾 Image saved to cache for userUuid:', userUuid);
+        // 내 프로필 이미지인 경우
+        if (finalTargetUserUuid === userUuid) {
+          setProfileImage(finalUrl);
+          localStorage.setItem('profileImage', finalUrl);
         }
         
-        console.log('📸 profileImage state updated to:', finalUrl);
+        // 캐시에 저장 (접속자 명단/채팅에서 사용)
+        const newCache = {
+          ...userProfileImages,
+          [finalTargetUserUuid]: finalUrl
+        };
+        setUserProfileImages(newCache);
+        localStorage.setItem('userProfileImages', JSON.stringify(newCache));
+        console.log('💾 Image saved to cache for userUuid:', finalTargetUserUuid);
         
         // 🔄 Socket.io로 다른 사용자들에게 이미지 업데이트 알림
         const socket = getSocket();
         socket.emit('profile:image:updated', { 
-          userUuid: userUuid,
-          username: username
+          userUuid: finalTargetUserUuid,
+          username: finalTargetUsername
         });
         console.log('📡 Sent image update notification to other users');
         
@@ -12584,8 +12588,8 @@ function App() {
               })()}
             </div>
             
-            {/* 관리자 전용 업로드/삭제 버튼 */}
-            {!selectedUserProfile && isAdmin && (
+            {/* 관리자 전용 업로드/삭제 버튼 (자신 또는 다른 사용자) */}
+            {isAdmin && (
               <div className={`p-4 border-t flex gap-2 justify-center ${
                 isDarkMode ? "border-white/10" : "border-gray-300/20"
               }`}>
@@ -12593,7 +12597,12 @@ function App() {
                   ref={fileInputRef}
                   type="file" 
                   accept="image/*"
-                  onChange={handleProfileImageUpload}
+                  onChange={(e) => {
+                    // 다른 사용자 프로필일 경우 대상 정보 전달
+                    const targetUuid = selectedUserProfile ? otherUserData?.userUuid : null;
+                    const targetName = selectedUserProfile ? selectedUserProfile.username : null;
+                    handleProfileImageUpload(e, targetUuid, targetName);
+                  }}
                   className="hidden"
                 />
                 <button
@@ -12605,9 +12614,9 @@ function App() {
                       : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20"
                   } ${uploadingImage ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  📸 {uploadingImage ? '업로드 중...' : '이미지 업로드'}
+                  📸 {uploadingImage ? '업로드 중...' : selectedUserProfile ? `${selectedUserProfile.username}님 이미지 업로드` : '이미지 업로드'}
                 </button>
-                {userProfileImages[userUuid] && (
+                {!selectedUserProfile && userProfileImages[userUuid] && (
                   <button
                     onClick={handleProfileImageDelete}
                     className={`px-4 py-2 rounded-lg transition-all duration-300 hover:scale-105 flex items-center gap-2 ${
@@ -12616,7 +12625,7 @@ function App() {
                         : "bg-red-500/10 text-red-600 hover:bg-red-500/20"
                     }`}
                   >
-                    🗑️이미지 삭제
+                    🗑️ 이미지 삭제
                   </button>
                 )}
               </div>

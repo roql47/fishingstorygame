@@ -5553,7 +5553,7 @@ const upload = multer({
   }
 });
 
-// 프로필 이미지 업로드 API (관리자 전용)
+// 프로필 이미지 업로드 API (관리자 전용 - 자신 또는 다른 사용자)
 app.post("/api/profile-image/upload", authenticateJWT, upload.single('profileImage'), async (req, res) => {
   try {
     const { userUuid: jwtUserUuid, username: jwtUsername, isAdmin } = req.user;
@@ -5573,12 +5573,16 @@ app.post("/api/profile-image/upload", authenticateJWT, upload.single('profileIma
       });
     }
     
+    // 🎯 대상 사용자 UUID (없으면 자기 자신)
+    const targetUserUuid = req.body.targetUserUuid || jwtUserUuid;
+    const targetUsername = req.body.targetUsername || jwtUsername;
+    
     const clientIP = getClientIP(req);
-    console.log(`📸 [PROFILE-IMAGE] Upload request from ${jwtUsername} (${clientIP})`);
+    console.log(`📸 [PROFILE-IMAGE] Upload request from ${jwtUsername} (${clientIP}) for target: ${targetUsername} (${targetUserUuid})`);
     
     // 이미지 처리: 512x512 리사이징 및 WebP 변환
     // userUuid의 # 기호를 제거 (URL에서 # 은 fragment로 인식되어 잘림)
-    const safeUserUuid = jwtUserUuid.replace(/#/g, '');
+    const safeUserUuid = targetUserUuid.replace(/#/g, '');
     const filename = `profile_${safeUserUuid}_${Date.now()}.webp`;
     const filepath = path.join(uploadDir, filename);
     
@@ -5594,7 +5598,7 @@ app.post("/api/profile-image/upload", authenticateJWT, upload.single('profileIma
     const imageUrl = `/uploads/profiles/${filename}`;
     
     // 기존 프로필 이미지 삭제
-    const existingImage = await ProfileImageModel.findOne({ userUuid: jwtUserUuid });
+    const existingImage = await ProfileImageModel.findOne({ userUuid: targetUserUuid });
     if (existingImage) {
       // 기존 파일 삭제
       const oldFilePath = path.join(__dirname, '..', existingImage.imageUrl);
@@ -5613,8 +5617,8 @@ app.post("/api/profile-image/upload", authenticateJWT, upload.single('profileIma
       // 새로운 프로필 이미지 생성
       const newProfileImage = new ProfileImageModel({
         userId: 'user',
-        username: jwtUsername,
-        userUuid: jwtUserUuid,
+        username: targetUsername,
+        userUuid: targetUserUuid,
         imageUrl: imageUrl,
         originalName: req.file.originalname,
         fileSize: fileSize
@@ -5622,13 +5626,14 @@ app.post("/api/profile-image/upload", authenticateJWT, upload.single('profileIma
       await newProfileImage.save();
     }
     
-    console.log(`✅ [PROFILE-IMAGE] Image uploaded successfully for ${jwtUsername}: ${imageUrl}`);
+    console.log(`✅ [PROFILE-IMAGE] Image uploaded successfully for ${targetUsername}: ${imageUrl}`);
     
     res.json({
       success: true,
-      message: '프로필 이미지가 업로드되었습니다.',
+      message: `${targetUsername}님의 프로필 이미지가 업로드되었습니다.`,
       imageUrl: imageUrl,
-      fileSize: fileSize
+      fileSize: fileSize,
+      targetUserUuid: targetUserUuid
     });
     
   } catch (error) {
