@@ -1,6 +1,22 @@
 // 공지사항 데이터 (ID 내림차순 정렬 - 최신이 가장 높은 ID)
 export const NOTICE_DATA = [
   {
+    id: 27,
+    date: "2025.10.12",
+    title: "🔍 거래소 검색 & 정렬 기능 추가",
+    content: [
+      "거래소 검색/정렬렬 기능 추가",
+      "거래소 페이지네이션 추가",
+      "페이지 네비게이션 UI 개선",
+      "검색 결과 개수 표시",
+      "모바일 이용시 백그라운드 상태서도 세션 유지되도록 수정",
+      "인벤토리 탭 물고기와 재료 랭크 표시",
+      "림스&베리,나하트라 스킬 추가"
+    ],
+    isNew: true,
+    type: "major_update"
+  },
+  {
     id: 26,
     date: "2025.10.11",
     title: "⚡ 장비 강화 버프 패치",
@@ -12,7 +28,7 @@ export const NOTICE_DATA = [
       "수집도감표 최신화",
       "강화시 추가공격력 비율 조정"
     ],
-    isNew: true,
+    isNew: false,
     type: "balance"
   },
   {
@@ -427,5 +443,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.294"
+  version: "v1.296"
 };

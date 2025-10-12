@@ -549,7 +549,15 @@ class ExpeditionSystem {
                 growthAttack: 3,
                 growthSpeed: 0.5,
                 description: "용족 전사",
-                rarity: "일반"
+                rarity: "일반",
+                skill: {
+                    name: "악몽의 정원",
+                    description: "최대 5명의 적에게 전체공격 데미지를 입힙니다",
+                    damageMultiplier: 0.7,
+                    moraleRequired: 100,
+                    targetCount: 5,
+                    skillType: "aoe"
+                }
             },
             "림스&베리": {
                 name: "림스&베리",
@@ -560,7 +568,15 @@ class ExpeditionSystem {
                 growthAttack: 2,
                 growthSpeed: 0.5,
                 description: "쌍둥이 궁수",
-                rarity: "희귀"
+                rarity: "희귀",
+                skill: {
+                    name: "마탄 발사",
+                    description: "2명의 적에게 각각 100% 공격력으로 공격합니다",
+                    damageMultiplier: 1.0,
+                    moraleRequired: 100,
+                    targetCount: 2,
+                    skillType: "multi_target"
+                }
             }
         };
 
@@ -1593,8 +1609,49 @@ class ExpeditionSystem {
                 } else if (skill.buffType === 'critical') {
                     battleState.battleLog.push(`🎯 3턴 동안 크리티컬 확률이 20% 상승합니다!`);
                 }
+            } else if (skill.skillType === 'multi_target' || skill.skillType === 'aoe') {
+                // 다중 타겟/AOE 스킬
+                battleState.battleLog.push(`${companionName}이(가) 스킬 '${skill.name}'을(를) 사용했습니다!`);
+                
+                // 살아있는 몬스터 중에서 타겟 선택
+                const targetCount = Math.min(skill.targetCount || 1, aliveMonsters.length);
+                const targets = [];
+                
+                if (skill.skillType === 'aoe') {
+                    // AOE: 모든 살아있는 몬스터에게 (최대 targetCount까지)
+                    targets.push(...aliveMonsters.slice(0, targetCount));
+                } else {
+                    // multi_target: 랜덤으로 targetCount 만큼 선택
+                    const shuffled = [...aliveMonsters].sort(() => Math.random() - 0.5);
+                    targets.push(...shuffled.slice(0, targetCount));
+                }
+                
+                // 각 타겟에게 데미지
+                for (const target of targets) {
+                    const targetDamage = Math.floor(companionStats.attack * skill.damageMultiplier * (0.8 + Math.random() * 0.4));
+                    target.currentHp = Math.max(0, target.currentHp - targetDamage);
+                    
+                    battleState.battleLog.push(`${companionName}이(가) ${target.name}에게 ${targetDamage} 데미지!`);
+                    
+                    if (target.currentHp <= 0) {
+                        target.isAlive = false;
+                        battleState.battleLog.push(`${target.name}이(가) 쓰러졌습니다!`);
+                        
+                        // 몬스터가 죽으면 속도바 리셋 신호 전송
+                        if (io) {
+                            io.to(`expedition_${room.id}`).emit('expeditionSpeedBarReset', {
+                                roomId: room.id,
+                                characterId: `monster_${target.id}`,
+                                characterType: 'monster'
+                            });
+                        }
+                    }
+                }
+                
+                // 다중 타겟 스킬은 여기서 처리 완료
+                damage = 0; // 아래 단일 타겟 데미지 처리 스킵
             } else {
-                // 데미지 스킬
+                // 데미지 스킬 (단일 타겟)
                 damage = Math.floor(companionStats.attack * skill.damageMultiplier * (0.8 + Math.random() * 0.4));
                 battleState.battleLog.push(`${companionName}이(가) 스킬 '${skill.name}'을(를) 사용했습니다!`);
             }
@@ -1604,7 +1661,7 @@ class ExpeditionSystem {
             damage = Math.floor(effectiveAttack * (0.8 + Math.random() * 0.4));
         }
         
-        // 몬스터에게 데미지 적용
+        // 몬스터에게 데미지 적용 (단일 타겟)
         if (damage > 0) {
             targetMonster.currentHp = Math.max(0, targetMonster.currentHp - damage);
             if (targetMonster.currentHp <= 0) {

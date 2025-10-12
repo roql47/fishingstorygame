@@ -20,6 +20,9 @@ const { setupRaidRoutes, setupRaidWebSocketEvents } = require('./routes/raidRout
 // 원정 시스템 모듈 import
 const setupExpeditionRoutes = require('./routes/expeditionRoutes');
 
+// 📱 모바일 백그라운드 유예 시간 관리 (30분)
+const disconnectionGracePeriod = new Map(); // userUuid -> { timeoutId, userData }
+
 // 🔍 DB 쿼리 성능 측정 헬퍼 함수
 const measureDBQuery = async (queryName, queryFunction) => {
   const startTime = Date.now();
@@ -772,6 +775,13 @@ io.on('connection', (socket) => {
   socket.on('client-pong', () => {
     socket.isAlive = true;
     socket.lastActivity = Date.now();
+  });
+  
+  // 📱 백그라운드 keep-alive 처리
+  socket.on('keep-alive', () => {
+    socket.isAlive = true;
+    socket.lastActivity = Date.now();
+    console.log(`📡 Keep-alive received from ${socket.username || socket.id}`);
   });
   
   // 활동 감지를 위한 이벤트들
@@ -2032,6 +2042,14 @@ io.on("connection", (socket) => {
     console.log(`🔌 Socket 연결 해제: ${clientIP} (${socket.id}) - ${reason}`);
   });
   socket.on("chat:join", async ({ username, idToken, userUuid, isReconnection }) => {
+    // 📱 유예 시간 중이면 취소 (재연결 시)
+    if (userUuid && disconnectionGracePeriod.has(userUuid)) {
+      const graceData = disconnectionGracePeriod.get(userUuid);
+      clearTimeout(graceData.timeoutId);
+      disconnectionGracePeriod.delete(userUuid);
+      console.log(`🔄 유예 시간 취소: ${username} 재연결됨`);
+    }
+    
     // 중복 요청 방지
     const joinKey = `${socket.id}-${userUuid || username}`;
     if (processingJoins.has(joinKey)) {
@@ -3249,13 +3267,11 @@ io.on("connection", (socket) => {
     }
   });
 
-  // 접속 해제 시 사용자 목록에서 제거
+  // 접속 해제 시 사용자 목록에서 제거 (30분 유예 시간 적용)
   socket.on("disconnect", (reason) => {
     const user = connectedUsers.get(socket.id);
     if (user) {
-      connectedUsers.delete(socket.id);
-      connectedUsersMap.delete(user.userUuid); // 메일 알림 맵에서도 제거
-      console.log("User disconnected:", user.displayName, "Reason:", reason);
+      console.log(`📱 User disconnected: ${user.displayName}, Reason: ${reason}`);
       
       // 🔧 좀비 WebSocket 방지: socket 객체에서 사용자 정보 정리
       if (socket.userUuid || socket.username) {
@@ -3270,22 +3286,49 @@ io.on("connection", (socket) => {
       
       console.log(`Remaining connections for ${user.userUuid}:`, remainingConnections.length);
       
-      // 접속자 목록 업데이트 전송 (중복 제거, 빈 배열이 아닐 때만)
+      // 즉시 제거하지 않고 30분 유예 시간 부여 (모바일 백그라운드 대응)
+      if (remainingConnections.length === 0) {
+        console.log(`⏰ 30분 유예 시간 시작: ${user.displayName} (${user.userUuid})`);
+        
+        const graceTimeout = setTimeout(() => {
+          // 30분 후에도 재연결하지 않으면 퇴장 처리
+          const stillDisconnected = !Array.from(connectedUsers.values())
+            .some(u => u.userUuid === user.userUuid);
+          
+          if (stillDisconnected) {
+            console.log(`⏰ 30분 유예 시간 만료: ${user.displayName} 퇴장 처리`);
+            disconnectionGracePeriod.delete(user.userUuid);
+            
+            // 퇴장 메시지 전송
+            io.emit("chat:message", { 
+              system: true, 
+              username: "system", 
+              content: `${user.displayName || user.username} 님이 퇴장했습니다.`,
+              timestamp: new Date()
+            });
+            
+            // 접속자 목록 업데이트
+            const uniqueUsers = cleanupConnectedUsers();
+            if (uniqueUsers.length > 0) {
+              io.emit("users:update", uniqueUsers);
+            }
+          }
+        }, 30 * 60 * 1000); // 30분 = 30 * 60 * 1000ms
+        
+        disconnectionGracePeriod.set(user.userUuid, {
+          timeoutId: graceTimeout,
+          userData: user
+        });
+      }
+      
+      // connectedUsers에서는 즉시 제거 (소켓 ID 기준)
+      connectedUsers.delete(socket.id);
+      connectedUsersMap.delete(user.userUuid); // 메일 알림 맵에서도 제거
+      
+      // 접속자 목록 업데이트 전송 (유예 시간 중이므로 사용자는 여전히 온라인으로 표시)
       const uniqueUsers = cleanupConnectedUsers();
       if (uniqueUsers.length > 0) {
         io.emit("users:update", uniqueUsers);
-      } else {
-        console.log('⚠️ Skipping users:update on disconnect - no users to send');
-      }
-      
-      // 완전히 연결이 끊어진 경우에만 퇴장 메시지 전송
-      if (remainingConnections.length === 0) {
-        io.emit("chat:message", { 
-          system: true, 
-          username: "system", 
-          content: `${user.displayName || user.username} 님이 퇴장했습니다.`,
-          timestamp: new Date()
-        });
       }
     }
   });
@@ -9172,14 +9215,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.294"
+    version: "v1.296"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.294",
+    version: "v1.296",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [

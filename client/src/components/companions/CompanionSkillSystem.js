@@ -197,6 +197,58 @@ export const processDamageSkill = ({
 };
 
 /**
+ * 다중 타겟/AOE 스킬을 처리하는 함수 (탐사 전투용 - 단일 적에게만 적용)
+ * @param {Object} params - 스킬 파라미터
+ * @returns {Object} - 업데이트된 전투 상태와 데미지 정보
+ */
+export const processMultiTargetSkill = ({
+  battleState,
+  companionName,
+  companionLevel,
+  baseAttack,
+  skill,
+  companionMorale,
+  companionBuffs,
+  calculateCriticalHit
+}) => {
+  // 탐사 전투는 단일 적이므로 다중 타겟 스킬도 단일 적에게만 적용
+  const baseDamage = Math.floor(baseAttack * skill.damageMultiplier * (0.9 + Math.random() * 0.2));
+  const criticalResult = calculateCriticalHit(baseDamage, 0.05, companionName, companionBuffs);
+  const damage = criticalResult.damage;
+  const isCritical = criticalResult.isCritical;
+  
+  // 스킬 사용 후 사기 초기화
+  const newCompanionMorale = { ...companionMorale };
+  newCompanionMorale[companionName].morale = 0;
+  
+  const newEnemyHp = Math.max(0, battleState.enemyHp - damage);
+  let newLog = [...battleState.log];
+  
+  const skillMessage = isCritical ? 
+    `💥 크리티컬! ${companionName}(Lv.${companionLevel})이(가) 스킬 '${skill.name}'을(를) 사용했습니다!` : 
+    `${companionName}(Lv.${companionLevel})이(가) 스킬 '${skill.name}'을(를) 사용했습니다!`;
+  newLog.push(skillMessage);
+  
+  // 다중 타겟 스킬 설명 추가
+  if (skill.skillType === 'aoe') {
+    newLog.push(`🌪️ 전체공격! 모든 적에게 데미지를 입힙니다!`);
+  } else if (skill.skillType === 'multi_target') {
+    newLog.push(`🎯 ${skill.targetCount}명의 적을 동시에 공격합니다!`);
+  }
+  
+  newLog.push(`💥 ${damage} 데미지! (${battleState.enemy}: ${newEnemyHp}/${battleState.enemyMaxHp})`);
+  
+  return {
+    damage,
+    isCritical,
+    enemyHp: newEnemyHp,
+    log: newLog,
+    companionMorale: newCompanionMorale,
+    companionBuffs
+  };
+};
+
+/**
  * 동료의 스킬 사용을 처리하는 메인 함수
  * @param {Object} params - 스킬 처리 파라미터
  * @returns {Object} - 업데이트된 전투 상태
@@ -243,6 +295,31 @@ export const processCompanionSkill = ({
       companionMorale: result.companionMorale,
       companionBuffs: result.companionBuffs
     });
+  } else if (skill.skillType === 'multi_target' || skill.skillType === 'aoe') {
+    // 다중 타겟/AOE 스킬 처리
+    const result = processMultiTargetSkill({
+      battleState,
+      companionName,
+      companionLevel,
+      baseAttack,
+      skill,
+      companionMorale,
+      companionBuffs,
+      calculateCriticalHit
+    });
+    
+    if (result.enemyHp <= 0) {
+      // 승리 처리는 기존 로직 사용
+      return null; // App.jsx의 승리 처리 로직으로 돌아감
+    } else {
+      return nextTurn({
+        ...battleState,
+        enemyHp: result.enemyHp,
+        log: result.log,
+        companionMorale: result.companionMorale,
+        companionBuffs: result.companionBuffs
+      });
+    }
   } else if (skill.buffType) {
     // 버프 스킬 처리
     const result = processBuffSkill({

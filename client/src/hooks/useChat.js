@@ -125,7 +125,12 @@ export const useChat = ({
         // 인벤토리 업데이트 (지연 적용으로 서버 동기화)
         const fetchInventory = async () => {
           try {
-            const response = await fetch(`${import.meta.env.VITE_SERVER_URL || 'http://localhost:4000'}/api/inventory/${username}`);
+            // 프로덕션 환경에서는 현재 도메인 사용 (렌더 배포 대응)
+            const serverUrl = import.meta.env.VITE_SERVER_URL || 
+              (typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
+                ? window.location.origin 
+                : 'http://localhost:4000');
+            const response = await fetch(`${serverUrl}/api/inventory/${username}`);
             if (response.ok) {
               const data = await response.json();
               setInventory(data.inventory || []);

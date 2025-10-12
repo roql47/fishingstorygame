@@ -18,7 +18,11 @@ const CollectionModal = ({
     
     const fetchDiscoveredFish = async () => {
       try {
-        const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+        // 프로덕션 환경에서는 현재 도메인 사용 (렌더 배포 대응)
+        const serverUrl = import.meta.env.VITE_SERVER_URL || 
+          (typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
+            ? window.location.origin 
+            : 'http://localhost:4000');
         const username = localStorage.getItem('nickname') || '';
         const userUuid = localStorage.getItem('userUuid') || '';
         
@@ -283,11 +287,18 @@ const CollectionModal = ({
                           }`}>
                             Rank {fish.rank} • {count}마리
                           </p>
-                          <p className={`text-xs ${
+                          <p className={`text-xs mb-1 ${
                             isDarkMode ? "text-gray-400" : "text-gray-600"
                           }`}>
-                            {(fish.price || 0).toLocaleString()}골드
+                            💰 {(fish.price || 0).toLocaleString()}골드
                           </p>
+                          {fish.material && (
+                            <p className={`text-xs ${
+                              isDarkMode ? "text-green-400" : "text-green-600"
+                            }`}>
+                              🔨 분해: {fish.material}
+                            </p>
+                          )}
                         </>
                       )}
                       {!everCaught && (
@@ -449,3 +460,4 @@ const CollectionModal = ({
 };
 
 export default CollectionModal;
+

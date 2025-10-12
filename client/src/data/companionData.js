@@ -66,7 +66,15 @@ export const COMPANION_DATA = {
     growthAttack: 2,   // 1 * 1.5 = 1.5 → 2
     growthSpeed: 0.5,    // 레벨당 속도 증가량
     description: "쌍둥이 궁수",
-    rarity: "희귀"
+    rarity: "희귀",
+    skill: {
+      name: "마탄 발사",
+      description: "2명의 적에게 각각 100% 공격력으로 공격합니다",
+      damageMultiplier: 1.0, // 기본 공격력의 100%
+      moraleRequired: 100,
+      targetCount: 2, // 다중 타겟
+      skillType: "multi_target"
+    }
   },
   "클로에": {
     name: "클로에",
@@ -96,7 +104,15 @@ export const COMPANION_DATA = {
     growthAttack: 3,   // 2 * 1.5 = 3
     growthSpeed: 0.5,    // 레벨당 속도 증가량
     description: "용족 전사",
-    rarity: "일반"
+    rarity: "일반",
+    skill: {
+      name: "악몽의 정원",
+      description: "최대 5명의 적에게 전체공격 데미지를 입힙니다",
+      damageMultiplier: 0.7, // 기본 공격력의 70% (전체공격이므로 조금 낮춤)
+      moraleRequired: 100,
+      targetCount: 5, // 최대 5명
+      skillType: "aoe"
+    }
   }
 };
 

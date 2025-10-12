@@ -207,9 +207,9 @@ function App() {
     }
   }, []);
 
-  // 🔄 버전 업데이트 시 캐시 초기화 (v1.294)
+  // 🔄 버전 업데이트 시 캐시 초기화 (v1.296)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.294";
+    const CURRENT_VERSION = "v1.296";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -5708,6 +5708,12 @@ function App() {
           damage = 0;
           isCritical = false;
           attackType = 'heal_skill';
+        } else if (skill.skillType === 'multi_target' || skill.skillType === 'aoe') {
+          const baseDamage = Math.floor(baseAttack * skill.damageMultiplier * (0.9 + Math.random() * 0.2));
+          const criticalResult = calculateCriticalHit(baseDamage, 0.05, companionName, newCompanionBuffs);
+          damage = criticalResult.damage;
+          isCritical = criticalResult.isCritical;
+          attackType = 'multi_target_skill';
         } else if (skill.buffType) {
           const baseDamage = Math.floor(baseAttack * (skill.damageMultiplier || 1.0) * (0.9 + Math.random() * 0.2));
           const criticalResult = calculateCriticalHit(baseDamage, 0.05, companionName, newCompanionBuffs);
@@ -5758,6 +5764,18 @@ function App() {
       } else if (attackType === 'damage_skill') {
         const skillMessage = isCritical ? `💥 크리티컬! ${companionName}(Lv.${companionLevel})이(가) 스킬 '${companionBaseData.skill.name}'을(를) 사용했습니다!` : `${companionName}(Lv.${companionLevel})이(가) 스킬 '${companionBaseData.skill.name}'을(를) 사용했습니다!`;
         newLog.push(skillMessage);
+        newLog.push(`💥 ${damage} 데미지! (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`);
+      } else if (attackType === 'multi_target_skill') {
+        const skillMessage = isCritical ? `💥 크리티컬! ${companionName}(Lv.${companionLevel})이(가) 스킬 '${companionBaseData.skill.name}'을(를) 사용했습니다!` : `${companionName}(Lv.${companionLevel})이(가) 스킬 '${companionBaseData.skill.name}'을(를) 사용했습니다!`;
+        newLog.push(skillMessage);
+        
+        // 다중 타겟 스킬 설명 추가
+        if (companionBaseData.skill.skillType === 'aoe') {
+          newLog.push(`🌪️ 전체공격! 모든 적에게 데미지를 입힙니다!`);
+        } else if (companionBaseData.skill.skillType === 'multi_target') {
+          newLog.push(`🎯 ${companionBaseData.skill.targetCount}명의 적을 동시에 공격합니다!`);
+        }
+        
         newLog.push(`💥 ${damage} 데미지! (${prevState.enemy}: ${newEnemyHp}/${prevState.enemyMaxHp})`);
       } else {
         let buffText = "";
@@ -6807,7 +6825,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.294
+                여우이야기 v1.296
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -7658,9 +7676,27 @@ function App() {
                             }`} />
                           </div>
                           <div>
-                            <div className={`font-medium text-base ${
-                              isDarkMode ? "text-white" : "text-gray-800"
-                            }`}>{item.fish}</div>
+                            <div className="flex items-center gap-2">
+                              <div className={`font-medium text-base ${
+                                isDarkMode ? "text-white" : "text-gray-800"
+                              }`}>{item.fish}</div>
+                              {(() => {
+                                const fishData = allFishTypes.find(f => f.name === item.fish);
+                                const rank = fishData?.rank;
+                                if (rank !== undefined && rank !== null) {
+                                  return (
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+                                      isDarkMode 
+                                        ? "bg-blue-500/30 text-blue-300 border border-blue-400/30" 
+                                        : "bg-blue-100 text-blue-700 border border-blue-300/50"
+                                    }`}>
+                                      Rank {rank}
+                                    </span>
+                                  );
+                                }
+                                return null;
+                              })()}
+                            </div>
                             <div className={`text-xs ${
                               isDarkMode ? "text-gray-400" : "text-gray-600"
                             }`}>보유량: {item.count}마리</div>
@@ -7731,7 +7767,16 @@ function App() {
                         </button>
                       </div>
                       <div className="space-y-3">
-                        {materials.map((item, index) => (
+                        {materials
+                        .sort((a, b) => {
+                          // 희귀도 낮은 순으로 정렬 (rank가 낮을수록 희귀도가 낮음)
+                          const fishA = allFishTypes.find(f => f.material === a.material);
+                          const fishB = allFishTypes.find(f => f.material === b.material);
+                          const rankA = fishA ? fishA.rank : 999;
+                          const rankB = fishB ? fishB.rank : 999;
+                          return rankA - rankB;
+                        })
+                        .map((item, index) => (
                           <div key={index} className={`p-4 rounded-xl hover:glow-effect transition-all duration-300 group ${
                             isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
                           }`}>
@@ -7743,9 +7788,27 @@ function App() {
                                   }`} />
                                 </div>
                                 <div>
-                                  <div className={`font-medium text-base ${
-                                    isDarkMode ? "text-white" : "text-gray-800"
-                                  }`}>{item.material}</div>
+                                  <div className="flex items-center gap-2">
+                                    <div className={`font-medium text-base ${
+                                      isDarkMode ? "text-white" : "text-gray-800"
+                                    }`}>{item.material}</div>
+                                    {(() => {
+                                      const fishData = allFishTypes.find(f => f.material === item.material);
+                                      const rank = fishData?.rank;
+                                      if (rank !== undefined && rank !== null) {
+                                        return (
+                                          <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+                                            isDarkMode 
+                                              ? "bg-purple-500/30 text-purple-300 border border-purple-400/30" 
+                                              : "bg-purple-100 text-purple-700 border border-purple-300/50"
+                                          }`}>
+                                            Rank {rank}
+                                          </span>
+                                        );
+                                      }
+                                      return null;
+                                    })()}
+                                  </div>
                                   <div className={`text-xs ${
                                     isDarkMode ? "text-gray-400" : "text-gray-600"
                                   }`}>보유량: {item.count}개</div>

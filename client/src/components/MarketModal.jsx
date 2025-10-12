@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShoppingCart, Package, Coins, TrendingUp, User, Clock } from 'lucide-react';
+import { X, ShoppingCart, Package, Coins, TrendingUp, User, Clock, Search, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
 import { CRAFTING_RECIPES, getMaterialTier } from '../data/craftingData';
 import { getSocket } from '../lib/socket';
 
@@ -31,6 +31,14 @@ const MarketModal = ({
   const [listPrice, setListPrice] = useState('');
   const [listQuantity, setListQuantity] = useState(1);
   const [loading, setLoading] = useState(false);
+  
+  // 검색 및 정렬 상태
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('latest'); // latest, priceAsc, priceDesc, rarityAsc, rarityDesc
+  
+  // 페이지네이션 상태
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   // 거래소 목록 불러오기 및 소켓 이벤트 설정
   useEffect(() => {
@@ -57,6 +65,11 @@ const MarketModal = ({
       socket.off('marketUpdate', handleMarketUpdate);
     };
   }, [showMarketModal]);
+
+  // 검색어나 정렬 변경 시 첫 페이지로 리셋
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, sortBy, activeTab]);
 
   const fetchMarketListings = async () => {
     try {
@@ -128,6 +141,53 @@ const MarketModal = ({
     } catch (error) {
       console.error('평균 가격 로딩 실패:', error);
     }
+  };
+
+  // 아이템 희귀도 가져오기 (낮을수록 희귀)
+  const getItemRarity = (itemName, itemType) => {
+    if (itemType === 'amber') return 1000; // 호박석은 매우 희귀
+    if (itemType === 'starPiece') return 1001; // 별조각은 가장 희귀
+    return getMaterialTier(itemName); // 재료는 tier 사용
+  };
+
+  // 거래소 목록 필터링 및 정렬
+  const getFilteredAndSortedListings = (listings) => {
+    let filtered = [...listings];
+    
+    // 검색 필터
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(listing => 
+        listing.itemName.toLowerCase().includes(query) ||
+        listing.sellerNickname.toLowerCase().includes(query)
+      );
+    }
+    
+    // 정렬
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'priceAsc':
+          return (a.pricePerUnit * a.quantity) - (b.pricePerUnit * b.quantity);
+        case 'priceDesc':
+          return (b.pricePerUnit * b.quantity) - (a.pricePerUnit * a.quantity);
+        case 'rarityAsc':
+          return getItemRarity(a.itemName, a.itemType) - getItemRarity(b.itemName, b.itemType);
+        case 'rarityDesc':
+          return getItemRarity(b.itemName, b.itemType) - getItemRarity(a.itemName, a.itemType);
+        case 'latest':
+        default:
+          return new Date(b.listedAt) - new Date(a.listedAt);
+      }
+    });
+    
+    return filtered;
+  };
+
+  // 페이지네이션 적용
+  const getPaginatedListings = (listings) => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return listings.slice(startIndex, endIndex);
   };
 
   // 거래 가능한 아이템 목록 가져오기
@@ -385,7 +445,11 @@ const MarketModal = ({
 
   const tradableItems = getTradableItems();
   const myListings = marketListings.filter(listing => listing.sellerNickname === nickname);
-  const allListings = marketListings; // 모든 등록 아이템 표시
+  
+  // 거래소 탭용 - 필터링, 정렬, 페이지네이션 적용
+  const filteredListings = getFilteredAndSortedListings(marketListings);
+  const paginatedListings = getPaginatedListings(filteredListings);
+  const totalPages = Math.ceil(filteredListings.length / itemsPerPage);
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -432,7 +496,7 @@ const MarketModal = ({
               }`}
             >
               <TrendingUp className="w-4 h-4" />
-              거래소 ({allListings.length})
+              거래소 ({marketListings.length})
             </button>
             <button
               onClick={() => setActiveTab('myListings')}
@@ -502,16 +566,136 @@ const MarketModal = ({
           {/* 거래소 탭 */}
           {activeTab === 'browse' && (
             <div>
-              {allListings.length === 0 ? (
+              {/* 검색 및 정렬 컨트롤 */}
+              <div className="mb-4 space-y-3">
+                {/* 검색바 */}
+                <div className="relative">
+                  <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
+                    isDarkMode ? "text-gray-400" : "text-gray-500"
+                  }`} />
+                  <input
+                    type="text"
+                    placeholder="아이템 또는 판매자 검색..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className={`w-full pl-10 pr-4 py-2 rounded-lg border transition-all duration-300 ${
+                      isDarkMode
+                        ? "bg-gray-800/50 border-gray-600 text-white placeholder-gray-500 focus:border-blue-400"
+                        : "bg-white border-gray-300 text-gray-800 placeholder-gray-400 focus:border-blue-500"
+                    } focus:outline-none focus:ring-2 focus:ring-blue-500/20`}
+                  />
+                </div>
+
+                {/* 정렬 옵션 */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <ArrowUpDown className={`w-4 h-4 ${
+                      isDarkMode ? "text-gray-400" : "text-gray-600"
+                    }`} />
+                    <span className={`text-sm ${
+                      isDarkMode ? "text-gray-400" : "text-gray-600"
+                    }`}>
+                      정렬:
+                    </span>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      onClick={() => setSortBy('latest')}
+                      className={`px-3 py-1 rounded-lg text-sm transition-all duration-300 ${
+                        sortBy === 'latest'
+                          ? isDarkMode
+                            ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
+                            : "bg-blue-500 text-white"
+                          : isDarkMode
+                            ? "bg-gray-700/50 text-gray-400 hover:bg-gray-700"
+                            : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                      }`}
+                    >
+                      최신순
+                    </button>
+                    <button
+                      onClick={() => setSortBy('priceAsc')}
+                      className={`px-3 py-1 rounded-lg text-sm transition-all duration-300 ${
+                        sortBy === 'priceAsc'
+                          ? isDarkMode
+                            ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
+                            : "bg-blue-500 text-white"
+                          : isDarkMode
+                            ? "bg-gray-700/50 text-gray-400 hover:bg-gray-700"
+                            : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                      }`}
+                    >
+                      가격 낮은순
+                    </button>
+                    <button
+                      onClick={() => setSortBy('priceDesc')}
+                      className={`px-3 py-1 rounded-lg text-sm transition-all duration-300 ${
+                        sortBy === 'priceDesc'
+                          ? isDarkMode
+                            ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
+                            : "bg-blue-500 text-white"
+                          : isDarkMode
+                            ? "bg-gray-700/50 text-gray-400 hover:bg-gray-700"
+                            : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                      }`}
+                    >
+                      가격 높은순
+                    </button>
+                    <button
+                      onClick={() => setSortBy('rarityDesc')}
+                      className={`px-3 py-1 rounded-lg text-sm transition-all duration-300 ${
+                        sortBy === 'rarityDesc'
+                          ? isDarkMode
+                            ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
+                            : "bg-blue-500 text-white"
+                          : isDarkMode
+                            ? "bg-gray-700/50 text-gray-400 hover:bg-gray-700"
+                            : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                      }`}
+                    >
+                      희귀도 높은순
+                    </button>
+                    <button
+                      onClick={() => setSortBy('rarityAsc')}
+                      className={`px-3 py-1 rounded-lg text-sm transition-all duration-300 ${
+                        sortBy === 'rarityAsc'
+                          ? isDarkMode
+                            ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
+                            : "bg-blue-500 text-white"
+                          : isDarkMode
+                            ? "bg-gray-700/50 text-gray-400 hover:bg-gray-700"
+                            : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                      }`}
+                    >
+                      희귀도 낮은순
+                    </button>
+                  </div>
+                </div>
+
+                {/* 결과 카운트 */}
+                <div className={`text-sm ${
+                  isDarkMode ? "text-gray-400" : "text-gray-600"
+                }`}>
+                  총 {filteredListings.length}개 아이템
+                  {searchQuery && ` (검색: "${searchQuery}")`}
+                </div>
+              </div>
+
+              {paginatedListings.length === 0 ? (
                 <div className={`text-center py-12 ${
                   isDarkMode ? "text-gray-400" : "text-gray-600"
                 }`}>
                   <ShoppingCart className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                  <p>현재 거래소에 등록된 아이템이 없습니다.</p>
+                  <p>
+                    {marketListings.length === 0
+                      ? "현재 거래소에 등록된 아이템이 없습니다."
+                      : "검색 결과가 없습니다."}
+                  </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {allListings.map((listing) => (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {paginatedListings.map((listing) => (
                     <div
                       key={listing._id || listing.id}
                       className={`p-4 rounded-lg border transition-all duration-300 ${
@@ -581,7 +765,93 @@ const MarketModal = ({
                       </div>
                     </div>
                   ))}
-                </div>
+                  </div>
+
+                  {/* 페이지네이션 */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-center gap-2 mt-6">
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                        className={`p-2 rounded-lg transition-all duration-300 ${
+                          currentPage === 1
+                            ? isDarkMode
+                              ? "bg-gray-700/30 text-gray-600 cursor-not-allowed"
+                              : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                            : isDarkMode
+                              ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-400/30"
+                              : "bg-blue-500 text-white hover:bg-blue-600"
+                        }`}
+                      >
+                        <ChevronLeft className="w-5 h-5" />
+                      </button>
+
+                      <div className="flex items-center gap-1">
+                        {[...Array(totalPages)].map((_, index) => {
+                          const pageNum = index + 1;
+                          // 현재 페이지 주변만 표시 (1, 2, 3 ... currentPage-1, currentPage, currentPage+1 ... totalPages)
+                          const shouldShow =
+                            pageNum === 1 ||
+                            pageNum === totalPages ||
+                            (pageNum >= currentPage - 1 && pageNum <= currentPage + 1);
+
+                          const shouldShowEllipsis =
+                            (pageNum === 2 && currentPage > 3) ||
+                            (pageNum === totalPages - 1 && currentPage < totalPages - 2);
+
+                          if (!shouldShow && !shouldShowEllipsis) return null;
+
+                          if (shouldShowEllipsis) {
+                            return (
+                              <span
+                                key={pageNum}
+                                className={`px-2 ${
+                                  isDarkMode ? "text-gray-500" : "text-gray-400"
+                                }`}
+                              >
+                                ...
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <button
+                              key={pageNum}
+                              onClick={() => setCurrentPage(pageNum)}
+                              className={`px-3 py-1 rounded-lg text-sm transition-all duration-300 ${
+                                currentPage === pageNum
+                                  ? isDarkMode
+                                    ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
+                                    : "bg-blue-500 text-white"
+                                  : isDarkMode
+                                    ? "bg-gray-700/50 text-gray-400 hover:bg-gray-700"
+                                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                              }`}
+                            >
+                              {pageNum}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages}
+                        className={`p-2 rounded-lg transition-all duration-300 ${
+                          currentPage === totalPages
+                            ? isDarkMode
+                              ? "bg-gray-700/30 text-gray-600 cursor-not-allowed"
+                              : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                            : isDarkMode
+                              ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-400/30"
+                              : "bg-blue-500 text-white hover:bg-blue-600"
+                        }`}
+                      >
+                        <ChevronRight className="w-5 h-5" />
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

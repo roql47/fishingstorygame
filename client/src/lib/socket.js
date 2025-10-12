@@ -1,10 +1,49 @@
 import { io } from "socket.io-client";
 
+// 프로덕션 환경에서는 현재 도메인 사용 (렌더 배포 대응)
 const serverUrl =
   import.meta.env.VITE_SERVER_URL ||
-  (typeof window !== "undefined" ? window.location.origin : "http://localhost:4000");
+  (typeof window !== "undefined" && window.location.hostname !== "localhost" 
+    ? window.location.origin 
+    : "http://localhost:4000");
 
 let socket = null;
+let isBackground = false;
+let backgroundTimer = null;
+
+// 백그라운드 감지 및 연결 유지
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    // 백그라운드로 전환
+    isBackground = true;
+    console.log('📱 앱이 백그라운드로 전환됨');
+    
+    // 30초마다 keep-alive 전송하여 연결 유지
+    backgroundTimer = setInterval(() => {
+      const socket = getSocket();
+      if (socket && socket.connected) {
+        socket.emit('keep-alive');
+        console.log('📡 백그라운드 keep-alive 전송');
+      }
+    }, 30000);
+  } else {
+    // 포그라운드로 복귀
+    isBackground = false;
+    console.log('📱 앱이 포그라운드로 복귀');
+    
+    if (backgroundTimer) {
+      clearInterval(backgroundTimer);
+      backgroundTimer = null;
+    }
+    
+    // 연결 상태 확인 및 재연결
+    const socket = getSocket();
+    if (!socket.connected) {
+      console.log('🔄 포그라운드 복귀 시 재연결 시도');
+      socket.connect();
+    }
+  }
+});
 
 export function getSocket() {
   if (!socket) {
