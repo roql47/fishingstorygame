@@ -667,7 +667,6 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
     if (!userData?.userUuid) return;
     
     try {
-      console.log('[EXPEDITION] Claiming rewards for user:', userData.userUuid);
       const token = localStorage.getItem('jwtToken');
       const response = await fetch('/api/expedition/claim-rewards', {
         method: 'POST',
@@ -678,50 +677,31 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
         body: JSON.stringify({})
       });
       
-      console.log('[EXPEDITION] Claim rewards response status:', response.status);
       const data = await response.json();
-      console.log('[EXPEDITION] Claim rewards response data:', data);
       
       if (data.success) {
         alert(`${data.message}\n보상: ${data.rewards.map(r => `${r.fishName} x${r.quantity}`).join(', ')}`);
         
-        // 🚀 인벤토리 즉시 새로고침 (보상 물고기 반영)
+        // 인벤토리 즉시 새로고침 (보상 물고기 반영)
         if (refreshInventory) {
-          console.log('🔄 Refreshing inventory after expedition rewards...');
           await refreshInventory();
         }
         
-        // 🔧 동료 데이터 새로고침 (탐사 전투에서 획득한 경험치 반영)
+        // 동료 데이터 새로고침 (탐사 전투에서 획득한 경험치 반영)
         if (refreshCompanions) {
-          console.log('🔄 Refreshing companions after expedition...');
           await refreshCompanions();
         }
         
-        // 🔧 중요: 현재 방 상태에서 내 보상 제거 (UI 즉시 업데이트)
+        // 현재 방 상태에서 내 보상 제거 (UI 즉시 업데이트)
         if (currentRoom && currentRoom.rewards) {
           const updatedRoom = {
             ...currentRoom,
             rewards: currentRoom.rewards.filter(reward => reward.playerId !== userData.userUuid)
           };
           setCurrentRoom(updatedRoom);
-          console.log('[EXPEDITION] Updated room state after claiming rewards, remaining rewards:', updatedRoom.rewards.length);
         }
-        
-        // 보상 수령 후 방 나가기 및 로비로 돌아가기
-        console.log('[EXPEDITION] Rewards claimed, leaving room and returning to lobby');
-        
-        // 서버에 방 나가기 요청
-        if (socket && currentRoom) {
-          socket.emit('expedition-leave-room', currentRoom.id);
-        }
-        
-        setCurrentView('lobby');
-        setCurrentRoom(null);
-        
-        // 방 정보 새로고침 (보상 상태 업데이트)
-        loadAvailableRooms();
       } else {
-        alert(data.error || '보상 수령에 실패했습니다.');
+        alert(`보상 수령 실패: ${data.error || '알 수 없는 오류'}`);
         
         // 보상이 없다는 오류인 경우 로비로 이동
         if (data.error && data.error.includes('수령할 보상이 없습니다')) {

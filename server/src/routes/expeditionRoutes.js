@@ -278,7 +278,14 @@ router.post('/rooms/start', authenticateJWT, async (req, res) => {
                 accessoryEnhancement: userEquipment?.accessoryEnhancement || 0
             };
             
-            console.log(`[EXPEDITION] Player ${player.name} - FishingSkill: ${fishingSkill}, Companions: ${companions.length}`);
+            console.log(`[EXPEDITION] Player ${player.name} data:`, {
+                baseFishingSkill: baseFishingSkill,
+                achievementBonus: achievementBonus,
+                finalFishingSkill: fishingSkill,
+                accessoryName: userEquipment?.accessory || 'none',
+                accessoryLevel: accessoryLevel,
+                companions: companions.length
+            });
         }
         
         const finalRoom = expeditionSystem.startExpedition(userUuid, allPlayerData);
@@ -442,7 +449,22 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
         const { userUuid, username } = req.user; // JWT에서 사용자 정보 추출
 
         const room = expeditionSystem.getRoomInfo(userUuid);
-        if (!room || room.status !== 'completed' || !room.rewards) {
+        
+        if (!room) {
+            return res.status(400).json({ 
+                success: false, 
+                error: '참가한 방을 찾을 수 없습니다.' 
+            });
+        }
+        
+        if (room.status !== 'completed') {
+            return res.status(400).json({ 
+                success: false, 
+                error: `원정이 완료되지 않았습니다. (현재 상태: ${room.status})` 
+            });
+        }
+        
+        if (!room.rewards) {
             return res.status(400).json({ 
                 success: false, 
                 error: '수령할 보상이 없습니다.' 
