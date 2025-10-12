@@ -10,4 +10,7 @@ package-lock.json
 pnpm-lock.yaml
 yarn.lock
 
+# 업로드된 파일
+server/uploads/
+
 

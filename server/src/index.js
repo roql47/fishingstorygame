@@ -7,6 +7,9 @@ const mongoose = require("mongoose");
 const { OAuth2Client } = require("google-auth-library");
 const jwt = require("jsonwebtoken"); // 🔐 JWT 라이브러리 추가
 const bcrypt = require('bcrypt'); // 🔐 비밀번호 암호화
+const multer = require('multer'); // 📸 이미지 업로드
+const sharp = require('sharp'); // 🖼️ 이미지 리사이징
+const fs = require('fs'); // 📁 파일 시스템
 
 // 🚀 성능 최적화: 프로덕션 환경에서 로깅 축소
 const isProduction = process.env.NODE_ENV === 'production';
@@ -1044,6 +1047,22 @@ const adminSchema = new mongoose.Schema(
 );
 
 const AdminModel = mongoose.model("Admin", adminSchema);
+
+// Profile Image Schema (프로필 이미지 시스템)
+const profileImageSchema = new mongoose.Schema(
+  {
+    userId: { type: String, required: true },
+    username: { type: String, required: true },
+    userUuid: { type: String, required: true, unique: true, index: true },
+    imageUrl: { type: String, required: true }, // 이미지 파일 경로
+    originalName: { type: String }, // 원본 파일명
+    fileSize: { type: Number }, // 파일 크기 (bytes)
+    uploadedAt: { type: Date, default: Date.now },
+  },
+  { timestamps: true }
+);
+
+const ProfileImageModel = mongoose.model("ProfileImage", profileImageSchema);
 
 // Blocked IP Schema (차단된 IP 관리)
 const blockedIPSchema = new mongoose.Schema(
@@ -3280,8 +3299,23 @@ io.on("connection", (socket) => {
         });
       }
     } else {
-      io.emit("chat:message", { ...msg, timestamp });
+      // 일반 채팅 메시지 브로드캐스트 (userUuid 포함)
+      io.emit("chat:message", { 
+        ...msg, 
+        timestamp,
+        userUuid: user.userUuid // 📸 프로필 이미지용 userUuid 추가
+      });
     }
+  });
+
+  // 📸 프로필 이미지 업데이트 알림 (실시간 동기화)
+  socket.on("profile:image:updated", (data) => {
+    console.log(`📸 [PROFILE-IMAGE] Update notification from ${data.username} (${data.userUuid})`);
+    // 다른 모든 사용자에게 브로드캐스트
+    socket.broadcast.emit("profile:image:updated", {
+      userUuid: data.userUuid,
+      username: data.username
+    });
   });
 
   // 접속 해제 시 사용자 목록에서 제거 (30분 유예 시간 적용)
@@ -5489,6 +5523,210 @@ app.get("/api/admin-status/:userId", async (req, res) => {
   } catch (error) {
     console.error("Failed to fetch admin status:", error);
     res.status(500).json({ error: "관리자 상태를 가져올 수 없습니다." });
+  }
+});
+
+// 📸 프로필 이미지 시스템
+
+// 업로드 폴더 생성
+const uploadDir = path.join(__dirname, '../uploads/profiles');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+  console.log('📁 Profile uploads directory created:', uploadDir);
+}
+
+// Multer 설정 (메모리 스토리지 사용 - sharp로 처리 후 저장)
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 2 * 1024 * 1024, // 2MB 제한
+  },
+  fileFilter: (req, file, cb) => {
+    // 이미지 파일만 허용
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files (JPEG, PNG, WebP, GIF) are allowed!'), false);
+    }
+  }
+});
+
+// 프로필 이미지 업로드 API (관리자 전용)
+app.post("/api/profile-image/upload", authenticateJWT, upload.single('profileImage'), async (req, res) => {
+  try {
+    const { userUuid: jwtUserUuid, username: jwtUsername, isAdmin } = req.user;
+    
+    // 관리자 권한 확인
+    if (!isAdmin) {
+      return res.status(403).json({ 
+        success: false, 
+        error: '관리자 권한이 필요합니다.' 
+      });
+    }
+    
+    if (!req.file) {
+      return res.status(400).json({ 
+        success: false, 
+        error: '이미지 파일이 필요합니다.' 
+      });
+    }
+    
+    const clientIP = getClientIP(req);
+    console.log(`📸 [PROFILE-IMAGE] Upload request from ${jwtUsername} (${clientIP})`);
+    
+    // 이미지 처리: 512x512 리사이징 및 WebP 변환
+    // userUuid의 # 기호를 제거 (URL에서 # 은 fragment로 인식되어 잘림)
+    const safeUserUuid = jwtUserUuid.replace(/#/g, '');
+    const filename = `profile_${safeUserUuid}_${Date.now()}.webp`;
+    const filepath = path.join(uploadDir, filename);
+    
+    await sharp(req.file.buffer)
+      .resize(512, 512, {
+        fit: 'cover',
+        position: 'center'
+      })
+      .webp({ quality: 85 })
+      .toFile(filepath);
+    
+    const fileSize = fs.statSync(filepath).size;
+    const imageUrl = `/uploads/profiles/${filename}`;
+    
+    // 기존 프로필 이미지 삭제
+    const existingImage = await ProfileImageModel.findOne({ userUuid: jwtUserUuid });
+    if (existingImage) {
+      // 기존 파일 삭제
+      const oldFilePath = path.join(__dirname, '..', existingImage.imageUrl);
+      if (fs.existsSync(oldFilePath)) {
+        fs.unlinkSync(oldFilePath);
+        console.log(`🗑️ [PROFILE-IMAGE] Old image deleted: ${existingImage.imageUrl}`);
+      }
+      
+      // DB 업데이트
+      existingImage.imageUrl = imageUrl;
+      existingImage.originalName = req.file.originalname;
+      existingImage.fileSize = fileSize;
+      existingImage.uploadedAt = new Date();
+      await existingImage.save();
+    } else {
+      // 새로운 프로필 이미지 생성
+      const newProfileImage = new ProfileImageModel({
+        userId: 'user',
+        username: jwtUsername,
+        userUuid: jwtUserUuid,
+        imageUrl: imageUrl,
+        originalName: req.file.originalname,
+        fileSize: fileSize
+      });
+      await newProfileImage.save();
+    }
+    
+    console.log(`✅ [PROFILE-IMAGE] Image uploaded successfully for ${jwtUsername}: ${imageUrl}`);
+    
+    res.json({
+      success: true,
+      message: '프로필 이미지가 업로드되었습니다.',
+      imageUrl: imageUrl,
+      fileSize: fileSize
+    });
+    
+  } catch (error) {
+    console.error('❌ [PROFILE-IMAGE] Upload error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: '이미지 업로드 중 오류가 발생했습니다.' 
+    });
+  }
+});
+
+// 프로필 이미지 조회 API
+app.get("/api/profile-image/:userUuid", async (req, res) => {
+  try {
+    let { userUuid } = req.params;
+    
+    // # 있는 버전과 없는 버전 모두 조회
+    // 클라이언트에서 #을 제거하고 보낼 수 있으므로 양쪽 다 확인
+    let profileImage = await ProfileImageModel.findOne({ userUuid });
+    
+    if (!profileImage && !userUuid.startsWith('#')) {
+      // #이 없으면 #을 추가해서 다시 조회
+      const userUuidWithHash = '#' + userUuid;
+      profileImage = await ProfileImageModel.findOne({ userUuid: userUuidWithHash });
+      console.log(`📸 [PROFILE-IMAGE] Tried with hash: ${userUuidWithHash}, found: ${!!profileImage}`);
+    }
+    
+    if (profileImage) {
+      // 캐시 우회를 위해 타임스탬프 추가
+      const timestamp = new Date(profileImage.uploadedAt).getTime();
+      console.log(`📸 [PROFILE-IMAGE] Image found for ${userUuid}:`, profileImage.imageUrl);
+      res.json({
+        success: true,
+        imageUrl: `${profileImage.imageUrl}?t=${timestamp}`,
+        uploadedAt: profileImage.uploadedAt
+      });
+    } else {
+      console.log(`📸 [PROFILE-IMAGE] No image found for ${userUuid}`);
+      res.json({
+        success: true,
+        imageUrl: null
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ [PROFILE-IMAGE] Fetch error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: '프로필 이미지 조회 중 오류가 발생했습니다.' 
+    });
+  }
+});
+
+// 프로필 이미지 삭제 API (관리자 전용)
+app.delete("/api/profile-image", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid: jwtUserUuid, isAdmin } = req.user;
+    
+    // 관리자 권한 확인
+    if (!isAdmin) {
+      return res.status(403).json({ 
+        success: false, 
+        error: '관리자 권한이 필요합니다.' 
+      });
+    }
+    
+    const profileImage = await ProfileImageModel.findOne({ userUuid: jwtUserUuid });
+    
+    if (!profileImage) {
+      return res.status(404).json({ 
+        success: false, 
+        error: '프로필 이미지가 없습니다.' 
+      });
+    }
+    
+    // 파일 삭제
+    const filePath = path.join(__dirname, '..', profileImage.imageUrl);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log(`🗑️ [PROFILE-IMAGE] File deleted: ${profileImage.imageUrl}`);
+    }
+    
+    // DB에서 삭제
+    await ProfileImageModel.deleteOne({ userUuid: jwtUserUuid });
+    
+    console.log(`✅ [PROFILE-IMAGE] Profile image deleted for ${profileImage.username}`);
+    
+    res.json({
+      success: true,
+      message: '프로필 이미지가 삭제되었습니다.'
+    });
+    
+  } catch (error) {
+    console.error('❌ [PROFILE-IMAGE] Delete error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: '프로필 이미지 삭제 중 오류가 발생했습니다.' 
+    });
   }
 });
 
@@ -8909,6 +9147,17 @@ app.use('/assets', (req, res, next) => {
   }
 }));
 
+// 📸 프로필 이미지 정적 파일 제공
+const uploadsDir = path.join(__dirname, '../uploads');
+app.use('/uploads', express.static(uploadsDir, {
+  setHeaders: (res, filePath) => {
+    // 이미지 파일 캐싱 설정 (1일)
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+}));
+console.log('📸 Serving profile images from:', uploadsDir);
+
 // 나머지 정적 파일들 (index.html 등)
 app.use(express.static(staticDir, {
   setHeaders: (res, filePath) => {
@@ -8933,13 +9182,18 @@ app.use((req, res, next) => {
     return next();
   }
   
+  // Uploads 요청인 경우 통과 (프로필 이미지 등)
+  if (req.path.startsWith('/uploads/')) {
+    return next();
+  }
+  
   // Assets 요청인 경우 통과 (이미 위에서 처리됨)
   if (req.path.startsWith('/assets/')) {
     return next();
   }
   
   // 정적 파일 확장자가 있는 경우 통과 (404 처리를 위해)
-  const fileExtensions = ['.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2', '.ttf', '.eot'];
+  const fileExtensions = ['.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2', '.ttf', '.eot', '.webp'];
   const hasFileExtension = fileExtensions.some(ext => req.path.endsWith(ext));
   if (hasFileExtension) {
     return next();

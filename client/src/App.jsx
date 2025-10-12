@@ -327,6 +327,28 @@ function App() {
   const [showAccountManager, setShowAccountManager] = useState(false);
   const [blockedAccounts, setBlockedAccounts] = useState([]);
   const [connectedUsersList, setConnectedUsersList] = useState([]);
+  const [profileImage, setProfileImage] = useState(() => {
+    // localStorage에서 프로필 이미지 복원
+    try {
+      const saved = localStorage.getItem('profileImage');
+      return saved || null;
+    } catch {
+      return null;
+    }
+  }); // 📸 프로필 이미지 URL
+  const [uploadingImage, setUploadingImage] = useState(false); // 이미지 업로드 중 상태
+  const fileInputRef = useRef(null); // 파일 입력 참조
+  const [userProfileImages, setUserProfileImages] = useState(() => {
+    // localStorage에서 프로필 이미지 캐시 복원
+    try {
+      const saved = localStorage.getItem('userProfileImages');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  }); // 📸 사용자별 프로필 이미지 캐시 (userUuid -> imageUrl)
+  const [showImageModal, setShowImageModal] = useState(false); // 이미지 확대 모달
+  const [modalImageUrl, setModalImageUrl] = useState(null); // 확대할 이미지 URL
   const [newAccountTarget, setNewAccountTarget] = useState('');
   const [accountBlockReason, setAccountBlockReason] = useState('');
   
@@ -529,6 +551,7 @@ function App() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [username, userUuid]);
+
 
   // 레이드 로그 자동 스크롤
   useEffect(() => {
@@ -2518,6 +2541,7 @@ function App() {
 
     const onMessage = (msg) => {
       setMessages((prev) => [...prev, msg]);
+      
       if (msg.system && msg.content.includes("낚았습니다")) {
         console.log("Fish caught message detected:", msg.content);
         console.log("Current username:", username);
@@ -2737,6 +2761,24 @@ function App() {
     socket.on("users:update", onUsersUpdate);
     socket.on("user:uuid", onUserUuid);
     socket.on("message:reaction:update", onReactionUpdate);
+    
+    // 📸 프로필 이미지 업데이트 알림 수신
+    const onProfileImageUpdated = (data) => {
+      console.log('📸 Profile image updated event received:', data);
+      // 해당 사용자의 이미지를 캐시에서 삭제하고 다시 로드
+      if (data.userUuid) {
+        setUserProfileImages(prev => {
+          const newCache = { ...prev };
+          delete newCache[data.userUuid];
+          localStorage.setItem('userProfileImages', JSON.stringify(newCache));
+          return newCache;
+        });
+        // 즉시 다시 로드
+        loadProfileImage(data.userUuid);
+        console.log('🔄 Refreshing profile image for:', data.username);
+      }
+    };
+    socket.on("profile:image:updated", onProfileImageUpdated);
     
     // 메일 관련 이벤트 핸들러
     const onNewMail = (data) => {
@@ -3004,6 +3046,7 @@ function App() {
       socket.off("account-blocked", onAccountBlocked);
       socket.off("ip-blocked", onIPBlocked);
       socket.off("new-mail", onNewMail);
+      socket.off("profile:image:updated", onProfileImageUpdated);
       
       // 레이드 관련 이벤트 정리
       socket.off("raid:boss:update", onRaidBossUpdate);
@@ -4237,6 +4280,54 @@ function App() {
       }
       console.log("Other user profile data:", response.data);
       setOtherUserData(response.data);
+      
+      // 📸 프로필 이미지도 함께 로드
+      if (response.data.userUuid) {
+        console.log("📸 Loading profile image for userUuid:", response.data.userUuid);
+        const targetUserUuid = response.data.userUuid;
+        
+        // 엄격한 UUID 검증
+        if (targetUserUuid && 
+            typeof targetUserUuid === 'string' && 
+            targetUserUuid.trim() !== '' && 
+            targetUserUuid !== 'undefined' &&
+            targetUserUuid !== 'null' &&
+            targetUserUuid.replace(/#/g, '').length >= 3) {
+          
+          try {
+            const safeUuid = targetUserUuid.replace(/#/g, '');
+            const imageResponse = await axios.get(
+              `${serverUrl}/api/profile-image/${safeUuid}`,
+              {
+                validateStatus: function (status) {
+                  return status < 500;
+                }
+              }
+            );
+
+            if (imageResponse.data.success && imageResponse.data.imageUrl) {
+              // 캐시 버스팅을 위한 타임스탬프 추가
+              const baseImageUrl = serverUrl + imageResponse.data.imageUrl;
+              const imageUrl = baseImageUrl + '?t=' + Date.now();
+              
+              console.log('✅ Profile image loaded for:', targetUserUuid, '→', imageUrl);
+              
+              // 캐시에 저장
+              setUserProfileImages(prev => {
+                const newCache = {
+                  ...prev,
+                  [targetUserUuid]: imageUrl
+                };
+                localStorage.setItem('userProfileImages', JSON.stringify(newCache));
+                return newCache;
+              });
+            }
+          } catch (imageError) {
+            // 이미지 로드 실패는 조용히 무시 (404 등)
+            console.log('ℹ️ No profile image found for:', targetUserUuid);
+          }
+        }
+      }
     } catch (error) {
       console.error("Failed to fetch other user profile:", error);
       console.error("Error details:", {
@@ -4250,7 +4341,7 @@ function App() {
       alert(errorMessage);
       setOtherUserData(null);
     }
-  }, [serverUrl, jwtToken]);
+  }, [serverUrl, jwtToken]); // setUserProfileImages는 setState 함수로 안정적이므로 의존성에서 제외
 
   // 최초 닉네임 설정 함수
   const setInitialNicknameFunc = async () => {
@@ -5160,6 +5251,314 @@ function App() {
       secureToggleAdminRights(adminKey);
     }
   };
+
+  // 📸 프로필 이미지 업로드 함수 (관리자 전용)
+  const handleProfileImageUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // 파일 크기 확인 (2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('⚠️ 이미지 크기는 2MB 이하여야 합니다.');
+      return;
+    }
+
+    // 파일 타입 확인
+    if (!file.type.startsWith('image/')) {
+      alert('⚠️ 이미지 파일만 업로드할 수 있습니다.');
+      return;
+    }
+
+    try {
+      setUploadingImage(true);
+
+      const formData = new FormData();
+      formData.append('profileImage', file);
+
+      const response = await authenticatedRequest.post(
+        `${serverUrl}/api/profile-image/upload`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+
+      if (response.data.success) {
+        console.log('📸 Upload response:', response.data);
+        
+        // 업로드된 이미지 URL을 직접 설정 + 캐시 버스팅
+        const baseUrl = response.data.imageUrl;
+        const fullUrl = serverUrl + baseUrl;
+        const finalUrl = fullUrl + '?t=' + Date.now();
+        
+        console.log('📸 Server URL:', serverUrl);
+        console.log('📸 Base image URL:', baseUrl);
+        console.log('📸 Full image URL:', fullUrl);
+        console.log('📸 Final image URL with cache busting:', finalUrl);
+        
+        setProfileImage(finalUrl);
+        
+        // localStorage에 저장 (새로고침해도 유지)
+        localStorage.setItem('profileImage', finalUrl);
+        
+        // 캐시에도 저장 (접속자 명단/채팅에서 사용)
+        if (userUuid) {
+          const newCache = {
+            ...userProfileImages,
+            [userUuid]: finalUrl
+          };
+          setUserProfileImages(newCache);
+          localStorage.setItem('userProfileImages', JSON.stringify(newCache));
+          console.log('💾 Image saved to cache for userUuid:', userUuid);
+        }
+        
+        console.log('📸 profileImage state updated to:', finalUrl);
+        
+        // 🔄 Socket.io로 다른 사용자들에게 이미지 업데이트 알림
+        const socket = getSocket();
+        socket.emit('profile:image:updated', { 
+          userUuid: userUuid,
+          username: username
+        });
+        console.log('📡 Sent image update notification to other users');
+        
+        alert('✅ ' + response.data.message);
+        
+        // 파일 입력 초기화
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      } else {
+        alert('❌ ' + response.data.error);
+      }
+    } catch (error) {
+      console.error('프로필 이미지 업로드 실패:', error);
+      alert('❌ 이미지 업로드 중 오류가 발생했습니다.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  // 📸 프로필 이미지 삭제 함수 (관리자 전용)
+  const handleProfileImageDelete = async () => {
+    if (!confirm('프로필 이미지를 삭제하시겠습니까?')) {
+      return;
+    }
+
+    try {
+      const response = await authenticatedRequest.delete(
+        `${serverUrl}/api/profile-image`
+      );
+
+      if (response.data.success) {
+        setProfileImage(null);
+        localStorage.removeItem('profileImage');
+        
+        // 캐시에서도 제거
+        if (userUuid) {
+          const newCache = { ...userProfileImages };
+          delete newCache[userUuid];
+          setUserProfileImages(newCache);
+          localStorage.setItem('userProfileImages', JSON.stringify(newCache));
+        }
+        
+        alert('✅ ' + response.data.message);
+      } else {
+        alert('❌ ' + response.data.error);
+      }
+    } catch (error) {
+      console.error('프로필 이미지 삭제 실패:', error);
+      alert('❌ 이미지 삭제 중 오류가 발생했습니다.');
+    }
+  };
+
+  // 📸 프로필 이미지 로드 함수 (캐시 시스템 포함)
+  const loadProfileImage = useCallback(async (targetUserUuid) => {
+    try {
+      const uuid = targetUserUuid || userUuid;
+      
+      // 엄격한 UUID 검증
+      if (!uuid || 
+          typeof uuid !== 'string' || 
+          uuid.trim() === '' || 
+          uuid === 'undefined' ||
+          uuid === 'null' ||
+          uuid.replace(/#/g, '').length < 3) {
+        console.warn('⚠️ Invalid UUID, skipping image load:', uuid);
+        return;
+      }
+      
+      // URL에서 # 기호 제거 (fragment로 인식되어 서버에 전달 안 됨)
+      const safeUuid = uuid.replace(/#/g, '');
+      console.log('📸 Original UUID:', uuid);
+      console.log('📸 Safe UUID (# removed):', safeUuid);
+      
+      const response = await axios.get(
+        `${serverUrl}/api/profile-image/${safeUuid}`,
+        {
+          // 404 에러를 브라우저 콘솔에 표시하지 않도록 설정
+          validateStatus: function (status) {
+            return status < 500; // 500 미만은 모두 성공으로 처리
+          }
+        }
+      );
+
+      if (response.data.success && response.data.imageUrl) {
+        // 캐시 버스팅을 위한 타임스탬프 추가
+        const baseImageUrl = serverUrl + response.data.imageUrl;
+        const imageUrl = baseImageUrl + '?t=' + Date.now();
+        
+        console.log('✅ Image loaded successfully for UUID:', uuid, '→', imageUrl);
+        
+        // 사용자별 프로필 이미지 캐시에 저장 (항상 최신으로 업데이트)
+        setUserProfileImages(prev => {
+          const newCache = {
+            ...prev,
+            [uuid]: imageUrl
+          };
+          // localStorage에도 캐시 저장
+          localStorage.setItem('userProfileImages', JSON.stringify(newCache));
+          console.log('💾 Saved to cache:', uuid);
+          return newCache;
+        });
+        
+        // 내 프로필 이미지도 업데이트
+        if (!targetUserUuid || uuid === userUuid) {
+          setProfileImage(imageUrl);
+          localStorage.setItem('profileImage', imageUrl);
+        }
+      } else {
+        console.log('ℹ️ No image found for UUID:', uuid);
+        if (!targetUserUuid || uuid === userUuid) {
+          setProfileImage(null);
+        }
+        // 이미지가 없으면 캐시에서도 제거
+        setUserProfileImages(prev => {
+          const newCache = { ...prev };
+          delete newCache[uuid];
+          localStorage.setItem('userProfileImages', JSON.stringify(newCache));
+          return newCache;
+        });
+      }
+    } catch (error) {
+      // 모든 에러를 조용히 처리 (이미지가 없거나 네트워크 오류)
+      // 에러 로그도 출력하지 않음 (404는 정상적인 상황)
+      return;
+    }
+  }, [serverUrl, userUuid]);
+
+  // 📸 로그인 후 내 프로필 이미지 자동 로드 (비활성화 - 404 에러 방지)
+  // useEffect(() => {
+  //   // 엄격한 검증: userUuid가 유효하고, #을 제거한 후에도 길이가 3 이상이어야 함
+  //   if (userUuid && username && 
+  //       typeof userUuid === 'string' && 
+  //       userUuid.trim() !== '' && 
+  //       userUuid !== 'undefined' &&
+  //       userUuid.replace(/#/g, '').length >= 3 &&
+  //       !profileImage) {
+  //     console.log('📸 Auto-loading profile image on login:', userUuid);
+  //     loadProfileImage(userUuid);
+  //   }
+  // }, [userUuid, username]);
+
+  // 📸 프로필 모달 열릴 때 localStorage 동기화 및 API 로드
+  useEffect(() => {
+    if (!showProfile) return;
+    
+    // localStorage 전체를 state에 동기화
+    const syncFromLocalStorage = () => {
+      const cached = localStorage.getItem('userProfileImages');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          setUserProfileImages(parsed);
+          console.log('🔄 Synced all images from localStorage:', Object.keys(parsed).length, 'images');
+        } catch (e) {
+          console.error('Failed to sync from localStorage');
+        }
+      }
+    };
+    
+    syncFromLocalStorage();
+    
+    const targetUuid = selectedUserProfile ? otherUserData?.userUuid : userUuid;
+    if (!targetUuid || typeof targetUuid !== 'string' || targetUuid.replace(/#/g, '').length < 3) {
+      return;
+    }
+    
+    // 서버에서 최신 이미지 확인
+    const fetchImage = async () => {
+      try {
+        const safeUuid = targetUuid.replace(/#/g, '');
+        const response = await axios.get(
+          `${serverUrl}/api/profile-image/${safeUuid}`,
+          { validateStatus: (status) => status < 500 }
+        );
+        
+        if (response.data.success && response.data.imageUrl) {
+          // 캐시 버스팅을 위한 타임스탬프 추가
+          const baseImageUrl = serverUrl + response.data.imageUrl;
+          const imageUrl = baseImageUrl + '?t=' + Date.now();
+          
+          console.log('✅ [PROFILE MODAL] Image reloaded for:', targetUuid, '→', imageUrl);
+          
+          setUserProfileImages(prev => {
+            const newCache = { ...prev, [targetUuid]: imageUrl };
+            localStorage.setItem('userProfileImages', JSON.stringify(newCache));
+            return newCache;
+          });
+          
+          // 내 프로필 이미지도 업데이트
+          if (!selectedUserProfile || targetUuid === userUuid) {
+            setProfileImage(imageUrl);
+            localStorage.setItem('profileImage', imageUrl);
+          }
+        }
+      } catch (error) {
+        // 에러 무시
+      }
+    };
+    
+    fetchImage();
+  }, [showProfile, selectedUserProfile, otherUserData?.userUuid, userUuid, serverUrl]);
+
+  // 📸 채팅 메시지에서 새로운 userUuid를 감지하여 프로필 이미지 자동 로드
+  useEffect(() => {
+    if (messages.length === 0) return;
+    
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage && lastMessage.userUuid && !lastMessage.system) {
+      const uuid = lastMessage.userUuid;
+      if (uuid && 
+          typeof uuid === 'string' && 
+          uuid.trim() !== '' && 
+          uuid !== 'undefined' &&
+          uuid.replace(/#/g, '').length >= 3 &&
+          !userProfileImages[uuid]) {
+        console.log('📸 Auto-loading profile image from chat:', lastMessage.username, uuid);
+        loadProfileImage(uuid);
+      }
+    }
+  }, [messages.length]); // messages.length만 의존성에 추가 (무한 루프 방지)
+
+  // 📸 접속자 목록에서 새로운 사용자 감지하여 프로필 이미지 자동 로드
+  useEffect(() => {
+    if (connectedUsers.length === 0) return;
+    
+    connectedUsers.forEach(user => {
+      if (user && user.userUuid && 
+          typeof user.userUuid === 'string' && 
+          user.userUuid.trim() !== '' && 
+          user.userUuid !== 'undefined' &&
+          user.userUuid.replace(/#/g, '').length >= 3 &&
+          !userProfileImages[user.userUuid]) {
+        console.log('📸 Auto-loading profile image for user:', user.username, user.userUuid);
+        loadProfileImage(user.userUuid);
+      }
+    });
+  }, [connectedUsers.length]); // connectedUsers.length만 의존성에 추가 (무한 루프 방지)
 
   // 🔑 관리자 권한: 다른 사용자 계정 초기화
   const adminResetUserAccount = async (targetUsername) => {
@@ -7464,6 +7863,8 @@ function App() {
               setActiveTab={setActiveTab}
               setUserUuid={setUserUuid}
               setIsGuest={setIsGuest}
+              userProfileImages={userProfileImages}
+              loadProfileImage={loadProfileImage}
               isDarkMode={isDarkMode}
               isAdmin={isAdmin}
               userAdminStatus={userAdminStatus}
@@ -9674,13 +10075,27 @@ function App() {
                     }}
                     title={`${user.username}님의 프로필 보기`}
                   >
-                    <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border ${
-                      isDarkMode ? "border-white/10" : "border-blue-300/30"
-                    }`}>
-                      <User className={`w-4 h-4 ${
-                        isDarkMode ? "text-blue-400" : "text-blue-600"
-                      }`} />
-                    </div>
+                    {/* 📸 프로필 이미지 또는 기본 아이콘 */}
+                    {userProfileImages[user.userUuid] ? (
+                      <img 
+                        src={userProfileImages[user.userUuid]} 
+                        alt={user.username}
+                        className={`w-8 h-8 rounded-full object-cover border ${
+                          isDarkMode ? "border-white/10" : "border-blue-300/30"
+                        }`}
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border ${
+                        isDarkMode ? "border-white/10" : "border-blue-300/30"
+                      }`}>
+                        <User className={`w-4 h-4 ${
+                          isDarkMode ? "text-blue-400" : "text-blue-600"
+                        }`} />
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className={`font-medium text-sm truncate flex items-center gap-1 ${
                         isDarkMode ? "text-white" : "text-gray-800"
@@ -9741,13 +10156,72 @@ function App() {
               isDarkMode ? "border-white/10" : "border-gray-300/20"
             }`}>
               <div className="flex items-center gap-3">
-                <div className={`flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border ${
-                  isDarkMode ? "border-white/10" : "border-blue-300/30"
-                }`}>
-                  <User className={`w-5 h-5 ${
-                    isDarkMode ? "text-blue-400" : "text-blue-600"
-                  }`} />
-                </div>
+                {/* 📸 프로필 이미지 - 조건 없이 항상 표시 */}
+                {(() => {
+                  const currentUserUuid = selectedUserProfile ? otherUserData?.userUuid : userUuid;
+                  
+                  // localStorage에서 직접 읽기
+                  let currentImage = null;
+                  if (currentUserUuid) {
+                    // state 먼저 확인
+                    currentImage = userProfileImages[currentUserUuid];
+                    
+                    // state에 없으면 localStorage 확인
+                    if (!currentImage) {
+                      try {
+                        const cached = localStorage.getItem('userProfileImages');
+                        if (cached) {
+                          const parsed = JSON.parse(cached);
+                          currentImage = parsed[currentUserUuid];
+                        }
+                      } catch (e) {}
+                    }
+                  }
+                  
+                  console.log('🖼️ [ALWAYS SHOW] Rendering image. UUID:', currentUserUuid, 'Image:', currentImage, 'isAdmin:', isAdmin);
+                  
+                  if (currentImage) {
+                    return (
+                      <div className="relative group">
+                        <img 
+                          src={currentImage} 
+                          alt="프로필"
+                          className={`w-16 h-16 rounded-full object-cover border-2 cursor-pointer hover:opacity-80 transition-opacity ${
+                            isDarkMode ? "border-white/20" : "border-gray-300"
+                          }`}
+                          onClick={() => {
+                            setModalImageUrl(currentImage);
+                            setShowImageModal(true);
+                          }}
+                          title="클릭하여 확대"
+                        />
+                        <div className={`absolute inset-0 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30 cursor-pointer`}
+                          onClick={() => {
+                            setModalImageUrl(currentImage);
+                            setShowImageModal(true);
+                          }}>
+                          <span className="text-white text-xs">🔍</span>
+                        </div>
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div 
+                        className={`flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border cursor-pointer hover:opacity-80 transition-opacity ${
+                          isDarkMode ? "border-white/10" : "border-blue-300/30"
+                        }`}
+                        onClick={() => {
+                          setShowImageModal(true);
+                        }}
+                        title="프로필 이미지 보기"
+                      >
+                        <User className={`w-8 h-8 ${
+                          isDarkMode ? "text-blue-400" : "text-blue-600"
+                        }`} />
+                      </div>
+                    );
+                  }
+                })()}
                 <div>
                       <h2 className={`text-lg font-semibold ${
                         isDarkMode ? "text-white" : "text-gray-800"
@@ -9787,6 +10261,16 @@ function App() {
                         )}
                       </div>
                     )}
+                    
+                    {/* 프로필 이미지 안내 (관리자) */}
+                    {!selectedUserProfile && isAdmin && (
+                      <div className={`text-xs mt-2 ${
+                        isDarkMode ? "text-gray-400" : "text-gray-600"
+                      }`}>
+                        💡 프로필 이미지를 클릭하여 변경할 수 있습니다
+                      </div>
+                    )}
+                    
                     <p className={`text-xs ${
                       isDarkMode ? "text-gray-400" : "text-gray-600"
                     }`}>장착된 장비</p>
@@ -12004,6 +12488,111 @@ function App() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 📸 이미지 확대 모달 */}
+      {showImageModal && (
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+          onClick={() => {
+            setShowImageModal(false);
+            setModalImageUrl(null);
+          }}
+        >
+          <div 
+            className={`relative max-w-2xl w-full rounded-2xl board-shadow overflow-hidden ${
+              isDarkMode ? "glass-card" : "bg-white/90 backdrop-blur-md border border-gray-300/30"
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 헤더 */}
+            <div className={`flex items-center justify-between p-4 border-b ${
+              isDarkMode ? "border-white/10" : "border-gray-300/20"
+            }`}>
+              <h3 className={`text-lg font-semibold ${
+                isDarkMode ? "text-white" : "text-gray-800"
+              }`}>프로필 이미지</h3>
+              <button
+                onClick={() => {
+                  setShowImageModal(false);
+                  setModalImageUrl(null);
+                }}
+                className={`p-2 rounded-lg hover:scale-110 transition-all duration-300 ${
+                  isDarkMode 
+                    ? "glass-input text-gray-400 hover:text-white" 
+                    : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-gray-600 hover:text-gray-800"
+                }`}
+              >
+                ✕
+              </button>
+            </div>
+            
+            {/* 이미지 */}
+            <div className={`p-8 flex items-center justify-center ${
+              isDarkMode ? "bg-black/20" : "bg-gray-50/50"
+            }`}>
+              {(() => {
+                const currentUserUuid = selectedUserProfile ? otherUserData?.userUuid : userUuid;
+                const currentImage = modalImageUrl || userProfileImages[currentUserUuid];
+                
+                return currentImage ? (
+                  <img 
+                    src={currentImage} 
+                    alt="프로필 이미지"
+                    className="max-w-full max-h-[60vh] object-contain rounded-lg"
+                  />
+                ) : (
+                  <div className={`flex items-center justify-center w-64 h-64 rounded-lg border-2 border-dashed ${
+                    isDarkMode ? "border-white/20 text-gray-500" : "border-gray-300 text-gray-400"
+                  }`}>
+                    <div className="text-center">
+                      <User className="w-20 h-20 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">프로필 이미지가 없습니다</p>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+            
+            {/* 관리자 전용 업로드/삭제 버튼 */}
+            {!selectedUserProfile && isAdmin && (
+              <div className={`p-4 border-t flex gap-2 justify-center ${
+                isDarkMode ? "border-white/10" : "border-gray-300/20"
+              }`}>
+                <input 
+                  ref={fileInputRef}
+                  type="file" 
+                  accept="image/*"
+                  onChange={handleProfileImageUpload}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingImage}
+                  className={`px-4 py-2 rounded-lg transition-all duration-300 hover:scale-105 flex items-center gap-2 ${
+                    isDarkMode 
+                      ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30" 
+                      : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20"
+                  } ${uploadingImage ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  📸 {uploadingImage ? '업로드 중...' : '이미지 업로드'}
+                </button>
+                {userProfileImages[userUuid] && (
+                  <button
+                    onClick={handleProfileImageDelete}
+                    className={`px-4 py-2 rounded-lg transition-all duration-300 hover:scale-105 flex items-center gap-2 ${
+                      isDarkMode 
+                        ? "bg-red-500/20 text-red-400 hover:bg-red-500/30" 
+                        : "bg-red-500/10 text-red-600 hover:bg-red-500/20"
+                    }`}
+                  >
+                    🗑️이미지 삭제
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

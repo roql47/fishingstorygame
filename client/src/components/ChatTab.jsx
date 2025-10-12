@@ -23,6 +23,8 @@ const ChatTab = ({
   isAdmin,
   userAdminStatus,
   fishingCooldown,
+  userProfileImages,
+  loadProfileImage,
   setFishingCooldown,
   isProcessingFishing,
   setIsProcessingFishing,
@@ -227,7 +229,12 @@ const ChatTab = ({
     }
     
     const socket = getSocket();
-    const payload = { username, content: text, timestamp: new Date().toISOString() };
+    const payload = { 
+      username, 
+      content: text, 
+      timestamp: new Date().toISOString(),
+      userUuid: localStorage.getItem('userUuid') // 📸 프로필 이미지용 userUuid 추가
+    };
     socket.emit("chat:message", payload);
     setInput("");
   };
@@ -501,19 +508,39 @@ const ChatTab = ({
                 </div>
               ) : (
                 <div className="flex items-start gap-3">
-                  <div 
-                    className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border cursor-pointer hover:scale-110 transition-all duration-300 ${
-                      isDarkMode ? "border-white/10 hover:border-blue-400/50" : "border-gray-300/20 hover:border-blue-500/50"
-                    }`}
-                    onClick={async () => {
-                      setSelectedUserProfile({ username: m.username }); // 다른 사용자 프로필
-                      await fetchOtherUserProfile(m.username); // 해당 사용자 데이터 가져오기
-                      setShowProfile(true);
-                    }}
-                    title={`${m.username}님의 프로필 보기`}
-                  >
-                    <User className={`w-4 h-4 ${isDarkMode ? "text-blue-400" : "text-blue-600"}`} />
-                  </div>
+                  {/* 📸 프로필 이미지 또는 기본 아이콘 */}
+                  {userProfileImages[m.userUuid] ? (
+                    <img 
+                      src={userProfileImages[m.userUuid]} 
+                      alt={m.username}
+                      className={`w-8 h-8 rounded-full object-cover border cursor-pointer hover:scale-110 transition-all duration-300 ${
+                        isDarkMode ? "border-white/10 hover:border-blue-400/50" : "border-gray-300/20 hover:border-blue-500/50"
+                      }`}
+                      onClick={async () => {
+                        setSelectedUserProfile({ username: m.username });
+                        await fetchOtherUserProfile(m.username);
+                        setShowProfile(true);
+                      }}
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                      }}
+                      title={`${m.username}님의 프로필 보기`}
+                    />
+                  ) : (
+                    <div 
+                      className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border cursor-pointer hover:scale-110 transition-all duration-300 ${
+                        isDarkMode ? "border-white/10 hover:border-blue-400/50" : "border-gray-300/20 hover:border-blue-500/50"
+                      }`}
+                      onClick={async () => {
+                        setSelectedUserProfile({ username: m.username }); // 다른 사용자 프로필
+                        await fetchOtherUserProfile(m.username); // 해당 사용자 데이터 가져오기
+                        setShowProfile(true);
+                      }}
+                      title={`${m.username}님의 프로필 보기`}
+                    >
+                      <User className={`w-4 h-4 ${isDarkMode ? "text-blue-400" : "text-blue-600"}`} />
+                    </div>
+                  )}
                   <div className="flex-1 max-w-md">
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`font-semibold text-sm ${

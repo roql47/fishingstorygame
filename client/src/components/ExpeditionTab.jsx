@@ -78,6 +78,27 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
   const battleLogRef = useRef(null);
   const dropdownRef = useRef(null);
 
+  // 🧹 컴포넌트 언마운트 시 모든 interval 정리
+  useEffect(() => {
+    return () => {
+      // 프로그레스바 interval 정리
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+        console.log('[EXPEDITION] 프로그레스바 interval 정리');
+      }
+      
+      // 모든 속도바 interval 정리
+      if (speedBarIntervalsRef.current) {
+        Object.values(speedBarIntervalsRef.current).forEach(interval => {
+          if (interval) clearInterval(interval);
+        });
+        speedBarIntervalsRef.current = {};
+        console.log('[EXPEDITION] 모든 속도바 interval 정리');
+      }
+    };
+  }, []);
+
   // 3초 프로그레스바 시작 함수
   const startTurnProgress = () => {
     if (progressIntervalRef.current) {
@@ -678,6 +699,15 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
       });
       
       const data = await response.json();
+      
+      console.log('[EXPEDITION DEBUG] Response status:', response.status);
+      console.log('[EXPEDITION DEBUG] Response data:', data);
+      console.log('[EXPEDITION DEBUG] Current room state:', {
+        status: currentRoom?.status,
+        hasRewards: !!currentRoom?.rewards,
+        rewardsCount: currentRoom?.rewards?.length,
+        myRewards: currentRoom?.rewards?.filter(r => r.playerId === userData.userUuid)
+      });
       
       if (data.success) {
         alert(`${data.message}\n보상: ${data.rewards.map(r => `${r.fishName} x${r.quantity}`).join(', ')}`);
