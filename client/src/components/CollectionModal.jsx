@@ -23,44 +23,36 @@ const CollectionModal = ({
           (typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
             ? window.location.origin 
             : 'http://localhost:4000');
-        const username = localStorage.getItem('nickname') || '';
-        const userUuid = localStorage.getItem('userUuid') || '';
-        
-        // 로그인하지 않았거나 username이 없으면 빈 배열 반환
-        if (!username || !userUuid) {
-          console.log('⚠️ No username or userUuid, skipping fish discoveries fetch');
-          setDiscoveredFish([]);
-          return;
-        }
+        const username = localStorage.getItem('nickname');
+        const userUuid = localStorage.getItem('userUuid');
         
         // userUuid가 없으면 username을 userId로 사용
         const userId = userUuid || username;
         
-        console.log('🔍 CollectionModal - Fetching discovered fish with:', { 
-          serverUrl, 
-          userId, 
-          username, 
-          userUuid,
-          hasIdToken: !!localStorage.getItem('idToken')
-        });
+        // 로그인하지 않았거나 userId가 비어있으면 빈 배열 반환
+        if (!userId || userId.trim() === '' || !username || username.trim() === '') {
+          setDiscoveredFish([]);
+          return;
+        }
         
-        const url = `${serverUrl}/api/fish-discoveries/${userId}?username=${encodeURIComponent(username)}&userUuid=${encodeURIComponent(userUuid)}`;
-        console.log('🔍 Request URL:', url);
+        // URL 생성 - userUuid가 있으면 사용, 없으면 username만 사용
+        const queryParams = new URLSearchParams();
+        queryParams.append('username', username);
+        if (userUuid && userUuid.trim() !== '') {
+          queryParams.append('userUuid', userUuid);
+        }
+        
+        const url = `${serverUrl}/api/fish-discoveries/${encodeURIComponent(userId)}?${queryParams.toString()}`;
         
         const response = await fetch(url);
-        console.log('🔍 Response status:', response.status, response.statusText);
         
         if (response.ok) {
           const fishNames = await response.json();
           setDiscoveredFish(fishNames);
-          console.log('✅ Discovered fish loaded:', fishNames.length, 'fish:', fishNames);
         } else {
-          const errorText = await response.text();
-          console.error('❌ Failed to fetch discovered fish:', response.status, errorText);
           setDiscoveredFish([]);
         }
       } catch (error) {
-        console.error('❌ Error fetching discovered fish:', error);
         setDiscoveredFish([]);
       }
     };
@@ -303,7 +295,7 @@ const CollectionModal = ({
                             <p className={`text-xs ${
                               isDarkMode ? "text-green-400" : "text-green-600"
                             }`}>
-                              🔨 분해: {fish.material}
+                              재료아이템: {fish.material}
                             </p>
                           )}
                         </>

@@ -209,7 +209,7 @@ function App() {
 
   // 🔄 버전 업데이트 시 캐시 초기화 (v1.296)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.296";
+    const CURRENT_VERSION = "v1.297";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -662,8 +662,10 @@ function App() {
                 // 랜덤 적 선택
                 const targetEnemy = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
                 console.log(`[SPEED] 랜덤 대상 선택: ${targetEnemy.name}`);
-                const fishingRodEnhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
-                const baseDamage = calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus);
+                // battleState에 저장된 강화 보너스 사용 (서버에서 계산된 값)
+                const fishingRodEnhancementBonus = currentState.fishingRodEnhancementBonus || 0;
+                const battleFishingSkill = currentState.fishingSkill || fishingSkill;
+                const baseDamage = calculatePlayerAttack(battleFishingSkill, fishingRodEnhancementBonus);
                 const { damage, isCritical } = calculateCriticalHit(baseDamage);
                 
                 const newEnemies = [...currentState.enemies];
@@ -4362,7 +4364,7 @@ function App() {
     if (accessoryLevel === 0 && enhancementBonusPercent === 0) return 50; // 기본 체력
     const baseHp = accessoryLevel === 0 ? 50 : Math.floor(Math.pow(accessoryLevel, 1.325) + 50 * accessoryLevel + 5 * accessoryLevel);
     // 강화 보너스 퍼센트 적용
-    return baseHp + (baseHp * enhancementBonusPercent / 100);
+    return Math.floor(baseHp + (baseHp * enhancementBonusPercent / 100));
   };
 
 
@@ -5873,8 +5875,10 @@ function App() {
         // 랜덤 적 선택
         const targetEnemy = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
 
-      const fishingRodEnhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
-        const baseDamage = calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus);
+        // battleState에 저장된 강화 보너스 사용 (서버에서 계산된 값)
+        const fishingRodEnhancementBonus = prevState.fishingRodEnhancementBonus || 0;
+        const battleFishingSkill = prevState.fishingSkill || fishingSkill;
+        const baseDamage = calculatePlayerAttack(battleFishingSkill, fishingRodEnhancementBonus);
         const { damage, isCritical } = calculateCriticalHit(baseDamage);
         
         targetEnemy.hp = Math.max(0, targetEnemy.hp - damage);
@@ -6829,7 +6833,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.296
+                여우이야기 v1.297
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다

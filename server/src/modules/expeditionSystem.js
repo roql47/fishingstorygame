@@ -458,7 +458,7 @@ class ExpeditionSystem {
         if (accessoryLevel === 0 && enhancementBonusPercent === 0) return 50; // 기본 체력
         const baseHp = accessoryLevel === 0 ? 50 : Math.floor(Math.pow(accessoryLevel, 1.325) + 50 * accessoryLevel + 5 * accessoryLevel);
         // 강화 보너스 퍼센트 적용
-        return baseHp + (baseHp * enhancementBonusPercent / 100);
+        return Math.floor(baseHp + (baseHp * enhancementBonusPercent / 100));
     }
 
     // 동료 능력치 계산 (탐사전투와 동일)

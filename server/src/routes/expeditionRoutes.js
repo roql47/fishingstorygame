@@ -278,14 +278,7 @@ router.post('/rooms/start', authenticateJWT, async (req, res) => {
                 accessoryEnhancement: userEquipment?.accessoryEnhancement || 0
             };
             
-            console.log(`[EXPEDITION] Player ${player.name} data:`, {
-                baseFishingSkill: baseFishingSkill,
-                achievementBonus: achievementBonus,
-                finalFishingSkill: fishingSkill,
-                accessoryName: userEquipment?.accessory || 'none',
-                accessoryLevel: accessoryLevel,
-                companions: companions.length
-            });
+            console.log(`[EXPEDITION] Player ${player.name} - FishingSkill: ${fishingSkill}, Companions: ${companions.length}`);
         }
         
         const finalRoom = expeditionSystem.startExpedition(userUuid, allPlayerData);

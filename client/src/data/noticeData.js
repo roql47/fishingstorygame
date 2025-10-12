@@ -16,6 +16,8 @@ export const NOTICE_DATA = [
       "프로필 전투정보에 마우스 호버시 상세 정보 표시시",
       "거래소 이용 낚시 스킬 제한 해제",
       "사용자 접속시 디바이스 정보 표시",
+      "탐사전투시 강화수치가 이전공식으로 반영되었던점 수정",
+      "물고기 수집도감에서 재료아이템도 표기",
       "도네이션 하이퍼링크 추가 🦊"
     ],
     isNew: true,
@@ -448,5 +450,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.296"
+  version: "v1.297"
 };

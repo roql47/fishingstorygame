@@ -2088,8 +2088,8 @@ io.on("connection", (socket) => {
       }
       
             // UUID 기반 사용자 등록/조회
-      const googleId = provider === 'google' ? socialId : null; // 구글 ID (구 호환성을 위해 유지)
-      const kakaoId = provider === 'kakao' ? socialId : null; // 카카오 ID
+      let googleId = provider === 'google' ? socialId : null; // 구글 ID (구 호환성을 위해 유지)
+      let kakaoId = provider === 'kakao' ? socialId : null; // 카카오 ID
       
       // 닉네임 우선순위 결정 (구글 로그인 여부에 따라)
       let effectiveName;
@@ -2239,6 +2239,19 @@ io.on("connection", (socket) => {
       }
       
       console.log("Final user:", { userUuid: user.userUuid, username: user.username, isGuest: user.isGuest });
+      
+      // 🔧 provider 재확인: idToken 없이 재접속한 경우에도 DB 정보 기반으로 provider 설정
+      if (!socialId && user.originalGoogleId) {
+        provider = 'google';
+        socialId = user.originalGoogleId;
+        googleId = user.originalGoogleId;
+        console.log("Provider corrected to 'google' based on DB data:", googleId);
+      } else if (!socialId && user.originalKakaoId) {
+        provider = 'kakao';
+        socialId = user.originalKakaoId;
+        kakaoId = user.originalKakaoId;
+        console.log("Provider corrected to 'kakao' based on DB data:", kakaoId);
+      }
       
       // 소켓에 사용자 정보 저장 (UUID 기반)
       socket.data.userUuid = user.userUuid;
@@ -5906,10 +5919,10 @@ const getServerFishHealthMap = () => {
 };
 
 // 서버 측 전투 계산 함수들
-// 강화 보너스 계산 함수 (3차방정식 - 퍼센트로 표시) - 2배 증가
+// 강화 보너스 계산 함수 (3차방정식 - 퍼센트로 표시)
 const calculateServerEnhancementBonus = (level) => {
   if (level <= 0) return 0;
-  return 0.2 * Math.pow(level, 3) - 0.4 * Math.pow(level, 2) + 1.6 * level;
+  return 0.0015 * Math.pow(level, 3) + 0.07 * Math.pow(level, 2) + 1.6 * level;
 };
 
 const calculateServerTotalEnhancementBonus = (level) => {
@@ -5925,7 +5938,7 @@ const calculateServerPlayerMaxHp = (accessoryLevel, enhancementBonusPercent = 0)
   if (accessoryLevel === 0 && enhancementBonusPercent === 0) return 50; // 기본 체력
   const baseHp = accessoryLevel === 0 ? 50 : Math.floor(Math.pow(accessoryLevel, 1.325) + 50 * accessoryLevel + 5 * accessoryLevel);
   // 강화 보너스 퍼센트 적용
-  return baseHp + (baseHp * enhancementBonusPercent / 100);
+  return Math.floor(baseHp + (baseHp * enhancementBonusPercent / 100));
 };
 
 // 공격력 계산 (내정보 탭과 동일한 공식 사용 + 강화 보너스 적용)
@@ -5997,6 +6010,14 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
     const accessoryEnhancementBonus = calculateServerTotalEnhancementBonus(accessoryEnhancement);
     const playerMaxHp = calculateServerPlayerMaxHp(accessoryLevel, accessoryEnhancementBonus);
     
+    console.log(`[EXPLORATION HP] ${username}:`, {
+      accessory: userEquipment?.accessory,
+      accessoryLevel: accessoryLevel,
+      accessoryEnhancement: accessoryEnhancement,
+      accessoryEnhancementBonus: accessoryEnhancementBonus,
+      playerMaxHp: playerMaxHp
+    });
+    
     // 다중 물고기 생성 (materialQuantity만큼)
     const enemies = [];
     for (let i = 0; i < materialQuantity; i++) {
@@ -6057,10 +6078,11 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
       canFlee: false, // 도망가기 불가
       fishingSkill: fishingSkill,
       accessoryLevel: accessoryLevel,
-      fishingRodEnhancementBonus: fishingRodEnhancementBonus // 강화 보너스 추가
+      fishingRodEnhancement: fishingRodEnhancement, // 낚시대 강화 레벨
+      fishingRodEnhancementBonus: fishingRodEnhancementBonus, // 낚시대 강화 보너스 (%)
+      accessoryEnhancement: accessoryEnhancement, // 악세사리 강화 레벨
+      accessoryEnhancementBonus: accessoryEnhancementBonus // 악세사리 강화 보너스 (%)
     };
-    
-    console.log("Server calculated battle state:", battleState);
     
     const enemyNames = enemies.map(e => e.name).join(', ');
     res.json({ 
@@ -9219,14 +9241,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.296"
+    version: "v1.297"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.296",
+    version: "v1.297",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
