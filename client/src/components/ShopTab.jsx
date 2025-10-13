@@ -301,16 +301,16 @@ const ShopTab = ({
                               }`} />
                               <div className="flex items-center gap-1.5 flex-1">
                                 <span className={`text-sm font-bold ${
-                                  isDarkMode ? "text-yellow-200" : "text-yellow-800"
-                                }`}>{requiredGold.toLocaleString()}</span>
-                                <span className={isDarkMode ? "text-gray-500" : "text-gray-400"}>/</span>
-                                <span className={`text-sm font-bold ${
                                   hasEnoughGold 
                                     ? isDarkMode ? "text-emerald-400" : "text-emerald-600"
                                     : isDarkMode ? "text-red-400" : "text-red-500"
                                 }`}>
                                   {userMoney.toLocaleString()}
                                 </span>
+                                <span className={isDarkMode ? "text-gray-500" : "text-gray-400"}>/</span>
+                                <span className={`text-sm font-bold ${
+                                  isDarkMode ? "text-yellow-200" : "text-yellow-800"
+                                }`}>{requiredGold.toLocaleString()}</span>
                                 <span className={`text-sm font-semibold ${
                                   isDarkMode ? "text-yellow-300" : "text-yellow-700"
                                 }`}>G</span>
@@ -448,16 +448,16 @@ const ShopTab = ({
                               }`} />
                               <div className="flex items-center gap-1.5 flex-1">
                                 <span className={`text-sm font-bold ${
-                                  isDarkMode ? "text-yellow-200" : "text-yellow-800"
-                                }`}>{requiredGold.toLocaleString()}</span>
-                                <span className={isDarkMode ? "text-gray-500" : "text-gray-400"}>/</span>
-                                <span className={`text-sm font-bold ${
                                   hasEnoughGold 
                                     ? isDarkMode ? "text-emerald-400" : "text-emerald-600"
                                     : isDarkMode ? "text-red-400" : "text-red-500"
                                 }`}>
                                   {userMoney.toLocaleString()}
                                 </span>
+                                <span className={isDarkMode ? "text-gray-500" : "text-gray-400"}>/</span>
+                                <span className={`text-sm font-bold ${
+                                  isDarkMode ? "text-yellow-200" : "text-yellow-800"
+                                }`}>{requiredGold.toLocaleString()}</span>
                                 <span className={`text-sm font-semibold ${
                                   isDarkMode ? "text-yellow-300" : "text-yellow-700"
                                 }`}>G</span>
