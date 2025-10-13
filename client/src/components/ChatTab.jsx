@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MessageCircle, Trash2, LogOut, User, Clock, ThumbsUp, Heart, Send } from 'lucide-react';
+import { MessageCircle, Trash2, LogOut, User, Clock, ThumbsUp, Heart, Send, Lock, Unlock } from 'lucide-react';
 import axios from 'axios';
 
 const ChatTab = ({
@@ -50,6 +50,9 @@ const ChatTab = ({
   setAlchemyPotions
 }) => {
   const messagesEndRef = useRef(null);
+  
+  // 스크롤 고정 상태
+  const [isScrollLocked, setIsScrollLocked] = useState(false);
   
   // 전투로그 팝업 상태
   const [showBattleDetails, setShowBattleDetails] = useState(false);
@@ -265,10 +268,12 @@ const ChatTab = ({
   };
 
 
-  // 메시지 스크롤 자동 이동
+  // 메시지 스크롤 자동 이동 (스크롤 고정 상태가 아닐 때만)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+    if (!isScrollLocked) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages.length, isScrollLocked]);
 
   return (
     <div>
@@ -293,6 +298,19 @@ const ChatTab = ({
             
             {/* 액션 버튼들 */}
             <div className="flex gap-2">
+              {/* 스크롤 고정 버튼 */}
+              <button
+                className={`p-2 rounded-lg hover:glow-effect transition-all duration-300 ${
+                  isScrollLocked 
+                    ? (isDarkMode ? "glass-input text-yellow-400" : "bg-yellow-50/80 backdrop-blur-sm border border-yellow-400/60 text-yellow-600")
+                    : (isDarkMode ? "glass-input text-gray-400" : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-gray-600")
+                }`}
+                onClick={() => setIsScrollLocked(!isScrollLocked)}
+                title={isScrollLocked ? "스크롤 고정 해제" : "스크롤 고정"}
+              >
+                {isScrollLocked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+              </button>
+              
               {/* 채팅 클리어 버튼 */}
               <button
                 className={`p-2 rounded-lg hover:glow-effect transition-all duration-300 text-blue-400 ${

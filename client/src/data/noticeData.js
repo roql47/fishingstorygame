@@ -1,6 +1,26 @@
 // 공지사항 데이터 (ID 내림차순 정렬 - 최신이 가장 높은 ID)
 export const NOTICE_DATA = [
   {
+    id: 28,
+    date: "2025.10.13",
+    title: "🎁 신규 쿠폰 & UI 개선 업데이트",
+    content: [
+      "신규 쿠폰 추가:",
+      "-누적 이용자 200명 돌파",
+      "-2025-10-20 12:00:00 까지 유효",
+      "UI/UX 개선:",
+      "- 채팅 스크롤바 고정 기능 추가 (Lock/Unlock 버튼)",
+      "- 모바일 화면 강제 이동 방지 개선",
+      "- 랭킹탭 페이지네이션 적용용",
+      "- 재료 아이템에 랭크 표시 추가",
+      "시스템 안정성 개선:",
+      "- 최초 로그인 시 인코딩 오류 및 인증 실패 문제 수정",
+      "- 사용자 인증 프로세스 안정화"
+    ],
+    isNew: true,
+    type: "major_update"
+  },
+  {
     id: 27,
     date: "2025.10.12",
     title: "🔍 거래소 검색 & 정렬 기능 추가",
@@ -21,7 +41,7 @@ export const NOTICE_DATA = [
       "도네이션 하이퍼링크 추가 🦊",
       "프로필 이미지 설정 기능 추가"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
@@ -451,5 +471,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.297"
+  version: "v1.3"
 };

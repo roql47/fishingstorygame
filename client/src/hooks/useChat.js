@@ -330,10 +330,8 @@ export const useChat = ({
   }, [username, idToken, onMessage, onUsersUpdate, onUserUuid, onReactionUpdate, 
       onDuplicateLogin, onJoinError, onChatError, onConnectError, onAccountBlocked, onIPBlocked, setJwtToken, userUuid]);
 
-  // 메시지 스크롤 관리
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages.length, scrollToBottom]);
+  // 메시지 스크롤 관리는 ChatTab에서 isScrollLocked 상태를 고려하여 처리
+  // (모바일 환경에서 강제 스크롤 방지를 위해 여기서는 제거)
 
   // 채팅 메시지의 사용자들 관리자 상태 확인
   useEffect(() => {

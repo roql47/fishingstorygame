@@ -441,9 +441,9 @@ if (isProduction) {
 // 로컬에서는 보안 헤더 생략
 
 
-// 요청 크기 제한 (보안 강화)
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// 요청 크기 제한 (보안 강화) + UTF-8 인코딩 명시
+app.use(express.json({ limit: '10mb', charset: 'utf-8' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb', charset: 'utf-8' }));
 
 // 성능 최적화 설정
 app.use((req, res, next) => {
@@ -1293,9 +1293,57 @@ async function generateNextUuid() {
   }
 }
 
+// UTF-8 인코딩 수정 헬퍼 함수
+function fixEncoding(str) {
+  if (!str) return str;
+  
+  try {
+    // 이미 올바른 UTF-8이면 그대로 반환
+    // 깨진 문자가 있는지 확인 (예: ê¹ì±ì¤)
+    if (!/[\x80-\xFF]/.test(str)) {
+      return str; // ASCII만 있으면 문제없음
+    }
+    
+    // Latin-1(ISO-8859-1)로 잘못 인코딩된 UTF-8 바이트를 복구
+    const buffer = Buffer.from(str, 'latin1');
+    const decoded = buffer.toString('utf8');
+    
+    console.log(`Encoding fix: "${str}" -> "${decoded}"`);
+    return decoded;
+  } catch (error) {
+    console.error('Encoding fix failed:', error);
+    return str; // 실패하면 원본 반환
+  }
+}
+
+// 카카오 ID 정규화 헬퍼 함수
+function normalizeKakaoId(kakaoId) {
+  if (!kakaoId) return null;
+  return kakaoId.startsWith('kakao_') ? kakaoId : `kakao_${kakaoId}`;
+}
+
+// 카카오 사용자 검색 헬퍼 함수 (접두사 있는/없는 둘 다 검색)
+async function findKakaoUser(kakaoId) {
+  if (!kakaoId) return null;
+  
+  const normalizedId = normalizeKakaoId(kakaoId);
+  const idWithoutPrefix = kakaoId.replace('kakao_', '');
+  
+  return await UserUuidModel.findOne({
+    $or: [
+      { originalKakaoId: normalizedId },
+      { originalKakaoId: idWithoutPrefix }
+    ]
+  });
+}
+
 // 사용자 등록/조회 함수
 async function getOrCreateUser(username, googleId = null, kakaoId = null) {
   try {
+    // UTF-8 인코딩 수정
+    const fixedUsername = fixEncoding(username);
+    console.log(`getOrCreateUser called with username: "${username}" (fixed: "${fixedUsername}")`);
+    
     let user;
     
     if (googleId) {
@@ -1303,7 +1351,7 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
       user = await UserUuidModel.findOne({ originalGoogleId: googleId });
       if (!user) {
         // 보안 강화: 구글 사용자도 닉네임 중복 체크
-        const defaultUsername = username || "구글사용자";
+        const defaultUsername = fixedUsername || "구글사용자";
         const existingUser = await UserUuidModel.findOne({ 
           $or: [
             { username: defaultUsername },
@@ -1366,11 +1414,15 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
       }
     } else if (kakaoId) {
       // 카카오 로그인 사용자
-      const kakaoIdToSearch = kakaoId.startsWith('kakao_') ? kakaoId : `kakao_${kakaoId}`;
-      user = await UserUuidModel.findOne({ originalKakaoId: kakaoIdToSearch });
+      // 🔧 통일된 형식으로 정규화 (항상 kakao_ 접두사 사용)
+      const normalizedKakaoId = normalizeKakaoId(kakaoId);
+      
+      // 🔍 기존 사용자 검색 (접두사 있는/없는 둘 다 검색)
+      user = await findKakaoUser(kakaoId);
+      
       if (!user) {
         // 보안 강화: 카카오 사용자도 닉네임 중복 체크
-        const defaultUsername = username || "카카오사용자";
+        const defaultUsername = fixedUsername || "카카오사용자";
         const existingUser = await UserUuidModel.findOne({ 
           $or: [
             { username: defaultUsername },
@@ -1389,7 +1441,7 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
             userUuid,
             username: uniqueUsername,
             displayName: uniqueUsername,
-            originalKakaoId: kakaoId,
+            originalKakaoId: normalizedKakaoId, // ✅ 통일된 형식으로 저장
             isGuest: false,
             termsAccepted: false,
             darkMode: true
@@ -1408,7 +1460,7 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
             userUuid,
             username: defaultUsername,
             displayName: defaultUsername,
-            originalKakaoId: kakaoId,
+            originalKakaoId: normalizedKakaoId, // ✅ 통일된 형식으로 저장
             isGuest: false,
             termsAccepted: false,
             darkMode: true
@@ -1422,12 +1474,19 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
             accessory: null
           });
         }
-        console.log(`Created new Kakao user: ${user.userUuid} (username: ${user.username})`);
+        console.log(`Created new Kakao user: ${user.userUuid} (originalKakaoId: ${normalizedKakaoId})`);
       } else {
+        // 기존 사용자 발견 - originalKakaoId 형식 통일 (마이그레이션)
+        if (user.originalKakaoId !== normalizedKakaoId) {
+          console.log(`🔧 Normalizing kakaoId: ${user.originalKakaoId} -> ${normalizedKakaoId}`);
+          user.originalKakaoId = normalizedKakaoId;
+          await user.save();
+        }
+        
         // 카카오 사용자의 경우 username(카카오 닉네임)은 업데이트하지만 displayName은 보존
-        if (user.username !== username && username) {
-          console.log(`Updating Kakao username from ${user.username} to ${username}, keeping displayName: ${user.displayName}`);
-          user.username = username; // 카카오 닉네임 업데이트
+        if (user.username !== fixedUsername && fixedUsername) {
+          console.log(`Updating Kakao username from ${user.username} to ${fixedUsername}, keeping displayName: ${user.displayName}`);
+          user.username = fixedUsername; // 카카오 닉네임 업데이트
           await user.save();
         }
       }
@@ -2121,7 +2180,7 @@ io.on("connection", (socket) => {
         if (provider === 'google') {
           existingSocialUser = await UserUuidModel.findOne({ originalGoogleId: googleId });
         } else if (provider === 'kakao') {
-          existingSocialUser = await UserUuidModel.findOne({ originalKakaoId: kakaoId });
+          existingSocialUser = await findKakaoUser(kakaoId);
         }
         
         if (existingSocialUser) {
@@ -2140,22 +2199,24 @@ io.on("connection", (socket) => {
           } else {
             // displayName이 없는 경우에만 클라이언트 username 또는 소셜 displayName 사용
             const defaultName = provider === 'kakao' ? "카카오사용자" : "구글사용자";
-            effectiveName = username || info?.displayName || defaultName;
+            const rawName = username || info?.displayName || defaultName;
+            effectiveName = fixEncoding(rawName); // 인코딩 수정 적용
             console.log(`No stored displayName, using client username or ${provider} displayName:`, effectiveName);
           }
         } else {
           // 새 소셜 사용자인 경우
           const defaultName = provider === 'kakao' ? "카카오사용자" : "구글사용자";
-          effectiveName = username || info?.displayName || defaultName;
+          const rawName = username || info?.displayName || defaultName;
+          effectiveName = fixEncoding(rawName); // 인코딩 수정 적용
           console.log(`New ${provider} user - using username/displayName:`, effectiveName);
         }
       } else {
         // 게스트 사용자인 경우
         if (userUuid && userUuid !== 'null' && userUuid !== 'undefined') {
-          effectiveName = username || "사용자";
+          effectiveName = fixEncoding(username || "사용자");
           console.log("Existing guest user - using client username:", effectiveName);
         } else {
-          effectiveName = username || "게스트";
+          effectiveName = fixEncoding(username || "게스트");
           console.log("New guest user - using username:", effectiveName);
         }
       }
@@ -2213,8 +2274,7 @@ io.on("connection", (socket) => {
         if (provider === 'google') {
         user = await UserUuidModel.findOne({ originalGoogleId: googleId });
         } else if (provider === 'kakao') {
-          const kakaoIdToSearch = kakaoId.startsWith('kakao_') ? kakaoId : `kakao_${kakaoId}`;
-          user = await UserUuidModel.findOne({ originalKakaoId: kakaoIdToSearch });
+          user = await findKakaoUser(kakaoId);
         }
         
         if (user) {
@@ -2283,12 +2343,15 @@ io.on("connection", (socket) => {
     
       // 같은 구글 아이디로 중복 접속 방지 (PC/모바일 동시 접속 차단)
       if (socialId) {
+        const normalizedKakaoId = provider === 'kakao' ? normalizeKakaoId(kakaoId) : null;
         const existingSocialConnection = Array.from(connectedUsers.entries())
           .find(([socketId, userData]) => {
             if (provider === 'google') {
               return userData.originalGoogleId === googleId && socketId !== socket.id;
             } else if (provider === 'kakao') {
-              return userData.originalKakaoId === kakaoId && socketId !== socket.id;
+              // 카카오 ID는 정규화하여 비교
+              const userKakaoId = normalizeKakaoId(userData.originalKakaoId);
+              return userKakaoId === normalizedKakaoId && socketId !== socket.id;
             }
             return false;
           });
@@ -3070,6 +3133,114 @@ io.on("connection", (socket) => {
 
       } catch (error) {
         console.error("신작게임 평가단 쿠폰 처리 중 오류:", error);
+        socket.emit("chat:message", {
+          system: true,
+          username: "system",
+          content: "🚫 쿠폰 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+    }
+
+    // 🎁 누적 이용자 200명 돌파 쿠폰 코드 처리
+    if (trimmed === "누적 이용자 200명 돌파") {
+      try {
+        // 쿠폰 만료일 체크 (한국시간 기준 2025년 10월 20일 오후 12시)
+        const now = new Date();
+        const kstOffset = 9 * 60 * 60 * 1000; // 9시간을 밀리초로
+        const kstNow = new Date(now.getTime() + kstOffset);
+        const expiryDate = new Date('2025-10-20T12:00:00+09:00'); // 한국시간 기준
+        
+        if (kstNow > expiryDate) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 이 쿠폰은 만료되었습니다. (유효기간: 2025년 10월 20일 오후 12시까지)",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // Guest 사용자 체크 - DB에서 사용자 정보 조회
+        const dbUser = await UserUuidModel.findOne({ userUuid: user.userUuid });
+        
+        if (!dbUser || (!dbUser.originalGoogleId && !dbUser.originalKakaoId)) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 쿠폰은 구글 또는 카카오 소셜 로그인 후에만 사용할 수 있습니다.",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // 이미 사용한 쿠폰인지 확인
+        const existingUsage = await CouponUsageModel.findOne({
+          userUuid: user.userUuid,
+          couponCode: "누적 이용자 200명 돌파"
+        });
+
+        if (existingUsage) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 이미 사용한 쿠폰입니다. 쿠폰은 계정당 한 번만 사용할 수 있습니다.",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        const queryResult = await getUserQuery('user', user.username, user.userUuid);
+        let query;
+        if (queryResult.userUuid) {
+          query = { userUuid: queryResult.userUuid };
+        } else {
+          query = queryResult;
+        }
+
+        // 먼저 쿠폰 사용 기록을 저장하여 중복 사용 방지
+        const couponUsage = new CouponUsageModel({
+          userUuid: user.userUuid,
+          username: user.username,
+          couponCode: "누적 이용자 200명 돌파",
+          reward: "alchemyPotions:10"
+        });
+        await couponUsage.save();
+
+        // 연금술포션 10개 지급
+        const alchemyPotionsRewardAmount = 10;
+        let userAlchemyPotions = await AlchemyPotionModel.findOne(query);
+        
+        if (!userAlchemyPotions) {
+          const createData = {
+            userId: query.userId || 'user',
+            username: query.username || user.username,
+            userUuid: query.userUuid || user.userUuid,
+            alchemyPotions: alchemyPotionsRewardAmount
+          };
+          userAlchemyPotions = new AlchemyPotionModel(createData);
+        } else {
+          userAlchemyPotions.alchemyPotions = (userAlchemyPotions.alchemyPotions || 0) + alchemyPotionsRewardAmount;
+        }
+        await userAlchemyPotions.save();
+
+        // 성공 메시지 전송
+        socket.emit("chat:message", {
+          system: true,
+          username: "system",
+          content: `🎉 축하합니다! 누적 이용자 200명 돌파 쿠폰이 성공적으로 사용되었습니다!\n🧪 연금술포션 ${alchemyPotionsRewardAmount}개를 받았습니다! (총 ${userAlchemyPotions.alchemyPotions}개)`,
+          timestamp: new Date().toISOString()
+        });
+
+        // 사용자 데이터 업데이트 전송
+        sendUserDataUpdate(socket, user.userUuid, user.username);
+
+        console.log(`🎁 누적 이용자 200명 돌파 쿠폰 사용: ${user.username} (${user.userUuid}) - alchemyPotions +${alchemyPotionsRewardAmount}`);
+        return;
+
+      } catch (error) {
+        console.error("누적 이용자 200명 돌파 쿠폰 처리 중 오류:", error);
         socket.emit("chat:message", {
           system: true,
           username: "system",
@@ -6594,9 +6765,13 @@ app.post("/api/check-nickname", async (req, res) => {
       console.log(`Checking nickname for Google user ${googleId}: allowing same account's existing nickname`);
     } else if (kakaoId) {
       // 카카오 계정인 경우: 같은 카카오 계정의 기존 닉네임은 허용
+      const normalizedKakaoId = normalizeKakaoId(kakaoId);
+      const kakaoIdWithoutPrefix = kakaoId.replace('kakao_', '');
       query = { 
         displayName: trimmedNickname, 
-        originalKakaoId: { $ne: kakaoId } // 다른 카카오 계정의 닉네임만 체크
+        originalKakaoId: { 
+          $nin: [normalizedKakaoId, kakaoIdWithoutPrefix] // 정규화된 ID와 접두사 없는 ID 둘 다 제외
+        }
       };
       console.log(`Checking nickname for Kakao user ${kakaoId}: allowing same account's existing nickname`);
     } else if (userUuid) {
@@ -6645,10 +6820,7 @@ app.get("/api/user-settings/:userId", async (req, res) => {
         user = await UserUuidModel.findOne({ originalGoogleId: googleId });
       } else if (kakaoId) {
         console.log(`Looking for Kakao user with originalKakaoId: ${kakaoId}`);
-        // kakaoId가 숫자만 있으면 접두사 추가해서 찾기
-        const kakaoIdToSearch = kakaoId.startsWith('kakao_') ? kakaoId : `kakao_${kakaoId}`;
-        console.log(`Searching with: ${kakaoIdToSearch}`);
-        user = await UserUuidModel.findOne({ originalKakaoId: kakaoIdToSearch });
+        user = await findKakaoUser(kakaoId);
       } else {
         // 구글/카카오 ID가 없으면 username으로 찾기 (fallback)
         user = await UserUuidModel.findOne({ username, isGuest: false });
@@ -6730,10 +6902,7 @@ app.post("/api/set-display-name/:userId", authenticateJWT, async (req, res) => {
         user = await UserUuidModel.findOne({ originalGoogleId: googleId });
       } else if (kakaoId) {
         console.log(`Looking for Kakao user with originalKakaoId: ${kakaoId}`);
-        // kakaoId가 숫자만 있으면 접두사 추가해서 찾기
-        const kakaoIdToSearch = kakaoId.startsWith('kakao_') ? kakaoId : `kakao_${kakaoId}`;
-        console.log(`Searching with: ${kakaoIdToSearch}`);
-        user = await UserUuidModel.findOne({ originalKakaoId: kakaoIdToSearch });
+        user = await findKakaoUser(kakaoId);
       } else {
         // 구글/카카오 ID가 없으면 username으로 찾기 (fallback)
         user = await UserUuidModel.findOne({ username, isGuest: false });
@@ -6800,10 +6969,7 @@ app.post("/api/user-settings/:userId", authenticateJWT, async (req, res) => {
         user = await UserUuidModel.findOne({ originalGoogleId: googleId });
       } else if (kakaoId) {
         console.log(`Looking for Kakao user with originalKakaoId: ${kakaoId}`);
-        // kakaoId가 숫자만 있으면 접두사 추가해서 찾기
-        const kakaoIdToSearch = kakaoId.startsWith('kakao_') ? kakaoId : `kakao_${kakaoId}`;
-        console.log(`Searching with: ${kakaoIdToSearch}`);
-        user = await UserUuidModel.findOne({ originalKakaoId: kakaoIdToSearch });
+        user = await findKakaoUser(kakaoId);
       } else {
         // 구글/카카오 ID가 없으면 username으로 찾기 (fallback)
         user = await UserUuidModel.findOne({ username, isGuest: false });
@@ -9501,14 +9667,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.297"
+    version: "v1.3"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.297",
+    version: "v1.3",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [

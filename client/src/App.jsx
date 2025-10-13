@@ -207,9 +207,9 @@ function App() {
     }
   }, []);
 
-  // 🔄 버전 업데이트 시 캐시 초기화 (v1.296)
+  // 🔄 버전 업데이트 시 캐시 초기화 (v1.3)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.297";
+    const CURRENT_VERSION = "v1.3";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -289,6 +289,8 @@ function App() {
   const [connectedUsers, setConnectedUsers] = useState([]); // 접속자 목록
   const [isLoadingUsers, setIsLoadingUsers] = useState(true); // 접속자 목록 로딩 상태
   const [rankings, setRankings] = useState([]); // 랭킹 데이터
+  const [currentRankingPage, setCurrentRankingPage] = useState(1); // 랭킹 페이지네이션
+  const rankingsPerPage = 10; // 페이지당 표시할 랭킹 수
   const [shopCategory, setShopCategory] = useState("fishing_rod");
   const [inventoryCategory, setInventoryCategory] = useState("fish");
   const [showProfile, setShowProfile] = useState(false);
@@ -4390,11 +4392,50 @@ function App() {
         return;
       }
 
-      // 서버에 displayName 설정 (새로운 API 사용)
+      // ✅ 먼저 chat:join으로 JWT 토큰 받기
+      console.log("🔐 Joining chat to get JWT token...");
+      const socket = getSocket();
+      
+      // JWT 토큰을 받을 때까지 대기
+      const waitForToken = new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error("JWT 토큰 수신 타임아웃"));
+        }, 10000); // 10초 타임아웃
+        
+        socket.once("auth:token", (data) => {
+          clearTimeout(timeout);
+          if (data.token) {
+            localStorage.setItem("jwtToken", data.token);
+            localStorage.setItem("jwtExpiresIn", data.expiresIn);
+            setJwtToken(data.token);
+            console.log("✅ JWT 토큰 받음:", data.token.substring(0, 20) + "...");
+            resolve(data.token);
+          } else {
+            reject(new Error("JWT 토큰이 없음"));
+          }
+        });
+        
+        // chat:join 호출
+        socket.emit("chat:join", {
+          username: initialNickname.trim(),
+          idToken,
+          userUuid,
+          isReconnection: false,
+          deviceType: /Mobile|Android|iPhone/i.test(navigator.userAgent) ? 'mobile' : 'desktop'
+        });
+      });
+      
+      await waitForToken;
+      console.log("✅ JWT 토큰 수신 완료");
+      
+      // 잠시 대기 (JWT 토큰 상태 업데이트 대기)
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // 🔐 이제 JWT 인증이 포함된 요청으로 displayName 설정
       const userId = idToken ? 'user' : 'null';
-      const displayNameResponse = await axios.post(`${serverUrl}/api/set-display-name/${userId}`, {
+      const displayNameResponse = await authenticatedRequest.post(`${serverUrl}/api/set-display-name/${userId}`, {
         displayName: initialNickname.trim()
-      }, { params });
+      });
 
       if (!displayNameResponse.data.success) {
         alert("닉네임 설정에 실패했습니다.");
@@ -4413,12 +4454,11 @@ function App() {
       setShowTermsModal(false);
       setIsFirstLogin(false);
       
-      // 소켓 연결은 메인 useEffect에서 자동으로 처리됨 (중복 방지)
-      console.log("Initial nickname set:", displayNameResponse.data.displayName);
+      console.log("✅ 닉네임 설정 완료:", displayNameResponse.data.displayName);
       console.log("User data:", displayNameResponse.data);
     } catch (error) {
       console.error("Failed to set initial nickname:", error);
-      const errorMessage = error.response?.data?.error || "닉네임 설정에 실패했습니다.";
+      const errorMessage = error.response?.data?.error || error.message || "닉네임 설정에 실패했습니다.";
       alert(errorMessage);
     }
   };
@@ -5338,6 +5378,16 @@ function App() {
         setUserProfileImages(newCache);
         localStorage.setItem('userProfileImages', JSON.stringify(newCache));
         console.log('💾 Image saved to cache for userUuid:', finalTargetUserUuid);
+        
+        // 🖼️ 프로필 모달이 열려있으면 모달 이미지도 즉시 업데이트
+        if (showProfile) {
+          const currentModalUserUuid = selectedUserProfile ? otherUserData?.userUuid : userUuid;
+          if (currentModalUserUuid === finalTargetUserUuid) {
+            // 프로필 모달의 이미지 강제 업데이트
+            setModalImageUrl(finalUrl);
+            console.log('🔄 Modal image updated immediately:', finalUrl);
+          }
+        }
         
         // 🔄 Socket.io로 다른 사용자들에게 이미지 업데이트 알림
         const socket = getSocket();
@@ -7277,7 +7327,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.297
+                여우이야기 v1.3
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -7746,7 +7796,10 @@ function App() {
             <span className="text-[10px] sm:text-sm">내정보</span>
           </button>
           <button
-            onClick={() => setActiveTab("ranking")}
+            onClick={() => {
+              setActiveTab("ranking");
+              setCurrentRankingPage(1);
+            }}
             className={`flex flex-col sm:flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
               mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
             } font-medium ${
@@ -7806,71 +7859,82 @@ function App() {
                 {/* 랭킹 콘텐츠 */}
                 <div className="flex-1 p-3 space-y-2 overflow-y-auto">
                   {rankings && rankings.length > 0 ? (
-                    rankings.map((user, index) => (
-                      <div 
-                        key={user.userUuid || user.username} 
-                        className={`p-3 rounded-lg transition-all duration-300 hover:scale-105 cursor-pointer ${
-                          isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
-                        } ${(user.displayName || user.username) === username ? 
-                          (isDarkMode ? "ring-2 ring-yellow-400/50 bg-yellow-500/10" : "ring-2 ring-yellow-500/50 bg-yellow-500/5")
-                          : ""
-                        }`}
-                        onClick={async () => {
-                          if ((user.displayName || user.username) === username) {
-                            setSelectedUserProfile(null); // 내 프로필
-                            setOtherUserData(null); // 다른 사용자 데이터 초기화
-                          } else {
-                            setSelectedUserProfile({ username: user.displayName || user.username }); // 다른 사용자 프로필
-                            await fetchOtherUserProfile(user.displayName || user.username); // 해당 사용자 데이터 가져오기
-                          }
-                          setShowProfile(true);
-                        }}
-                        title={`${user.displayName || user.username}님의 프로필 보기`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            {/* 순위 */}
-                            <div className={`flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm ${
-                              user.rank === 1 
-                                ? "bg-gradient-to-br from-yellow-400 to-yellow-600 text-white"
-                                : user.rank === 2 
-                                ? "bg-gradient-to-br from-gray-300 to-gray-500 text-white" 
-                                : user.rank === 3
-                                ? "bg-gradient-to-br from-amber-600 to-amber-800 text-white"
-                                : isDarkMode 
-                                ? "bg-gray-700 text-gray-300"
-                                : "bg-gray-200 text-gray-600"
-                            }`}>
-                              {user.rank <= 3 && user.rank === 1 && "🥇"}
-                              {user.rank <= 3 && user.rank === 2 && "🥈"}
-                              {user.rank <= 3 && user.rank === 3 && "🥉"}
-                              {user.rank > 3 && user.rank}
-                            </div>
-                            
-                            {/* 사용자 정보 */}
-                            <div className="min-w-0 flex-1">
-                              <div className={`font-medium text-sm truncate ${
-                                isDarkMode ? "text-white" : "text-gray-800"
-                              }`}>
-                                {user.displayName || user.username}
+                    (() => {
+                      const totalPages = Math.ceil(rankings.length / rankingsPerPage);
+                      const startIndex = (currentRankingPage - 1) * rankingsPerPage;
+                      const endIndex = startIndex + rankingsPerPage;
+                      const currentRankings = rankings.slice(startIndex, endIndex);
+                      
+                      return (
+                        <>
+                          {currentRankings.map((user, index) => (
+                            <div 
+                              key={user.userUuid || user.username} 
+                              className={`p-3 rounded-lg transition-all duration-300 hover:scale-105 cursor-pointer ${
+                                isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+                              } ${(user.displayName || user.username) === username ? 
+                                (isDarkMode ? "ring-2 ring-yellow-400/50 bg-yellow-500/10" : "ring-2 ring-yellow-500/50 bg-yellow-500/5")
+                                : ""
+                              }`}
+                              onClick={async () => {
+                                if ((user.displayName || user.username) === username) {
+                                  setSelectedUserProfile(null); // 내 프로필
+                                  setOtherUserData(null); // 다른 사용자 데이터 초기화
+                                } else {
+                                  setSelectedUserProfile({ username: user.displayName || user.username }); // 다른 사용자 프로필
+                                  await fetchOtherUserProfile(user.displayName || user.username); // 해당 사용자 데이터 가져오기
+                                }
+                                setShowProfile(true);
+                              }}
+                              title={`${user.displayName || user.username}님의 프로필 보기`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  {/* 순위 */}
+                                  <div className={`flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm ${
+                                    user.rank === 1 
+                                      ? "bg-gradient-to-br from-yellow-400 to-yellow-600 text-white"
+                                      : user.rank === 2 
+                                      ? "bg-gradient-to-br from-gray-300 to-gray-500 text-white" 
+                                      : user.rank === 3
+                                      ? "bg-gradient-to-br from-amber-600 to-amber-800 text-white"
+                                      : isDarkMode 
+                                      ? "bg-gray-700 text-gray-300"
+                                      : "bg-gray-200 text-gray-600"
+                                  }`}>
+                                    {user.rank <= 3 && user.rank === 1 && "🥇"}
+                                    {user.rank <= 3 && user.rank === 2 && "🥈"}
+                                    {user.rank <= 3 && user.rank === 3 && "🥉"}
+                                    {user.rank > 3 && user.rank}
+                                  </div>
+                                  
+                                  {/* 사용자 정보 */}
+                                  <div className="min-w-0 flex-1">
+                                    <div className={`font-medium text-sm truncate ${
+                                      isDarkMode ? "text-white" : "text-gray-800"
+                                    }`}>
+                                      {user.displayName || user.username}
+                                    </div>
+                                    <div className={`text-xs ${
+                                      isDarkMode ? "text-gray-400" : "text-gray-600"
+                                    }`}>
+                                      🐟 {user.totalFishCaught || 0}마리
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                {/* 스킬 레벨 */}
+                                <div className={`text-xs px-2 py-1 rounded-full ${
+                                  isDarkMode ? "bg-blue-500/20 text-blue-400" : "bg-blue-500/10 text-blue-600"
+                                }`}>
+                                  Lv.{user.fishingSkill}
+                                </div>
                               </div>
-                              <div className={`text-xs ${
-                                isDarkMode ? "text-gray-400" : "text-gray-600"
-                              }`}>
-                                🐟 {user.totalFishCaught || 0}마리
-                              </div>
                             </div>
-                          </div>
-                          
-                          {/* 스킬 레벨 */}
-                          <div className={`text-xs px-2 py-1 rounded-full ${
-                            isDarkMode ? "bg-blue-500/20 text-blue-400" : "bg-blue-500/10 text-blue-600"
-                          }`}>
-                            Lv.{user.fishingSkill}
-                          </div>
-                        </div>
-                      </div>
-                    ))
+                          ))}
+                        </>
+                      );
+                    })()
                   ) : (
                     <div className={`text-center py-8 ${
                       isDarkMode ? "text-gray-500" : "text-gray-600"
@@ -7882,6 +7946,57 @@ function App() {
                     </div>
                   )}
                 </div>
+                
+                {/* 페이지네이션 */}
+                {rankings && rankings.length > rankingsPerPage && (
+                  <div className={`border-t p-3 ${
+                    isDarkMode ? "border-white/10" : "border-gray-300/20"
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <button
+                        onClick={() => setCurrentRankingPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentRankingPage === 1}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                          currentRankingPage === 1
+                            ? isDarkMode
+                              ? "bg-gray-700/50 text-gray-500 cursor-not-allowed"
+                              : "bg-gray-200/50 text-gray-400 cursor-not-allowed"
+                            : isDarkMode
+                              ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                              : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20"
+                        }`}
+                      >
+                        이전
+                      </button>
+                      
+                      <div className={`text-sm ${
+                        isDarkMode ? "text-gray-400" : "text-gray-600"
+                      }`}>
+                        <span className={`font-bold ${
+                          isDarkMode ? "text-white" : "text-gray-800"
+                        }`}>{currentRankingPage}</span>
+                        {" / "}
+                        {Math.ceil(rankings.length / rankingsPerPage)}
+                      </div>
+                      
+                      <button
+                        onClick={() => setCurrentRankingPage(prev => Math.min(Math.ceil(rankings.length / rankingsPerPage), prev + 1))}
+                        disabled={currentRankingPage >= Math.ceil(rankings.length / rankingsPerPage)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                          currentRankingPage >= Math.ceil(rankings.length / rankingsPerPage)
+                            ? isDarkMode
+                              ? "bg-gray-700/50 text-gray-500 cursor-not-allowed"
+                              : "bg-gray-200/50 text-gray-400 cursor-not-allowed"
+                            : isDarkMode
+                              ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                              : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20"
+                        }`}
+                      >
+                        다음
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

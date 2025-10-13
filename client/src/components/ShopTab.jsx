@@ -49,6 +49,12 @@ const ShopTab = ({
     return material?.count || 0;
   };
   
+  // 재료의 랭크 가져오기 함수
+  const getMaterialRank = (materialName) => {
+    const fish = fishData.find(f => f.material === materialName);
+    return fish?.rank || 0;
+  };
+  
   // 💰 필요한 골드 계산 함수 (재료 물고기 판매가의 1/10)
   const calculateRequiredGold = (materialName, materialCount) => {
     const fish = fishData.find(f => f.material === materialName);
@@ -208,6 +214,7 @@ const ShopTab = ({
                   const canBuy = hasEnoughMaterial && hasEnoughGold;
                   // buyItem에 전달할 때 필요한 골드 정보 추가
                   const itemWithGold = { ...item, requiredGold, category: 'fishing_rod' };
+                  const materialRank = getMaterialRank(item.material);
                   
                   return (
                     <div key={index} className={`group relative overflow-hidden rounded-2xl transition-all duration-300 ${
@@ -244,49 +251,70 @@ const ShopTab = ({
                         
                         {/* 가격 정보와 버튼 */}
                         <div className="flex items-center justify-between gap-4">
-                          <div className="flex flex-col gap-2">
+                          <div className="flex flex-col gap-3">
                             {/* 재료 */}
-                            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${
+                            <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all ${
                               isDarkMode 
-                                ? hasEnoughMaterial 
-                                  ? "bg-purple-500/20 border border-purple-500/40"
-                                  : "bg-red-500/20 border border-red-500/40"
-                                : hasEnoughMaterial
-                                  ? "bg-purple-50 border border-purple-200"
-                                  : "bg-red-50 border border-red-200"
+                                ? "bg-gradient-to-r from-purple-500/15 to-purple-600/10 border border-purple-500/20"
+                                : "bg-gradient-to-r from-purple-50 to-purple-100/50 border border-purple-200/50"
                             }`}>
-                              <Package className={`w-4 h-4 ${
-                                hasEnoughMaterial
-                                  ? isDarkMode ? "text-purple-300" : "text-purple-600"
-                                  : isDarkMode ? "text-red-400" : "text-red-500"
+                              <Package className={`w-4 h-4 flex-shrink-0 ${
+                                isDarkMode ? "text-purple-400" : "text-purple-600"
                               }`} />
-                              <span className={`text-sm font-semibold ${
-                                hasEnoughMaterial
-                                  ? isDarkMode ? "text-purple-300" : "text-purple-700"
-                                  : isDarkMode ? "text-red-400" : "text-red-600"
-                              }`}>{item.material} ×{item.materialCount}</span>
+                              <div className="flex items-center justify-between flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-sm font-bold ${
+                                    isDarkMode ? "text-purple-200" : "text-purple-800"
+                                  }`}>{item.material}</span>
+                                  <div className="flex items-center gap-1">
+                                    <Star className={`w-3 h-3 ${
+                                      isDarkMode ? "text-amber-400 fill-amber-400" : "text-amber-500 fill-amber-500"
+                                    }`} />
+                                    <span className={`text-xs font-semibold ${
+                                      isDarkMode ? "text-amber-400" : "text-amber-600"
+                                    }`}>Lv.{materialRank}</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-xs">
+                                  <span className={hasEnoughMaterial 
+                                    ? isDarkMode ? "text-emerald-400 font-semibold" : "text-emerald-600 font-semibold"
+                                    : isDarkMode ? "text-red-400 font-semibold" : "text-red-500 font-semibold"
+                                  }>
+                                    {userMaterialCount}
+                                  </span>
+                                  <span className={isDarkMode ? "text-gray-500" : "text-gray-400"}>/</span>
+                                  <span className={`font-semibold ${isDarkMode ? "text-purple-300" : "text-purple-600"}`}>
+                                    {item.materialCount}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
                             
                             {/* 골드 */}
-                            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${
+                            <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all ${
                               isDarkMode 
-                                ? hasEnoughGold
-                                  ? "bg-yellow-500/20 border border-yellow-500/40"
-                                  : "bg-red-500/20 border border-red-500/40"
-                                : hasEnoughGold
-                                  ? "bg-yellow-50 border border-yellow-200"
-                                  : "bg-red-50 border border-red-200"
+                                ? "bg-gradient-to-r from-yellow-500/15 to-amber-600/10 border border-yellow-500/20"
+                                : "bg-gradient-to-r from-yellow-50 to-amber-100/50 border border-yellow-200/50"
                             }`}>
-                              <Coins className={`w-4 h-4 ${
-                                hasEnoughGold
-                                  ? isDarkMode ? "text-yellow-300" : "text-yellow-600"
-                                  : isDarkMode ? "text-red-400" : "text-red-500"
+                              <Coins className={`w-4 h-4 flex-shrink-0 ${
+                                isDarkMode ? "text-yellow-400" : "text-yellow-600"
                               }`} />
-                              <span className={`text-sm font-semibold ${
-                                hasEnoughGold
-                                  ? isDarkMode ? "text-yellow-300" : "text-yellow-700"
-                                  : isDarkMode ? "text-red-400" : "text-red-600"
-                              }`}>{requiredGold.toLocaleString()}G</span>
+                              <div className="flex items-center gap-1.5 flex-1">
+                                <span className={`text-sm font-bold ${
+                                  isDarkMode ? "text-yellow-200" : "text-yellow-800"
+                                }`}>{requiredGold.toLocaleString()}</span>
+                                <span className={isDarkMode ? "text-gray-500" : "text-gray-400"}>/</span>
+                                <span className={`text-sm font-bold ${
+                                  hasEnoughGold 
+                                    ? isDarkMode ? "text-emerald-400" : "text-emerald-600"
+                                    : isDarkMode ? "text-red-400" : "text-red-500"
+                                }`}>
+                                  {userMoney.toLocaleString()}
+                                </span>
+                                <span className={`text-sm font-semibold ${
+                                  isDarkMode ? "text-yellow-300" : "text-yellow-700"
+                                }`}>G</span>
+                              </div>
                             </div>
                           </div>
                           
@@ -333,6 +361,7 @@ const ShopTab = ({
                   const canBuy = hasEnoughMaterial && hasEnoughGold;
                   // buyItem에 전달할 때 필요한 골드 정보 추가
                   const itemWithGold = { ...item, requiredGold, category: 'accessories' };
+                  const materialRank = getMaterialRank(item.material);
                   
                   return (
                     <div key={index} className={`group relative overflow-hidden rounded-2xl transition-all duration-300 ${
@@ -369,49 +398,70 @@ const ShopTab = ({
                         
                         {/* 가격 정보와 버튼 */}
                         <div className="flex items-center justify-between gap-4">
-                          <div className="flex flex-col gap-2">
+                          <div className="flex flex-col gap-3">
                             {/* 재료 */}
-                            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${
+                            <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all ${
                               isDarkMode 
-                                ? hasEnoughMaterial 
-                                  ? "bg-purple-500/20 border border-purple-500/40"
-                                  : "bg-red-500/20 border border-red-500/40"
-                                : hasEnoughMaterial
-                                  ? "bg-purple-50 border border-purple-200"
-                                  : "bg-red-50 border border-red-200"
+                                ? "bg-gradient-to-r from-purple-500/15 to-purple-600/10 border border-purple-500/20"
+                                : "bg-gradient-to-r from-purple-50 to-purple-100/50 border border-purple-200/50"
                             }`}>
-                              <Package className={`w-4 h-4 ${
-                                hasEnoughMaterial
-                                  ? isDarkMode ? "text-purple-300" : "text-purple-600"
-                                  : isDarkMode ? "text-red-400" : "text-red-500"
+                              <Package className={`w-4 h-4 flex-shrink-0 ${
+                                isDarkMode ? "text-purple-400" : "text-purple-600"
                               }`} />
-                              <span className={`text-sm font-semibold ${
-                                hasEnoughMaterial
-                                  ? isDarkMode ? "text-purple-300" : "text-purple-700"
-                                  : isDarkMode ? "text-red-400" : "text-red-600"
-                              }`}>{item.material} ×{item.materialCount}</span>
+                              <div className="flex items-center justify-between flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-sm font-bold ${
+                                    isDarkMode ? "text-purple-200" : "text-purple-800"
+                                  }`}>{item.material}</span>
+                                  <div className="flex items-center gap-1">
+                                    <Star className={`w-3 h-3 ${
+                                      isDarkMode ? "text-amber-400 fill-amber-400" : "text-amber-500 fill-amber-500"
+                                    }`} />
+                                    <span className={`text-xs font-semibold ${
+                                      isDarkMode ? "text-amber-400" : "text-amber-600"
+                                    }`}>Lv.{materialRank}</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-xs">
+                                  <span className={hasEnoughMaterial 
+                                    ? isDarkMode ? "text-emerald-400 font-semibold" : "text-emerald-600 font-semibold"
+                                    : isDarkMode ? "text-red-400 font-semibold" : "text-red-500 font-semibold"
+                                  }>
+                                    {userMaterialCount}
+                                  </span>
+                                  <span className={isDarkMode ? "text-gray-500" : "text-gray-400"}>/</span>
+                                  <span className={`font-semibold ${isDarkMode ? "text-purple-300" : "text-purple-600"}`}>
+                                    {item.materialCount}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
                             
                             {/* 골드 */}
-                            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${
+                            <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all ${
                               isDarkMode 
-                                ? hasEnoughGold
-                                  ? "bg-yellow-500/20 border border-yellow-500/40"
-                                  : "bg-red-500/20 border border-red-500/40"
-                                : hasEnoughGold
-                                  ? "bg-yellow-50 border border-yellow-200"
-                                  : "bg-red-50 border border-red-200"
+                                ? "bg-gradient-to-r from-yellow-500/15 to-amber-600/10 border border-yellow-500/20"
+                                : "bg-gradient-to-r from-yellow-50 to-amber-100/50 border border-yellow-200/50"
                             }`}>
-                              <Coins className={`w-4 h-4 ${
-                                hasEnoughGold
-                                  ? isDarkMode ? "text-yellow-300" : "text-yellow-600"
-                                  : isDarkMode ? "text-red-400" : "text-red-500"
+                              <Coins className={`w-4 h-4 flex-shrink-0 ${
+                                isDarkMode ? "text-yellow-400" : "text-yellow-600"
                               }`} />
-                              <span className={`text-sm font-semibold ${
-                                hasEnoughGold
-                                  ? isDarkMode ? "text-yellow-300" : "text-yellow-700"
-                                  : isDarkMode ? "text-red-400" : "text-red-600"
-                              }`}>{requiredGold.toLocaleString()}G</span>
+                              <div className="flex items-center gap-1.5 flex-1">
+                                <span className={`text-sm font-bold ${
+                                  isDarkMode ? "text-yellow-200" : "text-yellow-800"
+                                }`}>{requiredGold.toLocaleString()}</span>
+                                <span className={isDarkMode ? "text-gray-500" : "text-gray-400"}>/</span>
+                                <span className={`text-sm font-bold ${
+                                  hasEnoughGold 
+                                    ? isDarkMode ? "text-emerald-400" : "text-emerald-600"
+                                    : isDarkMode ? "text-red-400" : "text-red-500"
+                                }`}>
+                                  {userMoney.toLocaleString()}
+                                </span>
+                                <span className={`text-sm font-semibold ${
+                                  isDarkMode ? "text-yellow-300" : "text-yellow-700"
+                                }`}>G</span>
+                              </div>
                             </div>
                           </div>
                           

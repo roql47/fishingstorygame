@@ -69,9 +69,29 @@ router.post('/rooms/:roomId/join', authenticateJWT, async (req, res) => {
             });
         }
         
-        // 🎣 낚시 실력 조건 체크
+        // 🎣 낚시 실력 조건 체크 (업적 보너스 포함)
         const fishingSkillData = await FishingSkillModel.findOne({ userUuid: userUuid }).lean();
-        const playerFishingSkill = fishingSkillData?.skill || 1;
+        const baseSkill = fishingSkillData?.skill || 1;
+        
+        // 🏆 업적 보너스 계산
+        const mongoose = require('mongoose');
+        const AchievementSystem = require('../modules/achievementSystem').AchievementSystem;
+        const achievementSystem = new AchievementSystem(
+            mongoose.model('Catch'),
+            FishingSkillModel,
+            mongoose.model('UserUuid'),
+            mongoose.model('RaidDamage'),
+            mongoose.model('RareFishCount')
+        );
+        
+        let achievementBonus = 0;
+        try {
+            achievementBonus = await achievementSystem.calculateAchievementBonus(userUuid);
+        } catch (error) {
+            console.error(`[EXPEDITION] Failed to calculate achievement bonus for ${username}:`, error);
+        }
+        
+        const playerFishingSkill = baseSkill + achievementBonus;
         
         // 지역별 필요 낚시 실력
         const requiredSkills = {
@@ -84,6 +104,14 @@ router.post('/rooms/:roomId/join', authenticateJWT, async (req, res) => {
         const areaId = targetRoom.area.id;
         const requiredSkill = requiredSkills[areaId] || 1;
         
+        console.log(`[EXPEDITION] ${username} 입장 조건 체크:`, {
+            baseSkill,
+            achievementBonus,
+            totalSkill: playerFishingSkill,
+            requiredSkill,
+            areaId
+        });
+        
         if (playerFishingSkill < requiredSkill) {
             const areaNames = {
                 1: '쓸쓸한 부두',
@@ -94,7 +122,7 @@ router.post('/rooms/:roomId/join', authenticateJWT, async (req, res) => {
             
             return res.status(400).json({ 
                 success: false, 
-                error: `${areaNames[areaId]}에 입장하려면 낚시 실력 ${requiredSkill} 이상이 필요합니다. (현재: ${playerFishingSkill})` 
+                error: `${areaNames[areaId]}에 입장하려면 낚시 실력 ${requiredSkill} 이상이 필요합니다. (현재: ${playerFishingSkill} = 기본 ${baseSkill} + 업적 ${achievementBonus})` 
             });
         }
         
