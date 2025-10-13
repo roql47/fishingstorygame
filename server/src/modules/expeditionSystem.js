@@ -7,6 +7,7 @@ class ExpeditionSystem {
         this.roomCounter = 1;
         this.EtherKeyModel = EtherKeyModel; // 에테르 열쇠 모델
         this.CompanionStatsModel = CompanionStatsModel; // 동료 능력치 모델
+        this.claimingRewards = new Set(); // 🔒 보상 수령 중인 사용자 UUID 추적 (중복 방지)
         
         // 게임 데이터 캐싱
         this.fishData = getFishData();

@@ -7319,7 +7319,23 @@ app.post("/api/update-quest-progress", authenticateJWT, async (req, res) => {
     batchUpdates.questProgress.set(userUuid, userQuests);
     
     console.log(`[Quest] Quest progress queued for batch: ${questType} +${amount} for ${username} (total pending: ${userQuests[questType]})`);
-    res.json({ success: true, message: "Quest progress updated" });
+    
+    // 🚀 Socket.IO로 실시간 퀘스트 진행도 전송
+    const userSocket = Array.from(io.sockets.sockets.values()).find(
+      s => s.handshake.auth?.username === username
+    );
+    if (userSocket) {
+      // 업데이트된 퀘스트 데이터 계산
+      const updatedQuest = {
+        questType,
+        progress: updateData.fishCaught || updateData.explorationWins || updateData.fishSold,
+        completed: updateData.questFishCaught || updateData.questExplorationWin || updateData.questFishSold
+      };
+      userSocket.emit('questProgressUpdate', updatedQuest);
+      console.log(`📤 Socket.IO: Quest progress sent to ${username}`, updatedQuest);
+    }
+    
+    res.json({ success: true, message: "Quest progress updated", ...updateData });
   } catch (error) {
     console.error("Failed to update quest progress:", error);
     res.status(500).json({ error: "Failed to update quest progress" });
@@ -9677,14 +9693,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.3"
+    version: "v1.301"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.3",
+    version: "v1.301",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
@@ -11526,17 +11542,23 @@ app.delete("/api/market/cancel/:listingId", authenticateJWT, async (req, res) =>
 
     // 아이템 반환
     if (listing.itemType === 'material') {
-      // MaterialModel은 각 재료가 별도 document
-      const newMaterials = [];
-      for (let i = 0; i < listing.quantity; i++) {
-        newMaterials.push({
+      // 기존 재료가 있으면 count 증가, 없으면 새로 생성
+      const existingMaterial = await MaterialModel.findOne({ 
+        userUuid: userUuid, 
+        material: listing.itemName 
+      });
+      
+      if (existingMaterial) {
+        existingMaterial.count += listing.quantity;
+        await existingMaterial.save();
+      } else {
+        await MaterialModel.create({
           userUuid: userUuid,
           username: username,
-          material: listing.itemName
+          material: listing.itemName,
+          count: listing.quantity
         });
       }
-      
-      await MaterialModel.insertMany(newMaterials);
       console.log(`📦 재료 반환: ${listing.itemName} x${listing.quantity} → ${username}`);
       
     } else if (listing.itemType === 'amber') {

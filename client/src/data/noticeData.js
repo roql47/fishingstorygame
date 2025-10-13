@@ -15,7 +15,9 @@ export const NOTICE_DATA = [
       "- 재료 아이템에 랭크 표시 추가",
       "시스템 안정성 개선:",
       "- 최초 로그인 시 인코딩 오류 및 인증 실패 문제 수정",
-      "- 사용자 인증 프로세스 안정화"
+      "- 사용자 인증 프로세스 안정화",
+      "거래소 물건 등록 취소가 안되는 버그 수정",
+      "일일퀘스트 진행도 실시간 동기화"
     ],
     isNew: true,
     type: "major_update"
@@ -471,5 +473,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.3"
+  version: "v1.301"
 };

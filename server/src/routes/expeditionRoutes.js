@@ -476,9 +476,22 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
     try {
         const { userUuid, username } = req.user; // JWT에서 사용자 정보 추출
 
+        // 🔒 메모리 레벨 중복 체크 (가장 빠른 중복 방지)
+        if (expeditionSystem.claimingRewards.has(userUuid)) {
+            console.log(`[EXPEDITION] ⚠️ 메모리 레벨 중복 보상 수령 시도 차단: ${username} (${userUuid})`);
+            return res.status(400).json({ 
+                success: false, 
+                error: '이미 보상을 수령하였습니다.' 
+            });
+        }
+
+        // 🔒 보상 수령 시작 표시
+        expeditionSystem.claimingRewards.add(userUuid);
+
         const room = expeditionSystem.getRoomInfo(userUuid);
         
         if (!room) {
+            expeditionSystem.claimingRewards.delete(userUuid); // 정리
             return res.status(400).json({ 
                 success: false, 
                 error: '참가한 방을 찾을 수 없습니다.' 
@@ -486,6 +499,7 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
         }
         
         if (room.status !== 'completed') {
+            expeditionSystem.claimingRewards.delete(userUuid); // 정리
             return res.status(400).json({ 
                 success: false, 
                 error: `원정이 완료되지 않았습니다. (현재 상태: ${room.status})` 
@@ -493,6 +507,7 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
         }
         
         if (!room.rewards) {
+            expeditionSystem.claimingRewards.delete(userUuid); // 정리
             return res.status(400).json({ 
                 success: false, 
                 error: '수령할 보상이 없습니다.' 
@@ -502,6 +517,7 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
         // 플레이어의 보상 찾기
         const playerRewards = room.rewards.filter(reward => reward.playerId === userUuid);
         if (playerRewards.length === 0) {
+            expeditionSystem.claimingRewards.delete(userUuid); // 정리
             return res.status(400).json({ 
                 success: false, 
                 error: '수령할 보상이 없습니다.' 
@@ -521,7 +537,8 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
         });
         
         if (existingClaim) {
-            console.log(`[EXPEDITION] ⚠️ 중복 보상 수령 시도 차단: ${username} (${userUuid}) - Room: ${room.id}`);
+            expeditionSystem.claimingRewards.delete(userUuid); // 정리
+            console.log(`[EXPEDITION] ⚠️ DB 레벨 중복 보상 수령 시도 차단: ${username} (${userUuid}) - Room: ${room.id}`);
             return res.status(400).json({ 
                 success: false, 
                 error: '이미 보상을 수령하였습니다.' 
@@ -548,6 +565,7 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
         const MAX_INVENTORY = 9999;
         
         if (afterReceiving > MAX_INVENTORY) {
+            expeditionSystem.claimingRewards.delete(userUuid); // 정리
             console.log(`❌ Cannot claim expedition rewards - inventory full: ${currentTotal}/${MAX_INVENTORY} (trying to add ${totalRewardCount})`);
             return res.status(400).json({ 
                 success: false, 
@@ -610,12 +628,14 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
         } catch (error) {
             // 중복 키 에러 (이미 수령한 경우)
             if (error.code === 11000) {
+                expeditionSystem.claimingRewards.delete(userUuid); // 정리
                 console.log(`[EXPEDITION] ⚠️ 중복 보상 수령 시도 차단 (DB): ${username} (${userUuid}) - Room: ${room.id}`);
                 return res.status(400).json({ 
                     success: false, 
                     error: '이미 보상을 수령하였습니다.' 
                 });
             }
+            expeditionSystem.claimingRewards.delete(userUuid); // 정리
             throw error; // 다른 에러는 상위로 전달
         }
 
@@ -672,6 +692,9 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
             }
         }
 
+        // 🔒 보상 수령 완료 (Set에서 제거)
+        expeditionSystem.claimingRewards.delete(userUuid);
+
         res.json({ 
             success: true, 
             rewards: playerRewards,
@@ -679,6 +702,8 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
         });
     } catch (error) {
         console.error('보상 수령 오류:', error);
+        // 🔒 에러 발생 시에도 Set에서 제거
+        expeditionSystem.claimingRewards.delete(req.user?.userUuid);
         res.status(400).json({ success: false, error: error.message });
     }
 });

@@ -207,9 +207,9 @@ function App() {
     }
   }, []);
 
-  // 🔄 버전 업데이트 시 캐시 초기화 (v1.3)
+  // 🔄 버전 업데이트 시 캐시 초기화 (v1.301)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.3";
+    const CURRENT_VERSION = "v1.301";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -507,15 +507,39 @@ function App() {
   // 퀘스트 진행도 업데이트 함수 (TDZ 문제 해결을 위해 상단에 선언)
   const updateQuestProgress = async (questType, amount = 1) => {
     try {
+      // 🚀 즉시 로컬 상태 업데이트 (낙관적 업데이트)
+      setDailyQuests(prev => {
+        if (!prev.quests) return prev;
+        
+        const updatedQuests = prev.quests.map(quest => {
+          if (
+            (questType === 'fish_caught' && quest.id === 'fish_caught') ||
+            (questType === 'exploration_win' && quest.id === 'exploration_win') ||
+            (questType === 'fish_sold' && quest.id === 'fish_sold')
+          ) {
+            return {
+              ...quest,
+              progress: Math.min(quest.progress + amount, quest.target)
+            };
+          }
+          return quest;
+        });
+        
+        return { ...prev, quests: updatedQuests };
+      });
+      
+      // 서버에 업데이트 요청
       await authenticatedRequest.post(`${serverUrl}/api/update-quest-progress`, {
         questType,
         amount
       });
       
-      // 퀘스트 데이터 새로고침
+      // 서버 데이터로 최종 동기화
       await loadDailyQuests();
     } catch (error) {
       console.error('Failed to update quest progress:', error);
+      // 에러 발생 시 서버 데이터로 복구
+      await loadDailyQuests();
     }
   };
 
@@ -3461,6 +3485,33 @@ function App() {
       }
     });
 
+    // 🎯 일일퀘스트 진행도 실시간 업데이트
+    socket.on('questProgressUpdate', (data) => {
+      console.log('🎯 Received quest progress update via WebSocket:', data);
+      if (data && data.questType) {
+        setDailyQuests(prev => {
+          if (!prev.quests) return prev;
+          
+          const updatedQuests = prev.quests.map(quest => {
+            if (
+              (data.questType === 'fish_caught' && quest.id === 'fish_caught') ||
+              (data.questType === 'exploration_win' && quest.id === 'exploration_win') ||
+              (data.questType === 'fish_sold' && quest.id === 'fish_sold')
+            ) {
+              return {
+                ...quest,
+                progress: data.progress,
+                completed: data.completed || false
+              };
+            }
+            return quest;
+          });
+          
+          return { ...prev, quests: updatedQuests };
+        });
+      }
+    });
+
     return () => {
       window.removeEventListener('materialsUpdate', handleCustomMaterialsUpdate);
       socket.off('data:update', handleDataUpdate);
@@ -3473,6 +3524,7 @@ function App() {
       socket.off('data:money');
       socket.off('data:amber');
       socket.off('achievement:granted');
+      socket.off('questProgressUpdate');
       // 데이터 구독 해제
       socket.emit('data:unsubscribe', { userUuid, username });
     };
@@ -4796,6 +4848,26 @@ function App() {
       loadDailyQuests();
     }
   }, [activeTab, username, userUuid]);
+
+  // 🕐 자정 리셋 자동 감지 및 동기화
+  useEffect(() => {
+    if (!username || !userUuid) return;
+    
+    let lastCheckedDate = new Date().toISOString().split('T')[0];
+    
+    // 1분마다 날짜 체크
+    const dateCheckInterval = setInterval(() => {
+      const currentDate = new Date().toISOString().split('T')[0];
+      
+      if (currentDate !== lastCheckedDate) {
+        console.log('🔄 날짜가 변경되었습니다. 일일퀘스트를 새로고침합니다.');
+        lastCheckedDate = currentDate;
+        loadDailyQuests();
+      }
+    }, 60000); // 60초마다 체크
+    
+    return () => clearInterval(dateCheckInterval);
+  }, [username, userUuid]);
 
 
   // 동료 모집 함수
@@ -7327,7 +7399,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.3
+                여우이야기 v1.301
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다

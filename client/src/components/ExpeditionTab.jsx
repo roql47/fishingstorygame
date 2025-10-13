@@ -73,6 +73,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
   const [speedBars, setSpeedBars] = useState({}); // 각 캐릭터의 속도바 상태
   const [showDefeatModal, setShowDefeatModal] = useState(false); // 패배 모달 표시 상태
   const [playersCompanions, setPlayersCompanions] = useState({}); // 각 플레이어의 동료 정보
+  const [isClaimingRewards, setIsClaimingRewards] = useState(false); // 보상 수령 중 여부 (중복 방지)
   const progressIntervalRef = useRef(null);
   const speedBarIntervalsRef = useRef({});
   const battleLogRef = useRef(null);
@@ -687,7 +688,15 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
   const claimRewards = async () => {
     if (!userData?.userUuid) return;
     
+    // 🔒 중복 클릭 방지
+    if (isClaimingRewards) {
+      console.log('[EXPEDITION] 이미 보상 수령 중입니다. 중복 요청 차단.');
+      return;
+    }
+    
     try {
+      setIsClaimingRewards(true); // 보상 수령 시작
+      
       const token = localStorage.getItem('jwtToken');
       const response = await fetch('/api/expedition/claim-rewards', {
         method: 'POST',
@@ -734,7 +743,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
         alert(`보상 수령 실패: ${data.error || '알 수 없는 오류'}`);
         
         // 보상이 없다는 오류인 경우 로비로 이동
-        if (data.error && data.error.includes('수령할 보상이 없습니다')) {
+        if (data.error && data.error.includes('수령할 보상이 없습니다') || data.error && data.error.includes('이미 보상을 수령하였습니다')) {
           setCurrentView('lobby');
           setCurrentRoom(null);
           loadAvailableRooms();
@@ -748,6 +757,8 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
       setCurrentView('lobby');
       setCurrentRoom(null);
       loadAvailableRooms();
+    } finally {
+      setIsClaimingRewards(false); // 보상 수령 완료
     }
   };
 
@@ -2311,13 +2322,16 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
               <div className="flex gap-4 justify-center">
                 <button
                   onClick={claimRewards}
+                  disabled={isClaimingRewards}
                   className={`px-8 py-3 rounded-xl font-medium transition-all duration-200 transform hover:scale-105 ${
-                    isDarkMode
-                      ? "bg-gradient-to-r from-green-500/80 to-emerald-500/80 hover:from-green-500 hover:to-emerald-500 text-white"
-                      : "bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
+                    isClaimingRewards
+                      ? "bg-gray-400 cursor-not-allowed opacity-50"
+                      : isDarkMode
+                        ? "bg-gradient-to-r from-green-500/80 to-emerald-500/80 hover:from-green-500 hover:to-emerald-500 text-white"
+                        : "bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
                   }`}
                 >
-                  보상 수령하기
+                  {isClaimingRewards ? "수령 중..." : "보상 수령하기"}
                 </button>
                 <button
                   onClick={() => {

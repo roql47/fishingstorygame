@@ -51,8 +51,11 @@ const ChatTab = ({
 }) => {
   const messagesEndRef = useRef(null);
   
-  // 스크롤 고정 상태
-  const [isScrollLocked, setIsScrollLocked] = useState(false);
+  // 스크롤 고정 상태 (localStorage에 저장하여 탭 전환 시에도 유지)
+  const [isScrollLocked, setIsScrollLocked] = useState(() => {
+    const saved = localStorage.getItem('chatScrollLocked');
+    return saved === 'true';
+  });
   
   // 전투로그 팝업 상태
   const [showBattleDetails, setShowBattleDetails] = useState(false);
@@ -305,7 +308,11 @@ const ChatTab = ({
                     ? (isDarkMode ? "glass-input text-yellow-400" : "bg-yellow-50/80 backdrop-blur-sm border border-yellow-400/60 text-yellow-600")
                     : (isDarkMode ? "glass-input text-gray-400" : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-gray-600")
                 }`}
-                onClick={() => setIsScrollLocked(!isScrollLocked)}
+                onClick={() => {
+                  const newLockState = !isScrollLocked;
+                  setIsScrollLocked(newLockState);
+                  localStorage.setItem('chatScrollLocked', String(newLockState));
+                }}
                 title={isScrollLocked ? "스크롤 고정 해제" : "스크롤 고정"}
               >
                 {isScrollLocked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
