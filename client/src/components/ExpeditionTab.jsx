@@ -74,6 +74,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
   const [showDefeatModal, setShowDefeatModal] = useState(false); // 패배 모달 표시 상태
   const [playersCompanions, setPlayersCompanions] = useState({}); // 각 플레이어의 동료 정보
   const [isClaimingRewards, setIsClaimingRewards] = useState(false); // 보상 수령 중 여부 (중복 방지)
+  const isClaimingRewardsRef = useRef(false); // 🔒 추가 중복 방지 (Ref는 즉시 업데이트됨)
   const progressIntervalRef = useRef(null);
   const speedBarIntervalsRef = useRef({});
   const battleLogRef = useRef(null);
@@ -688,13 +689,15 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
   const claimRewards = async () => {
     if (!userData?.userUuid) return;
     
-    // 🔒 중복 클릭 방지
-    if (isClaimingRewards) {
+    // 🔒 이중 중복 클릭 방지 (Ref는 즉시 업데이트되어 더 강력함)
+    if (isClaimingRewards || isClaimingRewardsRef.current) {
       console.log('[EXPEDITION] 이미 보상 수령 중입니다. 중복 요청 차단.');
       return;
     }
     
     try {
+      // 🔒 두 가지 모두 업데이트 (Ref는 즉시, State는 렌더링용)
+      isClaimingRewardsRef.current = true;
       setIsClaimingRewards(true); // 보상 수령 시작
       
       const token = localStorage.getItem('jwtToken');
@@ -731,14 +734,18 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
           await refreshCompanions();
         }
         
-        // 현재 방 상태에서 내 보상 제거 (UI 즉시 업데이트)
-        if (currentRoom && currentRoom.rewards) {
-          const updatedRoom = {
-            ...currentRoom,
-            rewards: currentRoom.rewards.filter(reward => reward.playerId !== userData.userUuid)
-          };
-          setCurrentRoom(updatedRoom);
+        // 🎉 보상 수령 완료 후 자동으로 로비로 이동
+        console.log('[EXPEDITION] 보상 수령 완료! 로비로 이동합니다.');
+        
+        // 소켓 방 나가기 이벤트 전송
+        if (socket && currentRoom) {
+          socket.emit('expedition-leave-room', currentRoom.id);
         }
+        
+        // UI 업데이트
+        setCurrentView('lobby');
+        setCurrentRoom(null);
+        loadAvailableRooms();
       } else {
         alert(`보상 수령 실패: ${data.error || '알 수 없는 오류'}`);
         
@@ -758,6 +765,8 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
       setCurrentRoom(null);
       loadAvailableRooms();
     } finally {
+      // 🔒 두 가지 모두 초기화
+      isClaimingRewardsRef.current = false;
       setIsClaimingRewards(false); // 보상 수령 완료
     }
   };

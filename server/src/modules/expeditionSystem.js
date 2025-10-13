@@ -77,7 +77,8 @@ class ExpeditionSystem {
              console.log(`[EXPEDITION] ${hostPlayerName} used ${requiredKeys} ether keys to create room. Remaining: ${userEtherKeys.etherKeys}`);
          }
 
-        const roomId = `expedition_${this.roomCounter++}`;
+        // 🔒 타임스탬프를 추가하여 서버 재시작 후에도 roomId가 겹치지 않도록 함
+        const roomId = `expedition_${this.roomCounter++}_${Date.now()}`;
         const room = {
             id: roomId,
             hostId: hostPlayerId,
