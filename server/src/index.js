@@ -1322,19 +1322,29 @@ function normalizeKakaoId(kakaoId) {
   return kakaoId.startsWith('kakao_') ? kakaoId : `kakao_${kakaoId}`;
 }
 
-// 카카오 사용자 검색 헬퍼 함수 (접두사 있는/없는 둘 다 검색)
+// 카카오 사용자 검색 헬퍼 함수 (접두사 있는 계정 우선 검색)
 async function findKakaoUser(kakaoId) {
   if (!kakaoId) return null;
   
   const normalizedId = normalizeKakaoId(kakaoId);
   const idWithoutPrefix = kakaoId.replace('kakao_', '');
   
-  return await UserUuidModel.findOne({
-    $or: [
-      { originalKakaoId: normalizedId },
-      { originalKakaoId: idWithoutPrefix }
-    ]
-  });
+  // 1순위: 접두사가 있는 계정 검색 (최신 형식)
+  let user = await UserUuidModel.findOne({ originalKakaoId: normalizedId });
+  
+  // 2순위: 접두사가 없는 계정 검색 (구 형식)
+  if (!user) {
+    user = await UserUuidModel.findOne({ originalKakaoId: idWithoutPrefix });
+    
+    // 구 형식 계정을 찾았으면 새 형식으로 업데이트
+    if (user) {
+      console.log(`🔧 Migrating old kakaoId format: ${idWithoutPrefix} -> ${normalizedId}`);
+      user.originalKakaoId = normalizedId;
+      await user.save();
+    }
+  }
+  
+  return user;
 }
 
 // 사용자 등록/조회 함수
