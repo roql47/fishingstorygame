@@ -422,3 +422,4 @@ Cloudinary는 자동으로:
 - [multer-storage-cloudinary](https://www.npmjs.com/package/multer-storage-cloudinary)
 - [Render Persistent Storage](https://render.com/docs/disks)
 
+

@@ -1,15 +1,97 @@
 /* Tailwind 기반 커스텀 유틸이 필요한 경우만 작성 */
 
+/* 🎯 크롬 창 모드 깜빡임 최적화 - scale 효과 최적화 */
+
+/* transition-all 사용 요소의 scale 효과 최적화 */
+.transition-all[class*="hover:scale-"] {
+  -webkit-transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+/* hover:scale-* 클래스를 사용하는 모든 요소 최적화 */
+[class*="hover:scale-"] {
+  -webkit-transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+/* transform 클래스가 있는 요소 */
+.transform,
+[class*="transform "] {
+  -webkit-transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+/* 애니메이션이 있는 요소만 GPU 가속 */
+.rank-up-animation,
+.rank-down-animation,
+.new-entry-animation,
+.glow-pulse-animation {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+}
+
+/* Tailwind 애니메이션 클래스 최적화 */
+[class*="animate-"] {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+/* group-hover 효과 */
+.group:hover [class*="group-hover:scale"] {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+/* backdrop-filter 사용 요소 레이어 분리 */
+.glass-card, 
+.glass-card-dark {
+  contain: layout style;
+  transform: translateZ(0);
+}
+
+/* 부드러운 전환 */
+button {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+/* 입력 필드는 최소한의 최적화만 */
+.glass-input {
+  contain: layout;
+}
+
+/* 🪟 전체 화면 크기 최적화 - scale 효과 통일 (깜빡임 방지) */
+/* 모든 화면 크기에서 scale을 1.04로 통일하여 창 크기와 무관하게 안정적 렌더링 */
+[class*="hover:scale-105"]:hover {
+  transform: translate3d(0, 0, 0) scale(1.04) !important;
+}
+
+[class*="hover:scale-110"]:hover {
+  transform: translate3d(0, 0, 0) scale(1.04) !important;
+}
+
+[class*="hover:scale-95"]:hover {
+  transform: translate3d(0, 0, 0) scale(0.96) !important;
+}
+
+/* active 상태도 최적화 */
+[class*="active:scale-95"]:active {
+  transform: translate3d(0, 0, 0) scale(0.96) !important;
+}
+
 /* 📱 모바일 최적화 CSS */
 @media (max-width: 768px) {
-  /* 하드웨어 가속 활성화 */
-  * {
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
-  }
-  
   /* 터치 반응 개선 */
   button, a, input, textarea {
     -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
@@ -20,12 +102,6 @@
   .overflow-y-auto, .overflow-y-scroll {
     -webkit-overflow-scrolling: touch;
     scroll-behavior: smooth;
-  }
-  
-  /* 애니메이션 간소화 */
-  * {
-    animation-duration: 0.2s !important;
-    transition-duration: 0.2s !important;
   }
   
   /* 모바일에서 글래스 효과 최적화 */
@@ -43,17 +119,23 @@
   }
 }
 
-/* 터치 디바이스 전용 스타일 */
+/* 터치 디바이스 전용 스타일 (실제 모바일만) */
 @media (hover: none) and (pointer: coarse) {
   /* 터치 디바이스에서 hover 효과 제거 */
-  .hover\:scale-105:hover {
-    transform: none;
+  [class*="hover:scale"]:hover {
+    transform: none !important;
   }
   
   /* 터치 피드백 강화 */
   button:active {
-    transform: scale(0.95);
+    transform: translate3d(0, 0, 0) scale(0.96);
     transition: transform 0.1s ease;
+  }
+  
+  /* 실제 모바일에서 애니메이션 간소화 (성능 최적화) */
+  *:not([class*="hover:scale"]):not([class*="transform"]) {
+    animation-duration: 0.2s !important;
+    transition-duration: 0.2s !important;
   }
 }
 
@@ -68,45 +150,45 @@
 /* 레이드 순위 애니메이션 */
 @keyframes rankUp {
   0% {
-    transform: translateY(10px) scale(0.95);
+    transform: translate3d(0, 10px, 0) scale(0.95);
     opacity: 0.7;
   }
   50% {
-    transform: translateY(-5px) scale(1.05);
+    transform: translate3d(0, -5px, 0) scale(1.05);
     opacity: 1;
   }
   100% {
-    transform: translateY(0) scale(1);
+    transform: translate3d(0, 0, 0) scale(1);
     opacity: 1;
   }
 }
 
 @keyframes rankDown {
   0% {
-    transform: translateY(-10px) scale(1.05);
+    transform: translate3d(0, -10px, 0) scale(1.05);
     opacity: 0.7;
   }
   50% {
-    transform: translateY(5px) scale(0.95);
+    transform: translate3d(0, 5px, 0) scale(0.95);
     opacity: 1;
   }
   100% {
-    transform: translateY(0) scale(1);
+    transform: translate3d(0, 0, 0) scale(1);
     opacity: 1;
   }
 }
 
 @keyframes newEntry {
   0% {
-    transform: scale(0.8) rotate(-3deg);
+    transform: scale(0.8) rotate(-3deg) translateZ(0);
     opacity: 0;
   }
   50% {
-    transform: scale(1.1) rotate(1deg);
+    transform: scale(1.1) rotate(1deg) translateZ(0);
     opacity: 0.8;
   }
   100% {
-    transform: scale(1) rotate(0deg);
+    transform: scale(1) rotate(0deg) translateZ(0);
     opacity: 1;
   }
 }
