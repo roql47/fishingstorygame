@@ -21,6 +21,13 @@ const CACHE_TTL = {
   equipment: 2 * 60 * 1000,         // 2분
   companions: 10 * 60 * 1000,       // 10분
   
+  // 레이드 전용 캐시 (짧은 TTL로 실시간성 유지)
+  raidUserData: 5 * 1000,           // 5초 (사용자 기본 정보)
+  raidFishingSkill: 10 * 1000,      // 10초 (낚시 실력)
+  raidCompanions: 15 * 1000,        // 15초 (동료 정보)
+  raidEquipment: 15 * 1000,         // 15초 (장비 정보)
+  raidAchievements: 30 * 1000,      // 30초 (업적 보너스)
+  
   // 시스템 데이터
   ranking: 60 * 1000,               // 1분
   connectedUsers: 5 * 1000,         // 5초

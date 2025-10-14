@@ -209,7 +209,7 @@ function App() {
 
   // 🔄 버전 업데이트 시 캐시 초기화 (v1.302)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.302";
+    const CURRENT_VERSION = "v1.303";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -378,8 +378,14 @@ function App() {
   const [unreadMailCount, setUnreadMailCount] = useState(0); // 읽지 않은 메일 개수
   
   // 레이드 관련 상태
-  const [raidBoss, setRaidBoss] = useState(null); // { name, hp, maxHp, isActive }
-  const [raidLogs, setRaidLogs] = useState([]); // 전투 로그
+  const [raidBosses, setRaidBosses] = useState({ beginner: null, intermediate: null, advanced: null });
+  const [raidLogs, setRaidLogs] = useState({ beginner: [], intermediate: [], advanced: [] });
+  const [selectedRaidType, setSelectedRaidType] = useState('beginner');
+  const [raidView, setRaidView] = useState('lobby');
+  const [currentRaidRoom, setCurrentRaidRoom] = useState(null);
+  // 호환성 getter (기존 raidBoss, raidLogs 참조를 위해)
+  const raidBoss = raidBosses[selectedRaidType];
+  const raidLogsArray = raidLogs[selectedRaidType] || [];
   const [isAttacking, setIsAttacking] = useState(false); // 공격 중 상태
   const [attackCooldown, setAttackCooldown] = useState(0); // 공격 쿨타임 (초)
   
@@ -1148,52 +1154,63 @@ function App() {
     }
   };
 
+  // 레이드 방 입장 함수
+  const joinRaid = (roomId) => {
+    const room = [
+      { id: 'beginner', name: '마르가글레숨', icon: '🐟', requiredSkill: { min: 1, max: 10 }},
+      { id: 'intermediate', name: '운다발레나', icon: '🐋', requiredSkill: { min: 11, max: 20 }},
+      { id: 'advanced', name: '폭주하는 해신', icon: '🌊', requiredSkill: { min: 21, max: 999 }}
+    ].find(r => r.id === roomId);
+    
+    if (!room) return;
+    
+    // 낚시 실력 체크
+    if (fishingSkill < room.requiredSkill.min || fishingSkill > room.requiredSkill.max) {
+      alert(`⚠️ 이 레이드는 낚시 실력 ${room.requiredSkill.min}~${room.requiredSkill.max === 999 ? '이상' : room.requiredSkill.max}인 플레이어만 참여할 수 있습니다.\n\n현재 낚시 실력: ${fishingSkill}`);
+      return;
+    }
+    
+    // 보스가 소환되지 않았으면 입장 불가
+    if (!raidBosses[roomId] || !raidBosses[roomId].isActive) {
+      alert('⚠️ 아직 보스가 소환되지 않았습니다!');
+      return;
+    }
+    
+    setCurrentRaidRoom(room);
+    setSelectedRaidType(roomId);
+    setRaidView('battle');
+  };
+  
   // 레이드 보스 소환 함수
-  const summonRaidBoss = async () => {
+  const summonRaidBoss = async (bossType = 'beginner') => {
     try {
-      const response = await authenticatedRequest.post(`${serverUrl}/api/raid/summon`);
+      const response = await authenticatedRequest.post(`${serverUrl}/api/raid/summon`, { bossType });
       if (response.data.success) {
-        setRaidBoss(response.data.boss);
-        setRaidLogs([]);
+        const { bossType: type, boss } = response.data;
+        setRaidBosses(prev => ({ ...prev, [type]: boss }));
+        setRaidLogs(prev => ({ ...prev, [type]: [] }));
+        alert(`✅ ${boss.name} 소환 성공!`);
       }
     } catch (error) {
       console.error('레이드 보스 소환 실패:', error);
-      if (error.response?.status === 403) {
-        alert('❌ 관리자만 레이드 보스를 소환할 수 있습니다.');
-      } else {
-        alert('레이드 보스 소환에 실패했습니다.');
-      }
+      alert(error.response?.data?.error || '레이드 보스 소환에 실패했습니다.');
     }
   };
 
   // 레이드 데미지 순위 계산 함수
   const getRaidDamageRanking = () => {
-    if (!raidBoss || !raidBoss.participants) return [];
+    const boss = raidBosses[selectedRaidType];
+    const logs = raidLogs[selectedRaidType] || [];
+    if (!boss || !boss.participants) return [];
     
-    // participants는 항상 일반 객체로 전송됨
-    const rankings = Object.entries(raidBoss.participants)
+    return Object.entries(boss.participants)
       .map(([userUuid, damage]) => {
-        // 1순위: participantNames에서 닉네임 찾기 (서버에서 전송된 최신 닉네임)
-        let username = raidBoss.participantNames && raidBoss.participantNames[userUuid] 
-          ? raidBoss.participantNames[userUuid] 
-          : null;
-        
-        // 2순위: 로그에서 해당 사용자의 최신 username 찾기
-        if (!username) {
-          const userLogs = raidLogs.filter(log => log.userUuid === userUuid);
-          username = userLogs.length > 0 ? userLogs[userLogs.length - 1].username : null;
-        }
-        
-        // 3순위: UUID의 마지막 4자리만 표시 (fallback)
-        if (!username) {
-          username = `#${userUuid.slice(-4)}`;
-        }
-        
+        let username = boss.participantNames?.[userUuid] || 
+                       logs.filter(log => log.userUuid === userUuid).pop()?.username ||
+                       `#${userUuid.slice(-4)}`;
         return { userUuid, username, damage };
       })
       .sort((a, b) => b.damage - a.damage);
-    
-    return rankings;
   };
 
   // 순위 변동 감지 및 애니메이션 트리거
@@ -1351,23 +1368,30 @@ function App() {
 
   // 레이드 보스 공격 함수
   const attackRaidBoss = async () => {
-    if (!raidBoss || !raidBoss.isActive || isAttacking || attackCooldown > 0) return;
+    const boss = raidBosses[selectedRaidType];
+    if (!boss || !boss.isActive || isAttacking || attackCooldown > 0) {
+      console.log('공격 불가:', { boss: !!boss, isActive: boss?.isActive, isAttacking, attackCooldown });
+      return;
+    }
     
-    console.log(`⚔️ 공격 시작 - 현재 상태: 공격중=${isAttacking}, 쿨타임=${attackCooldown}`);
-    console.log(`⚔️ 전투 참여 동료:`, battleCompanions);
+    console.log(`⚔️ [${selectedRaidType}] 레이드 공격 시작`);
     setIsAttacking(true);
-
-    // 레이드 공격 전에 동료 전투 상태를 서버에 동기화
     await syncBattleCompanionsToServer();
     
     try {
-      // 전투 참여 동료 정보를 직접 전달
       const response = await authenticatedRequest.post(`${serverUrl}/api/raid/attack`, {
-        battleCompanions: battleCompanions // 클라이언트에서 직접 전달
+        bossType: selectedRaidType,
+        battleCompanions: battleCompanions
       });
+      console.log('✅ 공격 성공:', response.data);
       if (response.data.success) {
-        console.log(`🎯 공격 성공 응답: ${response.data.damage} 데미지`);
-        console.log(`📊 데미지 세부사항:`, response.data.damageBreakdown);
+        // 캐시 성능 정보 출력 (간소화)
+        if (response.data._cachePerformance) {
+          const perf = response.data._cachePerformance;
+          if (perf.responseTime < 50) {
+            console.log(`⚡ 레이드 공격: ${perf.responseTime}ms (캐시 ${perf.cacheHitRate})`);
+          }
+        }
         
         // 개별 데미지 애니메이션 트리거
         const breakdown = response.data.damageBreakdown;
@@ -1439,10 +1463,13 @@ function App() {
         // 전투 로그와 보스 상태는 WebSocket으로 실시간 업데이트됨
       }
     } catch (error) {
-      console.error('레이드 공격 실패:', error);
+      console.error('❌ 레이드 공격 실패:', error.response?.status, error.response?.data);
       
-      // 쿨타임 관련 오류인 경우 서버에서 쿨타임 정보 다시 가져오기
-      if (error.response?.status === 429) {
+      if (error.response?.status === 400) {
+        const errorMessage = error.response.data.error || '잘못된 요청입니다.';
+        console.error('400 에러 상세:', { bossType: selectedRaidType, battleCompanions });
+        alert(`⚠️ ${errorMessage}`);
+      } else if (error.response?.status === 429) {
         const errorData = error.response.data;
         if (errorData.remainingTime) {
           setAttackCooldown(errorData.remainingTime);
@@ -1470,8 +1497,12 @@ function App() {
           }, 1000);
         }
         alert(`⏱️ ${errorData.error}`);
+      } else if (error.response?.status === 403) {
+        const errorMessage = error.response.data.error || '이 레이드에 참여할 수 없습니다.';
+        alert(`🚫 ${errorMessage}`);
       } else {
-        alert('공격에 실패했습니다.');
+        const errorMessage = error.response?.data?.error || '공격에 실패했습니다.';
+        alert(errorMessage);
       }
     } finally {
       setIsAttacking(false);
@@ -2823,76 +2854,41 @@ function App() {
     
     // 레이드 관련 이벤트 핸들러들
     const onRaidBossUpdate = (data) => {
-      console.log(`🏰 보스 상태 업데이트:`, data.boss);
-      setRaidBoss(data.boss);
+      const { bossType, boss } = data;
+      setRaidBosses(prev => ({ ...prev, [bossType]: boss }));
     };
     
     const onRaidLogUpdate = (data) => {
-      console.log(`📨 raid:log:update 받음:`, data.log);
-      console.log(`🔍 내 userUuid: "${userUuid}" (타입: ${typeof userUuid})`);
-      console.log(`🔍 로그 userUuid: "${data.log.userUuid}" (타입: ${typeof data.log.userUuid})`);
-      console.log(`🔍 UUID 일치 여부: ${userUuid === data.log.userUuid}`);
-      
+      const { bossType, log } = data;
       setRaidLogs(prev => {
-        // 중복 로그 방지 - 같은 ID의 로그가 이미 있으면 추가하지 않음
-        const existingLog = prev.find(log => log.id === data.log.id);
-        if (existingLog) {
-          console.log(`❌ 중복 로그 감지됨, 무시: ${data.log.id}`);
-          return prev;
-        }
-        
-        // 다른 플레이어의 공격 애니메이션은 비활성화
-        if (data.log.userUuid !== userUuid) {
-          console.log(`🚫 다른 플레이어 애니메이션 비활성화: ${data.log.damage} 데미지`);
-        } else {
-          console.log(`🚫 내 공격이므로 애니메이션 스킵: ${data.log.damage} 데미지`);
-        }
-        
-        console.log(`✅ 로그 추가: ${data.log.id}`);
-        return [...prev, data.log];
+        const logs = prev[bossType] || [];
+        if (logs.find(l => l.id === log.id)) return prev;
+        return { ...prev, [bossType]: [...logs, log] };
       });
     };
     
     const onRaidBossDefeated = (data) => {
-      // 쿨타임 즉시 리셋
+      const { bossType } = data;
       setAttackCooldown(0);
       if (cooldownIntervalRef.current) {
         clearInterval(cooldownIntervalRef.current);
         cooldownIntervalRef.current = null;
-        console.log("🧹 보스 처치로 쿨타임 즉시 정리");
       }
       
-      // 승리 애니메이션 효과
       setCriticalHit(true);
       setShakeEffect(true);
+      setDamageNumbers(prev => [...prev, { id: Date.now(), damage: "승리!", isCritical: true, x: 150, y: 100 }]);
       
-      // 큰 승리 데미지 표시
-      const victoryDamage = {
-        id: Date.now(),
-        damage: "승리!",
-        isCritical: true,
-        x: 150,
-        y: 100
-      };
-      setDamageNumbers(prev => [...prev, victoryDamage]);
-      console.log("🎉 승리 애니메이션 트리거");
-      
-      // 🔄 별조각 상태 업데이트 (막타 보너스)
-      if (data.lastAttackBonus && data.lastAttackBonus.starPieces > 0) {
-        console.log(`⭐ 막타 보너스 별조각 ${data.lastAttackBonus.starPieces}개 지급`);
+      if (data.lastAttackBonus?.starPieces > 0) {
         setUserStarPieces(prev => prev + data.lastAttackBonus.starPieces);
       }
-      
-      // 🔄 호박석 상태 업데이트 (일반 보상)
-      if (data.reward && data.reward.amount > 0) {
-        console.log(`🟡 호박석 ${data.reward.amount}개 지급`);
+      if (data.reward?.amount > 0) {
         setUserAmber(prev => prev + data.reward.amount);
       }
       
-      // 3초 후 정리
       setTimeout(() => {
-        setRaidBoss(null);
-        setRaidLogs([]);
+        setRaidBosses(prev => ({ ...prev, [bossType]: null }));
+        setRaidLogs(prev => ({ ...prev, [bossType]: [] }));
         setAttackCooldown(0);
         setCriticalHit(false);
         setShakeEffect(false);
@@ -7399,7 +7395,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.302
+                여우이야기 v1.303
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -7422,7 +7418,17 @@ function App() {
                       return;
                     }
                     
-                    const clientId = '1023938003062-256niij987fc2q7o74qmssi2bca7vdnf.apps.googleusercontent.com';
+                    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+                    
+                    // 환경 변수 로드 확인
+                    if (!clientId) {
+                      console.error('VITE_GOOGLE_CLIENT_ID 환경 변수가 설정되지 않았습니다!');
+                      alert('Google 로그인 설정이 올바르지 않습니다.\n.env 파일에 VITE_GOOGLE_CLIENT_ID를 설정해주세요.');
+                      return;
+                    }
+                    
+                    console.log('Google Client ID 로드됨:', clientId.substring(0, 20) + '...');
+                    
                     const redirectUri = window.location.origin;
                     const scope = 'openid email profile';
                     const responseType = 'id_token';
@@ -9386,158 +9392,222 @@ function App() {
               }
             `}</style>
             {/* 레이드 헤더 */}
-            <div className={`border-b p-4 ${
+            <div className={`border-b ${
               isDarkMode ? "border-white/10" : "border-gray-300/30"
             }`}>
-              <div className="flex items-center gap-3">
-                <Sword className={`w-6 h-6 ${
-                  isDarkMode ? "text-red-400" : "text-red-600"
-                }`} />
-                <h2 className={`text-xl font-bold ${
-                  isDarkMode ? "text-white" : "text-gray-800"
-                }`}>[Raid] 레이드 전투</h2>
+              <div className="p-4">
+                <div className="flex items-center gap-3 mb-4">
+                  <Sword className={`w-6 h-6 ${isDarkMode ? "text-red-400" : "text-red-600"}`} />
+                  <div>
+                    <h2 className={`text-xl font-bold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
+                      🏰 레이드 전투
+                    </h2>
+                    <p className={`text-xs mt-1 ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>
+                      난이도별 독립적인 레이드 보스와 전투하세요!
+                    </p>
+                  </div>
+                </div>
+                
+                {/* 방 선택 탭 */}
+                <div className="flex gap-2">
+                  {[
+                    { id: 'beginner', name: '마르가글레숨', icon: '🐟', color: 'green', level: '1-10' },
+                    { id: 'intermediate', name: '운다발레나', icon: '🐋', color: 'blue', level: '11-20' },
+                    { id: 'advanced', name: '폭주하는 해신', icon: '🌊', color: 'purple', level: '21+' }
+                  ].map(room => {
+                    const isActive = raidBosses[room.id]?.isActive;
+                    const isSelected = selectedRaidType === room.id;
+                    return (
+                      <button
+                        key={room.id}
+                        onClick={() => setSelectedRaidType(room.id)}
+                        className={`flex-1 px-4 py-3 rounded-xl font-medium transition-all ${
+                          isSelected
+                            ? room.color === 'green' ? (isDarkMode ? "bg-green-600 text-white shadow-lg" : "bg-green-500 text-white shadow-lg")
+                            : room.color === 'blue' ? (isDarkMode ? "bg-blue-600 text-white shadow-lg" : "bg-blue-500 text-white shadow-lg")
+                            : (isDarkMode ? "bg-purple-600 text-white shadow-lg" : "bg-purple-500 text-white shadow-lg")
+                            : isDarkMode ? "bg-gray-700/50 text-gray-300 hover:bg-gray-700" : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                        }`}
+                      >
+                        <div className="text-2xl mb-1">{room.icon}</div>
+                        <div className="text-xs font-bold">{room.name}</div>
+                        <div className={`text-xs mt-1 ${isSelected ? "text-white/80" : (isDarkMode ? "text-gray-400" : "text-gray-600")}`}>
+                          Lv.{room.level}
+                        </div>
+                        {isActive && (
+                          <div className="mt-1">
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-red-500 text-white animate-pulse">
+                              진행중
+                            </span>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <p className={`text-sm mt-2 ${
-                isDarkMode ? "text-gray-400" : "text-gray-600"
-              }`}>강력한 레이드 보스와 함께 전투하고 보상을 획득하세요!</p>
             </div>
             
             {/* 레이드 컨텐츠 */}
-            <div className="p-4 flex-1 overflow-y-auto">
-              {!raidBoss || !raidBoss.isActive ? (
-                // 레이드 보스가 없을 때
+            <div className="p-6 flex-1 overflow-y-auto">
+              {raidView === 'lobby' ? (
+                // 대기열 화면 (간소화)
                 <div className="text-center py-8">
-                  <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${
-                    isDarkMode ? "bg-red-500/20" : "bg-red-500/10"
-                  }`}>
-                    <Sword className={`w-8 h-8 ${
-                      isDarkMode ? "text-red-400" : "text-red-600"
-                    }`} />
-                  </div>
-                  <h3 className={`text-lg font-bold mb-2 ${
-                    isDarkMode ? "text-white" : "text-gray-800"
-                  }`}>레이드 보스가 없습니다</h3>
-                  <p className={`text-sm mb-6 ${
-                    isDarkMode ? "text-gray-400" : "text-gray-600"
-                  }`}>
-                    {isAdmin 
-                      ? "레이드 보스를 소환하여 전투를 시작하세요!" 
-                      : "관리자가 레이드 보스를 소환할 때까지 기다려주세요."}
-                  </p>
-                  
-                  {isAdmin && (
-                    <button
-                      onClick={summonRaidBoss}
-                      className={`px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
-                        isDarkMode
-                          ? "bg-red-600 hover:bg-red-500 text-white"
-                          : "bg-red-500 hover:bg-red-600 text-white"
-                      } shadow-lg hover:shadow-xl transform hover:scale-105`}
-                    >
-                      🐉 마르가글레슘 소환
-                    </button>
-                  )}
-                  
-                  {!isAdmin && (
-                    <div className={`px-4 py-2 rounded-lg ${
-                      isDarkMode ? "bg-gray-700/50 text-gray-400" : "bg-gray-200/50 text-gray-600"
-                    }`}>
-                      👑 관리자만 레이드를 소환할 수 있습니다
-                    </div>
+                  {!raidBoss || !raidBoss.isActive ? (
+                    <>
+                      <div className={`inline-flex items-center justify-center w-20 h-20 rounded-full mb-6 ${
+                        isDarkMode ? "bg-gradient-to-br from-red-500/20 to-orange-500/20 border-2 border-red-400/30" : "bg-gradient-to-br from-red-50 to-orange-50 border-2 border-red-200"
+                      }`}>
+                        <Sword className={`w-10 h-10 ${isDarkMode ? "text-red-400" : "text-red-600"}`} />
+                      </div>
+                      <h3 className={`text-2xl font-bold mb-3 ${isDarkMode ? "text-white" : "text-gray-800"}`}>
+                        레이드 보스가 대기 중입니다
+                      </h3>
+                      <p className={`text-sm mb-8 ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>
+                        {isAdmin ? "원하는 난이도의 보스를 소환하세요!" : "관리자가 보스를 소환할 때까지 기다려주세요"}
+                      </p>
+                      
+                      {isAdmin && (
+                        <div className="max-w-md mx-auto space-y-3">
+                          {[
+                            { id: 'beginner', name: '마르가글레숨', icon: '🐟', hp: 8000, level: '1-10', colorFrom: 'from-green-500', colorTo: 'to-green-600', hoverFrom: 'hover:from-green-600', hoverTo: 'hover:to-green-700' },
+                            { id: 'intermediate', name: '운다발레나', icon: '🐋', hp: 15000, level: '11-20', colorFrom: 'from-blue-500', colorTo: 'to-blue-600', hoverFrom: 'hover:from-blue-600', hoverTo: 'hover:to-blue-700' },
+                            { id: 'advanced', name: '폭주하는 해신', icon: '🌊', hp: 30000, level: '21+', colorFrom: 'from-purple-500', colorTo: 'to-purple-600', hoverFrom: 'hover:from-purple-600', hoverTo: 'hover:to-purple-700' }
+                          ].map(boss => (
+                            <button
+                              key={boss.id}
+                              onClick={() => summonRaidBoss(boss.id)}
+                              className={`w-full px-6 py-4 rounded-2xl font-bold text-lg transition-all bg-gradient-to-r ${boss.colorFrom} ${boss.colorTo} ${boss.hoverFrom} ${boss.hoverTo} text-white shadow-xl hover:shadow-2xl transform hover:scale-105`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-3xl">{boss.icon}</span>
+                                  <div className="text-left">
+                                    <div>{boss.name}</div>
+                                    <div className="text-xs font-normal text-white/80">낚시 실력 {boss.level}</div>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-sm font-normal text-white/80">체력</div>
+                                  <div className="text-xl">{boss.hp.toLocaleString()}</div>
+                                </div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div className={`text-6xl mb-6 ${shakeEffect ? 'animate-bounce' : 'animate-pulse'}`}>
+                        {selectedRaidType === 'beginner' ? '🐟' : selectedRaidType === 'intermediate' ? '🐋' : '🌊'}
+                      </div>
+                      <h3 className={`text-3xl font-bold mb-3 ${isDarkMode ? "text-white" : "text-gray-800"}`}>
+                        {raidBoss.name}
+                      </h3>
+                      <p className={`text-lg mb-6 ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>
+                        보스가 전투 대기 중입니다
+                      </p>
+                      <button
+                        onClick={() => { setRaidView('battle'); setCurrentRaidRoom({ id: selectedRaidType, name: raidBoss.name }); }}
+                        className={`px-8 py-4 rounded-2xl font-bold text-xl transition-all bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600 text-white shadow-2xl hover:shadow-red-500/50 transform hover:scale-105`}
+                      >
+                        ⚔️ 전투 시작
+                      </button>
+                    </>
                   )}
                 </div>
-              ) : (
-                // 레이드 보스가 있을 때
-                <div className="space-y-6">
-                  {/* 보스 정보 */}
-                  <div className={`p-6 rounded-xl ${
-                    isDarkMode ? "bg-red-500/10 border border-red-400/30" : "bg-red-50 border border-red-200"
+              ) : raidBoss && raidBoss.isActive ? (
+                // 전투 화면 (방에 입장한 경우)
+                <div className="space-y-4">
+                  {/* 보스 정보 카드 */}
+                  <div className={`p-8 rounded-2xl border-2 ${
+                    isDarkMode ? "bg-gradient-to-br from-red-500/15 to-orange-500/15 border-red-400/40" : "bg-gradient-to-br from-red-50 to-orange-50 border-red-300"
                   }`}>
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className={`text-xl font-bold ${
-                        isDarkMode ? "text-red-400" : "text-red-600"
-                      }`}>🐉 {raidBoss.name}</h3>
-                      <span className={`text-sm ${
-                        isDarkMode ? "text-gray-400" : "text-gray-600"
-                      }`}>{raidBoss.hp} / {raidBoss.maxHp} HP</span>
+                    <div className="flex items-center gap-4 mb-6">
+                      <div className={`text-7xl ${shakeEffect ? 'animate-bounce' : 'animate-pulse'}`}>
+                        {selectedRaidType === 'beginner' ? '🐟' : selectedRaidType === 'intermediate' ? '🐋' : '🌊'}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className={`text-3xl font-black mb-2 ${isDarkMode ? "text-white" : "text-gray-900"}`}>
+                          {raidBoss.name}
+                        </h3>
+                        <p className={`text-base font-medium ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
+                          {raidBoss.hp.toLocaleString()} / {raidBoss.maxHp.toLocaleString()} HP
+                        </p>
+                      </div>
                     </div>
                     
-                    {/* 체력바 */}
-                    <div className={`w-full h-6 rounded-full overflow-hidden border-2 relative ${
-                      isDarkMode ? "bg-gray-700 border-gray-600" : "bg-gray-200 border-gray-300"
-                    } ${shakeEffect ? "animate-bounce" : ""}`}>
+                    {/* 체력바 - 더 굵고 화려하게 */}
+                    <div className={`w-full h-10 rounded-full overflow-hidden border-3 relative shadow-lg ${
+                      isDarkMode ? "bg-gray-800 border-gray-600" : "bg-gray-200 border-gray-400"
+                    }`}>
                       <div 
-                        className={`h-full bg-gradient-to-r transition-all duration-700 ease-out relative ${
+                        className={`h-full transition-all duration-700 ease-out relative ${
                           raidBoss.hp < raidBoss.maxHp * 0.3 
-                            ? "from-red-600 to-red-700 animate-pulse" 
+                            ? "bg-gradient-to-r from-red-600 via-red-500 to-red-600 animate-pulse" 
                             : raidBoss.hp < raidBoss.maxHp * 0.6
-                              ? "from-orange-500 to-red-500"
-                              : "from-green-500 to-green-600"
+                              ? "bg-gradient-to-r from-orange-500 via-orange-400 to-red-500"
+                              : "bg-gradient-to-r from-green-500 via-emerald-400 to-green-600"
                         }`}
                         style={{ width: `${(raidBoss.hp / raidBoss.maxHp) * 100}%` }}
                       >
-                        {/* 체력바 글로우 효과 */}
-                        <div className="absolute inset-0 bg-white/20 animate-pulse" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-white/20 to-transparent" />
                       </div>
                       
-                      {/* 체력 퍼센트 표시 */}
+                      {/* 체력 퍼센트 */}
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <span className={`text-sm font-bold ${
-                          isDarkMode ? "text-white drop-shadow-lg" : "text-gray-800 drop-shadow-lg"
-                        }`} style={{ textShadow: "2px 2px 4px rgba(0,0,0,0.8)" }}>
-                          {((raidBoss.hp / raidBoss.maxHp) * 100).toFixed(2)}%
+                        <span className={`text-lg font-black ${isDarkMode ? "text-white" : "text-gray-900"}`} 
+                              style={{ textShadow: "2px 2px 6px rgba(0,0,0,0.9)" }}>
+                          {((raidBoss.hp / raidBoss.maxHp) * 100).toFixed(1)}%
                         </span>
                       </div>
                     </div>
                     
-                    {/* 공격 버튼 */}
-                    <div className="mt-4">
-                      <div className="relative">
-                        <button
-                          onClick={attackRaidBoss}
-                          disabled={isAttacking || attackCooldown > 0}
-                          className={`w-full px-6 py-4 rounded-xl font-medium relative overflow-hidden ${
-                            mobileConfig?.shouldReduceAnimations ? 'duration-100 active:scale-95' : 'transition-all duration-300'
-                          } ${
-                            isAttacking || attackCooldown > 0
-                              ? "bg-gray-400 text-gray-600 cursor-not-allowed"
-                              : isDarkMode
-                                ? "bg-red-600 hover:bg-red-500 text-white hover:shadow-red-500/50"
-                                : "bg-red-500 hover:bg-red-600 text-white hover:shadow-red-500/50"
-                          } shadow-lg ${
-                            mobileConfig?.shouldReduceAnimations ? '' : 'hover:shadow-2xl transform hover:scale-105'
-                          } ${
-                            isAttacking && !mobileConfig?.shouldReduceAnimations ? "animate-pulse scale-95" : ""
-                          }`}
-                        >
-                          {/* 쿨타임 프로그레스바 - 버튼 전체 */}
-                          {attackCooldown > 0 && (
-                            <div 
-                              className="absolute top-0 right-0 h-full bg-pink-200 rounded-xl transition-all duration-1000 ease-linear opacity-70"
-                              style={{ width: `${(attackCooldown / 10) * 100}%` }}
-                            />
+                    
+                    {/* 공격 버튼 - 더 화려하게 + 쿨타임 애니메이션 */}
+                    <div className="relative mt-6">
+                      <button
+                        onClick={attackRaidBoss}
+                        disabled={isAttacking || attackCooldown > 0}
+                        className={`w-full px-8 py-5 rounded-2xl font-black text-2xl transition-all relative overflow-hidden ${
+                          isAttacking || attackCooldown > 0
+                            ? "bg-gray-400 text-gray-600 cursor-not-allowed"
+                            : isDarkMode
+                              ? "bg-gradient-to-r from-red-600 via-orange-500 to-red-600 hover:from-red-500 hover:via-orange-400 hover:to-red-500 text-white shadow-2xl hover:shadow-red-500/50"
+                              : "bg-gradient-to-r from-red-500 via-orange-400 to-red-500 hover:from-red-600 hover:via-orange-500 hover:to-red-600 text-white shadow-2xl hover:shadow-red-500/50"
+                        } hover:scale-105 transform ${isAttacking ? 'animate-pulse' : ''}`}
+                      >
+                        {/* 쿨타임 프로그레스바 */}
+                        {attackCooldown > 0 && (
+                          <div 
+                            className="absolute top-0 left-0 h-full bg-gradient-to-r from-pink-300 via-pink-400 to-pink-300 rounded-2xl transition-all duration-1000 ease-linear opacity-60"
+                            style={{ width: `${(attackCooldown / 10) * 100}%` }}
+                          />
+                        )}
+                        
+                        <div className="relative z-10 flex items-center justify-center gap-2">
+                          {isAttacking ? (
+                            <>⚔️ 공격 중...</>
+                          ) : attackCooldown > 0 ? (
+                            <>⏱️ 쿨타임 {attackCooldown}초</>
+                          ) : (
+                            <>⚔️ 공격하기!</>
                           )}
-                          
-                          <div className="relative z-10">
-                            {isAttacking 
-                              ? "⚔️ 공격 중..." 
-                              : attackCooldown > 0 
-                                ? `⏱️ 쿨타임 ${attackCooldown}초`
-                                : "⚔️ 공격하기"
-                            }
-                          </div>
-                        </button>
-                      </div>
+                        </div>
+                      </button>
                     </div>
                   </div>
                   
-                  {/* 데미지 순위 */}
-                  <div className={`p-4 rounded-xl ${
-                    isDarkMode ? "bg-purple-500/10 border border-purple-400/30" : "bg-purple-50 border border-purple-200"
+                  {/* 데미지 순위 - 모던한 디자인 */}
+                  <div className={`p-6 rounded-2xl border-2 ${
+                    isDarkMode ? "bg-gradient-to-br from-purple-500/10 to-blue-500/10 border-purple-400/40" : "bg-gradient-to-br from-purple-50 to-blue-50 border-purple-300"
                   }`}>
-                    <h4 className={`font-bold mb-3 ${
-                      isDarkMode ? "text-purple-400" : "text-purple-600"
-                    }`}>🏆 데미지 순위</h4>
+                    <h4 className={`text-xl font-black mb-4 flex items-center gap-2 ${
+                      isDarkMode ? "text-purple-300" : "text-purple-700"
+                    }`}>
+                      🏆 데미지 순위
+                    </h4>
                     
                     <div className="space-y-2">
                       {getRaidDamageRanking().length === 0 ? (
@@ -9654,41 +9724,46 @@ function App() {
                     </div>
                   </div>
                   
-                  {/* 전투 로그 */}
-                  <div className={`p-4 rounded-xl ${
-                    isDarkMode ? "bg-gray-800/50" : "bg-gray-100"
+                  {/* 전투 로그 - 모던한 디자인 */}
+                  <div className={`p-6 rounded-2xl border-2 ${
+                    isDarkMode ? "bg-gradient-to-br from-gray-800/60 to-gray-900/60 border-gray-700" : "bg-gradient-to-br from-white to-gray-50 border-gray-300"
                   }`}>
-                    <h4 className={`font-bold mb-3 ${
-                      isDarkMode ? "text-white" : "text-gray-800"
+                    <h4 className={`text-xl font-black mb-4 ${
+                      isDarkMode ? "text-white" : "text-gray-900"
                     }`}>⚔️ 전투 로그</h4>
                     
                     <div 
                       ref={raidLogScrollRef}
-                      className={`h-48 overflow-y-auto space-y-2 ${
+                      className={`h-64 overflow-y-auto space-y-2 ${
                         isDarkMode ? "scrollbar-dark" : "scrollbar-light"
                       }`}
                     >
-                      {raidLogs.length === 0 ? (
-                        <p className={`text-sm ${
-                          isDarkMode ? "text-gray-400" : "text-gray-600"
-                        }`}>아직 전투 기록이 없습니다.</p>
+                      {raidLogsArray.length === 0 ? (
+                        <div className="text-center py-12">
+                          <p className={`text-sm ${isDarkMode ? "text-gray-500" : "text-gray-500"}`}>
+                            아직 전투 기록이 없습니다
+                          </p>
+                          <p className={`text-xs mt-2 ${isDarkMode ? "text-gray-600" : "text-gray-400"}`}>
+                            첫 번째 공격자가 되어보세요!
+                          </p>
+                        </div>
                       ) : (
-                        raidLogs.map((log) => (
+                        raidLogsArray.map((log) => (
                           <div
                             key={log.id || log.timestamp}
-                            className={`text-sm p-2 rounded ${
-                              isDarkMode ? "bg-gray-700/50" : "bg-white/50"
+                            className={`p-3 rounded-lg transition-all ${
+                              isDarkMode ? "bg-gray-700/50 hover:bg-gray-700" : "bg-white/70 hover:bg-white"
                             }`}
                           >
-                            <span className={`font-medium ${
+                            <span className={`font-bold ${
                               isDarkMode ? "text-blue-400" : "text-blue-600"
                             }`}>{log.username}</span>
-                            <span className={isDarkMode ? "text-gray-300" : "text-gray-700"}>
-                              님이 {log.damage} 데미지를 입혔습니다!
+                            <span className={isDarkMode ? "text-gray-300" : "text-gray-700"}>님이 </span>
+                            <span className={`font-bold ${isDarkMode ? "text-red-400" : "text-red-600"}`}>
+                              {log.damage}
                             </span>
-                            <span className={`text-xs ml-2 ${
-                              isDarkMode ? "text-gray-500" : "text-gray-500"
-                            }`}>
+                            <span className={isDarkMode ? "text-gray-300" : "text-gray-700"}> 데미지를 입혔습니다! </span>
+                            <span className={`text-xs ${isDarkMode ? "text-gray-500" : "text-gray-500"}`}>
                               {new Date(log.timestamp).toLocaleTimeString()}
                             </span>
                           </div>
@@ -9696,6 +9771,29 @@ function App() {
                       )}
                     </div>
                   </div>
+                </div>
+              ) : (
+                // 레이드 종료 상태
+                <div className="text-center py-12">
+                  <div className={`inline-flex items-center justify-center w-20 h-20 rounded-full mb-4 ${
+                    isDarkMode ? "bg-gray-700" : "bg-gray-200"
+                  }`}>
+                    <Sword className={`w-10 h-10 ${isDarkMode ? "text-gray-500" : "text-gray-400"}`} />
+                  </div>
+                  <h3 className={`text-xl font-bold mb-2 ${isDarkMode ? "text-white" : "text-gray-800"}`}>
+                    레이드가 종료되었습니다
+                  </h3>
+                  <p className={`text-sm mb-6 ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>
+                    대기열로 돌아가세요
+                  </p>
+                  <button
+                    onClick={() => setRaidView('lobby')}
+                    className={`px-6 py-3 rounded-xl font-medium transition-all shadow-lg hover:shadow-xl transform hover:scale-105 ${
+                      isDarkMode ? "bg-blue-600 hover:bg-blue-500 text-white" : "bg-blue-500 hover:bg-blue-600 text-white"
+                    }`}
+                  >
+                    ← 대기열로
+                  </button>
                 </div>
               )}
             </div>

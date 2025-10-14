@@ -29,47 +29,45 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
   router.post("/summon", authenticateJWT, async (req, res) => {
     try {
       const { userUuid } = req.user;
+      const { bossType = 'beginner' } = req.body; // 보스 타입 선택 (기본: beginner)
       
-      // 관리자 권한 확인 (JWT 토큰과 데이터베이스 양쪽 확인)
+      // 관리자 권한 확인
       const user = await UserUuidModel.findOne({ userUuid }).lean();
-      
-      // JWT 토큰에서 관리자 권한 확인
-      const jwtIsAdmin = req.user.isAdmin;
-      
-      // 데이터베이스에서 관리자 권한 확인 (UserUuidModel과 AdminModel 양쪽 확인)
-      let dbIsAdmin = user?.isAdmin || false;
-      
-      // AdminModel에서도 확인 (별도 관리자 컬렉션)
-      const adminRecord = await AdminModel.findOne({ userUuid }).lean();
-      if (adminRecord?.isAdmin) {
-        dbIsAdmin = true;
-        
-        // AdminModel에 권한이 있지만 UserUuidModel에 없는 경우 동기화
-        if (user && !user.isAdmin) {
-          console.log(`🔄 [RAID] Syncing admin rights for ${userUuid}: AdminModel -> UserUuidModel`);
-          await UserUuidModel.updateOne(
-            { userUuid },
-            { $set: { isAdmin: true } }
-          );
-        }
+      if (!user) {
+        return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
       }
       
-      // JWT 토큰 또는 데이터베이스 중 하나라도 관리자면 허용
-      const hasAdminRights = jwtIsAdmin || dbIsAdmin;
+      const jwtIsAdmin = req.user.isAdmin;
+      let dbIsAdmin = user.isAdmin || false;
       
-      console.log(`🔍 [RAID] Admin check for ${userUuid}:`, {
-        jwtIsAdmin,
-        userModelIsAdmin: user?.isAdmin,
-        adminModelIsAdmin: adminRecord?.isAdmin,
-        finalDecision: hasAdminRights
-      });
+      // AdminModel 확인 (선택적)
+      try {
+        if (AdminModel) {
+          const adminRecord = await AdminModel.findOne({ userUuid }).lean();
+          if (adminRecord?.isAdmin) {
+            dbIsAdmin = true;
+            if (user && !user.isAdmin) {
+              await UserUuidModel.updateOne({ userUuid }, { $set: { isAdmin: true } });
+            }
+          }
+        }
+      } catch (adminError) {
+        console.log('[RAID] AdminModel check skipped:', adminError.message);
+      }
+      
+      const hasAdminRights = jwtIsAdmin || dbIsAdmin;
       
       if (!hasAdminRights) {
         return res.status(403).json({ error: "관리자만 레이드 보스를 소환할 수 있습니다." });
       }
       
-      // 레이드 보스 소환 (비동기 처리)
-      const boss = await raidSystem.summonBoss();
+      // 보스 타입 유효성 검증
+      if (!['beginner', 'intermediate', 'advanced'].includes(bossType)) {
+        return res.status(400).json({ error: "잘못된 보스 타입입니다." });
+      }
+      
+      // 레이드 보스 소환 (보스 타입 전달)
+      const boss = raidSystem.summonBoss(bossType);
       
       // 클라이언트 전송용 보스 정보 (Map을 객체로 변환)
       const bossForClient = {
@@ -79,19 +77,22 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
           Object.fromEntries(boss.participantNames) : {}
       };
       
-      // 모든 클라이언트에게 레이드 보스 정보 전송
-      io.emit("raid:boss:update", { boss: bossForClient });
+      // 모든 클라이언트에게 레이드 보스 정보 전송 (보스 타입 포함)
+      io.emit("raid:boss:update", { bossType, boss: bossForClient });
       
-      // 채팅에 레이드 시작 알림 (처치 횟수 및 체력 정보 포함)
+      // 채팅에 레이드 시작 알림
       const hpFormatted = boss.maxHp.toLocaleString();
-      const killCount = boss.killCount || 0;
-      let summonMessage = `🐉 레이드 보스 '마르가글레슘'이 나타났습니다! (체력: ${hpFormatted})`;
+      const requiredSkill = boss.requiredSkill;
+      let summonMessage = `🐉 레이드 보스 '${boss.name}'이(가) 나타났습니다! (체력: ${hpFormatted})`;
       
-      if (killCount > 0) {
-        summonMessage += ` | 처치 횟수: ${killCount}회, 체력 증가율: ${((boss.maxHp / 8000 - 1) * 100).toFixed(1)}%`;
+      // 참여 조건 표시
+      if (requiredSkill) {
+        if (requiredSkill.max === 999) {
+          summonMessage += ` | 참여 조건: 낚시 실력 ${requiredSkill.min} 이상`;
+        } else {
+          summonMessage += ` | 참여 조건: 낚시 실력 ${requiredSkill.min}~${requiredSkill.max}`;
+        }
       }
-      
-      summonMessage += ` 모든 플레이어는 전투에 참여하세요!`;
       
       io.emit("chat:message", {
         system: true,
@@ -100,92 +101,121 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         timestamp: new Date().toISOString()
       });
       
-      console.log(`[Raid] 레이드 보스 소환됨 by ${userUuid}`);
-      res.json({ success: true, boss: bossForClient });
+      console.log(`[Raid] 레이드 보스 소환됨: ${boss.name} (타입: ${bossType}) by ${userUuid}`);
+      res.json({ success: true, bossType, boss: bossForClient });
     } catch (error) {
       console.error("[Raid] 레이드 보스 소환 실패:", error);
       res.status(400).json({ error: error.message });
     }
   });
 
-  // 레이드 보스 공격 API
+  // 레이드 보스 공격 API (캐시 최적화)
   router.post("/attack", authenticateJWT, async (req, res) => {
+    const startTime = Date.now();
+    
     try {
       const { userUuid } = req.user;
-      const { battleCompanions } = req.body; // 클라이언트에서 전달한 전투 참여 동료 목록
+      const { bossType, battleCompanions } = req.body;
       
-      // 사용자 정보 가져오기
-      const user = await UserUuidModel.findOne({ userUuid }).lean();
-      if (!user) {
-        return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+      if (!bossType || !['beginner', 'intermediate', 'advanced'].includes(bossType)) {
+        return res.status(400).json({ error: "유효하지 않은 보스 타입입니다." });
       }
 
-      // 🛡️ 서버에서 레이드 공격 쿨타임 검증 (10초)
+      // 캐시에서 사용자 정보 가져오기
+      const cacheSystem = require('../cache-system');
+      let user = cacheSystem.getCachedData('raidUserData', 'user', userUuid);
+      
+      if (!user) {
+        user = await UserUuidModel.findOne({ userUuid }).lean();
+        if (!user) {
+          return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+        }
+        cacheSystem.setCachedData('raidUserData', 'user', user, userUuid);
+      }
+
+      // 쿨타임 검증 (캐시하지 않음)
       const now = new Date();
       const cooldownRecord = await CooldownModel.findOne({ userUuid }).lean();
       
-      if (cooldownRecord && cooldownRecord.raidAttackCooldownEnd && cooldownRecord.raidAttackCooldownEnd > now) {
+      if (cooldownRecord?.raidAttackCooldownEnd && cooldownRecord.raidAttackCooldownEnd > now) {
         const remainingTime = Math.ceil((cooldownRecord.raidAttackCooldownEnd.getTime() - now.getTime()) / 1000);
-        console.log(`🚨 [RAID] Cooldown bypass attempt by ${user.displayName || user.username} - Remaining: ${remainingTime}s`);
         return res.status(429).json({ 
           error: "레이드 공격 쿨타임이 남아있습니다.",
-          remainingTime: remainingTime,
-          cooldownEnd: cooldownRecord.raidAttackCooldownEnd.toISOString()
+          remainingTime: remainingTime
         });
       }
       
-      // 낚시 실력 정보 가져오기 (별도 모델에서)
-      const fishingSkillData = await FishingSkillModel.findOne({ userUuid }).lean();
+      // 캐시에서 낚시 실력 가져오기
+      let fishingSkillData = cacheSystem.getCachedData('raidFishingSkill', 'skill', userUuid);
+      
+      if (!fishingSkillData) {
+        fishingSkillData = await FishingSkillModel.findOne({ userUuid }).lean();
+        if (fishingSkillData) {
+          cacheSystem.setCachedData('raidFishingSkill', 'skill', fishingSkillData, userUuid);
+        }
+      }
+      
       const baseSkill = fishingSkillData?.skill || 1;
       
-      // 🏆 업적 보너스 계산 (모듈 사용)
-      let achievementBonus = 0;
-      try {
-        achievementBonus = await achievementSystem.calculateAchievementBonus(userUuid);
-      } catch (error) {
-        console.error("Failed to calculate achievement bonus in raid:", error);
+      // 캐시에서 업적 보너스 가져오기
+      let achievementBonus = cacheSystem.getCachedData('raidAchievements', 'achievement', userUuid);
+      
+      if (achievementBonus === null || achievementBonus === undefined) {
+        try {
+          achievementBonus = await achievementSystem.calculateAchievementBonus(userUuid);
+          cacheSystem.setCachedData('raidAchievements', 'achievement', achievementBonus, userUuid);
+        } catch (error) {
+          achievementBonus = 0;
+        }
       }
       
       const fishingSkill = baseSkill + achievementBonus;
       
-      console.log(`[Raid] ${user.displayName} 낚시실력 데이터:`, {
-        fishingSkillData,
-        최종_낚시실력: fishingSkill
-      });
-      
-      // 🔧 전투 참전 동료 가져오기 (클라이언트에서 전달한 목록 우선 사용)
-      let companions = [];
-      if (battleCompanions && Array.isArray(battleCompanions) && battleCompanions.length > 0) {
-        console.log(`[Raid] 클라이언트에서 전달한 전투 참여 동료:`, battleCompanions);
-        
-        // 클라이언트가 전달한 동료 이름으로 DB에서 조회
-        companions = await CompanionStatsModel.find({ 
-          userUuid, 
-          companionName: { $in: battleCompanions }
-        }).lean();
-        
-        console.log(`[Raid] DB에서 조회한 동료 데이터:`, companions.map(c => ({ name: c.companionName, level: c.level })));
-      } else {
-        // 클라이언트에서 전달하지 않은 경우 DB의 isInBattle 플래그 사용 (기존 방식)
-        console.log(`[Raid] 클라이언트에서 동료 정보 없음. DB의 isInBattle 플래그 사용`);
-        companions = await CompanionStatsModel.find({ 
-          userUuid, 
-          isInBattle: true 
-        }).lean();
+      // 레이드 보스 존재 및 참여 조건 확인
+      const currentRaidBoss = raidSystem.getBoss(bossType);
+      if (!currentRaidBoss || !currentRaidBoss.isActive) {
+        return res.status(400).json({ error: "활성화된 레이드 보스가 없습니다." });
       }
       
-      // 모든 동료도 확인 (디버깅용)
-      const allCompanions = await CompanionStatsModel.find({ userUuid }).lean();
+      // 낚시 실력 조건 검증
+      const requiredSkill = currentRaidBoss.requiredSkill;
+      if (requiredSkill) {
+        if (fishingSkill < requiredSkill.min || fishingSkill > requiredSkill.max) {
+          return res.status(403).json({ 
+            error: `이 레이드는 낚시 실력 ${requiredSkill.min}~${requiredSkill.max === 999 ? '이상' : requiredSkill.max}인 플레이어만 참여할 수 있습니다. (현재: ${fishingSkill})`,
+            currentSkill: fishingSkill,
+            requiredSkill: requiredSkill
+          });
+        }
+      }
       
-      console.log(`[Raid] ${user.displayName} 동료 데이터:`, {
-        전투_참전_동료: companions.length,
-        전투_참전_동료_목록: companions.map(c => ({ name: c.companionName, level: c.level })),
-        전체_동료: allCompanions.length,
-        전체_동료_목록: allCompanions.map(c => ({ name: c.companionName, isInBattle: c.isInBattle, level: c.level }))
-      });
+      console.log(`[Raid][${bossType}] ${user.displayName} 낚시실력: ${fishingSkill} - 참여 허용`);
       
-      // 사용자 장비 정보 조회 (강화 보너스 계산용)
-      const userEquipment = await UserEquipmentModel.findOne({ userUuid }).lean();
+      // 캐시에서 동료 정보 가져오기
+      let companions = [];
+      
+      if (battleCompanions && Array.isArray(battleCompanions) && battleCompanions.length > 0) {
+        let cachedCompanions = cacheSystem.getCachedData('raidCompanions', 'companions', userUuid);
+        
+        if (!cachedCompanions) {
+          cachedCompanions = await CompanionStatsModel.find({ userUuid }).lean();
+          if (cachedCompanions && cachedCompanions.length > 0) {
+            cacheSystem.setCachedData('raidCompanions', 'companions', cachedCompanions, userUuid);
+          }
+        }
+        
+        companions = cachedCompanions?.filter(c => battleCompanions.includes(c.companionName)) || [];
+      }
+      
+      // 캐시에서 장비 정보 가져오기
+      let userEquipment = cacheSystem.getCachedData('raidEquipment', 'equipment', userUuid);
+      
+      if (!userEquipment) {
+        userEquipment = await UserEquipmentModel.findOne({ userUuid }).lean();
+        if (userEquipment) {
+          cacheSystem.setCachedData('raidEquipment', 'equipment', userEquipment, userUuid);
+        }
+      }
       
       // 강화 보너스 계산 함수 (3차방정식 - 퍼센트로 표시)
       const calculateEnhancementBonus = (level) => {
@@ -290,12 +320,12 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         최종_데미지: finalDamage
       });
       
-      // 레이드 보스 공격 (이미 계산된 최종 데미지 사용)
-      const attackResult = raidSystem.attackBoss(userUuid, user.displayName || user.username, finalDamage);
+      // 레이드 보스 공격 (이미 계산된 최종 데미지 사용, 보스 타입 전달)
+      const attackResult = raidSystem.attackBoss(bossType, userUuid, user.displayName || user.username, finalDamage);
       
       // ⚔️ 레이드 누적 데미지 업데이트 및 업적 체크
       try {
-        console.log(`⚔️ [RAID] Updating raid damage for ${user.displayName || user.username}: ${finalDamage}`);
+        console.log(`⚔️ [RAID][${bossType}] Updating raid damage for ${user.displayName || user.username}: ${finalDamage}`);
         const achievementGranted = await achievementSystem.updateRaidDamage(userUuid, user.displayName || user.username, finalDamage);
         if (achievementGranted) {
           console.log(`🏆 [RAID] Achievement granted to ${user.displayName || user.username} after raid attack!`);
@@ -332,22 +362,28 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       await Promise.all(cooldownPromises);
       
       // 클라이언트 전송용 보스 정보 (Map을 객체로 변환)
+      const updatedBoss = raidSystem.getBoss(bossType);
       const bossForClient = {
-        ...raidSystem.raidBoss,
-        participants: Object.fromEntries(raidSystem.raidBoss.participants),
-        participantNames: raidSystem.raidBoss.participantNames ? 
-          Object.fromEntries(raidSystem.raidBoss.participantNames) : {}
+        ...updatedBoss,
+        participants: Object.fromEntries(updatedBoss.participants),
+        participantNames: updatedBoss.participantNames ? 
+          Object.fromEntries(updatedBoss.participantNames) : {}
       };
       
-      // 모든 클라이언트에게 업데이트 전송
-      io.emit("raid:boss:update", { boss: bossForClient });
-      io.emit("raid:log:update", { log: attackResult.log });
+      // 모든 클라이언트에게 업데이트 전송 (보스 타입 포함)
+      io.emit("raid:boss:update", { bossType, boss: bossForClient });
+      io.emit("raid:log:update", { bossType, log: attackResult.log });
       
-      console.log(`[Raid] ${user.displayName} 공격: ${attackResult.damage} 데미지, 보스 체력: ${raidSystem.raidBoss.hp}/${raidSystem.raidBoss.maxHp}`);
+      const responseTime = Date.now() - startTime;
+      console.log(`[Raid][${bossType}] ${user.displayName}: ${attackResult.damage} DMG (${responseTime}ms)`);
       
       // 보스가 죽었는지 확인
       if (attackResult.isDefeated) {
-        await handleRaidBossDefeated(io, UserUuidModel);
+        // 보스 처치 시 캐시 무효화 (보상 지급으로 데이터 변경)
+        cacheSystem.invalidateCache('user', userUuid);
+        cacheSystem.invalidateCache('achievement', userUuid);
+        
+        await handleRaidBossDefeated(io, UserUuidModel, bossType);
       }
       
       // 개별 데미지 정보를 클라이언트에 전송
@@ -359,6 +395,10 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
           companionDamage,
           companionAttacks,
           totalDamage: finalDamage
+        },
+        _cachePerformance: {
+          responseTime: Date.now() - startTime,
+          cacheHitRate: cacheSystem.cacheStats?.getHitRate() || 'N/A'
         }
       });
     } catch (error) {
@@ -367,34 +407,39 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
     }
   });
 
-  // 레이드 상태 조회 API
+  // 레이드 상태 조회 API (모든 보스)
   router.get("/status", authenticateJWT, (req, res) => {
-    const status = raidSystem.getRaidStatus();
+    const allStatus = raidSystem.getAllRaidStatus();
     
     // 클라이언트 전송용으로 Map을 객체로 변환
-    const responseStatus = {
-      ...status,
-      boss: status.boss ? {
-        ...status.boss,
-        participants: Object.fromEntries(status.boss.participants),
-        participantNames: status.boss.participantNames ? 
-          Object.fromEntries(status.boss.participantNames) : {}
-      } : null
-    };
+    const responseStatus = {};
     
-    res.json({ success: true, ...responseStatus });
+    for (const [bossType, status] of Object.entries(allStatus)) {
+      responseStatus[bossType] = {
+        ...status,
+        boss: status.boss ? {
+          ...status.boss,
+          participants: Object.fromEntries(status.boss.participants),
+          participantNames: status.boss.participantNames ? 
+            Object.fromEntries(status.boss.participantNames) : {}
+        } : null
+      };
+    }
+    
+    res.json({ success: true, raids: responseStatus });
   });
 
   // 레이드 보스 처치 처리 함수
-  const handleRaidBossDefeated = async (io, UserUuidModel) => {
+  const handleRaidBossDefeated = async (io, UserUuidModel, bossType) => {
     try {
-      console.log("[Raid] 레이드 보스 처치됨!");
+      console.log(`[Raid][${bossType}] 레이드 보스 처치됨!`);
       
-      // 🔧 처치 횟수 증가 (다음 보스 체력 계산용)
-      const killCountResult = await raidSystem.incrementKillCount();
+      // 보스 정보 가져오기
+      const boss = raidSystem.getBoss(bossType);
+      const bossName = boss?.name || '알 수 없는 보스';
       
       // 보상 계산
-      const rewards = raidSystem.calculateRewards();
+      const rewards = raidSystem.calculateRewards(bossType);
       
       // 보상 지급
       for (const reward of rewards) {
@@ -422,10 +467,10 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         const userSocket = Array.from(io.sockets.sockets.values())
           .find(s => s.userUuid === userUuid);
         if (userSocket) {
-          userSocket.emit("raid:boss:defeated", { reward: { amount: rewardAmount } });
+          userSocket.emit("raid:boss:defeated", { bossType, reward: { amount: rewardAmount } });
         }
         
-        console.log(`[Raid] 보상 지급: ${userUuid} - 순위 ${rank}, 데미지 ${damage}, 보상 ${rewardAmount}${isLastAttacker ? ' (막타 보너스 포함)' : ''}`);
+        console.log(`[Raid][${bossType}] 보상 지급: ${userUuid} - 순위 ${rank}, 데미지 ${damage}, 보상 ${rewardAmount}${isLastAttacker ? ' (막타 보너스 포함)' : ''}`);
       }
       
       // 마지막 공격자에게 별조각 1개 추가 지급
@@ -471,12 +516,13 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
             .find(s => s.userUuid === lastAttacker.userUuid);
           if (lastAttackerSocket) {
             lastAttackerSocket.emit("raid:boss:defeated", { 
+              bossType,
               reward: { amount: 0 }, 
               lastAttackBonus: { starPieces: 1 } 
             });
           }
           
-          console.log(`[Raid] 막타 보너스: ${lastAttacker.userUuid} - 별조각 1개 (총 ${userStarPieces.starPieces}개)`);
+          console.log(`[Raid][${bossType}] 막타 보너스: ${lastAttacker.userUuid} - 별조각 1개 (총 ${userStarPieces.starPieces}개)`);
         }
       }
       
@@ -488,13 +534,7 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         const topPlayerData = await UserUuidModel.findOne({ userUuid: topPlayer.userUuid }).lean();
         const lastAttackerData = await UserUuidModel.findOne({ userUuid: lastAttacker?.userUuid }).lean();
         
-        // 🔧 다음 보스 정보 포함한 알림
-        let defeatMessage = `🎉 레이드 보스 '마르가글레슘'이 처치되었습니다! MVP: ${topPlayerData?.displayName || topPlayerData?.username} (${topPlayer.damage} 데미지), 막타: ${lastAttackerData?.displayName || lastAttackerData?.username} (별조각 +1)`;
-        
-        if (killCountResult) {
-          const nextHpFormatted = killCountResult.nextHp.toLocaleString();
-          defeatMessage += ` | 다음 보스 체력: ${nextHpFormatted} (처치 횟수: ${killCountResult.totalKills})`;
-        }
+        let defeatMessage = `🎉 레이드 보스 '${bossName}'이(가) 처치되었습니다! MVP: ${topPlayerData?.displayName || topPlayerData?.username} (${topPlayer.damage} 데미지), 막타: ${lastAttackerData?.displayName || lastAttackerData?.username} (별조각 +1)`;
         
         io.emit("chat:message", {
           system: true,
@@ -504,11 +544,11 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         });
       }
       
-      // 레이드 상태 초기화
-      raidSystem.resetRaid();
+      // 레이드 상태 초기화 (해당 보스 타입만)
+      raidSystem.resetRaid(bossType);
       
-      // 모든 클라이언트에게 레이드 종료 알림
-      io.emit("raid:boss:update", { boss: null });
+      // 모든 클라이언트에게 레이드 종료 알림 (보스 타입 포함)
+      io.emit("raid:boss:update", { bossType, boss: null });
       
     } catch (error) {
       console.error("[Raid] 레이드 보스 처치 처리 실패:", error);
@@ -520,45 +560,48 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
 
 // WebSocket 이벤트 설정 함수
 function setupRaidWebSocketEvents(socket, UserUuidModel) {
-  // 레이드 상태 요청 처리
+  // 레이드 상태 요청 처리 (모든 보스 타입)
   socket.on("raid:status:request", async () => {
-    const status = raidSystem.getRaidStatus();
-    if (status.boss) {
-      // 클라이언트 전송용 보스 정보 (Map을 객체로 변환)
-      const bossForClient = {
-        ...status.boss,
-        participants: Object.fromEntries(status.boss.participants),
-        participantNames: status.boss.participantNames ? 
-          Object.fromEntries(status.boss.participantNames) : {}
-      };
-      
-      socket.emit("raid:boss:update", { boss: bossForClient });
-      
-      // 최근 로그 전송 시 UUID를 사용자명으로 변환
-      const recentLogs = status.logs.slice(-20); // 최근 20개 로그만
-      for (const log of recentLogs) {
-        let displayUsername = log.username;
-        
-        // username이 UUID 형태인지 확인 (예: #0001, #0002 등)
-        if (log.username && log.username.startsWith('#')) {
-          try {
-            // userUuid로 실제 사용자명 조회
-            const user = await UserUuidModel.findOne({ userUuid: log.userUuid }).lean();
-            if (user) {
-              displayUsername = user.displayName || user.username;
-            }
-          } catch (error) {
-            console.error(`[Raid] 사용자명 조회 실패 for ${log.userUuid}:`, error);
-          }
-        }
-        
-        // 수정된 로그 전송
-        const correctedLog = {
-          ...log,
-          username: displayUsername
+    const allStatus = raidSystem.getAllRaidStatus();
+    
+    for (const [bossType, status] of Object.entries(allStatus)) {
+      if (status.boss) {
+        // 클라이언트 전송용 보스 정보 (Map을 객체로 변환)
+        const bossForClient = {
+          ...status.boss,
+          participants: Object.fromEntries(status.boss.participants),
+          participantNames: status.boss.participantNames ? 
+            Object.fromEntries(status.boss.participantNames) : {}
         };
         
-        socket.emit("raid:log:update", { log: correctedLog });
+        socket.emit("raid:boss:update", { bossType, boss: bossForClient });
+        
+        // 최근 로그 전송 시 UUID를 사용자명으로 변환
+        const recentLogs = status.logs.slice(-20); // 최근 20개 로그만
+        for (const log of recentLogs) {
+          let displayUsername = log.username;
+          
+          // username이 UUID 형태인지 확인 (예: #0001, #0002 등)
+          if (log.username && log.username.startsWith('#')) {
+            try {
+              // userUuid로 실제 사용자명 조회
+              const user = await UserUuidModel.findOne({ userUuid: log.userUuid }).lean();
+              if (user) {
+                displayUsername = user.displayName || user.username;
+              }
+            } catch (error) {
+              console.error(`[Raid] 사용자명 조회 실패 for ${log.userUuid}:`, error);
+            }
+          }
+          
+          // 수정된 로그 전송
+          const correctedLog = {
+            ...log,
+            username: displayUsername
+          };
+          
+          socket.emit("raid:log:update", { bossType, log: correctedLog });
+        }
       }
     }
   });

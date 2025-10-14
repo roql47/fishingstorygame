@@ -17,7 +17,7 @@ alwaysApply: false
 **수정 위치:** 16번째 줄 `<title>` 태그
 
 ```html
-<title>여우이야기 v1.302</title>  <!-- ← 여기 수정! -->
+<title>여우이야기 v1.303</title>  <!-- ← 여기 수정! -->
 ```
 
 **목적:** 브라우저 탭에 표시되는 버전 정보
@@ -32,7 +32,7 @@ alwaysApply: false
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.302"  // ← 여기 수정!
+  version: "v1.303"  // ← 여기 수정!
 };
 ```
 
@@ -43,9 +43,9 @@ export const VERSION_INFO = {
 **수정 위치:** 약 212번째 줄 `CURRENT_VERSION` 상수
 
 ```javascript
-// 🔄 버전 업데이트 시 캐시 초기화 (v1.302)
+// 🔄 버전 업데이트 시 캐시 초기화 (v1.303)
 useEffect(() => {
-  const CURRENT_VERSION = "v1.302";  // ← 여기 수정!
+  const CURRENT_VERSION = "v1.303";  // ← 여기 수정!
   const CACHE_VERSION_KEY = "app_cache_version";
 ```
 
@@ -60,7 +60,7 @@ useEffect(() => {
 ```javascript
 {/* 제목 */}
 <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-  여우이야기 v1.302  {/* ← 여기 수정! */}
+  여우이야기 v1.303  {/* ← 여기 수정! */}
 </h1>
 ```
 
@@ -76,7 +76,7 @@ useEffect(() => {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.302"  // ← 여기 수정!
+    version: "v1.303"  // ← 여기 수정!
   });
 });
 ```
@@ -92,7 +92,7 @@ app.get("/api/version", (req, res) => {
 ```javascript
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.302",  // ← 여기 수정!
+    version: "v1.303",  // ← 여기 수정!
     timestamp: new Date().toISOString(),
 ```
 
@@ -150,5 +150,5 @@ curl https://your-domain.com/api/version
 
 ---
 
-**마지막 업데이트:** 2025.10.13
-**현재 버전:** v1.302 (원정 보상 중복 수령 방지 강화, UX 개선)
+**마지막 업데이트:** 2025.10.14
+**현재 버전:** v1.303 (레이드 시스템 대폭 개편, 캐시 최적화)

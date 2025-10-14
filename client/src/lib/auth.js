@@ -40,7 +40,17 @@ export function renderGoogleButton(container) {
   `;
   
   button.onclick = () => {
-    const clientId = '1023938003062-256niij987fc2q7o74qmssi2bca7vdnf.apps.googleusercontent.com';
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    
+    // 환경 변수 로드 확인
+    if (!clientId) {
+      console.error('VITE_GOOGLE_CLIENT_ID 환경 변수가 설정되지 않았습니다!');
+      alert('Google 로그인 설정이 올바르지 않습니다.\n.env 파일에 VITE_GOOGLE_CLIENT_ID를 설정해주세요.');
+      return;
+    }
+    
+    console.log('Google Client ID 로드됨:', clientId.substring(0, 20) + '...');
+    
     const redirectUri = window.location.origin;
     const scope = 'openid email profile';
     const responseType = 'id_token';
