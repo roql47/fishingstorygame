@@ -27,6 +27,7 @@ const CACHE_TTL = {
   raidCompanions: 15 * 1000,        // 15초 (동료 정보)
   raidEquipment: 15 * 1000,         // 15초 (장비 정보)
   raidAchievements: 30 * 1000,      // 30초 (업적 보너스)
+  raidCooldown: 5 * 1000,           // 5초 (쿨타임 정보)
   
   // 시스템 데이터
   ranking: 60 * 1000,               // 1분

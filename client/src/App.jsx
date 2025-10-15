@@ -207,9 +207,9 @@ function App() {
     }
   }, []);
 
-  // 🔄 버전 업데이트 시 캐시 초기화 (v1.302)
+  // 🔄 버전 업데이트 시 캐시 초기화 (v1.304)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.303";
+    const CURRENT_VERSION = "v1.304";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -1369,12 +1369,9 @@ function App() {
   // 레이드 보스 공격 함수
   const attackRaidBoss = async () => {
     const boss = raidBosses[selectedRaidType];
-    if (!boss || !boss.isActive || isAttacking || attackCooldown > 0) {
-      console.log('공격 불가:', { boss: !!boss, isActive: boss?.isActive, isAttacking, attackCooldown });
-      return;
-    }
+    if (!boss || !boss.isActive || isAttacking || attackCooldown > 0) return;
     
-    console.log(`⚔️ [${selectedRaidType}] 레이드 공격 시작`);
+    const startTime = performance.now(); // 클라이언트 측 시간 측정 시작
     setIsAttacking(true);
     await syncBattleCompanionsToServer();
     
@@ -1383,7 +1380,11 @@ function App() {
         bossType: selectedRaidType,
         battleCompanions: battleCompanions
       });
-      console.log('✅ 공격 성공:', response.data);
+      
+      const clientLatency = (performance.now() - startTime).toFixed(1);
+      const serverResponse = response.data._cachePerformance?.responseTime || 'N/A';
+      
+      console.log(`⚡ [레이드 성능] 총 ${clientLatency}ms | 서버 처리 ${serverResponse}ms | 네트워크 ${(parseFloat(clientLatency) - (serverResponse === 'N/A' ? 0 : serverResponse)).toFixed(1)}ms`);
       if (response.data.success) {
         // 캐시 성능 정보 출력 (간소화)
         if (response.data._cachePerformance) {
@@ -7395,7 +7396,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.303
+                여우이야기 v1.304
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -10414,7 +10415,12 @@ function App() {
                           isDarkMode ? "border-white/10" : "border-blue-300/30"
                         }`}
                         onError={(e) => {
-                          e.target.style.display = 'none';
+                          // 이미지 로드 실패 시 캐시에서 제거하여 기본 아이콘 표시
+                          const newCache = { ...userProfileImages };
+                          delete newCache[user.userUuid];
+                          setUserProfileImages(newCache);
+                          localStorage.removeItem(`profileImage_${user.userUuid}`);
+                          console.log(`❌ 프로필 이미지 로드 실패 (${user.username}), 기본 아이콘으로 대체`);
                         }}
                       />
                     ) : (
@@ -10503,6 +10509,14 @@ function App() {
                           onClick={() => {
                             setModalImageUrl(currentImage);
                             setShowImageModal(true);
+                          }}
+                          onError={(e) => {
+                            // 이미지 로드 실패 시 캐시에서 제거하여 기본 아이콘 표시
+                            const newCache = { ...userProfileImages };
+                            delete newCache[currentUserUuid];
+                            setUserProfileImages(newCache);
+                            localStorage.removeItem(`profileImage_${currentUserUuid}`);
+                            console.log(`❌ 프로필 이미지 로드 실패, 기본 아이콘으로 대체`);
                           }}
                           title="클릭하여 확대"
                         />
@@ -12848,7 +12862,7 @@ function App() {
             
             {/* 이미지 */}
             <div className={`p-8 flex items-center justify-center ${
-              isDarkMode ? "bg-black/20" : "bg-gray-50/50"
+isDarkMode ? "bg-black/20" : "bg-gray-50/50"
             }`}>
               {(() => {
                 const currentUserUuid = selectedUserProfile ? otherUserData?.userUuid : userUuid;
@@ -12859,6 +12873,15 @@ function App() {
                     src={currentImage} 
                     alt="프로필 이미지"
                     className="max-w-full max-h-[60vh] object-contain rounded-lg"
+                    onError={(e) => {
+                      // 이미지 로드 실패 시 캐시에서 제거
+                      const newCache = { ...userProfileImages };
+                      delete newCache[currentUserUuid];
+                      setUserProfileImages(newCache);
+                      setModalImageUrl(null);
+                      localStorage.removeItem(`profileImage_${currentUserUuid}`);
+                      console.log(`❌ 모달 이미지 로드 실패, 기본 표시로 전환`);
+                    }}
                   />
                 ) : (
                   <div className={`flex items-center justify-center w-64 h-64 rounded-lg border-2 border-dashed ${
@@ -12867,6 +12890,7 @@ function App() {
                     <div className="text-center">
                       <User className="w-20 h-20 mx-auto mb-2 opacity-30" />
                       <p className="text-sm">프로필 이미지가 없습니다</p>
+                      <p className="text-xs mt-2 opacity-60">서버 재시작 시 이미지가 삭제될 수 있습니다</p>
                     </div>
                   </div>
                 );

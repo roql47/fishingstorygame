@@ -678,6 +678,11 @@ io.on('connection', (socket) => {
       socket.isAlive = true;
       socket.lastActivity = Date.now();
       
+      // 🔐 게스트 사용자도 인증된 것으로 처리 (채팅 등 기능 사용 가능하도록)
+      socket.data.isAuthenticated = true;
+      socket.data.username = userData.username;
+      socket.data.userUuid = userData.userUuid;
+      
       // IP 정보 수집 및 로깅
       const clientIP = socket.handshake.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
                       socket.handshake.headers['x-real-ip'] || 
@@ -9693,14 +9698,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.303"
+    version: "v1.304"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.303",
+    version: "v1.304",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [

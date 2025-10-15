@@ -1,6 +1,19 @@
 // 공지사항 데이터 (ID 내림차순 정렬 - 최신이 가장 높은 ID)
 export const NOTICE_DATA = [
   {
+    id: 30,
+    date: "2025.10.15",
+    title: "🖼️ 프로필 이미지 로드 실패 개선",
+    content: [
+      "프로필 이미지 로드 안정성 개선:",
+      "- 서버 재시작 시 이미지 파일이 삭제되는 현상 안내",
+      "- 이미지 로드 실패 시 자동으로 기본 아이콘 표시",
+      "게스트 로그인 시스템 수정"
+    ],
+    isNew: true,
+    type: "update"
+  },
+  {
     id: 29,
     date: "2025.10.14",
     title: "⚔️ 레이드 시스템 대폭 개편 & 캐시 최적화",
@@ -13,7 +26,7 @@ export const NOTICE_DATA = [
       "- 난이도별 독립적인 레이드 방 시스템",
       "- 상단 탭으로 레이드 방 전환 가능",
       "- 낚시 실력별 참여 조건 설정",
-      "- 난이도별 차등 보상",
+      "난이도별 차등 보상 (호박석):",
       "레이드 UI 개선:",
       "- 모던한 그라디언트 디자인 적용",
       "- 큰 보스 아이콘 및 화려한 체력바",
@@ -24,7 +37,7 @@ export const NOTICE_DATA = [
       "- 응답 속도 10배 향상 (300ms → 30ms)",
       "- 렌더-DB 간 레이턴시 영향 최소화"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
@@ -502,5 +515,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.303"
+  version: "v1.304"
 };

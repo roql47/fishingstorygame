@@ -133,12 +133,22 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         cacheSystem.setCachedData('raidUserData', 'user', user, userUuid);
       }
 
-      // 쿨타임 검증 (캐시하지 않음)
+      // 쿨타임을 메모리에서 먼저 확인 (캐시)
       const now = new Date();
-      const cooldownRecord = await CooldownModel.findOne({ userUuid }).lean();
+      let cooldownEnd = cacheSystem.getCachedData('raidCooldown', 'cooldown', userUuid);
       
-      if (cooldownRecord?.raidAttackCooldownEnd && cooldownRecord.raidAttackCooldownEnd > now) {
-        const remainingTime = Math.ceil((cooldownRecord.raidAttackCooldownEnd.getTime() - now.getTime()) / 1000);
+      if (!cooldownEnd) {
+        // 캐시 미스 - DB에서 조회
+        const cooldownRecord = await CooldownModel.findOne({ userUuid }).lean();
+        cooldownEnd = cooldownRecord?.raidAttackCooldownEnd;
+        // 5초만 캐시 (짧은 TTL)
+        if (cooldownEnd) {
+          cacheSystem.setCachedData('raidCooldown', 'cooldown', cooldownEnd, userUuid);
+        }
+      }
+      
+      if (cooldownEnd && new Date(cooldownEnd) > now) {
+        const remainingTime = Math.ceil((new Date(cooldownEnd).getTime() - now.getTime()) / 1000);
         return res.status(429).json({ 
           error: "레이드 공격 쿨타임이 남아있습니다.",
           remainingTime: remainingTime
@@ -360,6 +370,9 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       );
       
       await Promise.all(cooldownPromises);
+      
+      // 쿨타임 캐시 업데이트
+      cacheSystem.setCachedData('raidCooldown', 'cooldown', raidCooldownEnd, userUuid);
       
       // 클라이언트 전송용 보스 정보 (Map을 객체로 변환)
       const updatedBoss = raidSystem.getBoss(bossType);
