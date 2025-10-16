@@ -47,7 +47,8 @@ const ChatTab = ({
   refreshFishingSkill,
   authenticatedRequest,
   alchemyPotions,
-  setAlchemyPotions
+  setAlchemyPotions,
+  handleExpeditionInviteClick
 }) => {
   const messagesEndRef = useRef(null);
   
@@ -526,6 +527,64 @@ const ChatTab = ({
                           isDarkMode ? "text-purple-400/70" : "text-purple-600/70"
                         }`}>
                           💡 상세 정보 보기
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : m.expeditionInvite ? (
+                // 🎣 원정 초대 메시지 특별 스타일링
+                <div className="my-2">
+                  <div 
+                    className={`p-3 rounded-lg border cursor-pointer transition-all duration-300 hover:scale-[1.01] hover:shadow-md ${
+                      isDarkMode 
+                        ? "bg-gradient-to-r from-teal-900/20 to-cyan-900/20 border-teal-500/20 hover:border-teal-400/40" 
+                        : "bg-gradient-to-r from-teal-50/60 to-cyan-50/60 border-teal-300/40 hover:border-teal-400/60"
+                    } backdrop-blur-sm`}
+                    onClick={() => handleExpeditionInviteClick(m.expeditionInvite.roomId, m.expeditionInvite.areaName)}
+                    title="클릭하여 원정 참가하기"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${
+                        isDarkMode ? "bg-teal-500/15" : "bg-teal-500/8"
+                      }`}>
+                        <span className="text-sm">🗺️</span>
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`font-medium text-sm ${
+                            isDarkMode ? "text-teal-300" : "text-teal-700"
+                          }`}>
+                            {m.username}
+                          </span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                            isDarkMode 
+                              ? "bg-teal-500/15 text-teal-400" 
+                              : "bg-teal-500/8 text-teal-600"
+                          }`}>
+                            원정 초대
+                          </span>
+                          <span className={`text-[10px] ${
+                            isDarkMode ? "text-gray-500" : "text-gray-500"
+                          }`}>
+                            {m.timestamp ? new Date(m.timestamp).toLocaleTimeString('ko-KR', {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            }) : new Date().toLocaleTimeString('ko-KR', {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                        </div>
+                        <div className={`text-sm mt-1 ${
+                          isDarkMode ? "text-gray-300" : "text-gray-700"
+                        }`}>
+                          {m.content}
+                        </div>
+                        <div className={`text-xs mt-1 font-medium ${
+                          isDarkMode ? "text-teal-400/70" : "text-teal-600/70"
+                        }`}>
+                          💡 클릭하여 참가하기
                         </div>
                       </div>
                     </div>

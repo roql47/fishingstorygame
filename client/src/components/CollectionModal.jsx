@@ -11,6 +11,7 @@ const CollectionModal = ({
 }) => {
   const [activeCollectionTab, setActiveCollectionTab] = useState('fish');
   const [discoveredFish, setDiscoveredFish] = useState([]);
+  const [hoveredFish, setHoveredFish] = useState(null);
 
   // 발견한 물고기 목록 가져오기
   React.useEffect(() => {
@@ -252,11 +253,12 @@ const CollectionModal = ({
                 const collected = hasItem(fish.name, 'fish');
                 const count = getFishCount(fish.name);
                 const everCaught = discoveredFish.includes(fish.name); // 발견 기록으로 확인
+                const isHovered = hoveredFish === fish.name;
                 
                 return (
                   <div
                     key={index}
-                    className={`p-4 rounded-lg border transition-all duration-300 ${
+                    className={`p-4 rounded-lg border transition-all duration-300 relative ${
                       everCaught
                         ? isDarkMode
                           ? "bg-blue-500/10 border-blue-400/30 hover:bg-blue-500/20"
@@ -265,6 +267,8 @@ const CollectionModal = ({
                           ? "bg-gray-800/50 border-gray-600/30 hover:bg-gray-700/50"
                           : "bg-gray-100/50 border-gray-300/30 hover:bg-gray-200/50"
                     }`}
+                    onMouseEnter={() => setHoveredFish(fish.name)}
+                    onMouseLeave={() => setHoveredFish(null)}
                   >
                     <div className="text-center">
                       <div className={`text-2xl mb-2 ${
@@ -284,7 +288,7 @@ const CollectionModal = ({
                           <p className={`text-xs mb-1 ${
                             isDarkMode ? "text-blue-400" : "text-blue-600"
                           }`}>
-                            Rank {fish.rank} • {count}마리
+                            Rank {fish.rank}
                           </p>
                           <p className={`text-xs mb-1 ${
                             isDarkMode ? "text-gray-400" : "text-gray-600"
@@ -308,6 +312,28 @@ const CollectionModal = ({
                         </p>
                       )}
                     </div>
+                    
+                    {/* 호버 시 잡은 개수 표시 */}
+                    {everCaught && isHovered && (
+                      <div className={`absolute inset-0 flex items-center justify-center rounded-lg ${
+                        isDarkMode 
+                          ? "bg-blue-600/95 backdrop-blur-sm" 
+                          : "bg-blue-500/95 backdrop-blur-sm"
+                      }`}>
+                        <div className="text-center">
+                          <p className={`text-2xl font-bold mb-1 ${
+                            isDarkMode ? "text-white" : "text-white"
+                          }`}>
+                            {count}마리
+                          </p>
+                          <p className={`text-xs ${
+                            isDarkMode ? "text-blue-100" : "text-blue-50"
+                          }`}>
+                            총 획득 수
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}

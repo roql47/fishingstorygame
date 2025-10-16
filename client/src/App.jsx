@@ -207,9 +207,9 @@ function App() {
     }
   }, []);
 
-  // 🔄 버전 업데이트 시 캐시 초기화 (v1.304)
+  // 🔄 버전 업데이트 시 캐시 초기화 (v1.305)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.304";
+    const CURRENT_VERSION = "v1.305";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -261,6 +261,7 @@ function App() {
   const [username, setUsername] = useState("");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
+  const [pendingExpeditionInvite, setPendingExpeditionInvite] = useState(null); // 원정 초대 대기
   const [inventory, setInventory] = useState([]);
   const [materials, setMaterials] = useState([]);
   const [myCatches, setMyCatches] = useState(0);
@@ -5483,28 +5484,52 @@ function App() {
     }
   };
 
-  // 📸 프로필 이미지 삭제 함수 (관리자 전용)
-  const handleProfileImageDelete = async () => {
-    if (!confirm('프로필 이미지를 삭제하시겠습니까?')) {
+  // 📸 프로필 이미지 삭제 함수 (관리자 전용 - 자신 또는 다른 사용자)
+  const handleProfileImageDelete = async (targetUserUuid = null, targetUsername = null) => {
+    // 🎯 대상 사용자 (없으면 자기 자신)
+    const finalTargetUserUuid = targetUserUuid || userUuid;
+    const finalTargetUsername = targetUsername || username;
+    
+    if (!confirm(`${finalTargetUsername}님의 프로필 이미지를 삭제하시겠습니까?`)) {
       return;
     }
 
     try {
       const response = await authenticatedRequest.delete(
-        `${serverUrl}/api/profile-image`
+        `${serverUrl}/api/profile-image`,
+        {
+          data: {
+            targetUserUuid: finalTargetUserUuid,
+            targetUsername: finalTargetUsername
+          }
+        }
       );
 
       if (response.data.success) {
-        setProfileImage(null);
-        localStorage.removeItem('profileImage');
-        
-        // 캐시에서도 제거
-        if (userUuid) {
-          const newCache = { ...userProfileImages };
-          delete newCache[userUuid];
-          setUserProfileImages(newCache);
-          localStorage.setItem('userProfileImages', JSON.stringify(newCache));
+        // 자신의 프로필인 경우
+        if (finalTargetUserUuid === userUuid) {
+          setProfileImage(null);
+          localStorage.removeItem('profileImage');
         }
+        
+        // 캐시에서 제거
+        const newCache = { ...userProfileImages };
+        delete newCache[finalTargetUserUuid];
+        setUserProfileImages(newCache);
+        localStorage.setItem('userProfileImages', JSON.stringify(newCache));
+        
+        // 🔄 다른 사용자 프로필 모달이 열려있는 경우 이미지 제거
+        if (selectedUserProfile && otherUserData?.userUuid === finalTargetUserUuid) {
+          console.log('🔄 Modal image removed immediately');
+        }
+        
+        // 🔄 Socket.io로 다른 사용자들에게 이미지 삭제 알림
+        const socket = getSocket();
+        socket.emit('profile:image:deleted', { 
+          userUuid: finalTargetUserUuid,
+          username: finalTargetUsername
+        });
+        console.log('📡 Sent image delete notification to other users');
         
         alert('✅ ' + response.data.message);
       } else {
@@ -5604,6 +5629,34 @@ function App() {
   //     loadProfileImage(userUuid);
   //   }
   // }, [userUuid, username]);
+
+  // 🎣 채팅으로 원정 초대링크 전송 함수
+  const sendExpeditionInviteToChat = useCallback((roomId, areaName) => {
+    if (!socket || !username) return;
+    
+    const inviteMessage = `[원정 초대] ${areaName} 원정에 초대합니다!`;
+    const payload = {
+      username,
+      content: inviteMessage,
+      timestamp: new Date().toISOString(),
+      userUuid: userUuid,
+      expeditionInvite: { roomId, areaName } // 초대 데이터 추가
+    };
+    
+    socket.emit("chat:message", payload);
+    console.log('📨 원정 초대 메시지 전송:', payload);
+  }, [socket, username, userUuid]);
+
+  // 🎣 원정 초대 클릭 처리 함수
+  const handleExpeditionInviteClick = useCallback(async (roomId, areaName) => {
+    console.log('🎣 원정 초대 클릭:', roomId, areaName);
+    
+    // 초대 정보 저장
+    setPendingExpeditionInvite({ roomId, areaName });
+    
+    // 원정 탭으로 이동
+    setActiveTab('expedition');
+  }, []);
 
   // 📸 프로필 모달 열릴 때 localStorage 동기화 및 API 로드
   useEffect(() => {
@@ -7396,7 +7449,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.304
+                여우이야기 v1.305
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -7588,21 +7641,21 @@ function App() {
               {/* 거래소 버튼 */}
               <button
                 onClick={() => {
-                  if (fishingSkill < 5) {
-                    alert('거래소는 낚시 실력 5 이상부터 이용할 수 있습니다.');
+                  if (fishingSkill < 1) {
+                    alert('거래소는 낚시 실력 1 이상부터 이용할 수 있습니다.');
                     return;
                   }
                   setShowMarketModal(true);
                 }}
                 className={`p-2 rounded-full hover:glow-effect transition-all duration-300 ${
-                  fishingSkill < 5
+                  fishingSkill < 1
                     ? "glass-input text-gray-500 cursor-not-allowed"
                     : isDarkMode 
                       ? "glass-input text-green-400 hover:text-green-300" 
                       : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-green-600 hover:text-green-500"
                 }`}
-                title={fishingSkill < 5 ? "거래소 (낚시 실력 5 필요)" : "거래소"}
-                disabled={fishingSkill < 5}
+                title={fishingSkill < 1 ? "거래소 (낚시 실력 1 필요)" : "거래소"}
+                disabled={fishingSkill < 1}
               >
                 <ShoppingCart className="w-4 h-4" />
               </button>
@@ -8131,6 +8184,7 @@ function App() {
               authenticatedRequest={authenticatedRequest}
               alchemyPotions={alchemyPotions}
               setAlchemyPotions={setAlchemyPotions}
+              handleExpeditionInviteClick={handleExpeditionInviteClick}
             />
           )}
 
@@ -9253,6 +9307,9 @@ function App() {
                 fishingSkill={fishingSkill}
                 calculateTotalEnhancementBonus={calculateTotalEnhancementBonus}
                 refreshCompanions={refreshCompanions}
+                sendExpeditionInviteToChat={sendExpeditionInviteToChat}
+                pendingExpeditionInvite={pendingExpeditionInvite}
+                setPendingExpeditionInvite={setPendingExpeditionInvite}
                 refreshInventory={async () => {
                   // 인벤토리 새로고침 함수
                   try {
@@ -12925,18 +12982,30 @@ isDarkMode ? "bg-black/20" : "bg-gray-50/50"
                 >
                   📸 {uploadingImage ? '업로드 중...' : selectedUserProfile ? `${selectedUserProfile.username}님 이미지 업로드` : '이미지 업로드'}
                 </button>
-                {!selectedUserProfile && userProfileImages[userUuid] && (
-                  <button
-                    onClick={handleProfileImageDelete}
-                    className={`px-4 py-2 rounded-lg transition-all duration-300 hover:scale-105 flex items-center gap-2 ${
-                      isDarkMode 
-                        ? "bg-red-500/20 text-red-400 hover:bg-red-500/30" 
-                        : "bg-red-500/10 text-red-600 hover:bg-red-500/20"
-                    }`}
-                  >
-                    🗑️ 이미지 삭제
-                  </button>
-                )}
+                {(() => {
+                  // 삭제 버튼 표시 조건: 자신 또는 다른 사용자의 프로필 이미지가 있을 때
+                  const targetUuid = selectedUserProfile ? otherUserData?.userUuid : userUuid;
+                  const targetName = selectedUserProfile ? selectedUserProfile.username : username;
+                  const hasImage = userProfileImages[targetUuid];
+                  
+                  if (!hasImage) return null;
+                  
+                  return (
+                    <button
+                      onClick={() => handleProfileImageDelete(
+                        selectedUserProfile ? otherUserData?.userUuid : null,
+                        selectedUserProfile ? selectedUserProfile.username : null
+                      )}
+                      className={`px-4 py-2 rounded-lg transition-all duration-300 hover:scale-105 flex items-center gap-2 ${
+                        isDarkMode 
+                          ? "bg-red-500/20 text-red-400 hover:bg-red-500/30" 
+                          : "bg-red-500/10 text-red-600 hover:bg-red-500/20"
+                      }`}
+                    >
+                      🗑️ {selectedUserProfile ? `${targetName}님 이미지 삭제` : '이미지 삭제'}
+                    </button>
+                  );
+                })()}
               </div>
             )}
           </div>

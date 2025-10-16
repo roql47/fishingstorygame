@@ -15,10 +15,11 @@ import {
   UserX,
   Target,
   ChevronDown,
-  Plus
+  Plus,
+  MessageCircle
 } from 'lucide-react';
 
-const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, refreshCompanions, syncBattleCompanionsToServer, battleCompanions, companionStats, userEquipment, fishingSkill, calculateTotalEnhancementBonus }) => {
+const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, refreshCompanions, syncBattleCompanionsToServer, battleCompanions, companionStats, userEquipment, fishingSkill, calculateTotalEnhancementBonus, sendExpeditionInviteToChat, pendingExpeditionInvite, setPendingExpeditionInvite }) => {
   // 접두어에 따른 색상 반환 (탐사와 동일)
   const getPrefixColor = (prefixName, isDark) => {
     switch (prefixName) {
@@ -277,6 +278,20 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
     // 현재 참가 중인 방이 있는지 확인
     checkCurrentRoom();
   }, []);
+
+  // 🎣 원정 초대 자동 입장 처리
+  useEffect(() => {
+    if (pendingExpeditionInvite && currentView === 'lobby') {
+      const { roomId } = pendingExpeditionInvite;
+      console.log('🎣 원정 초대로 자동 입장 시도:', roomId);
+      
+      // 자동으로 방 입장
+      joinRoom(roomId);
+      
+      // 초대 정보 초기화
+      setPendingExpeditionInvite(null);
+    }
+  }, [pendingExpeditionInvite, currentView]);
 
   // 현재 참가 중인 방 확인
   const checkCurrentRoom = async () => {
@@ -597,6 +612,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
     if (!userData?.userUuid) return;
     
     try {
+      setLoading(true);
       const token = localStorage.getItem('jwtToken');
       const response = await fetch('/api/expedition/rooms/start', {
         method: 'POST',
@@ -609,13 +625,17 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
       
       const data = await response.json();
       if (data.success) {
-        setCurrentRoom(data.room);
-        setCurrentView('battle');
+        console.log('[EXPEDITION] Start request successful, waiting for socket event');
+        // 소켓 이벤트(expeditionStarted)가 상태를 업데이트하도록 대기
+        // 중복 업데이트 방지: 소켓 이벤트에서만 setCurrentRoom, setCurrentView 호출
       } else {
         alert(data.error || '원정 시작에 실패했습니다.');
       }
     } catch (error) {
       console.error('원정 시작 실패:', error);
+      alert('원정 시작에 실패했습니다.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -634,7 +654,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
         const data = await response.json();
         console.log(`[EXPEDITION] Companion data for ${playerName}:`, data);
         
-        // 🔧 서버 응답에서 isInBattle: true인 동료들만 엄격하게 필터링
+        // 🔧 서버 응답에서 isInBattle: true인 동료들만 엄격하게 필터링 (최대 3명)
         const battleCompanions = [];
         if (data.companionStats) {
           Object.entries(data.companionStats).forEach(([companionName, stats]) => {
@@ -650,8 +670,15 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
           });
         }
         
-        console.log(`[EXPEDITION] Filtered battle companions for ${playerName}:`, battleCompanions);
-        return battleCompanions;
+        // ⚠️ 전투 참여 동료는 최대 3명까지만 허용
+        const limitedBattleCompanions = battleCompanions.slice(0, 3);
+        
+        if (battleCompanions.length > 3) {
+          console.warn(`[EXPEDITION] ${playerName}의 전투 참여 동료가 ${battleCompanions.length}명입니다. 최대 3명으로 제한합니다.`);
+        }
+        
+        console.log(`[EXPEDITION] Filtered battle companions for ${playerName}:`, limitedBattleCompanions);
+        return limitedBattleCompanions;
       } else {
         console.error(`[EXPEDITION] Failed to fetch companions for ${playerName}:`, response.status);
       }
@@ -792,7 +819,11 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
   };
 
   const handleExpeditionStarted = (room) => {
-    if (currentRoom && currentRoom.id === room.id) {
+    // 현재 사용자가 해당 방에 속해있는지 확인
+    const isUserInRoom = room?.players?.some(p => p.id === userData?.userUuid);
+    
+    if (isUserInRoom) {
+      console.log('[EXPEDITION] User is in the started room, updating state');
       setCurrentRoom(room);
       setCurrentView('battle');
       
@@ -1798,6 +1829,25 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                     준비 완료
                   </>
                 )}
+              </div>
+            </button>
+          )}
+          
+          {isHost() && currentRoom?.players?.length === 1 && sendExpeditionInviteToChat && (
+            <button
+              onClick={() => {
+                sendExpeditionInviteToChat(currentRoom.id, currentRoom.area.name);
+                alert('채팅창에 초대 메시지를 보냈습니다!');
+              }}
+              className={`flex-1 py-4 px-6 rounded-xl font-medium transition-all duration-200 transform hover:scale-105 ${
+                isDarkMode
+                  ? "bg-gradient-to-r from-teal-500/80 to-cyan-500/80 hover:from-teal-500 hover:to-cyan-500 text-white"
+                  : "bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-white"
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <MessageCircle className="w-5 h-5" />
+                채팅에 초대장 보내기
               </div>
             </button>
           )}

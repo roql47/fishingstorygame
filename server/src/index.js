@@ -23,6 +23,9 @@ const { setupRaidRoutes, setupRaidWebSocketEvents } = require('./routes/raidRout
 // 원정 시스템 모듈 import
 const setupExpeditionRoutes = require('./routes/expeditionRoutes');
 
+// 🦊 여우 AI 챗봇 모듈 import
+const FoxAiBot = require('./modules/foxAiBot');
+
 // 📱 모바일 백그라운드 유예 시간 관리 (30분)
 const disconnectionGracePeriod = new Map(); // userUuid -> { timeoutId, userData }
 
@@ -292,6 +295,62 @@ if (process.env.NODE_ENV !== 'production') {
     require("dotenv").config();
   } catch (err) {
     console.log("dotenv not available, using environment variables");
+  }
+}
+
+// 🦊 여우 AI 챗봇 초기화 (환경변수에서 API 키 로드)
+const foxAiBot = new FoxAiBot(process.env.GEMINI_API_KEY);
+
+// 🦊 여우 봇 DB 초기화 함수
+async function initializeFoxBot() {
+  try {
+    const foxBotUuid = "fox_bot";
+    const foxBotUsername = "채팅읽는여우";
+    
+    // DB에 여우 봇 사용자 생성 (없으면 생성)
+    let foxUser = await UserUuidModel.findOne({ userUuid: foxBotUuid });
+    
+    if (!foxUser) {
+      foxUser = new UserUuidModel({
+        userUuid: foxBotUuid,
+        username: foxBotUsername,
+        displayName: foxBotUsername,
+        userId: "fox_system",
+        isBot: true, // 봇 플래그
+        createdAt: new Date()
+      });
+      await foxUser.save();
+      console.log("🦊 여우 봇 사용자 생성 완료");
+    }
+    
+    console.log("🦊 여우 봇 초기화 완료!");
+  } catch (error) {
+    console.error("🦊 여우 봇 초기화 실패:", error);
+  }
+}
+
+// 🦊 여우 봇을 접속자 명단에 추가
+function addFoxBotToConnectedUsers() {
+  const foxBotUuid = "fox_bot";
+  const foxBotUsername = "채팅읽는여우";
+  
+  // 이미 추가되어 있는지 확인
+  const alreadyConnected = Array.from(connectedUsers.values())
+    .some(user => user.userUuid === foxBotUuid);
+  
+  if (!alreadyConnected) {
+    connectedUsers.set(foxBotUuid, {
+      userUuid: foxBotUuid,
+      username: foxBotUsername,
+      displayName: foxBotUsername,
+      userId: "fox_system",
+      hasIdToken: false,
+      loginType: "AI Bot 🦊",
+      joinTime: new Date(),
+      socketId: foxBotUuid, // 가상 소켓 ID
+      isBot: true
+    });
+    console.log("🦊 여우 봇이 접속자 명단에 추가되었습니다!");
   }
 }
 
@@ -1947,6 +2006,13 @@ function cleanupConnectedUsers() {
   
   // 실제 연결된 소켓만 필터링
   for (const [socketId, userData] of connectedUsers.entries()) {
+    // 🦊 여우 봇 예외 처리 (실제 소켓이 없음)
+    if (userData.isBot && userData.userUuid === "fox_bot") {
+      validConnections.set(socketId, userData);
+      uniqueUsers.set(userData.userUuid, userData);
+      continue;
+    }
+    
     const socket = io.sockets.sockets.get(socketId);
     
     if (socket && socket.connected) {
@@ -2044,6 +2110,11 @@ setInterval(() => {
   // 추가: 좀비 연결 강제 정리
   let zombieCount = 0;
   for (const [socketId, userData] of connectedUsers.entries()) {
+    // 🦊 여우 봇은 좀비 연결 체크에서 제외
+    if (userData.isBot && userData.userUuid === "fox_bot") {
+      continue;
+    }
+    
     const socket = io.sockets.sockets.get(socketId);
     if (!socket || !socket.connected) {
       console.log(`🧟 Removing zombie connection: ${socketId} (${userData.username})`);
@@ -2063,9 +2134,15 @@ setInterval(() => {
     console.log(`🧹 Cleaned up ${zombieCount} zombie connections`);
   }
   
+  // 🦊 여우 봇 유지 확인
+  addFoxBotToConnectedUsers();
+  
+  // 🦊 여우 봇 추가 후 다시 목록 가져오기
+  const finalUsersList = cleanupConnectedUsers();
+  
   // 모든 클라이언트에게 정리된 사용자 목록 전송 (빈 배열이 아닐 때만)
-  if (uniqueUsers.length > 0) {
-    io.emit("users:update", uniqueUsers);
+  if (finalUsersList.length > 0) {
+    io.emit("users:update", finalUsersList);
   } else {
     console.log('⚠️ Skipping users:update broadcast - no users to send');
   }
@@ -3484,6 +3561,9 @@ io.on("connection", (socket) => {
           timestamp,
         });
       }
+    } else if (FoxAiBot.isFoxCommand(trimmed)) {
+      // 🦊 여우 AI 챗봇 응답 (모듈 사용)
+      await foxAiBot.handleFoxMessage(io, msg, user, timestamp);
     } else {
       // 일반 채팅 메시지 브로드캐스트 (userUuid 포함)
       io.emit("chat:message", { 
@@ -4870,17 +4950,31 @@ app.get("/api/companion-stats/user", async (req, res) => {
     
     // 🔧 동료별로 정리 (중복이 있으면 최신 것만 사용)
     const statsMap = {};
+    const battleCompanions = []; // 전투 참여 동료 추적
+    
     companionStats.forEach(stat => {
       if (!statsMap[stat.companionName]) {
+        // ⚠️ 전투 참여 동료는 최대 3명까지만 허용
+        const shouldBeInBattle = stat.isInBattle && battleCompanions.length < 3;
+        
+        if (stat.isInBattle && !shouldBeInBattle) {
+          console.warn(`[EXPEDITION] ${username}의 ${stat.companionName} 전투 참여 제한 초과 (최대 3명)`);
+        }
+        
         statsMap[stat.companionName] = {
           level: stat.level,
           experience: stat.experience,
-          isInBattle: stat.isInBattle
+          isInBattle: shouldBeInBattle
         };
+        
+        if (shouldBeInBattle) {
+          battleCompanions.push(stat.companionName);
+        }
       }
     });
     
     console.log(`Expedition companion stats for ${username}:`, statsMap);
+    console.log(`Battle companions (limited to 3): ${battleCompanions.join(', ')}`);
     res.json({ companionStats: statsMap });
     
   } catch (error) {
@@ -5836,6 +5930,18 @@ app.get("/api/profile-image/:userUuid", async (req, res) => {
   try {
     let { userUuid } = req.params;
     
+    // 🦊 여우 봇 프로필 이미지 특별 처리
+    if (userUuid === "fox_bot") {
+      console.log(`📸 [PROFILE-IMAGE] Fox bot image requested`);
+      
+      // 프로젝트 루트 assets 폴더의 이미지 URL 반환
+      return res.json({
+        success: true,
+        imageUrl: "/fox-assets/images/KakaoTalk_20251016_214040037.jpg",
+        uploadedAt: new Date()
+      });
+    }
+    
     // # 있는 버전과 없는 버전 모두 조회
     // 클라이언트에서 #을 제거하고 보낼 수 있으므로 양쪽 다 확인
     let profileImage = await ProfileImageModel.findOne({ userUuid });
@@ -5873,10 +5979,10 @@ app.get("/api/profile-image/:userUuid", async (req, res) => {
   }
 });
 
-// 프로필 이미지 삭제 API (관리자 전용)
+// 프로필 이미지 삭제 API (관리자 전용 - 자신 또는 다른 사용자)
 app.delete("/api/profile-image", authenticateJWT, async (req, res) => {
   try {
-    const { userUuid: jwtUserUuid, isAdmin } = req.user;
+    const { userUuid: jwtUserUuid, username: jwtUsername, isAdmin } = req.user;
     
     // 관리자 권한 확인
     if (!isAdmin) {
@@ -5886,7 +5992,14 @@ app.delete("/api/profile-image", authenticateJWT, async (req, res) => {
       });
     }
     
-    const profileImage = await ProfileImageModel.findOne({ userUuid: jwtUserUuid });
+    // 🎯 대상 사용자 UUID (없으면 자기 자신)
+    const targetUserUuid = req.body.targetUserUuid || jwtUserUuid;
+    const targetUsername = req.body.targetUsername || jwtUsername;
+    
+    const clientIP = getClientIP(req);
+    console.log(`🗑️ [PROFILE-IMAGE] Delete request from ${jwtUsername} (${clientIP}) for target: ${targetUsername} (${targetUserUuid})`);
+    
+    const profileImage = await ProfileImageModel.findOne({ userUuid: targetUserUuid });
     
     if (!profileImage) {
       return res.status(404).json({ 
@@ -5903,13 +6016,21 @@ app.delete("/api/profile-image", authenticateJWT, async (req, res) => {
     }
     
     // DB에서 삭제
-    await ProfileImageModel.deleteOne({ userUuid: jwtUserUuid });
+    await ProfileImageModel.deleteOne({ userUuid: targetUserUuid });
     
-    console.log(`✅ [PROFILE-IMAGE] Profile image deleted for ${profileImage.username}`);
+    // 🔄 Socket.io로 다른 사용자들에게 이미지 삭제 알림
+    const socket = getSocket();
+    socket.emit('profile:image:deleted', { 
+      userUuid: targetUserUuid,
+      username: targetUsername
+    });
+    
+    console.log(`✅ [PROFILE-IMAGE] Profile image deleted for ${targetUsername} by ${jwtUsername}`);
     
     res.json({
       success: true,
-      message: '프로필 이미지가 삭제되었습니다.'
+      message: `${targetUsername}님의 프로필 이미지가 삭제되었습니다.`,
+      targetUserUuid: targetUserUuid
     });
     
   } catch (error) {
@@ -9360,6 +9481,18 @@ app.use('/uploads', express.static(uploadsDir, {
 }));
 console.log('📸 Serving profile images from:', uploadsDir);
 
+// 🦊 프로젝트 루트의 assets 폴더 서빙 (여우 봇 프로필 이미지용)
+const rootAssetsDir = path.join(__dirname, '../../assets');
+app.use('/fox-assets', express.static(rootAssetsDir, {
+  setHeaders: (res, filePath) => {
+    // 이미지 파일 캐싱 설정 (1일)
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    console.log('🦊 Serving root asset:', filePath);
+  }
+}));
+console.log('🦊 Serving root assets from:', rootAssetsDir);
+
 // 나머지 정적 파일들 (index.html 등)
 app.use(express.static(staticDir, {
   setHeaders: (res, filePath) => {
@@ -9579,13 +9712,29 @@ async function getUserProfileHandler(req, res) {
     console.log("🔐 getUserProfileHandler called - v2024.12.19");
     
     const { username } = req.query;
-    const { userUuid: requesterUuid, username: requesterUsername, isAdmin } = req.user;
     
     if (!username) {
       console.log("❌ Username missing from query");
       return res.status(400).json({ error: "Username is required" });
     }
     
+    // 🦊 여우 봇 프로필 조회 예외 처리
+    if (username === "채팅읽는여우") {
+      return res.json({
+        username: "채팅읽는여우",
+        displayName: "채팅읽는여우",
+        userUuid: "fox_bot",
+        isBot: true,
+        money: 0,
+        amber: 0,
+        fishingSkill: 0,
+        totalCatches: 0,
+        bio: "🦊 깊은 산속에서 온 여우입니다~ 장난기 많고 귀여운 여우랍니다! ✨",
+        profileImage: "/fox-assets/images/KakaoTalk_20251016_214040037.jpg" // 여우 프로필 이미지 직접 경로
+      });
+    }
+    
+    const { userUuid: requesterUuid, username: requesterUsername, isAdmin } = req.user;
     console.log(`🔐 Profile request: ${requesterUsername} requesting ${username}`);
     
     // 사용자 기본 정보 조회
@@ -9698,14 +9847,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.304"
+    version: "v1.305"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.304",
+    version: "v1.305",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
@@ -11806,6 +11955,9 @@ async function bootstrap() {
     // 🚀 DB 인덱스 최적화 실행
     await optimizeDBIndexes();
     
+    // 🦊 여우 봇 초기화
+    await initializeFoxBot();
+    
     // 🔧 이상한 쿨타임 값 정리 (서버 시작 시 1회 실행)
     try {
       const now = new Date();
@@ -11936,6 +12088,9 @@ async function bootstrap() {
       console.log(`🚀 Server listening on http://localhost:${PORT}`);
       console.log("MongoDB connection state:", mongoose.connection.readyState);
       console.log("[Quest] Daily Quest system initialized");
+      
+      // 🦊 여우 봇을 접속자 명단에 추가
+      addFoxBotToConnectedUsers();
     });
   } catch (error) {
     console.error("❌ Failed to connect to MongoDB:", error);

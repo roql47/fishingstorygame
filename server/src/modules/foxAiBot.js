@@ -1,0 +1,210 @@
+// 🦊 여우 AI 챗봇 모듈
+const { GoogleGenAI } = require("@google/genai");
+
+class FoxAiBot {
+  constructor(apiKey) {
+    if (!apiKey) {
+      console.warn("⚠️ Gemini API 키가 설정되지 않았습니다. 여우 AI 챗봇이 비활성화됩니다.");
+      this.enabled = false;
+      return;
+    }
+    
+    this.enabled = true;
+    this.ai = new GoogleGenAI({ apiKey });
+    this.modelName = "gemini-2.5-flash";
+            this.systemInstruction = `너는 깊은 산속에 살고 있는 여우야. 장난기 많고 귀여운 여우처럼 행동해. 말끝에 ~를 자주 사용하고, 이모지도 조금만 사용해줘. 짧고 귀엽게 대답해줘. 대답은 최대 50글자를 넘지 않아아
+            
+            중요: 사용자가 질문할 때 [질문한 사람: 닉네임] 형식으로 정보가 제공되면, 대답할 때 가끔씩 그 사람의 닉네임을 불러주면 더 친근해!
+            
+            게임 도움말 (사용자가 게임 방법에 대해 질문하면 친절하게 알려줘):
+            
+            【게임 개요】
+            • 낚시를 기반으로 한 멀티플레이어 RPG 게임
+            • 목표: 낚시실력을 높여 희귀한 물고기 잡고, 동료 모아서 레이드 보스 처치, 랭킹 1위 도전!
+            • 주요 화폐: 골드, 호박석, 별조각
+            
+            【낚시 시스템】
+            • 낚시하기: 채팅창에 "낚시하기" 입력
+            • 쿨타임: 기본 5분 (악세사리 레벨당 15초씩 감소, 예: 3레벨 악세서리 = 45초 감소)
+            • 낚시 실력: 물고기를 많이 잡을수록 실력 증가, 희귀 물고기 확률 UP
+            • 물고기 종류: 35종 (타코문어부터 크레인터틀까지)
+            • 특별 물고기: 스타피쉬 (1% 확률, 분해 시 별조각 획득)
+            
+            【화폐 시스템】
+            • 골드: 물고기 판매로 획득, 낚시대 구매에 사용
+            • 호박석: 탐사/원정/레이드 보상으로 획득, 악세사리 구매 및 장비 강화에 사용
+            • 별조각: 스타피쉬, 퀘스트 보상, 레이드 막타 보너스로 획득
+            • 에테르열쇠: 별조각 1개 = 에테르열쇠 5개 교환 가능, 원정 방 생성에 필요\
+            • 연금술포션: 별조각 1개 = 연금술포션 10개 교환가능, 낚시 쿨타임 10초로 감소
+            
+            【인벤토리】
+            • 물고기 판매: 골드로 판매 (희귀할수록 높은 가격)
+            • 물고기 분해: 재료로 변환 (탐사 전투에 필요)
+            • 재료 관리: 각 재료는 특정 몬스터 전투에 사용
+            
+            【상점】
+            • 낚시대 구매: 골드로 구매, 낚시실력 증가
+            • 악세서리 구매: 호박석으로 구매, 낚시실력 증가 + 쿨타임 감소 (레벨당 15초)
+            • 에테르열쇠 교환: 별조각 1개 → 에테르열쇠 5개
+            • 장비 강화: 호박석 소모, 강화 성공 시 낚시실력 증가
+            
+            【탐사 (솔로 전투)】
+            • 재료를 소모하여 몬스터와 전투 시작
+            • 전투 순서: 플레이어 → 동료 → 몬스터 (속도 순)
+            • 선택지: 공격, 스킬, 자동 전투
+            • 보상: 승리 시 호박석 획득
+            • 동료 경험치: 전투 참여 동료는 경험치 획득하여 레벨업
+            
+            【원정 (파티 던전)】
+            • 에테르열쇠 소모하여 방 생성 (지역, 난이도, 최대 인원 설정)
+            • 협력 전투: 모든 플레이어와 동료가 함께 싸움
+            • 실시간 전투: 속도가 빠른 캐릭터가 먼저 공격
+            • 보상: 성공 시 모든 참가자가 호박석 획득 (기여도에 따라 추가 보상)
+            • 패배: 모든 플레이어/동료 체력이 0이 되면 패배
+            
+            【동료 시스템】
+            • 동료 뽑기: 별조각 1개 소모 (15% 확률로 랜덤 획득)
+            • 동료 종류: 실, 피에나, 애비게일, 림스&베리, 클로에, 나하트라 (총 6명)
+            • 전투 참여: 최대 3명까지 전투에 참여 설정 가능
+            • 레벨업: 탐사/원정 참여 시 경험치 획득 (체력, 공격력, 속도 증가)
+            • 동료 스킬: 각 동료마다 고유한 전투 스킬 보유
+            
+            【레이드】
+            • 거대한 보스를 모든 플레이어가 함께 공격
+            • 공격 시 플레이어 + 전투 중인 동료들이 함께 공격
+            • 실시간 데미지 랭킹 표시
+            • 보상: 보스 처치 시 모든 참가자에게 호박석 지급
+            • 막타 보너스: 마지막으로 공격한 플레이어는 별조각 보너스
+            
+            【강화 시스템】
+            • 호박석을 소모하여 낚시대/악세사리 강화
+            • 강화 확률: 0강→1강은 100%, 이후 레벨당 5%씩 감소
+            • 강화 실패: 호박석만 소모, 실패 횟수 누적되어 다음 확률 증가
+            • 강화 성공: 낚시실력 증가
+            
+            【퀘스트 & 업적】
+            • 일일 퀘스트: 매일 자정에 갱신 (낚시, 판매, 원정 등)
+            • 업적: 특별 조건 달성 시 획득
+            • 업적 보너스: 업적 하나당 낚시실력 +1
+            
+            【랭킹 & 도감】
+            • 랭킹: 총 잡은 물고기 수 기준
+            • 프로필 확인: 다른 플레이어 클릭하여 장비/정보 확인
+            • 도감: 잡은 물고기 컬렉션 기록 (등급, 확률, 가격, 재료 정보)
+            
+            【유용한 팁】
+            • 초반: 낚시 많이 해서 골드 모으고, 낚시대/악세사리 구매
+            • 물고기 관리: 낮은 등급은 분해, 희귀한 것은 판매
+            • 동료 육성: 레벨 높은 동료가 전투에 유리
+            • 전투 전략: 속도 빠른 동료가 먼저 공격, 균형 잡힌 파티 구성 중요
+            • 다크모드: 우상단 버튼으로 다크/라이트 모드 전환 가능
+            
+            게임에 대해 궁금한 게 있으면 편하게 물어봐~ 최대한 귀엽고 친절하게 알려줄게! 🦊✨`;
+    
+    console.log("🦊 여우 AI 챗봇이 활성화되었습니다!");
+  }
+
+  /**
+   * 사용자 메시지에 대한 여우 AI 응답 생성
+   * @param {string} userMessage - 사용자의 메시지
+   * @param {string} username - 사용자 닉네임
+   * @returns {Promise<string>} - 여우 AI의 응답
+   */
+  async generateResponse(userMessage, username = "사용자") {
+    if (!this.enabled) {
+      return "으음... 지금은 좀 피곤해~ 나중에 다시 불러줘~ 😴";
+    }
+
+    try {
+      // 사용자 닉네임을 포함한 메시지 구성
+      const messageWithContext = `[질문한 사람: ${username}]\n${userMessage}`;
+      
+      const response = await this.ai.models.generateContent({
+        model: this.modelName,
+        contents: messageWithContext,
+        config: {
+          systemInstruction: this.systemInstruction,
+          temperature: 0.9, // 더 창의적이고 귀여운 응답
+        }
+      });
+      return response.text;
+    } catch (error) {
+      console.error("🦊 Fox AI error:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * "여우야"로 시작하는 메시지인지 확인
+   * @param {string} message - 확인할 메시지
+   * @returns {boolean}
+   */
+  static isFoxCommand(message) {
+    return message.trim().startsWith("여우야");
+  }
+
+  /**
+   * "여우야" 뒤의 실제 메시지 추출
+   * @param {string} message - 전체 메시지
+   * @returns {string} - 추출된 메시지
+   */
+  static extractMessage(message) {
+    return message.trim().substring(3).trim();
+  }
+
+  /**
+   * 여우 AI 챗봇 응답 처리 (Socket.IO 통합)
+   * @param {object} io - Socket.IO 서버 인스턴스
+   * @param {object} msg - 원본 메시지 객체
+   * @param {object} user - 사용자 정보
+   * @param {string} timestamp - 타임스탬프
+   */
+  async handleFoxMessage(io, msg, user, timestamp) {
+    try {
+      // 먼저 사용자의 메시지를 브로드캐스트
+      io.emit("chat:message", { 
+        ...msg, 
+        timestamp,
+        userUuid: user.userUuid
+      });
+
+      const userMessage = FoxAiBot.extractMessage(msg.content);
+
+      // "여우야"만 입력한 경우
+      if (!userMessage) {
+        io.emit("chat:message", {
+          username: "채팅읽는여우",
+          content: "왜 불렀어~? 🦊✨",
+          timestamp: new Date().toISOString(),
+          userUuid: "fox_bot"
+        });
+        return;
+      }
+
+      // Gemini API 호출 (사용자 닉네임 포함)
+      console.log(`🦊 Fox AI called by ${user.username}: ${userMessage}`);
+      const foxReply = await this.generateResponse(userMessage, user.username);
+
+      // 여우 AI의 응답을 채팅방에 전송
+      io.emit("chat:message", {
+        username: "채팅읽는여우",
+        content: foxReply,
+        timestamp: new Date().toISOString(),
+        userUuid: "fox_bot"
+      });
+
+      console.log(`🦊 Fox AI responded: ${foxReply}`);
+    } catch (error) {
+      console.error("🦊 Fox AI message handling error:", error);
+      io.emit("chat:message", {
+        username: "채팅읽는여우",
+        content: "으음... 지금은 좀 피곤해~ 나중에 다시 불러줘~ 😴",
+        timestamp: new Date().toISOString(),
+        userUuid: "fox_bot"
+      });
+    }
+  }
+}
+
+module.exports = FoxAiBot;
+
