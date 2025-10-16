@@ -2146,7 +2146,7 @@ setInterval(() => {
   } else {
     console.log('⚠️ Skipping users:update broadcast - no users to send');
   }
-}, 30000); // 30초
+}, 60000); // 60초 (더 여유롭게)
 
 // 📊 보안 모니터링 시스템
 const securityMonitor = {
@@ -3603,17 +3603,17 @@ io.on("connection", (socket) => {
       
       console.log(`Remaining connections for ${user.userUuid}:`, remainingConnections.length);
       
-      // 즉시 제거하지 않고 30분 유예 시간 부여 (모바일 백그라운드 대응)
+      // 즉시 제거하지 않고 5분 유예 시간 부여 (모바일 백그라운드 대응)
       if (remainingConnections.length === 0) {
-        console.log(`⏰ 30분 유예 시간 시작: ${user.displayName} (${user.userUuid})`);
+        console.log(`⏰ 5분 유예 시간 시작: ${user.displayName} (${user.userUuid})`);
         
         const graceTimeout = setTimeout(() => {
-          // 30분 후에도 재연결하지 않으면 퇴장 처리
+          // 5분 후에도 재연결하지 않으면 퇴장 처리
           const stillDisconnected = !Array.from(connectedUsers.values())
             .some(u => u.userUuid === user.userUuid);
           
           if (stillDisconnected) {
-            console.log(`⏰ 30분 유예 시간 만료: ${user.displayName} 퇴장 처리`);
+            console.log(`⏰ 5분 유예 시간 만료: ${user.displayName} 퇴장 처리`);
             disconnectionGracePeriod.delete(user.userUuid);
             
             // 퇴장 메시지 전송
@@ -3630,7 +3630,7 @@ io.on("connection", (socket) => {
               io.emit("users:update", uniqueUsers);
             }
           }
-        }, 30 * 60 * 1000); // 30분 = 30 * 60 * 1000ms
+        }, 5 * 60 * 1000); // 5분 = 5 * 60 * 1000ms
         
         disconnectionGracePeriod.set(user.userUuid, {
           timeoutId: graceTimeout,
@@ -3647,6 +3647,17 @@ io.on("connection", (socket) => {
       if (uniqueUsers.length > 0) {
         io.emit("users:update", uniqueUsers);
       }
+    }
+  });
+
+  // 연결 상태 체크 이벤트
+  socket.on("check:connection-status", ({ userUuid }) => {
+    const isRegistered = Array.from(connectedUsers.values())
+      .some(userData => userData.userUuid === userUuid);
+    
+    if (!isRegistered) {
+      console.log(`⚠️ 사용자 ${userUuid}가 명단에 없음 - 재가입 필요`);
+      socket.emit('connection:not-registered');
     }
   });
 

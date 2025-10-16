@@ -18,14 +18,14 @@ document.addEventListener('visibilitychange', () => {
     isBackground = true;
     console.log('📱 앱이 백그라운드로 전환됨');
     
-    // 30초마다 keep-alive 전송하여 연결 유지
+    // 10초마다 keep-alive 전송하여 연결 유지 (더 빠른 감지)
     backgroundTimer = setInterval(() => {
       const socket = getSocket();
       if (socket && socket.connected) {
         socket.emit('keep-alive');
         console.log('📡 백그라운드 keep-alive 전송');
       }
-    }, 30000);
+    }, 10000);
   } else {
     // 포그라운드로 복귀
     isBackground = false;
@@ -144,6 +144,33 @@ export function getSocket() {
     
     socket.on('reconnect', (attemptNumber) => {
       console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
+    });
+    
+    // 연결 상태 주기적 체크 (30초마다)
+    setInterval(() => {
+      const socket = getSocket();
+      const nickname = localStorage.getItem("nickname");
+      const userUuid = localStorage.getItem("userUuid");
+      
+      if (socket && socket.connected && nickname && userUuid) {
+        // 서버에 연결 상태 확인 요청
+        socket.emit('check:connection-status', { userUuid });
+      }
+    }, 30000);
+    
+    // 서버 응답에서 명단에 없다고 하면 자동 재가입
+    socket.on('connection:not-registered', () => {
+      const nickname = localStorage.getItem("nickname");
+      const userUuid = localStorage.getItem("userUuid");
+      const idToken = localStorage.getItem("idToken");
+      
+      console.log('⚠️ 명단에서 사라짐 감지 - 자동 재가입');
+      socket.emit("chat:join", { 
+        username: nickname, 
+        idToken, 
+        userUuid,
+        isReconnection: true 
+      });
     });
     
     // 서버에서 보낸 ping에 응답
