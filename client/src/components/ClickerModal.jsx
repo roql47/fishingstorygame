@@ -535,14 +535,28 @@ const ClickerModal = ({
               {/* 스테이지 업그레이드 버튼 */}
               {(completedDifficulties[currentStage] >= 10) && (
                 <button
-                  onClick={() => setShowUpgradeModal(true)}
-                  className={`w-full py-4 rounded-xl font-bold text-lg transition-all duration-300 hover:scale-[1.02] ${
-                    isDarkMode 
-                      ? "bg-green-500/20 text-green-400 border-2 border-green-500/50 hover:bg-green-500/30" 
-                      : "bg-green-500/10 text-green-700 border-2 border-green-500/50 hover:bg-green-500/20"
+                  onClick={() => {
+                    if (currentStage + 1 > fishingSkill) {
+                      alert(`낚시실력이 부족합니다.\n\n필요 낚시실력: ${currentStage + 1}\n현재 낚시실력: ${fishingSkill}`);
+                      return;
+                    }
+                    setShowUpgradeModal(true);
+                  }}
+                  disabled={currentStage + 1 > fishingSkill}
+                  className={`w-full py-4 rounded-xl font-bold text-lg transition-all duration-300 ${
+                    currentStage + 1 > fishingSkill
+                      ? (isDarkMode 
+                        ? "bg-gray-700/50 text-gray-500 border-2 border-gray-600/50 cursor-not-allowed" 
+                        : "bg-gray-300/50 text-gray-500 border-2 border-gray-400/50 cursor-not-allowed")
+                      : (isDarkMode 
+                        ? "bg-green-500/20 text-green-400 border-2 border-green-500/50 hover:bg-green-500/30 hover:scale-[1.02]" 
+                        : "bg-green-500/10 text-green-700 border-2 border-green-500/50 hover:bg-green-500/20 hover:scale-[1.02]")
                   }`}
                 >
-                  스테이지 {currentStage + 1} 잠금해제
+                  {currentStage + 1 > fishingSkill 
+                    ? `스테이지 ${currentStage + 1} (낚시실력 ${currentStage + 1} 필요)` 
+                    : `스테이지 ${currentStage + 1} 잠금해제`
+                  }
                 </button>
               )}
             </div>
@@ -832,6 +846,50 @@ const ClickerModal = ({
               </div>
             </div>
 
+            {/* 낚시실력 요구 조건 */}
+            <div className={`p-5 rounded-2xl ${
+              currentStage + 1 > fishingSkill
+                ? (isDarkMode 
+                  ? "bg-gradient-to-br from-red-900/20 to-pink-900/20 border border-red-500/30" 
+                  : "bg-gradient-to-br from-red-50 to-pink-50 border border-red-400/50")
+                : (isDarkMode 
+                  ? "bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30" 
+                  : "bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-400/50")
+            }`}>
+              <div className={`text-sm font-bold mb-3 ${
+                currentStage + 1 > fishingSkill
+                  ? (isDarkMode ? "text-red-300" : "text-red-700")
+                  : (isDarkMode ? "text-blue-300" : "text-blue-700")
+              }`}>
+                필요 낚시실력
+              </div>
+              <div className="flex items-center justify-between">
+                <div className={`text-xl font-bold ${
+                  isDarkMode ? "text-white" : "text-gray-900"
+                }`}>
+                  낚시실력 {currentStage + 1}
+                </div>
+                <div className={`text-2xl font-black ${
+                  currentStage + 1 > fishingSkill
+                    ? (isDarkMode ? "text-red-400" : "text-red-600")
+                    : (isDarkMode ? "text-green-400" : "text-green-600")
+                }`}>
+                  {currentStage + 1 > fishingSkill ? '✗' : '✓'}
+                </div>
+              </div>
+              <div className="mt-2">
+                <div className={`text-sm ${
+                  isDarkMode ? "text-gray-400" : "text-gray-600"
+                }`}>
+                  현재 낚시실력: <span className={`font-bold ${
+                    currentStage + 1 > fishingSkill
+                      ? (isDarkMode ? "text-red-400" : "text-red-600")
+                      : (isDarkMode ? "text-green-400" : "text-green-600")
+                  }`}>{fishingSkill}</span>
+                </div>
+              </div>
+            </div>
+
             {/* 재료 정보 */}
             <div className={`p-5 rounded-2xl ${
               isDarkMode 
@@ -887,10 +945,15 @@ const ClickerModal = ({
               </button>
               <button
                 onClick={handleUpgradeStage}
-                className={`flex-1 py-3 rounded-xl font-bold transition-all duration-300 hover:scale-[1.02] shadow-lg ${
-                  isDarkMode 
-                    ? "bg-gradient-to-r from-green-600 to-emerald-600 hover:shadow-green-500/50 text-white" 
-                    : "bg-gradient-to-r from-green-500 to-emerald-500 hover:shadow-green-400/50 text-white"
+                disabled={currentStage + 1 > fishingSkill || getMaterialCount(getRequiredMaterial()?.material) < 100}
+                className={`flex-1 py-3 rounded-xl font-bold transition-all duration-300 ${
+                  currentStage + 1 > fishingSkill || getMaterialCount(getRequiredMaterial()?.material) < 100
+                    ? (isDarkMode 
+                      ? "bg-gray-700 text-gray-500 cursor-not-allowed" 
+                      : "bg-gray-300 text-gray-500 cursor-not-allowed")
+                    : (isDarkMode 
+                      ? "bg-gradient-to-r from-green-600 to-emerald-600 hover:shadow-green-500/50 hover:scale-[1.02] shadow-lg text-white" 
+                      : "bg-gradient-to-r from-green-500 to-emerald-500 hover:shadow-green-400/50 hover:scale-[1.02] shadow-lg text-white")
                 }`}
               >
                 업그레이드

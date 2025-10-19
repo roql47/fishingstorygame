@@ -7926,6 +7926,20 @@ app.post("/api/clicker/upgrade-stage", authenticateJWT, async (req, res) => {
     
     const currentStage = clickerStage.currentStage;
     
+    // 낚시실력 조회
+    const fishingSkillData = await FishingSkillModel.findOne(query);
+    const userFishingSkill = fishingSkillData?.skill || 0;
+    
+    // 낚시실력 제한 확인 (다음 스테이지가 낚시실력을 초과하는지 체크)
+    const nextStage = currentStage + 1;
+    if (nextStage > userFishingSkill) {
+      return res.status(400).json({ 
+        error: `낚시실력이 부족합니다. 스테이지 ${nextStage}는 낚시실력 ${nextStage} 이상이 필요합니다. (현재: ${userFishingSkill})`,
+        requiredSkill: nextStage,
+        currentSkill: userFishingSkill
+      });
+    }
+    
     // 현재 스테이지의 10 난이도를 클리어했는지 확인
     const completedDiff = clickerStage.completedDifficulties.get(String(currentStage)) || 0;
     if (completedDiff < 10) {
