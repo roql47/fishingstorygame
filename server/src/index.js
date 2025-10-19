@@ -18,13 +18,15 @@ const infoLog = console.log; // 중요한 로그는 유지
 const errorLog = console.error; // 에러 로그는 항상 유지
 
 // 레이드 시스템 모듈 import
-const { setupRaidRoutes, setupRaidWebSocketEvents } = require('./routes/raidRoutes');
+const { setupRaidRoutes, setupRaidWebSocketEvents, raidSystem } = require('./routes/raidRoutes');
+const RaidScheduler = require('./modules/raidScheduler');
 
 // 원정 시스템 모듈 import
 const setupExpeditionRoutes = require('./routes/expeditionRoutes');
 
 // 🦊 여우 AI 챗봇 모듈 import
 const FoxAiBot = require('./modules/foxAiBot');
+const roguelikeSystem = require('./modules/roguelikeSystem');
 
 // 📱 모바일 백그라운드 유예 시간 관리 (30분)
 const disconnectionGracePeriod = new Map(); // userUuid -> { timeoutId, userData }
@@ -1017,6 +1019,19 @@ const companionStatsSchema = new mongoose.Schema({
 companionStatsSchema.index({ userUuid: 1, companionName: 1 }, { unique: true, sparse: true });
 
 const CompanionStatsModel = mongoose.model("CompanionStats", companionStatsSchema);
+
+// 🎮 클리커 게임 스테이지 스키마
+const clickerStageSchema = new mongoose.Schema({
+  userId: { type: String, required: true },
+  username: { type: String, required: true },
+  userUuid: { type: String, index: true },
+  currentStage: { type: Number, default: 1 }, // 현재 스테이지 (1, 2, 3...)
+  completedDifficulties: { type: Map, of: Number, default: {} }, // 각 스테이지별 완료한 최고 난이도
+}, { timestamps: true });
+
+clickerStageSchema.index({ userUuid: 1 }, { unique: true, sparse: true });
+
+const ClickerStageModel = mongoose.model("ClickerStage", clickerStageSchema);
 
 // 레이드 보스 처치 횟수 추적 스키마
 const raidKillCountSchema = new mongoose.Schema({
@@ -2238,6 +2253,7 @@ io.on("connection", (socket) => {
       let info = null;
       let socialId = null;
       let provider = 'guest';
+      let tokenVerificationFailed = false;
       
       if (idToken && idToken.startsWith('kakao_')) {
         // 카카오 토큰 처리
@@ -2246,6 +2262,10 @@ io.on("connection", (socket) => {
           socialId = info.sub;
           provider = 'kakao';
           console.log("Kakao login detected:", { socialId, provider });
+        } else {
+          // 카카오 토큰이 있지만 검증 실패
+          tokenVerificationFailed = true;
+          console.log("Kakao token verification failed");
         }
       } else if (idToken) {
         // 구글 토큰 처리
@@ -2254,7 +2274,20 @@ io.on("connection", (socket) => {
           socialId = info.sub;
           provider = 'google';
           console.log("Google login detected:", { socialId, provider });
+        } else {
+          // 구글 토큰이 있지만 검증 실패 (만료 등)
+          tokenVerificationFailed = true;
+          console.log("Google token verification failed - possibly expired");
         }
+      }
+      
+      // 토큰 검증 실패 시 클라이언트에게 재로그인 요청
+      if (tokenVerificationFailed) {
+        socket.emit("join:error", { 
+          type: "TOKEN_EXPIRED",
+          message: "소셜 로그인 토큰이 만료되었습니다. 다시 로그인해주세요." 
+        });
+        return; // 더 이상 진행하지 않음
       }
       
             // UUID 기반 사용자 등록/조회
@@ -3561,6 +3594,37 @@ io.on("connection", (socket) => {
           timestamp,
         });
       }
+    } else if (trimmed === "로그라이크") {
+      // 🎮 로그라이크 게임 시작
+      try {
+        const result = await roguelikeSystem.startGame(user.userUuid, user.username);
+        
+        if (result.error) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: `❌ ${result.error}`,
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // 게임 시작 성공
+        socket.emit("roguelike:start", {
+          gameState: result.gameState,
+          event: result.event
+        });
+
+        console.log(`🎮 Roguelike started: ${user.username} (${user.userUuid})`);
+      } catch (error) {
+        console.error("Roguelike start error:", error);
+        socket.emit("chat:message", {
+          system: true,
+          username: "system",
+          content: "🚫 로그라이크 시작 중 오류가 발생했습니다.",
+          timestamp: new Date().toISOString()
+        });
+      }
     } else if (FoxAiBot.isFoxCommand(trimmed)) {
       // 🦊 여우 AI 챗봇 응답 (모듈 사용)
       await foxAiBot.handleFoxMessage(io, msg, user, timestamp);
@@ -3571,6 +3635,101 @@ io.on("connection", (socket) => {
         timestamp,
         userUuid: user.userUuid // 📸 프로필 이미지용 userUuid 추가
       });
+    }
+  });
+
+  // 🎮 로그라이크 선택 처리
+  socket.on("roguelike:choice", async (data) => {
+    try {
+      const user = connectedUsers.get(socket.id);
+      if (!user || !user.userUuid) {
+        socket.emit("chat:error", { message: "사용자 인증이 필요합니다." });
+        return;
+      }
+
+      const { choiceId, eventData } = data;
+      const result = await roguelikeSystem.processChoice(user.userUuid, choiceId, eventData);
+
+      if (result.error) {
+        socket.emit("chat:message", {
+          system: true,
+          username: "system",
+          content: `❌ ${result.error}`,
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      if (result.gameOver) {
+        // 게임 종료
+        socket.emit("roguelike:end", {
+          result: result.result,
+          message: result.message,
+          finalState: result.finalState,
+          rewards: result.rewards
+        });
+
+        // 승리 시 별조각 보상 안내 메시지
+        if (result.result === '승리') {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: result.message,
+            timestamp: new Date().toISOString()
+          });
+
+          // 사용자 데이터 업데이트 전송
+          sendUserDataUpdate(socket, user.userUuid, user.username);
+        }
+      } else {
+        // 다음 이벤트
+        socket.emit("roguelike:event", {
+          result: result.result,
+          gameState: result.gameState,
+          nextEvent: result.nextEvent
+        });
+      }
+
+      console.log(`🎮 Roguelike choice: ${user.username} - ${choiceId}`);
+    } catch (error) {
+      console.error("Roguelike choice error:", error);
+      socket.emit("chat:message", {
+        system: true,
+        username: "system",
+        content: "🚫 선택 처리 중 오류가 발생했습니다.",
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // 🎮 로그라이크 포기
+  socket.on("roguelike:abandon", async (data) => {
+    try {
+      const user = connectedUsers.get(socket.id);
+      if (!user || !user.userUuid) {
+        socket.emit("chat:error", { message: "사용자 인증이 필요합니다." });
+        return;
+      }
+
+      const result = roguelikeSystem.abandonGame(user.userUuid);
+
+      if (result.error) {
+        socket.emit("chat:message", {
+          system: true,
+          username: "system",
+          content: `❌ ${result.error}`,
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      socket.emit("roguelike:abandoned", {
+        message: result.message
+      });
+
+      console.log(`🎮 Roguelike abandoned: ${user.username}`);
+    } catch (error) {
+      console.error("Roguelike abandon error:", error);
     }
   });
 
@@ -7645,6 +7804,223 @@ app.post("/api/add-amber", authenticateJWT, async (req, res) => {
   }
 });
 
+// 🎮 클리커 스테이지 조회 API
+app.get("/api/clicker/stage", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid, username } = req.user;
+    
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    let clickerStage = await ClickerStageModel.findOne(query);
+    
+    if (!clickerStage) {
+      clickerStage = new ClickerStageModel({
+        userId: query.userId || 'user',
+        username: query.username || username,
+        userUuid: query.userUuid || userUuid,
+        currentStage: 1,
+        completedDifficulties: {}
+      });
+      await clickerStage.save();
+    }
+    
+    res.json({
+      success: true,
+      currentStage: clickerStage.currentStage,
+      completedDifficulties: clickerStage.completedDifficulties
+    });
+  } catch (error) {
+    console.error("Failed to get clicker stage:", error);
+    res.status(500).json({ error: "Failed to get clicker stage" });
+  }
+});
+
+// 🎮 클리커 스테이지 업그레이드 API
+app.post("/api/clicker/upgrade-stage", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid, username } = req.user;
+    
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    // 클리커 스테이지 조회
+    let clickerStage = await ClickerStageModel.findOne(query);
+    if (!clickerStage) {
+      return res.status(404).json({ error: "스테이지 정보를 찾을 수 없습니다." });
+    }
+    
+    const currentStage = clickerStage.currentStage;
+    
+    // 현재 스테이지의 10 난이도를 클리어했는지 확인
+    const completedDiff = clickerStage.completedDifficulties.get(String(currentStage)) || 0;
+    if (completedDiff < 10) {
+      return res.status(400).json({ error: `${currentStage}-10 난이도를 먼저 클리어해야 합니다.` });
+    }
+    
+    // 필요한 재료 결정
+    const requiredMaterial = allFishData.find(f => f.rank === currentStage)?.material;
+    if (!requiredMaterial) {
+      return res.status(400).json({ error: "필요한 재료를 찾을 수 없습니다." });
+    }
+    
+    // 재료 100개 확인
+    const materialEntry = await MaterialModel.findOne({
+      ...query,
+      material: requiredMaterial
+    });
+    
+    if (!materialEntry || materialEntry.count < 100) {
+      return res.status(400).json({ 
+        error: `${requiredMaterial} 100개가 필요합니다. (현재: ${materialEntry?.count || 0}개)`,
+        requiredMaterial,
+        currentCount: materialEntry?.count || 0
+      });
+    }
+    
+    // 재료 차감
+    materialEntry.count -= 100;
+    await materialEntry.save();
+    
+    // 스테이지 업그레이드
+    clickerStage.currentStage += 1;
+    await clickerStage.save();
+    
+    res.json({
+      success: true,
+      newStage: clickerStage.currentStage,
+      message: `${requiredMaterial} 100개를 사용하여 스테이지 ${clickerStage.currentStage}로 업그레이드했습니다!`
+    });
+  } catch (error) {
+    console.error("Failed to upgrade clicker stage:", error);
+    res.status(500).json({ error: "Failed to upgrade clicker stage" });
+  }
+});
+
+// 🎮 클리커 게임 보상 API
+app.post("/api/clicker/reward", authenticateJWT, async (req, res) => {
+  try {
+    const { difficulty, stage } = req.body;
+    const { userUuid, username } = req.user;
+    
+    const currentStage = parseInt(stage) || 1;
+    const difficultyLevel = parseInt(difficulty);
+    
+    // 난이도 검증 (1-10)
+    if (isNaN(difficultyLevel) || difficultyLevel < 1 || difficultyLevel > 10) {
+      return res.status(400).json({ error: "Invalid difficulty. Must be between 1 and 10." });
+    }
+    
+    // 난이도 기반 보상 설정
+    let rewardFish = [];
+    
+    // 보상 물고기 개수 계산
+    // 난이도 1: 1마리 고정
+    // 난이도 2: 1~2마리
+    // 난이도 3: 2~3마리
+    // ...
+    // 난이도 10: 9~10마리
+    const minCount = Math.max(1, difficultyLevel - 1);
+    const maxCount = difficultyLevel;
+    const rewardCount = difficultyLevel === 1 ? 1 : Math.floor(Math.random() * (maxCount - minCount + 1)) + minCount;
+    
+    // 보상 물고기 등급 (스테이지 기반)
+    const fishRank = currentStage;
+    const minRank = fishRank;
+    const maxRank = fishRank;
+    
+    // 해당 등급 범위의 물고기 필터링
+    const availableFish = allFishData.filter(f => f.rank >= minRank && f.rank <= maxRank && f.rank > 0);
+    
+    // 보상이 없는 경우 처리
+    if (availableFish.length === 0) {
+      const fallbackFish = allFishData.filter(f => f.rank >= 1 && f.rank <= 2);
+      if (fallbackFish.length > 0) {
+        availableFish.push(...fallbackFish);
+      }
+    }
+    
+    // 보상 물고기 선택 (같은 물고기면 합산)
+    if (availableFish.length > 0) {
+      const selectedFish = availableFish[Math.floor(Math.random() * availableFish.length)];
+      rewardFish.push({ 
+        name: selectedFish.name, 
+        count: rewardCount  // 개수를 합산해서 한 번에 지급
+      });
+    }
+    
+    // 보상 지급
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    // 각 물고기를 인벤토리에 추가
+    for (const reward of rewardFish) {
+      let catchEntry = await CatchModel.findOne({
+        ...query,
+        fish: reward.name
+      });
+      
+      if (catchEntry) {
+        catchEntry.count += reward.count;
+        await catchEntry.save();
+      } else {
+        catchEntry = new CatchModel({
+          userId: query.userId || 'user',
+          username: query.username || username,
+          userUuid: query.userUuid || userUuid,
+          fish: reward.name,
+          count: reward.count
+        });
+        await catchEntry.save();
+      }
+    }
+    
+    // 난이도 완료 기록 업데이트
+    const stageQueryResult = await getUserQuery('user', username, userUuid);
+    let stageQuery;
+    if (stageQueryResult.userUuid) {
+      stageQuery = { userUuid: stageQueryResult.userUuid };
+    } else {
+      stageQuery = stageQueryResult;
+    }
+    
+    let clickerStage = await ClickerStageModel.findOne(stageQuery);
+    if (clickerStage) {
+      const currentCompleted = clickerStage.completedDifficulties.get(String(currentStage)) || 0;
+      if (difficultyLevel > currentCompleted) {
+        clickerStage.completedDifficulties.set(String(currentStage), difficultyLevel);
+        await clickerStage.save();
+      }
+    }
+    
+    res.json({
+      success: true,
+      rewards: rewardFish
+    });
+  } catch (error) {
+    console.error("Failed to give clicker reward:", error);
+    res.status(500).json({ 
+      error: "Failed to give clicker reward", 
+      details: error.message
+    });
+  }
+});
+
 // 🚀 서버 측 물고기 데이터 (allFishData와 완전 동기화 - 버그 완전 수정)
 const getServerFishData = () => {
   return allFishData; // 동일한 데이터 사용으로 모든 불일치 해결
@@ -9858,14 +10234,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.305"
+    version: "v1.310"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.305",
+    version: "v1.310",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
@@ -12095,10 +12471,16 @@ async function bootstrap() {
     // 리셋 스케줄링 시작
     scheduleQuestReset();
     
+    // 🕛 레이드 자동 소환 스케줄러 초기화
+    const raidScheduler = new RaidScheduler(raidSystem, io);
+    global.raidScheduler = raidScheduler; // 전역으로 설정하여 API에서 접근 가능하도록
+    raidScheduler.start();
+    
     server.listen(PORT, () => {
       console.log(`🚀 Server listening on http://localhost:${PORT}`);
       console.log("MongoDB connection state:", mongoose.connection.readyState);
       console.log("[Quest] Daily Quest system initialized");
+      console.log("[RaidScheduler] 레이드 자동 소환 스케줄러 초기화 완료");
       
       // 🦊 여우 봇을 접속자 명단에 추가
       addFoxBotToConnectedUsers();

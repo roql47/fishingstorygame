@@ -48,7 +48,8 @@ const ChatTab = ({
   authenticatedRequest,
   alchemyPotions,
   setAlchemyPotions,
-  handleExpeditionInviteClick
+  handleExpeditionInviteClick,
+  setShowClickerModal
 }) => {
   const messagesEndRef = useRef(null);
   
@@ -77,6 +78,13 @@ const ChatTab = ({
     const MAX_MESSAGE_LENGTH = 500;
     if (text.length > MAX_MESSAGE_LENGTH) {
       alert(`메시지는 ${MAX_MESSAGE_LENGTH}자 이하로 입력해 주세요. (현재: ${text.length}자)`);
+      return;
+    }
+    
+    // 🎮 에테르 던전 명령어 체크
+    if (text === "에테르 던전") {
+      setShowClickerModal(true);
+      setInput("");
       return;
     }
     

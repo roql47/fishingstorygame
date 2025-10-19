@@ -21,6 +21,8 @@ import ShopTab from './components/ShopTab';
 import { COMPANION_DATA, calculateCompanionStats } from './data/companionData';
 import { useAchievements, ACHIEVEMENT_DEFINITIONS } from './hooks/useAchievements';
 import AchievementModal from './components/AchievementModal';
+import RoguelikeModal from './components/RoguelikeModal';
+import ClickerModal from './components/ClickerModal';
 import { VERSION_INFO } from './data/noticeData';
 import { CRAFTING_RECIPES, getCraftingRecipe, getDecomposeRecipe, getMaterialTier } from './data/craftingData';
 import { 
@@ -116,11 +118,12 @@ axios.interceptors.response.use(
       return Promise.reject(error);
     }
     
-    // 🔐 JWT 토큰 만료 처리 (401, 403 에러)
+    // 🔐 JWT 토큰 만료 처리 (401, 403 에러) 및 소셜 로그인 토큰 만료
     if ((error.response?.status === 401 || 
         (error.response?.status === 403 && 
          (error.response?.data?.code === "JWT_EXPIRED" || 
           error.response?.data?.code === "JWT_INVALID" || 
+          error.response?.data?.code === "TOKEN_EXPIRED" ||
           error.response?.data?.error?.includes("expired") ||
           error.response?.data?.error?.includes("Invalid")))) &&
         !originalRequest._retry) {
@@ -207,9 +210,9 @@ function App() {
     }
   }, []);
 
-  // 🔄 버전 업데이트 시 캐시 초기화 (v1.305)
+  // 🔄 버전 업데이트 시 캐시 초기화 (v1.310)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.305";
+    const CURRENT_VERSION = "v1.310";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -300,6 +303,7 @@ function App() {
   const [selectedEquipment, setSelectedEquipment] = useState(null);
   const [showEnhancementModal, setShowEnhancementModal] = useState(false);
   const [enhancementEquipment, setEnhancementEquipment] = useState({ name: '', type: '' });
+  const [showClickerModal, setShowClickerModal] = useState(false); // 🎮 클리커 게임 모달
   const [otherUserData, setOtherUserData] = useState(null); // 다른 사용자의 실제 데이터
   const [userEquipment, setUserEquipment] = useState({
     fishingRod: null,
@@ -387,6 +391,12 @@ function App() {
   // 호환성 getter (기존 raidBoss, raidLogs 참조를 위해)
   const raidBoss = raidBosses[selectedRaidType];
   const raidLogsArray = raidLogs[selectedRaidType] || [];
+  
+  // 🎮 로그라이크 게임 관련 상태
+  const [showRoguelikeModal, setShowRoguelikeModal] = useState(false);
+  const [roguelikeGameState, setRoguelikeGameState] = useState(null);
+  const [roguelikeCurrentEvent, setRoguelikeCurrentEvent] = useState(null);
+  const [roguelikeEventResult, setRoguelikeEventResult] = useState(null);
   const [isAttacking, setIsAttacking] = useState(false); // 공격 중 상태
   const [attackCooldown, setAttackCooldown] = useState(0); // 공격 쿨타임 (초)
   
@@ -2964,6 +2974,51 @@ function App() {
     socket.on("raid:log:update", onRaidLogUpdate);
     socket.on("raid:boss:defeated", onRaidBossDefeated);
     
+    // 🎮 로그라이크 게임 이벤트 리스너
+    socket.on("roguelike:start", (data) => {
+      console.log("🎮 Roguelike game started:", data);
+      setRoguelikeGameState(data.gameState);
+      setRoguelikeCurrentEvent(data.event);
+      setShowRoguelikeModal(true);
+    });
+    
+    socket.on("roguelike:event", (data) => {
+      console.log("🎮 Roguelike event:", data);
+      setRoguelikeEventResult(data.result);
+      setTimeout(() => {
+        setRoguelikeGameState(data.gameState);
+        setRoguelikeCurrentEvent(data.nextEvent);
+        setRoguelikeEventResult(null);
+      }, 2000);
+    });
+    
+    socket.on("roguelike:end", (data) => {
+      console.log("🎮 Roguelike game ended:", data);
+      setRoguelikeEventResult({
+        success: data.result === '승리',
+        message: data.message
+      });
+      setTimeout(() => {
+        setShowRoguelikeModal(false);
+        setRoguelikeGameState(null);
+        setRoguelikeCurrentEvent(null);
+        setRoguelikeEventResult(null);
+        
+        // 승리 시 데이터 새로고침
+        if (data.result === '승리') {
+          refreshFishingSkill();
+        }
+      }, 3000);
+    });
+    
+    socket.on("roguelike:abandoned", (data) => {
+      console.log("🎮 Roguelike game abandoned:", data);
+      setShowRoguelikeModal(false);
+      setRoguelikeGameState(null);
+      setRoguelikeCurrentEvent(null);
+      setRoguelikeEventResult(null);
+    });
+    
     // 입장 에러 처리 (닉네임 중복 등)
     const onJoinError = (data) => {
       console.error("Join error:", data);
@@ -2976,6 +3031,33 @@ function App() {
           localStorage.removeItem("nickname");
           localStorage.removeItem("userUuid");
         }
+      } else if (data.type === "TOKEN_EXPIRED") {
+        // 소셜 로그인 토큰 만료 시 처리
+        alert(`🔐 ${data.message}`);
+        console.log("Token expired - logging out and clearing tokens");
+        
+        // 로컬스토리지 토큰 정보 삭제
+        localStorage.removeItem("idToken");
+        localStorage.removeItem("nickname");
+        localStorage.removeItem("userUuid");
+        localStorage.removeItem("jwtToken");
+        
+        // 상태 초기화
+        setUsername("");
+        setUsernameInput("");
+        setIdToken(null);
+        setUserUuid(null);
+        
+        // 소켓 연결 해제 후 페이지 리로드 (로그인 화면으로)
+        const socket = getSocket();
+        if (socket) {
+          socket.disconnect();
+        }
+        
+        // 페이지 리로드하여 로그인 화면으로 이동
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
       } else {
         alert(`입장 실패: ${data.message}`);
       }
@@ -3076,6 +3158,10 @@ function App() {
       socket.off("raid:boss:update", onRaidBossUpdate);
       socket.off("raid:log:update", onRaidLogUpdate);
       socket.off("raid:boss:defeated", onRaidBossDefeated);
+      socket.off("roguelike:start");
+      socket.off("roguelike:event");
+      socket.off("roguelike:end");
+      socket.off("roguelike:abandoned");
     };
   }, [username, idToken]);
 
@@ -5658,6 +5744,30 @@ function App() {
     setActiveTab('expedition');
   }, []);
 
+  // 🎮 로그라이크 선택 처리 함수
+  const handleRoguelikeChoice = useCallback((choiceId, eventData) => {
+    console.log('🎮 Roguelike choice:', choiceId);
+    socket.emit("roguelike:choice", { choiceId, eventData });
+  }, [socket]);
+
+  // 🎮 로그라이크 포기 처리 함수
+  const handleRoguelikeAbandon = useCallback(() => {
+    if (confirm('정말로 게임을 포기하시겠습니까? (보상을 받을 수 없습니다)')) {
+      socket.emit("roguelike:abandon", {});
+    }
+  }, [socket]);
+
+  // 🎮 로그라이크 모달 닫기 함수
+  const handleRoguelikeClose = useCallback(() => {
+    if (roguelikeGameState) {
+      if (confirm('게임이 진행 중입니다. 정말로 닫으시겠습니까? (게임이 유지됩니다)')) {
+        setShowRoguelikeModal(false);
+      }
+    } else {
+      setShowRoguelikeModal(false);
+    }
+  }, [roguelikeGameState]);
+
   // 📸 프로필 모달 열릴 때 localStorage 동기화 및 API 로드
   useEffect(() => {
     if (!showProfile) return;
@@ -7449,7 +7559,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.305
+                여우이야기 v1.310
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -8185,6 +8295,7 @@ function App() {
               alchemyPotions={alchemyPotions}
               setAlchemyPotions={setAlchemyPotions}
               handleExpeditionInviteClick={handleExpeditionInviteClick}
+              setShowClickerModal={setShowClickerModal}
             />
           )}
 
@@ -11150,6 +11261,38 @@ function App() {
         isDarkMode={isDarkMode}
         loading={achievementsLoading}
       />
+
+      {/* 🎮 로그라이크 게임 모달 */}
+      <RoguelikeModal
+        isOpen={showRoguelikeModal}
+        onClose={handleRoguelikeClose}
+        gameState={roguelikeGameState}
+        currentEvent={roguelikeCurrentEvent}
+        onChoice={handleRoguelikeChoice}
+        onAbandon={handleRoguelikeAbandon}
+        isDarkMode={isDarkMode}
+        eventResult={roguelikeEventResult}
+      />
+
+      {/* 🎮 클리커 게임 모달 */}
+      {showClickerModal && (
+        <ClickerModal
+          onClose={() => setShowClickerModal(false)}
+          isDarkMode={isDarkMode}
+          fishingSkill={fishingSkill}
+          userEquipment={userEquipment}
+          getAttackRange={getAttackRange}
+          calculateTotalEnhancementBonus={calculateTotalEnhancementBonus}
+          setInventory={setInventory}
+          materials={materials}
+          setMaterials={setMaterials}
+          serverUrl={serverUrl}
+          authenticatedRequest={authenticatedRequest}
+          username={username}
+          userUuid={userUuid}
+          setMessages={setMessages}
+        />
+      )}
 
           {/* 랭킹 탭 */}
           {activeTab === "ranking" && (

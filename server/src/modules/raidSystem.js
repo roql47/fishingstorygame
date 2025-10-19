@@ -19,41 +19,41 @@ class RaidSystem {
     this.bossTypes = {
       'beginner': {
         name: '마르가글레숨',
-        hp: 8000,
+        hp: 3000,
         requiredSkill: { min: 1, max: 10 },
         rewards: {
-          rank1: 300,
-          rank2: 200,
-          rank3: 150,
-          rank4: 100,
-          rank5: 80,
-          others: 50
+          rank1: 100,
+          rank2: 80,
+          rank3: 60,
+          rank4: 50,
+          rank5: 40,
+          others: 30
         }
       },
       'intermediate': {
         name: '운다발레나',
-        hp: 15000,
+        hp: 10000,
         requiredSkill: { min: 11, max: 20 },
         rewards: {
-          rank1: 500,
-          rank2: 350,
-          rank3: 250,
-          rank4: 180,
-          rank5: 130,
-          others: 80
+          rank1: 800,
+          rank2: 600,
+          rank3: 400,
+          rank4: 300,
+          rank5: 200,
+          others: 150
         }
       },
       'advanced': {
         name: '폭주하는 해신',
-        hp: 30000,
+        hp: 50000,
         requiredSkill: { min: 21, max: 999 },
         rewards: {
-          rank1: 800,
-          rank2: 600,
-          rank3: 450,
-          rank4: 320,
-          rank5: 230,
-          others: 150
+          rank1: 1500,
+          rank2: 1200,
+          rank3: 1050,
+          rank4: 900,
+          rank5: 750,
+          others: 500
         }
       }
     };

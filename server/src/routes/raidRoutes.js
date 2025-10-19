@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const RaidSystem = require('../modules/raidSystem');
 const { AchievementSystem } = require('../modules/achievementSystem');
+const RaidScheduler = require('../modules/raidScheduler');
 
 // 레이드 시스템 인스턴스 생성
 const raidSystem = new RaidSystem();
@@ -568,6 +569,68 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
     }
   };
 
+  // 🕛 레이드 스케줄러 상태 조회 API
+  router.get("/scheduler/status", authenticateJWT, async (req, res) => {
+    try {
+      const { userUuid } = req.user;
+      
+      // 관리자 권한 확인
+      const user = await UserUuidModel.findOne({ userUuid }).lean();
+      if (!user) {
+        return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+      }
+      
+      const jwtIsAdmin = req.user.isAdmin;
+      let dbIsAdmin = user.isAdmin || false;
+      
+      if (!jwtIsAdmin && !dbIsAdmin) {
+        return res.status(403).json({ error: "관리자 권한이 필요합니다." });
+      }
+      
+      // 스케줄러 상태 반환 (전역 스케줄러 인스턴스가 있다면)
+      if (global.raidScheduler) {
+        const status = global.raidScheduler.getStatus();
+        res.json({ success: true, status });
+      } else {
+        res.json({ success: false, error: "스케줄러가 초기화되지 않았습니다." });
+      }
+    } catch (error) {
+      console.error("[Raid] 스케줄러 상태 조회 실패:", error);
+      res.status(500).json({ error: "스케줄러 상태 조회에 실패했습니다." });
+    }
+  });
+
+  // 🕛 수동 레이드 소환 API (관리자 전용)
+  router.post("/scheduler/manual-summon", authenticateJWT, async (req, res) => {
+    try {
+      const { userUuid } = req.user;
+      
+      // 관리자 권한 확인
+      const user = await UserUuidModel.findOne({ userUuid }).lean();
+      if (!user) {
+        return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+      }
+      
+      const jwtIsAdmin = req.user.isAdmin;
+      let dbIsAdmin = user.isAdmin || false;
+      
+      if (!jwtIsAdmin && !dbIsAdmin) {
+        return res.status(403).json({ error: "관리자 권한이 필요합니다." });
+      }
+      
+      // 수동 레이드 소환 실행
+      if (global.raidScheduler) {
+        const results = await global.raidScheduler.triggerManualSummon();
+        res.json({ success: true, results });
+      } else {
+        res.status(500).json({ error: "스케줄러가 초기화되지 않았습니다." });
+      }
+    } catch (error) {
+      console.error("[Raid] 수동 레이드 소환 실패:", error);
+      res.status(500).json({ error: "수동 레이드 소환에 실패했습니다." });
+    }
+  });
+
   return router;
 }
 
@@ -617,6 +680,12 @@ function setupRaidWebSocketEvents(socket, UserUuidModel) {
         }
       }
     }
+  });
+
+  // 🕛 레이드 자동 소환 알림 이벤트
+  socket.on("raid:auto-summon:subscribe", () => {
+    console.log(`[Raid] 사용자가 레이드 자동 소환 알림을 구독했습니다: ${socket.id}`);
+    socket.join('raid-auto-summon');
   });
 }
 

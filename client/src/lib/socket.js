@@ -117,6 +117,23 @@ export function getSocket() {
       isFirstConnection = false;
     });
     
+    // 토큰 만료 에러 처리 (재연결 시 발생 가능)
+    socket.on('join:error', (data) => {
+      if (data.type === 'TOKEN_EXPIRED') {
+        console.log('⚠️ 토큰 만료 감지 - 자동 로그아웃 처리');
+        
+        // 로컬스토리지 토큰 정보 삭제
+        localStorage.removeItem("idToken");
+        localStorage.removeItem("nickname");
+        localStorage.removeItem("userUuid");
+        localStorage.removeItem("jwtToken");
+        
+        // 페이지 리로드하여 로그인 화면으로 이동
+        alert('🔐 로그인 세션이 만료되었습니다. 다시 로그인해주세요.');
+        window.location.reload();
+      }
+    });
+    
     // 🔐 JWT 토큰 갱신 응답 처리
     socket.on("auth:token", (data) => {
       if (data.token) {
@@ -177,6 +194,40 @@ export function getSocket() {
     socket.on('server-ping', () => {
       socket.emit('client-pong');
     });
+
+    // 🕛 레이드 자동 소환 알림 구독 요청
+    socket.emit('raid:auto-summon:subscribe');
+
+    // 🕛 레이드 자동 소환 알림 구독
+    socket.on('raidAutoSummoned', (data) => {
+      console.log('🕛 레이드 자동 소환 알림:', data);
+      
+      // 브라우저 알림 표시
+      if (Notification.permission === 'granted') {
+        const notification = new Notification('🎣 레이드 보스 소환!', {
+          body: '새로운 레이드 보스가 소환되었습니다!',
+          icon: '/vite.svg',
+          tag: 'raid-summon'
+        });
+        
+        // 5초 후 자동 닫기
+        setTimeout(() => notification.close(), 5000);
+      }
+      
+      // 페이지에 토스트 메시지 표시 (선택사항)
+      if (window.showToast) {
+        window.showToast('🎣 레이드 보스가 자동으로 소환되었습니다!', 'success');
+      }
+    });
+
+    // 🕛 브라우저 알림 권한 요청
+    if (Notification.permission === 'default') {
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          console.log('🕛 레이드 알림 권한이 허용되었습니다.');
+        }
+      });
+    }
   }
   return socket;
 }
