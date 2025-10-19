@@ -1,6 +1,25 @@
 // 공지사항 데이터 (ID 내림차순 정렬 - 최신이 가장 높은 ID)
 export const NOTICE_DATA = [
   {
+    id: 34,
+    date: "2025.10.19",
+    title: "☁️ CDN서버업로드 저장 방식 개선",
+    content: [
+      "프로필 이미지 저장 방식 개선:",
+      "- AWS S3 스토리지로 영구 저장",
+      "- 서버 재배포 시에도 이미지 유지",
+      "업로드 시스템 최적화:",
+      "- 클라이언트에서 S3로 직접 업로드",
+      "- 이미지 자동 리사이징 (512x512 WebP)",
+      "보안 강화:",
+      "- Pre-signed URL로 안전한 업로드",
+      "- IAM 최소 권한 원칙 적용",
+      "- CloudFront OAC로 S3 직접 접근 차단"
+    ],
+    isNew: true,
+    type: "major_update"
+  },
+  {
     id: 33,
     date: "2025.10.19",
     title: "🔐 로그인 세션 안정성 개선",
@@ -14,7 +33,7 @@ export const NOTICE_DATA = [
       "- 닉네임 중복 오류 차단",
       "- 로그인 화면으로 자동 리다이렉트"
     ],
-    isNew: true,
+    isNew: false,
     type: "security"
   },
   {
@@ -567,5 +586,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.310"
+  version: "v1.311"
 };

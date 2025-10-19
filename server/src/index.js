@@ -10,6 +10,9 @@ const bcrypt = require('bcrypt'); // 🔐 비밀번호 암호화
 const multer = require('multer'); // 📸 이미지 업로드
 const sharp = require('sharp'); // 🖼️ 이미지 리사이징
 const fs = require('fs'); // 📁 파일 시스템
+// ☁️ AWS SDK for S3 + CloudFront
+const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 // 🚀 성능 최적화: 프로덕션 환경에서 로깅 축소
 const isProduction = process.env.NODE_ENV === 'production';
@@ -5976,16 +5979,21 @@ app.get("/api/admin-status/:userId", async (req, res) => {
   }
 });
 
-// 📸 프로필 이미지 시스템
+// 📸 프로필 이미지 시스템 - AWS S3 + CloudFront
 
-// 업로드 폴더 생성
-const uploadDir = path.join(__dirname, '../uploads/profiles');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-  console.log('📁 Profile uploads directory created:', uploadDir);
-}
+// ☁️ AWS S3 클라이언트 설정
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION || 'ap-northeast-2',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  }
+});
 
-// Multer 설정 (메모리 스토리지 사용 - sharp로 처리 후 저장)
+const S3_BUCKET_NAME = process.env.AWS_S3_BUCKET_NAME || 'fishing-game-assets';
+const CLOUDFRONT_DOMAIN = process.env.CLOUDFRONT_DOMAIN || ''; // CloudFront 도메인
+
+// Multer 설정 (메모리 스토리지 - 클라이언트가 S3로 업로드하므로 서버에서는 저장 안 함)
 const storage = multer.memoryStorage();
 const upload = multer({
   storage: storage,
@@ -5993,7 +6001,6 @@ const upload = multer({
     fileSize: 2 * 1024 * 1024, // 2MB 제한
   },
   fileFilter: (req, file, cb) => {
-    // 이미지 파일만 허용
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
@@ -6003,8 +6010,8 @@ const upload = multer({
   }
 });
 
-// 프로필 이미지 업로드 API (관리자 전용 - 자신 또는 다른 사용자)
-app.post("/api/profile-image/upload", authenticateJWT, upload.single('profileImage'), async (req, res) => {
+// 🔑 Pre-signed URL 생성 API (클라이언트가 S3에 직접 업로드)
+app.post("/api/profile-image/get-upload-url", authenticateJWT, async (req, res) => {
   try {
     const { userUuid: jwtUserUuid, username: jwtUsername, isAdmin } = req.user;
     
@@ -6016,86 +6023,140 @@ app.post("/api/profile-image/upload", authenticateJWT, upload.single('profileIma
       });
     }
     
-    if (!req.file) {
+    const { targetUserUuid, targetUsername, fileType } = req.body;
+    
+    if (!targetUserUuid || !fileType) {
       return res.status(400).json({ 
         success: false, 
-        error: '이미지 파일이 필요합니다.' 
+        error: 'targetUserUuid와 fileType이 필요합니다.' 
       });
     }
     
-    // 🎯 대상 사용자 UUID (없으면 자기 자신)
-    const targetUserUuid = req.body.targetUserUuid || jwtUserUuid;
-    const targetUsername = req.body.targetUsername || jwtUsername;
+    const finalTargetUuid = targetUserUuid || jwtUserUuid;
+    const finalTargetUsername = targetUsername || jwtUsername;
     
     const clientIP = getClientIP(req);
-    console.log(`📸 [PROFILE-IMAGE] Upload request from ${jwtUsername} (${clientIP}) for target: ${targetUsername} (${targetUserUuid})`);
+    console.log(`🔑 [PROFILE-IMAGE] Pre-signed URL request from ${jwtUsername} (${clientIP}) for target: ${finalTargetUsername} (${finalTargetUuid})`);
     
-    // 이미지 처리: 512x512 리사이징 및 WebP 변환
-    // userUuid의 # 기호를 제거 (URL에서 # 은 fragment로 인식되어 잘림)
-    const safeUserUuid = targetUserUuid.replace(/#/g, '');
-    const filename = `profile_${safeUserUuid}_${Date.now()}.webp`;
-    const filepath = path.join(uploadDir, filename);
+    // S3 객체 키 생성 (# 제거)
+    const safeUserUuid = finalTargetUuid.replace(/#/g, '');
+    const timestamp = Date.now();
+    const s3Key = `profiles/profile_${safeUserUuid}_${timestamp}.webp`;
     
-    await sharp(req.file.buffer)
-      .resize(512, 512, {
-        fit: 'cover',
-        position: 'center'
-      })
-      .webp({ quality: 85 })
-      .toFile(filepath);
+    // Pre-signed URL 생성 (PUT 요청용)
+    const command = new PutObjectCommand({
+      Bucket: S3_BUCKET_NAME,
+      Key: s3Key,
+      ContentType: fileType,
+      // ACL: 'public-read' // CloudFront를 사용하므로 public-read 불필요
+    });
     
-    const fileSize = fs.statSync(filepath).size;
-    const imageUrl = `/uploads/profiles/${filename}`;
+    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 }); // 5분 유효
     
-    // 기존 프로필 이미지 삭제
-    const existingImage = await ProfileImageModel.findOne({ userUuid: targetUserUuid });
-    if (existingImage) {
-      // 기존 파일 삭제
-      const oldFilePath = path.join(__dirname, '..', existingImage.imageUrl);
-      if (fs.existsSync(oldFilePath)) {
-        fs.unlinkSync(oldFilePath);
-        console.log(`🗑️ [PROFILE-IMAGE] Old image deleted: ${existingImage.imageUrl}`);
-      }
-      
-      // DB 업데이트
-      existingImage.imageUrl = imageUrl;
-      existingImage.originalName = req.file.originalname;
-      existingImage.fileSize = fileSize;
-      existingImage.uploadedAt = new Date();
-      await existingImage.save();
-    } else {
-      // 새로운 프로필 이미지 생성
-      const newProfileImage = new ProfileImageModel({
-        userId: 'user',
-        username: targetUsername,
-        userUuid: targetUserUuid,
-        imageUrl: imageUrl,
-        originalName: req.file.originalname,
-        fileSize: fileSize
-      });
-      await newProfileImage.save();
-    }
+    // CloudFront URL 생성
+    const cloudFrontUrl = CLOUDFRONT_DOMAIN 
+      ? `https://${CLOUDFRONT_DOMAIN}/${s3Key}`
+      : `https://${S3_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-northeast-2'}.amazonaws.com/${s3Key}`;
     
-    console.log(`✅ [PROFILE-IMAGE] Image uploaded successfully for ${targetUsername}: ${imageUrl}`);
+    console.log(`✅ [PROFILE-IMAGE] Pre-signed URL generated for ${finalTargetUsername}`);
     
     res.json({
       success: true,
-      message: `${targetUsername}님의 프로필 이미지가 업로드되었습니다.`,
-      imageUrl: imageUrl,
-      fileSize: fileSize,
-      targetUserUuid: targetUserUuid
+      uploadUrl: uploadUrl,
+      s3Key: s3Key,
+      cloudFrontUrl: cloudFrontUrl,
+      targetUserUuid: finalTargetUuid,
+      targetUsername: finalTargetUsername
     });
     
   } catch (error) {
-    console.error('❌ [PROFILE-IMAGE] Upload error:', error);
+    console.error('❌ [PROFILE-IMAGE] Pre-signed URL generation error:', error);
     res.status(500).json({ 
       success: false, 
-      error: '이미지 업로드 중 오류가 발생했습니다.' 
+      error: 'Pre-signed URL 생성 중 오류가 발생했습니다.' 
     });
   }
 });
 
-// 프로필 이미지 조회 API
+// 💾 프로필 이미지 메타데이터 저장 API (업로드 완료 후 호출)
+app.post("/api/profile-image/save-metadata", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid: jwtUserUuid, username: jwtUsername, isAdmin } = req.user;
+    
+    // 관리자 권한 확인
+    if (!isAdmin) {
+      return res.status(403).json({ 
+        success: false, 
+        error: '관리자 권한이 필요합니다.' 
+      });
+    }
+    
+    const { targetUserUuid, targetUsername, s3Key, cloudFrontUrl, fileSize } = req.body;
+    
+    if (!targetUserUuid || !s3Key || !cloudFrontUrl) {
+      return res.status(400).json({ 
+        success: false, 
+        error: '필수 필드가 누락되었습니다.' 
+      });
+    }
+    
+    const clientIP = getClientIP(req);
+    console.log(`💾 [PROFILE-IMAGE] Saving metadata from ${jwtUsername} (${clientIP}) for target: ${targetUsername} (${targetUserUuid})`);
+    
+    // 기존 프로필 이미지 삭제 (S3에서)
+    const existingImage = await ProfileImageModel.findOne({ userUuid: targetUserUuid });
+    if (existingImage && existingImage.s3Key) {
+      try {
+        const deleteCommand = new DeleteObjectCommand({
+          Bucket: S3_BUCKET_NAME,
+          Key: existingImage.s3Key
+        });
+        await s3Client.send(deleteCommand);
+        console.log(`🗑️ [PROFILE-IMAGE] Old S3 image deleted: ${existingImage.s3Key}`);
+      } catch (deleteError) {
+        console.error('❌ [PROFILE-IMAGE] Failed to delete old S3 image:', deleteError);
+      }
+    }
+    
+    // DB 업데이트 또는 생성
+    if (existingImage) {
+      existingImage.imageUrl = cloudFrontUrl;
+      existingImage.s3Key = s3Key;
+      existingImage.fileSize = fileSize || 0;
+      existingImage.uploadedAt = new Date();
+      await existingImage.save();
+    } else {
+      const newProfileImage = new ProfileImageModel({
+        userId: 'user',
+        username: targetUsername,
+        userUuid: targetUserUuid,
+        imageUrl: cloudFrontUrl,
+        s3Key: s3Key,
+        fileSize: fileSize || 0,
+        uploadedAt: new Date()
+      });
+      await newProfileImage.save();
+    }
+    
+    console.log(`✅ [PROFILE-IMAGE] Metadata saved for ${targetUsername}: ${cloudFrontUrl}`);
+    
+    res.json({
+      success: true,
+      message: `${targetUsername}님의 프로필 이미지가 업로드되었습니다.`,
+      imageUrl: cloudFrontUrl,
+      targetUserUuid: targetUserUuid
+    });
+    
+  } catch (error) {
+    console.error('❌ [PROFILE-IMAGE] Metadata save error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: '메타데이터 저장 중 오류가 발생했습니다.' 
+    });
+  }
+});
+
+// 🔍 프로필 이미지 조회 API (CloudFront URL 반환)
 app.get("/api/profile-image/:userUuid", async (req, res) => {
   try {
     let { userUuid } = req.params;
@@ -6113,7 +6174,6 @@ app.get("/api/profile-image/:userUuid", async (req, res) => {
     }
     
     // # 있는 버전과 없는 버전 모두 조회
-    // 클라이언트에서 #을 제거하고 보낼 수 있으므로 양쪽 다 확인
     let profileImage = await ProfileImageModel.findOne({ userUuid });
     
     if (!profileImage && !userUuid.startsWith('#')) {
@@ -6124,12 +6184,15 @@ app.get("/api/profile-image/:userUuid", async (req, res) => {
     }
     
     if (profileImage) {
-      // 캐시 우회를 위해 타임스탬프 추가
+      // CloudFront URL 반환 (캐시 버스팅용 타임스탬프 추가)
       const timestamp = new Date(profileImage.uploadedAt).getTime();
-      console.log(`📸 [PROFILE-IMAGE] Image found for ${userUuid}:`, profileImage.imageUrl);
+      const imageUrlWithTimestamp = `${profileImage.imageUrl}?t=${timestamp}`;
+      
+      console.log(`📸 [PROFILE-IMAGE] Image found for ${userUuid}:`, imageUrlWithTimestamp);
+      
       res.json({
         success: true,
-        imageUrl: `${profileImage.imageUrl}?t=${timestamp}`,
+        imageUrl: imageUrlWithTimestamp,
         uploadedAt: profileImage.uploadedAt
       });
     } else {
@@ -6149,7 +6212,7 @@ app.get("/api/profile-image/:userUuid", async (req, res) => {
   }
 });
 
-// 프로필 이미지 삭제 API (관리자 전용 - 자신 또는 다른 사용자)
+// 🗑️ 프로필 이미지 삭제 API (S3에서 삭제)
 app.delete("/api/profile-image", authenticateJWT, async (req, res) => {
   try {
     const { userUuid: jwtUserUuid, username: jwtUsername, isAdmin } = req.user;
@@ -6178,22 +6241,23 @@ app.delete("/api/profile-image", authenticateJWT, async (req, res) => {
       });
     }
     
-    // 파일 삭제
-    const filePath = path.join(__dirname, '..', profileImage.imageUrl);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      console.log(`🗑️ [PROFILE-IMAGE] File deleted: ${profileImage.imageUrl}`);
+    // S3에서 이미지 삭제
+    if (profileImage.s3Key) {
+      try {
+        const deleteCommand = new DeleteObjectCommand({
+          Bucket: S3_BUCKET_NAME,
+          Key: profileImage.s3Key
+        });
+        await s3Client.send(deleteCommand);
+        console.log(`🗑️ [PROFILE-IMAGE] S3 image deleted: ${profileImage.s3Key}`);
+      } catch (s3Error) {
+        console.error('❌ [PROFILE-IMAGE] S3 delete error:', s3Error);
+        // S3 삭제 실패해도 DB는 삭제 진행
+      }
     }
     
     // DB에서 삭제
     await ProfileImageModel.deleteOne({ userUuid: targetUserUuid });
-    
-    // 🔄 Socket.io로 다른 사용자들에게 이미지 삭제 알림
-    const socket = getSocket();
-    socket.emit('profile:image:deleted', { 
-      userUuid: targetUserUuid,
-      username: targetUsername
-    });
     
     console.log(`✅ [PROFILE-IMAGE] Profile image deleted for ${targetUsername} by ${jwtUsername}`);
     
@@ -10234,14 +10298,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.310"
+    version: "v1.311"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.310",
+    version: "v1.311",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [

@@ -212,7 +212,7 @@ function App() {
 
   // 🔄 버전 업데이트 시 캐시 초기화 (v1.310)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.310";
+    const CURRENT_VERSION = "v1.311";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -4456,9 +4456,13 @@ function App() {
             );
 
             if (imageResponse.data.success && imageResponse.data.imageUrl) {
-              // 캐시 버스팅을 위한 타임스탬프 추가
-              const baseImageUrl = serverUrl + imageResponse.data.imageUrl;
-              const imageUrl = baseImageUrl + '?t=' + Date.now();
+              // CloudFront URL은 전체 URL이므로 그대로 사용 (타임스탬프는 서버에서 추가됨)
+              let imageUrl = imageResponse.data.imageUrl;
+              
+              // CloudFront URL이 아닌 경우(레거시 또는 여우 봇) serverUrl 추가
+              if (!imageUrl.startsWith('http')) {
+                imageUrl = serverUrl + imageUrl;
+              }
               
               console.log('✅ [NO ADMIN CHECK] Profile image loaded for:', targetUserUuid, '→', imageUrl);
               
@@ -5467,7 +5471,7 @@ function App() {
     }
   };
 
-  // 📸 프로필 이미지 업로드 함수 (관리자 전용 - 자신 또는 다른 사용자)
+  // 📸 프로필 이미지 업로드 함수 - AWS S3 직접 업로드 (관리자 전용)
   const handleProfileImageUpload = async (event, targetUserUuid = null, targetUsername = null) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -5491,83 +5495,183 @@ function App() {
     try {
       setUploadingImage(true);
 
-      const formData = new FormData();
-      formData.append('profileImage', file);
-      formData.append('targetUserUuid', finalTargetUserUuid);
-      formData.append('targetUsername', finalTargetUsername);
+      // Step 1: 이미지 리사이징 (512x512, WebP 변환)
+      console.log('📸 [Step 1] Resizing image...');
+      const resizedBlob = await resizeImageToWebP(file, 512, 512, 0.85);
+      console.log(`✅ [Step 1] Image resized: ${(resizedBlob.size / 1024).toFixed(2)}KB`);
 
-      const response = await authenticatedRequest.post(
-        `${serverUrl}/api/profile-image/upload`,
-        formData,
+      // Step 2: 서버에서 Pre-signed URL 요청
+      console.log('🔑 [Step 2] Requesting pre-signed URL...');
+      const urlResponse = await authenticatedRequest.post(
+        `${serverUrl}/api/profile-image/get-upload-url`,
         {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
+          targetUserUuid: finalTargetUserUuid,
+          targetUsername: finalTargetUsername,
+          fileType: 'image/webp'
         }
       );
 
-      if (response.data.success) {
-        console.log('📸 Upload response:', response.data);
-        
-        // 업로드된 이미지 URL을 직접 설정 + 캐시 버스팅
-        const baseUrl = response.data.imageUrl;
-        const fullUrl = serverUrl + baseUrl;
-        const finalUrl = fullUrl + '?t=' + Date.now();
-        
-        console.log('📸 Server URL:', serverUrl);
-        console.log('📸 Base image URL:', baseUrl);
-        console.log('📸 Full image URL:', fullUrl);
-        console.log('📸 Final image URL with cache busting:', finalUrl);
-        console.log('📸 Target User UUID:', finalTargetUserUuid);
-        
-        // 내 프로필 이미지인 경우
-        if (finalTargetUserUuid === userUuid) {
-          setProfileImage(finalUrl);
-          localStorage.setItem('profileImage', finalUrl);
-        }
-        
-        // 캐시에 저장 (접속자 명단/채팅에서 사용)
-        const newCache = {
-          ...userProfileImages,
-          [finalTargetUserUuid]: finalUrl
-        };
-        setUserProfileImages(newCache);
-        localStorage.setItem('userProfileImages', JSON.stringify(newCache));
-        console.log('💾 Image saved to cache for userUuid:', finalTargetUserUuid);
-        
-        // 🖼️ 프로필 모달이 열려있으면 모달 이미지도 즉시 업데이트
-        if (showProfile) {
-          const currentModalUserUuid = selectedUserProfile ? otherUserData?.userUuid : userUuid;
-          if (currentModalUserUuid === finalTargetUserUuid) {
-            // 프로필 모달의 이미지 강제 업데이트
-            setModalImageUrl(finalUrl);
-            console.log('🔄 Modal image updated immediately:', finalUrl);
-          }
-        }
-        
-        // 🔄 Socket.io로 다른 사용자들에게 이미지 업데이트 알림
-        const socket = getSocket();
-        socket.emit('profile:image:updated', { 
-          userUuid: finalTargetUserUuid,
-          username: finalTargetUsername
-        });
-        console.log('📡 Sent image update notification to other users');
-        
-        alert('✅ ' + response.data.message);
-        
-        // 파일 입력 초기화
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
-      } else {
-        alert('❌ ' + response.data.error);
+      if (!urlResponse.data.success) {
+        throw new Error(urlResponse.data.error || 'Pre-signed URL 생성 실패');
       }
+
+      const { uploadUrl, s3Key, cloudFrontUrl } = urlResponse.data;
+      console.log('✅ [Step 2] Pre-signed URL received');
+      console.log('   S3 Key:', s3Key);
+      console.log('   CloudFront URL:', cloudFrontUrl);
+
+      // Step 3: S3에 직접 업로드 (PUT 요청)
+      console.log('☁️ [Step 3] Uploading to S3...');
+      const uploadResponse = await axios.put(uploadUrl, resizedBlob, {
+        headers: {
+          'Content-Type': 'image/webp',
+        },
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          console.log(`   Upload progress: ${percentCompleted}%`);
+        }
+      });
+
+      if (uploadResponse.status !== 200) {
+        throw new Error('S3 업로드 실패');
+      }
+      console.log('✅ [Step 3] Successfully uploaded to S3');
+
+      // Step 4: 서버에 메타데이터 저장
+      console.log('💾 [Step 4] Saving metadata to database...');
+      const metadataResponse = await authenticatedRequest.post(
+        `${serverUrl}/api/profile-image/save-metadata`,
+        {
+          targetUserUuid: finalTargetUserUuid,
+          targetUsername: finalTargetUsername,
+          s3Key: s3Key,
+          cloudFrontUrl: cloudFrontUrl,
+          fileSize: resizedBlob.size
+        }
+      );
+
+      if (!metadataResponse.data.success) {
+        throw new Error(metadataResponse.data.error || '메타데이터 저장 실패');
+      }
+
+      console.log('✅ [Step 4] Metadata saved to database');
+
+      // Step 5: UI 업데이트
+      const finalUrl = cloudFrontUrl + '?t=' + Date.now(); // 캐시 버스팅
+      
+      console.log('🖼️ [Step 5] Updating UI...');
+      console.log('   CloudFront URL:', cloudFrontUrl);
+      console.log('   Final URL (with cache busting):', finalUrl);
+      
+      // 내 프로필 이미지인 경우
+      if (finalTargetUserUuid === userUuid) {
+        setProfileImage(finalUrl);
+        localStorage.setItem('profileImage', finalUrl);
+      }
+      
+      // 캐시에 저장 (접속자 명단/채팅에서 사용)
+      const newCache = {
+        ...userProfileImages,
+        [finalTargetUserUuid]: finalUrl
+      };
+      setUserProfileImages(newCache);
+      localStorage.setItem('userProfileImages', JSON.stringify(newCache));
+      console.log('💾 Image saved to cache for userUuid:', finalTargetUserUuid);
+      
+      // 프로필 모달이 열려있으면 모달 이미지도 즉시 업데이트
+      if (showProfile) {
+        const currentModalUserUuid = selectedUserProfile ? otherUserData?.userUuid : userUuid;
+        if (currentModalUserUuid === finalTargetUserUuid) {
+          setModalImageUrl(finalUrl);
+          console.log('🔄 Modal image updated immediately:', finalUrl);
+        }
+      }
+      
+      // Socket.io로 다른 사용자들에게 이미지 업데이트 알림
+      const socket = getSocket();
+      socket.emit('profile:image:updated', { 
+        userUuid: finalTargetUserUuid,
+        username: finalTargetUsername
+      });
+      console.log('📡 Sent image update notification to other users');
+      
+      alert('✅ ' + metadataResponse.data.message);
+      
+      // 파일 입력 초기화
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
     } catch (error) {
-      console.error('프로필 이미지 업로드 실패:', error);
-      alert('❌ 이미지 업로드 중 오류가 발생했습니다.');
+      console.error('❌ 프로필 이미지 업로드 실패:', error);
+      alert('❌ 이미지 업로드 중 오류가 발생했습니다: ' + (error.message || '알 수 없는 오류'));
     } finally {
       setUploadingImage(false);
     }
+  };
+
+  // 🖼️ 이미지 리사이징 헬퍼 함수 (Canvas API 사용)
+  const resizeImageToWebP = (file, maxWidth, maxHeight, quality) => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const reader = new FileReader();
+
+      reader.onload = (e) => {
+        img.src = e.target.result;
+      };
+
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // 512x512로 크롭 (정사각형)
+        let width = img.width;
+        let height = img.height;
+        let sourceX = 0;
+        let sourceY = 0;
+        let sourceSize = Math.min(width, height);
+
+        // 중앙 크롭
+        if (width > height) {
+          sourceX = (width - height) / 2;
+        } else {
+          sourceY = (height - width) / 2;
+        }
+
+        canvas.width = maxWidth;
+        canvas.height = maxHeight;
+
+        // 이미지 그리기
+        ctx.drawImage(
+          img,
+          sourceX, sourceY, sourceSize, sourceSize, // 원본에서 크롭
+          0, 0, maxWidth, maxHeight // 캔버스에 그리기
+        );
+
+        // WebP Blob 생성
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error('이미지 변환 실패'));
+            }
+          },
+          'image/webp',
+          quality
+        );
+      };
+
+      img.onerror = () => {
+        reject(new Error('이미지 로드 실패'));
+      };
+
+      reader.onerror = () => {
+        reject(new Error('파일 읽기 실패'));
+      };
+
+      reader.readAsDataURL(file);
+    });
   };
 
   // 📸 프로필 이미지 삭제 함수 (관리자 전용 - 자신 또는 다른 사용자)
@@ -5627,7 +5731,7 @@ function App() {
     }
   };
 
-  // 📸 프로필 이미지 로드 함수 (캐시 시스템 포함)
+  // 📸 프로필 이미지 로드 함수 (캐시 시스템 포함 - CloudFront URL 지원)
   const loadProfileImage = useCallback(async (targetUserUuid) => {
     try {
       const uuid = targetUserUuid || userUuid;
@@ -5659,9 +5763,13 @@ function App() {
       );
 
       if (response.data.success && response.data.imageUrl) {
-        // 캐시 버스팅을 위한 타임스탬프 추가
-        const baseImageUrl = serverUrl + response.data.imageUrl;
-        const imageUrl = baseImageUrl + '?t=' + Date.now();
+        // CloudFront URL은 전체 URL이므로 그대로 사용 (타임스탬프는 서버에서 추가됨)
+        let imageUrl = response.data.imageUrl;
+        
+        // CloudFront URL이 아닌 경우(레거시 또는 여우 봇) serverUrl 추가
+        if (!imageUrl.startsWith('http')) {
+          imageUrl = serverUrl + imageUrl;
+        }
         
         console.log('✅ Image loaded successfully for UUID:', uuid, '→', imageUrl);
         
@@ -5803,9 +5911,13 @@ function App() {
         );
         
         if (response.data.success && response.data.imageUrl) {
-          // 캐시 버스팅을 위한 타임스탬프 추가
-          const baseImageUrl = serverUrl + response.data.imageUrl;
-          const imageUrl = baseImageUrl + '?t=' + Date.now();
+          // CloudFront URL은 전체 URL이므로 그대로 사용 (타임스탬프는 서버에서 추가됨)
+          let imageUrl = response.data.imageUrl;
+          
+          // CloudFront URL이 아닌 경우(레거시 또는 여우 봇) serverUrl 추가
+          if (!imageUrl.startsWith('http')) {
+            imageUrl = serverUrl + imageUrl;
+          }
           
           console.log('✅ [PROFILE MODAL] Image reloaded for:', targetUuid, '→', imageUrl);
           
@@ -7559,7 +7671,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.310
+                여우이야기 v1.311
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다

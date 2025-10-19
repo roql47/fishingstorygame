@@ -151,4 +151,4 @@ curl https://your-domain.com/api/version
 ---
 
 **마지막 업데이트:** 2025.10.19
-**현재 버전:** v1.310 (에테르 던전 시스템 추가)
+**현재 버전:** v1.311 (AWS S3 + CloudFront 이미지 시스템)
