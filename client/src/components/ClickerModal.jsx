@@ -48,15 +48,25 @@ const ClickerModal = ({
       try {
         const response = await authenticatedRequest.get(`${serverUrl}/api/clicker/stage`);
         if (response.data.success) {
-          setCurrentStage(response.data.currentStage);
+          const loadedStage = response.data.currentStage;
+          const userSkill = response.data.fishingSkill || fishingSkill;
+          
+          setCurrentStage(loadedStage);
           setCompletedDifficulties(response.data.completedDifficulties || {});
+          
+          // 다운그레이드 알림 (낚시실력보다 높은 스테이지였던 경우)
+          if (loadedStage < userSkill && loadedStage > 1) {
+            setTimeout(() => {
+              alert(`낚시실력에 따라 스테이지가 조정되었습니다.\n\n현재 낚시실력: ${userSkill}\n스테이지: ${loadedStage}`);
+            }, 500);
+          }
         }
       } catch (error) {
         console.error('스테이지 로드 실패:', error);
       }
     };
     loadStage();
-  }, [serverUrl, authenticatedRequest]);
+  }, [serverUrl, authenticatedRequest, fishingSkill]);
 
   // 플레이어 공격력 계산 (내정보와 완전히 동일)
   const getPlayerAttack = () => {

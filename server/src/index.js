@@ -7894,10 +7894,24 @@ app.get("/api/clicker/stage", authenticateJWT, async (req, res) => {
       await clickerStage.save();
     }
     
+    // 낚시실력 조회
+    const fishingSkillData = await FishingSkillModel.findOne(query);
+    const userFishingSkill = fishingSkillData?.skill || 0;
+    
+    // 자동 다운그레이드: 현재 스테이지가 낚시실력을 초과하면 조정
+    if (clickerStage.currentStage > userFishingSkill) {
+      const originalStage = clickerStage.currentStage;
+      clickerStage.currentStage = Math.max(1, userFishingSkill); // 최소 1 스테이지
+      await clickerStage.save();
+      
+      console.log(`[Auto Downgrade] ${username}: Stage ${originalStage} → ${clickerStage.currentStage} (Fishing Skill: ${userFishingSkill})`);
+    }
+    
     res.json({
       success: true,
       currentStage: clickerStage.currentStage,
-      completedDifficulties: clickerStage.completedDifficulties
+      completedDifficulties: clickerStage.completedDifficulties,
+      fishingSkill: userFishingSkill
     });
   } catch (error) {
     console.error("Failed to get clicker stage:", error);

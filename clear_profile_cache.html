@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>프로필 이미지 캐시 초기화</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        button.danger {
+            background: #f44336;
+        }
+        button.danger:hover {
+            background: #da190b;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            background: rgba(0,0,0,0.2);
+        }
+        .success {
+            background: rgba(76, 175, 80, 0.3);
+        }
+        .info {
+            background: rgba(33, 150, 243, 0.3);
+        }
+        h1 {
+            margin-top: 0;
+        }
+        code {
+            background: rgba(0,0,0,0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        ul {
+            text-align: left;
+            margin: 20px 0;
+        }
+        li {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 프로필 이미지 캐시 초기화</h1>
+        
+        <p>AWS S3/CloudFront 마이그레이션 후 발생하는 404 에러를 해결합니다.</p>
+        
+        <div class="info status">
+            <strong>현재 캐시 상태:</strong>
+            <ul id="cacheList">
+                <li>확인 중...</li>
+            </ul>
+        </div>
+
+        <div style="margin-top: 20px;">
+            <button onclick="clearProfileCache()">📸 프로필 이미지 캐시만 삭제</button>
+            <button onclick="clearAllCache()" class="danger">🗑️ 모든 localStorage 삭제</button>
+            <button onclick="checkCache()">🔍 캐시 상태 확인</button>
+        </div>
+
+        <div id="result" class="status" style="display: none;"></div>
+
+        <div class="info status" style="margin-top: 30px;">
+            <h3>💡 사용 방법</h3>
+            <ol>
+                <li><strong>프로필 이미지 캐시만 삭제</strong>를 클릭 (권장)</li>
+                <li>페이지를 새로고침</li>
+                <li>낚시 게임에 다시 로그인</li>
+            </ol>
+            <p><strong>참고:</strong> 모든 캐시를 삭제하면 로그인이 풀립니다.</p>
+        </div>
+    </div>
+
+    <script>
+        function checkCache() {
+            const cacheList = document.getElementById('cacheList');
+            cacheList.innerHTML = '';
+
+            // LocalStorage 항목 확인
+            const profileImages = localStorage.getItem('userProfileImages');
+            const profileImage = localStorage.getItem('profileImage');
+            
+            if (profileImages) {
+                try {
+                    const parsed = JSON.parse(profileImages);
+                    const count = Object.keys(parsed).length;
+                    cacheList.innerHTML += `<li><code>userProfileImages</code>: ${count}개의 캐시된 이미지</li>`;
+                    
+                    // 각 이미지 URL 표시
+                    for (const [uuid, url] of Object.entries(parsed)) {
+                        const isCloudFront = url.startsWith('http');
+                        const icon = isCloudFront ? '✅' : '❌';
+                        const truncatedUrl = url.length > 60 ? url.substring(0, 60) + '...' : url;
+                        cacheList.innerHTML += `<li style="font-size: 12px; margin-left: 20px;">${icon} ${uuid}: <code>${truncatedUrl}</code></li>`;
+                    }
+                } catch (e) {
+                    cacheList.innerHTML += '<li>❌ 파싱 오류</li>';
+                }
+            } else {
+                cacheList.innerHTML += '<li>✅ userProfileImages: 캐시 없음</li>';
+            }
+
+            if (profileImage) {
+                const isCloudFront = profileImage.startsWith('http');
+                const icon = isCloudFront ? '✅' : '❌';
+                cacheList.innerHTML += `<li>${icon} <code>profileImage</code>: ${profileImage}</li>`;
+            } else {
+                cacheList.innerHTML += '<li>✅ profileImage: 캐시 없음</li>';
+            }
+
+            // 전체 localStorage 키 개수
+            const totalKeys = Object.keys(localStorage).length;
+            cacheList.innerHTML += `<li><strong>전체 localStorage 키:</strong> ${totalKeys}개</li>`;
+        }
+
+        function clearProfileCache() {
+            const result = document.getElementById('result');
+            result.style.display = 'block';
+            
+            try {
+                // 프로필 이미지 관련 캐시만 삭제
+                const removedItems = [];
+                
+                if (localStorage.getItem('userProfileImages')) {
+                    localStorage.removeItem('userProfileImages');
+                    removedItems.push('userProfileImages');
+                }
+                
+                if (localStorage.getItem('profileImage')) {
+                    localStorage.removeItem('profileImage');
+                    removedItems.push('profileImage');
+                }
+                
+                // 개별 프로필 이미지 캐시 삭제
+                const keysToRemove = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && key.startsWith('profileImage_')) {
+                        keysToRemove.push(key);
+                    }
+                }
+                keysToRemove.forEach(key => {
+                    localStorage.removeItem(key);
+                    removedItems.push(key);
+                });
+                
+                result.className = 'status success';
+                result.innerHTML = `
+                    <strong>✅ 프로필 이미지 캐시 삭제 완료!</strong>
+                    <ul>
+                        ${removedItems.length > 0 
+                            ? removedItems.map(item => `<li>${item}</li>`).join('')
+                            : '<li>삭제할 캐시가 없습니다.</li>'}
+                    </ul>
+                    <p><strong>다음 단계:</strong></p>
+                    <ol>
+                        <li>페이지를 새로고침하세요</li>
+                        <li>낚시 게임에 다시 로그인하세요</li>
+                        <li>프로필 이미지가 정상적으로 로드됩니다</li>
+                    </ol>
+                `;
+                
+                checkCache();
+            } catch (error) {
+                result.className = 'status danger';
+                result.innerHTML = `<strong>❌ 오류 발생:</strong> ${error.message}`;
+            }
+        }
+
+        function clearAllCache() {
+            if (!confirm('⚠️ 모든 localStorage 데이터가 삭제됩니다. 로그인이 풀리고 캐시된 데이터가 모두 사라집니다. 계속하시겠습니까?')) {
+                return;
+            }
+            
+            const result = document.getElementById('result');
+            result.style.display = 'block';
+            
+            try {
+                const count = localStorage.length;
+                localStorage.clear();
+                
+                result.className = 'status success';
+                result.innerHTML = `
+                    <strong>✅ 모든 캐시 삭제 완료!</strong>
+                    <p>${count}개의 항목이 삭제되었습니다.</p>
+                    <p><strong>⚠️ 주의:</strong> 로그인이 풀렸습니다. 낚시 게임에서 다시 로그인하세요.</p>
+                `;
+                
+                checkCache();
+            } catch (error) {
+                result.className = 'status danger';
+                result.innerHTML = `<strong>❌ 오류 발생:</strong> ${error.message}`;
+            }
+        }
+
+        // 페이지 로드 시 자동으로 캐시 상태 확인
+        window.addEventListener('load', checkCache);
+    </script>
+</body>
+</html>
+
