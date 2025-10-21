@@ -363,7 +363,32 @@ const ClickerModal = ({
       { rank: 7, name: '정어리파이', material: '버터' },
       { rank: 8, name: '얼음상어', material: '얼음조각' },
       { rank: 9, name: '스퀄스퀴드', material: '오징어먹물' },
-      { rank: 10, name: '백년송거북', material: '백년송' }
+      { rank: 10, name: '백년송거북', material: '백년송' },
+      { rank: 11, name: '고스피쉬', material: '후춧가루' },
+      { rank: 12, name: '유령치', material: '석화' },
+      { rank: 13, name: '바이트독', material: '핫소스' },
+      { rank: 14, name: '호박고래', material: '펌킨조각' },
+      { rank: 15, name: '바이킹조개', material: '꽃술' },
+      { rank: 16, name: '천사해파리', material: '프레첼' },
+      { rank: 17, name: '악마복어', material: '베놈' },
+      { rank: 18, name: '칠성장어', material: '장어꼬리' },
+      { rank: 19, name: '닥터블랙', material: '아인스바인' },
+      { rank: 20, name: '해룡', material: '헤븐즈서펀트' },
+      { rank: 21, name: '메카핫킹크랩', material: '집게다리' },
+      { rank: 22, name: '램프리', material: '이즈니버터' },
+      { rank: 23, name: '마지막잎새', material: '라벤더오일' },
+      { rank: 24, name: '아이스브리더', material: '샤베트' },
+      { rank: 25, name: '해신', material: '마법의정수' },
+      { rank: 26, name: '핑키피쉬', material: '휘핑크림' },
+      { rank: 27, name: '콘토퍼스', material: '와플리머신' },
+      { rank: 28, name: '딥원', material: '베르쥬스' },
+      { rank: 29, name: '큐틀루', material: '안쵸비' },
+      { rank: 30, name: '꽃술나리', material: '핑크멜로우' },
+      { rank: 31, name: '다무스', material: '와일드갈릭' },
+      { rank: 32, name: '수호자', material: '그루누아' },
+      { rank: 33, name: '태양가사리', material: '시더플랭크' },
+      { rank: 34, name: '빅파더펭귄', material: '세비체' },
+      { rank: 35, name: '크레인터틀', material: '타파스' }
     ];
     return fishData.find(f => f.rank === currentStage);
   };
