@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Volume2, VolumeX, SkipBack, SkipForward } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, SkipBack, SkipForward, Repeat, Repeat1, Shuffle, ExternalLink } from 'lucide-react';
 
 const AudioPlayer = () => {
   const audioRef = useRef(null);
@@ -9,17 +9,113 @@ const AudioPlayer = () => {
   const [volume, setVolume] = useState(0.7);
   const [isMuted, setIsMuted] = useState(false);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
+  const [showPlaylist, setShowPlaylist] = useState(false);
+  const [playMode, setPlayMode] = useState('single'); // 'single', 'repeat', 'shuffle'
 
   const playlist = [
     {
-      title: '클로에 (Chloe)',
-      artist: 'Neal K Sound',
-      src: 'https://d2lals9bcc7in1.cloudfront.net/audio/chloe-neal-k.mp3'
+      title: 'Chloe',
+      artist: 'Neal K',
+      subtitle: 'Dreamy piano music',
+      src: 'https://d2lals9bcc7in1.cloudfront.net/audio/chloe-neal-k.mp3',
+      license: 'https://www.youtube.com/watch?v=-aoWKV9wFIw&list=RD-aoWKV9wFIw&start_radio=1'
+    },
+    {
+      title: 'Stellar Mist (별안개)',
+      artist: 'XYNSIA',
+      subtitle: 'Piano Instrumental Ver.',
+      src: 'https://d2lals9bcc7in1.cloudfront.net/audio/stellar-mist-xynsia.opus',
+      license: 'https://www.youtube.com/watch?v=65NntC7mgPw&list=RD65NntC7mgPw&start_radio=1'
     }
   ];
 
-  const [currentTrack] = useState(0);
+  const [currentTrack, setCurrentTrack] = useState(0);
 
+  // 이전 곡 재생
+  const playPreviousTrack = async () => {
+    const newIndex = currentTrack - 1;
+    if (newIndex >= 0) {
+      setCurrentTrack(newIndex);
+      setIsPlaying(false);
+      setTimeout(async () => {
+        if (audioRef.current) {
+          try {
+            await audioRef.current.play();
+            setIsPlaying(true);
+          } catch (error) {
+            console.error('이전 곡 재생 오류:', error);
+          }
+        }
+      }, 100);
+    }
+  };
+
+  // 다음 곡 재생
+  const playNextTrack = async () => {
+    const newIndex = currentTrack + 1;
+    if (newIndex < playlist.length) {
+      setCurrentTrack(newIndex);
+      setIsPlaying(false);
+      setTimeout(async () => {
+        if (audioRef.current) {
+          try {
+            await audioRef.current.play();
+            setIsPlaying(true);
+          } catch (error) {
+            console.error('다음 곡 재생 오류:', error);
+          }
+        }
+      }, 100);
+    }
+  };
+
+  // 곡 종료 핸들러
+  const handleEnded = () => {
+    if (playMode === 'single') {
+      // 단독재생: 다음 곡이 있으면 재생, 없으면 정지
+      if (currentTrack < playlist.length - 1) {
+        playNextTrack();
+      } else {
+        setIsPlaying(false);
+        setCurrentTime(0);
+      }
+    } else if (playMode === 'repeat') {
+      // 순차재생: 마지막 곡이면 처음 곡으로, 아니면 다음 곡으로
+      if (currentTrack < playlist.length - 1) {
+        playNextTrack();
+      } else {
+        setCurrentTrack(0);
+        setTimeout(async () => {
+          if (audioRef.current) {
+            try {
+              await audioRef.current.play();
+              setIsPlaying(true);
+            } catch (err) {
+              console.error('자동 재생 실패:', err);
+              setIsPlaying(false);
+            }
+          }
+        }, 100);
+      }
+    } else if (playMode === 'shuffle') {
+      // 셔플: 랜덤 곡 선택
+      const randomIndex = Math.floor(Math.random() * playlist.length);
+      setCurrentTrack(randomIndex);
+      setTimeout(async () => {
+        if (audioRef.current) {
+          try {
+            await audioRef.current.play();
+            setIsPlaying(true);
+          } catch (err) {
+            console.error('자동 재생 실패:', err);
+            setIsPlaying(false);
+          }
+        }
+      }, 100);
+    }
+  };
+
+  // 오디오 이벤트 리스너 등록
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -36,17 +132,45 @@ const AudioPlayer = () => {
       audio.removeEventListener('loadedmetadata', updateDuration);
       audio.removeEventListener('ended', handleEnded);
     };
-  }, []);
+  });
 
+  // 볼륨 조절
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.volume = isMuted ? 0 : volume;
     }
   }, [volume, isMuted]);
 
-  const handleEnded = () => {
-    setIsPlaying(false);
-    setCurrentTime(0);
+  // 트랙 변경 시 오디오 로드
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.load();
+      setCurrentTime(0);
+    }
+  }, [currentTrack]);
+
+  // 플레이리스트 외부 클릭 시 닫기
+  useEffect(() => {
+    if (!showPlaylist) return;
+    
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.relative')) {
+        setShowPlaylist(false);
+      }
+    };
+    
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showPlaylist]);
+  
+  const togglePlayMode = () => {
+    if (playMode === 'single') {
+      setPlayMode('repeat');
+    } else if (playMode === 'repeat') {
+      setPlayMode('shuffle');
+    } else {
+      setPlayMode('single');
+    }
   };
 
   const togglePlay = async () => {
@@ -85,16 +209,26 @@ const AudioPlayer = () => {
     setIsMuted(!isMuted);
   };
 
-  const skipBackward = () => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = Math.max(0, currentTime - 10);
+  const selectTrack = async (index) => {
+    if (index === currentTrack) {
+      setShowPlaylist(false);
+      return;
     }
-  };
-
-  const skipForward = () => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = Math.min(duration, currentTime + 10);
-    }
+    
+    setCurrentTrack(index);
+    setIsPlaying(false);
+    setShowPlaylist(false);
+    
+    setTimeout(async () => {
+      if (audioRef.current) {
+        try {
+          await audioRef.current.play();
+          setIsPlaying(true);
+        } catch (error) {
+          console.error('곡 선택 재생 오류:', error);
+        }
+      }
+    }, 100);
   };
 
   const formatTime = (time) => {
@@ -111,21 +245,89 @@ const AudioPlayer = () => {
       <div className="max-w-7xl mx-auto px-3 py-2">
         <div className="flex items-center gap-3">
           {/* 트랙 정보 */}
-          <div className="min-w-[140px] hidden sm:block">
-            <div className="text-white font-semibold text-sm truncate">
-              {playlist[currentTrack].title}
+          <div className="min-w-[180px] hidden sm:block relative">
+            <div 
+              className="flex items-center gap-2 cursor-pointer hover:bg-gray-700/50 rounded px-2 py-1 transition-colors"
+              onClick={() => setShowPlaylist(!showPlaylist)}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="text-white font-semibold text-sm truncate">
+                  {playlist[currentTrack].title}
+                </div>
+                <div className="text-gray-300 text-xs truncate">
+                  {playlist[currentTrack].artist}
+                </div>
+                <div className="text-gray-400 text-[10px] truncate">
+                  {playlist[currentTrack].subtitle}
+                </div>
+              </div>
+              <a
+                href={playlist[currentTrack].license}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+                title="Music Source License"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <ExternalLink size={14} className="text-gray-400 hover:text-white" />
+              </a>
             </div>
-            <div className="text-gray-300 text-xs truncate">
-              {playlist[currentTrack].artist}
-            </div>
+
+            {/* 플레이리스트 드롭다운 */}
+            {showPlaylist && (
+              <div className="absolute top-full left-0 mt-1 bg-gray-800/95 backdrop-blur-md border border-gray-700 rounded-lg shadow-xl min-w-[280px] max-h-[400px] overflow-y-auto z-[70]">
+                <div className="p-2">
+                  <div className="text-gray-400 text-xs font-semibold mb-2 px-2">
+                    Playlist ({playlist.length} tracks)
+                  </div>
+                  {playlist.map((track, index) => (
+                    <div
+                      key={index}
+                      onClick={() => selectTrack(index)}
+                      className={`p-3 rounded-lg cursor-pointer transition-all ${
+                        index === currentTrack
+                          ? 'bg-gray-700 border border-gray-600'
+                          : 'hover:bg-gray-700/50'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className={`font-semibold text-sm truncate ${
+                            index === currentTrack ? 'text-white' : 'text-gray-200'
+                          }`}>
+                            {track.title}
+                          </div>
+                          <div className="text-gray-400 text-xs truncate">
+                            {track.artist}
+                          </div>
+                          <div className="text-gray-500 text-[10px] truncate">
+                            {track.subtitle}
+                          </div>
+                        </div>
+                        {index === currentTrack && (
+                          <div className="flex-shrink-0 text-green-400">
+                            {isPlaying ? '▶' : '⏸'}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 재생 컨트롤 */}
           <div className="flex items-center gap-2 relative z-50">
             <button
-              onClick={skipBackward}
-              className="p-1.5 hover:bg-gray-700 rounded-full transition-colors relative cursor-pointer"
-              title="10초 뒤로"
+              onClick={playPreviousTrack}
+              disabled={currentTrack === 0}
+              className={`p-1.5 rounded-full transition-colors relative ${
+                currentTrack === 0 
+                  ? 'opacity-30 cursor-not-allowed' 
+                  : 'hover:bg-gray-700 cursor-pointer'
+              }`}
+              title="이전 곡"
               type="button"
             >
               <SkipBack size={16} className="text-white pointer-events-none" />
@@ -145,12 +347,39 @@ const AudioPlayer = () => {
             </button>
 
             <button
-              onClick={skipForward}
-              className="p-1.5 hover:bg-gray-700 rounded-full transition-colors relative cursor-pointer"
-              title="10초 앞으로"
+              onClick={playNextTrack}
+              disabled={currentTrack === playlist.length - 1}
+              className={`p-1.5 rounded-full transition-colors relative ${
+                currentTrack === playlist.length - 1 
+                  ? 'opacity-30 cursor-not-allowed' 
+                  : 'hover:bg-gray-700 cursor-pointer'
+              }`}
+              title="다음 곡"
               type="button"
             >
               <SkipForward size={16} className="text-white pointer-events-none" />
+            </button>
+            
+            {/* 재생 모드 토글 */}
+            <button
+              onClick={togglePlayMode}
+              className={`p-1.5 hover:bg-gray-700 rounded-full transition-all relative cursor-pointer ${
+                playMode !== 'single' ? 'bg-gray-700' : ''
+              }`}
+              title={
+                playMode === 'single' ? '단독재생' : 
+                playMode === 'repeat' ? '순차재생' : 
+                '셔플재생'
+              }
+              type="button"
+            >
+              {playMode === 'single' ? (
+                <Repeat1 size={16} className="text-white pointer-events-none" />
+              ) : playMode === 'repeat' ? (
+                <Repeat size={16} className="text-white pointer-events-none" />
+              ) : (
+                <Shuffle size={16} className="text-white pointer-events-none" />
+              )}
             </button>
           </div>
 
@@ -221,10 +450,70 @@ const AudioPlayer = () => {
           </div>
 
           {/* 모바일 트랙 정보 */}
-          <div className="sm:hidden flex-1 min-w-0">
-            <div className="text-white font-semibold text-xs truncate">
-              {playlist[currentTrack].title}
+          <div className="sm:hidden flex-1 min-w-0 relative">
+            <div 
+              className="flex items-center gap-2 cursor-pointer hover:bg-gray-700/50 rounded px-2 py-1 transition-colors"
+              onClick={() => setShowPlaylist(!showPlaylist)}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="text-white font-semibold text-xs truncate">
+                  {playlist[currentTrack].title}
+                </div>
+                <div className="text-gray-400 text-[10px] truncate">
+                  {playlist[currentTrack].artist}
+                </div>
+              </div>
+              <a
+                href={playlist[currentTrack].license}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+                title="Music Source License"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <ExternalLink size={12} className="text-gray-400 hover:text-white" />
+              </a>
             </div>
+
+            {/* 모바일 플레이리스트 드롭다운 */}
+            {showPlaylist && (
+              <div className="absolute top-full right-0 mt-1 bg-gray-800/95 backdrop-blur-md border border-gray-700 rounded-lg shadow-xl w-[calc(100vw-24px)] max-w-[320px] max-h-[300px] overflow-y-auto z-[70]">
+                <div className="p-2">
+                  <div className="text-gray-400 text-xs font-semibold mb-2 px-2">
+                    Playlist ({playlist.length} tracks)
+                  </div>
+                  {playlist.map((track, index) => (
+                    <div
+                      key={index}
+                      onClick={() => selectTrack(index)}
+                      className={`p-2 rounded-lg cursor-pointer transition-all ${
+                        index === currentTrack
+                          ? 'bg-gray-700 border border-gray-600'
+                          : 'hover:bg-gray-700/50'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className={`font-semibold text-xs truncate ${
+                            index === currentTrack ? 'text-white' : 'text-gray-200'
+                          }`}>
+                            {track.title}
+                          </div>
+                          <div className="text-gray-400 text-[10px] truncate">
+                            {track.artist}
+                          </div>
+                        </div>
+                        {index === currentTrack && (
+                          <div className="flex-shrink-0 text-green-400 text-xs">
+                            {isPlaying ? '▶' : '⏸'}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

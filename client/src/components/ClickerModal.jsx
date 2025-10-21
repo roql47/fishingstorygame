@@ -370,14 +370,14 @@ const ClickerModal = ({
 
   return (
     <>
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className={`max-w-2xl w-full rounded-2xl border-2 ${
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className={`max-w-2xl w-full max-h-[95vh] overflow-y-auto rounded-2xl border-2 ${
         isDarkMode 
           ? "bg-gray-900/95 border-purple-500/30" 
           : "bg-white/95 border-purple-300/50"
       } backdrop-blur-md overflow-hidden`}>
         {/* 헤더 */}
-        <div className={`p-6 border-b ${
+        <div className={`p-4 sm:p-6 border-b ${
           isDarkMode ? "border-white/10" : "border-gray-300/20"
         }`}>
           <div className="flex items-center justify-between">
@@ -419,12 +419,12 @@ const ClickerModal = ({
         </div>
 
         {/* 본문 */}
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {!gameStarted ? (
             // 난이도 선택 화면 - Elegant Minimal Design
             <div className="space-y-8">
               {/* 메인 선택 영역 */}
-              <div className={`relative p-10 rounded-3xl ${
+              <div className={`relative p-4 sm:p-8 rounded-2xl sm:rounded-3xl ${
                 isDarkMode 
                   ? "bg-gradient-to-br from-slate-900/90 via-slate-800/90 to-slate-900/90" 
                   : "bg-gradient-to-br from-white via-slate-50 to-white"
@@ -432,12 +432,12 @@ const ClickerModal = ({
                 isDarkMode ? "border-slate-700/50" : "border-slate-200/50"
               }`}>
                 {/* 난이도 대형 디스플레이 */}
-                <div className="text-center mb-8">
-                  <div className={`text-9xl font-black ${
+                <div className="text-center mb-6 sm:mb-8">
+                  <div className={`text-6xl sm:text-8xl font-black ${
                     isDarkMode ? "text-white" : "text-slate-900"
-                  } mb-3`}>
+                  } mb-2 sm:mb-3`}>
                     {currentStage}
-                    <span className={`text-5xl mx-2 ${
+                    <span className={`text-3xl sm:text-5xl mx-1 sm:mx-2 ${
                       isDarkMode ? "text-slate-600" : "text-slate-400"
                     }`}>-</span>
                     {difficulty}
@@ -455,34 +455,34 @@ const ClickerModal = ({
                 </div>
 
                 {/* 정보 테이블 */}
-                <div className={`space-y-3 mb-8 ${
+                <div className={`space-y-2 sm:space-y-3 mb-4 sm:mb-8 ${
                   isDarkMode ? "text-slate-300" : "text-slate-700"
                 }`}>
-                  <div className="flex items-center justify-between py-3 border-b border-dashed border-slate-600/30">
-                    <span className="text-sm font-medium opacity-70">몬스터 체력</span>
-                    <span className="text-2xl font-bold">{getMonsterHp(currentStage, difficulty).toLocaleString()}</span>
+                  <div className="flex items-center justify-between py-2 sm:py-3 border-b border-dashed border-slate-600/30">
+                    <span className="text-xs sm:text-sm font-medium opacity-70">몬스터 체력</span>
+                    <span className="text-lg sm:text-2xl font-bold">{getMonsterHp(currentStage, difficulty).toLocaleString()}</span>
                   </div>
                   
                   {currentStage >= 2 && (
-                    <div className="flex items-center justify-between py-3 border-b border-dashed border-slate-600/30">
-                      <span className="text-sm font-medium opacity-70">초당 회복</span>
-                      <span className="text-2xl font-bold text-red-500">+{getHealAmount(currentStage)}</span>
+                    <div className="flex items-center justify-between py-2 sm:py-3 border-b border-dashed border-slate-600/30">
+                      <span className="text-xs sm:text-sm font-medium opacity-70">초당 회복</span>
+                      <span className="text-lg sm:text-2xl font-bold text-red-500">+{getHealAmount(currentStage)}</span>
                     </div>
                   )}
                   
-                  <div className="flex items-center justify-between py-3">
-                    <span className="text-sm font-medium opacity-70">보상 물고기</span>
-                    <span className="text-2xl font-bold text-blue-500">×{difficulty === 1 ? '1' : `${difficulty - 1}~${difficulty}`}</span>
+                  <div className="flex items-center justify-between py-2 sm:py-3">
+                    <span className="text-xs sm:text-sm font-medium opacity-70">보상 물고기</span>
+                    <span className="text-lg sm:text-2xl font-bold text-blue-500">×{difficulty === 1 ? '1' : `${difficulty - 1}~${difficulty}`}</span>
                   </div>
                 </div>
 
                 {/* 난이도 그리드 선택 */}
-                <div className="grid grid-cols-10 gap-2">
+                <div className="grid grid-cols-10 gap-1 sm:gap-2">
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(level => (
                     <button
                       key={level}
                       onClick={() => setDifficulty(level)}
-                      className={`aspect-square rounded-xl font-bold text-lg transition-all duration-300 ${
+                      className={`aspect-square rounded-lg sm:rounded-xl font-bold text-sm sm:text-lg transition-all duration-300 ${
                         difficulty === level
                           ? (isDarkMode 
                             ? "bg-white text-slate-900 shadow-lg shadow-white/30 scale-110" 
@@ -501,7 +501,7 @@ const ClickerModal = ({
               </div>
 
               {/* 공격력 정보 - 미니멀 */}
-              <div className={`p-5 rounded-2xl ${
+              <div className={`p-3 sm:p-5 rounded-xl sm:rounded-2xl ${
                 isDarkMode ? "bg-slate-800/30" : "bg-slate-100/50"
               } border-l-4 ${
                 isDarkMode ? "border-orange-500" : "border-orange-600"
@@ -513,7 +513,7 @@ const ClickerModal = ({
                     }`}>
                       공격력
                     </div>
-                    <div className={`text-3xl font-black ${
+                    <div className={`text-2xl sm:text-3xl font-black ${
                       isDarkMode ? "text-white" : "text-slate-900"
                     }`}>
                       {getPlayerAttack()}
@@ -525,7 +525,7 @@ const ClickerModal = ({
                     }`}>
                       범위
                     </div>
-                    <div className={`text-lg font-bold ${
+                    <div className={`text-sm sm:text-lg font-bold ${
                       isDarkMode ? "text-slate-300" : "text-slate-700"
                     }`}>
                       {Math.floor(getPlayerAttack() * 0.8)} ~ {Math.floor(getPlayerAttack() * 1.2)}
@@ -537,7 +537,7 @@ const ClickerModal = ({
               {/* 시작 버튼 */}
               <button
                 onClick={startGame}
-                className={`w-full py-6 rounded-2xl font-black text-2xl transition-all duration-300 hover:scale-[1.02] ${
+                className={`w-full py-4 sm:py-6 rounded-xl sm:rounded-2xl font-black text-lg sm:text-2xl transition-all duration-300 hover:scale-[1.02] ${
                   isDarkMode 
                     ? "bg-white text-slate-900 hover:shadow-2xl hover:shadow-white/20" 
                     : "bg-slate-900 text-white hover:shadow-2xl hover:shadow-slate-900/30"

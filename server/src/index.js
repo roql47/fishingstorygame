@@ -2140,12 +2140,7 @@ setInterval(() => {
       zombieCount++;
     }
     
-    // 🔧 특정 삭제된 사용자 강제 제거
-    if (userData.username === '아딸' || userData.userUuid === '#0002') {
-      console.log(`🗑️ Force removing deleted user: ${userData.username} (${userData.userUuid})`);
-      connectedUsers.delete(socketId);
-      zombieCount++;
-    }
+    // 🔧 특정 삭제된 사용자 강제 제거 - 제거됨 (정상 사용자 차단 방지)
   }
   
   if (zombieCount > 0) {
