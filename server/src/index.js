@@ -7894,9 +7894,22 @@ app.get("/api/clicker/stage", authenticateJWT, async (req, res) => {
       await clickerStage.save();
     }
     
-    // 낚시실력 조회
+    // 낚시실력 조회 (업적 보너스 포함)
     const fishingSkillData = await FishingSkillModel.findOne(query);
-    const userFishingSkill = fishingSkillData?.skill || 0;
+    const baseSkill = fishingSkillData?.skill || 0;
+    
+    // 업적 보너스 계산
+    let achievementBonus = 0;
+    try {
+      const targetUserUuid = queryResult.userUuid || userUuid;
+      if (targetUserUuid) {
+        achievementBonus = await achievementSystem.calculateAchievementBonus(targetUserUuid);
+      }
+    } catch (error) {
+      console.error("Failed to calculate achievement bonus for clicker:", error);
+    }
+    
+    const userFishingSkill = baseSkill + achievementBonus;
     
     // 자동 다운그레이드: 현재 스테이지가 낚시실력을 초과하면 조정
     if (clickerStage.currentStage > userFishingSkill) {
@@ -7904,7 +7917,7 @@ app.get("/api/clicker/stage", authenticateJWT, async (req, res) => {
       clickerStage.currentStage = Math.max(1, userFishingSkill); // 최소 1 스테이지
       await clickerStage.save();
       
-      console.log(`[Auto Downgrade] ${username}: Stage ${originalStage} → ${clickerStage.currentStage} (Fishing Skill: ${userFishingSkill})`);
+      console.log(`[Auto Downgrade] ${username}: Stage ${originalStage} → ${clickerStage.currentStage} (Fishing Skill: ${baseSkill} + ${achievementBonus} = ${userFishingSkill})`);
     }
     
     res.json({
@@ -7940,15 +7953,28 @@ app.post("/api/clicker/upgrade-stage", authenticateJWT, async (req, res) => {
     
     const currentStage = clickerStage.currentStage;
     
-    // 낚시실력 조회
+    // 낚시실력 조회 (업적 보너스 포함)
     const fishingSkillData = await FishingSkillModel.findOne(query);
-    const userFishingSkill = fishingSkillData?.skill || 0;
+    const baseSkill = fishingSkillData?.skill || 0;
+    
+    // 업적 보너스 계산
+    let achievementBonus = 0;
+    try {
+      const targetUserUuid = queryResult.userUuid || userUuid;
+      if (targetUserUuid) {
+        achievementBonus = await achievementSystem.calculateAchievementBonus(targetUserUuid);
+      }
+    } catch (error) {
+      console.error("Failed to calculate achievement bonus for upgrade:", error);
+    }
+    
+    const userFishingSkill = baseSkill + achievementBonus;
     
     // 낚시실력 제한 확인 (다음 스테이지가 낚시실력을 초과하는지 체크)
     const nextStage = currentStage + 1;
     if (nextStage > userFishingSkill) {
       return res.status(400).json({ 
-        error: `낚시실력이 부족합니다. 스테이지 ${nextStage}는 낚시실력 ${nextStage} 이상이 필요합니다. (현재: ${userFishingSkill})`,
+        error: `낚시실력이 부족합니다. 스테이지 ${nextStage}는 낚시실력 ${nextStage} 이상이 필요합니다. (현재: ${userFishingSkill} = 기본 ${baseSkill} + 업적 ${achievementBonus})`,
         requiredSkill: nextStage,
         currentSkill: userFishingSkill
       });
@@ -8060,26 +8086,24 @@ app.post("/api/clicker/reward", authenticateJWT, async (req, res) => {
       query = queryResult;
     }
     
-    // 각 물고기를 인벤토리에 추가
+    // 각 물고기를 인벤토리에 추가 (upsert로 race condition 방지)
     for (const reward of rewardFish) {
-      let catchEntry = await CatchModel.findOne({
-        ...query,
-        fish: reward.name
-      });
-      
-      if (catchEntry) {
-        catchEntry.count += reward.count;
-        await catchEntry.save();
-      } else {
-        catchEntry = new CatchModel({
-          userId: query.userId || 'user',
-          username: query.username || username,
-          userUuid: query.userUuid || userUuid,
-          fish: reward.name,
-          count: reward.count
-        });
-        await catchEntry.save();
-      }
+      await CatchModel.updateOne(
+        {
+          ...query,
+          fish: reward.name
+        },
+        {
+          $inc: { count: reward.count },
+          $setOnInsert: {
+            userId: query.userId || 'user',
+            username: query.username || username,
+            userUuid: query.userUuid || userUuid,
+            fish: reward.name
+          }
+        },
+        { upsert: true }
+      );
     }
     
     // 난이도 완료 기록 업데이트
@@ -10326,14 +10350,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.311"
+    version: "v1.312"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.311",
+    version: "v1.312",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [

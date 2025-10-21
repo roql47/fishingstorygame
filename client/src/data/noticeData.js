@@ -1,6 +1,25 @@
 // 공지사항 데이터 (ID 내림차순 정렬 - 최신이 가장 높은 ID)
 export const NOTICE_DATA = [
   {
+    id: 35,
+    date: "2025.10.21",
+    title: "🎵 BGM 오디오 플레이어 추가",
+    content: [
+      "배경음악 재생 시스템 추가:",
+      "- 상단에 컴팩트한 오디오 플레이어 배치",
+      "- 샘플트랙 곡 추가",
+      "재생 기능:",
+      "- 재생/일시정지 버튼",
+      "- 10초 앞으로/뒤로 스킵",
+      "- 진행 바 드래그로 위치 이동",
+      "- 볼륨 조절 (호버 시 슬라이더 표시)",
+      "에테르 던전 모바일 작동 버그 수정",
+      "에테르 던전 스테이지 업그레이드 버그 수정"
+    ],
+    isNew: true,
+    type: "major_update"
+  },
+  {
     id: 34,
     date: "2025.10.19",
     title: "☁️ CDN서버업로드 저장 방식 개선",
@@ -16,7 +35,7 @@ export const NOTICE_DATA = [
       "- IAM 최소 권한 원칙 적용",
       "- CloudFront OAC로 S3 직접 접근 차단"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
@@ -586,5 +605,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.311"
+  version: "v1.312"
 };

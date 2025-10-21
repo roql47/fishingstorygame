@@ -44,20 +44,24 @@ const ClickerModal = ({
 
   // 스테이지 정보 로드
   useEffect(() => {
+    let hasShownAlert = false; // 중복 알림 방지
+    
     const loadStage = async () => {
       try {
         const response = await authenticatedRequest.get(`${serverUrl}/api/clicker/stage`);
         if (response.data.success) {
           const loadedStage = response.data.currentStage;
-          const userSkill = response.data.fishingSkill || fishingSkill;
+          const serverFishingSkill = response.data.fishingSkill;
           
           setCurrentStage(loadedStage);
           setCompletedDifficulties(response.data.completedDifficulties || {});
           
-          // 다운그레이드 알림 (낚시실력보다 높은 스테이지였던 경우)
-          if (loadedStage < userSkill && loadedStage > 1) {
+          // 다운그레이드 알림 (서버에서 조정된 경우)
+          // 낚시실력과 스테이지가 같으면 다운그레이드가 발생했을 가능성
+          if (!hasShownAlert && loadedStage === serverFishingSkill && loadedStage > 1) {
+            hasShownAlert = true;
             setTimeout(() => {
-              alert(`낚시실력에 따라 스테이지가 조정되었습니다.\n\n현재 낚시실력: ${userSkill}\n스테이지: ${loadedStage}`);
+              alert(`낚시실력에 따라 스테이지가 조정되었습니다.\n\n현재 낚시실력: ${serverFishingSkill}\n조정된 스테이지: ${loadedStage}`);
             }, 500);
           }
         }
@@ -66,7 +70,7 @@ const ClickerModal = ({
       }
     };
     loadStage();
-  }, [serverUrl, authenticatedRequest, fishingSkill]);
+  }, [serverUrl, authenticatedRequest]);
 
   // 플레이어 공격력 계산 (내정보와 완전히 동일)
   const getPlayerAttack = () => {
