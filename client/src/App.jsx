@@ -11869,8 +11869,12 @@ function App() {
                             );
                           }
                           
-                          const sourceFish = getMaterialToFish(quantityModalData.materialName);
-                          const totalCost = sourceFish ? getFishPrice(sourceFish.name) * chain.steps.length : 0;
+                          // 각 단계별 비용을 합산 (분해는 개수 그대로)
+                          const totalCost = chain.steps.reduce((sum, step) => {
+                            const stepFish = getMaterialToFish(step.fromMaterial);
+                            const stepCost = stepFish ? getFishPrice(stepFish.name) * step.fromAmount : 0;
+                            return sum + stepCost;
+                          }, 0);
                           
                           return (
                             <div className="space-y-2">
@@ -12053,8 +12057,12 @@ function App() {
                             );
                           }
                           
-                          const sourceFish = getMaterialToFish(quantityModalData.materialName);
-                          const totalCost = sourceFish ? getFishPrice(sourceFish.name) * chain.steps.length : 0;
+                          // 각 단계별 비용을 합산 (조합은 3개씩 묶어서 계산)
+                          const totalCost = chain.steps.reduce((sum, step) => {
+                            const stepFish = getMaterialToFish(step.fromMaterial);
+                            const stepCost = stepFish ? getFishPrice(stepFish.name) * (step.fromAmount / 3) : 0;
+                            return sum + stepCost;
+                          }, 0);
                           
                           return (
                             <div className="space-y-2">
