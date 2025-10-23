@@ -7,8 +7,8 @@ class RaidScheduler {
     this.isRunning = false;
   }
 
-  // 한국시간 기준으로 다음 오후 6시까지의 시간 계산
-  getNext6PMKST() {
+  // 한국시간 기준으로 다음 레이드 시간 계산 (오후 12시 또는 오후 6시)
+  getNextRaidTimeKST() {
     const now = new Date();
     
     // 한국시간으로 변환 (UTC+9)
@@ -16,18 +16,32 @@ class RaidScheduler {
     const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
     const kst = new Date(utc + (kstOffset * 60000));
     
-    // 다음 오후 6시 계산
-    const next6PM = new Date(kst);
-    next6PM.setHours(18, 0, 0, 0);
+    // 오후 12시와 오후 6시 시간 계산
+    const noon = new Date(kst);
+    noon.setHours(12, 0, 0, 0);
     
-    // 이미 오늘 오후 6시가 지났다면 내일 오후 6시로 설정
-    if (kst >= next6PM) {
-      next6PM.setDate(next6PM.getDate() + 1);
+    const sixPM = new Date(kst);
+    sixPM.setHours(18, 0, 0, 0);
+    
+    // 다음 레이드 시간 결정
+    let nextRaidTime;
+    
+    if (kst < noon) {
+      // 오전이면 오늘 오후 12시
+      nextRaidTime = noon;
+    } else if (kst < sixPM) {
+      // 오후 12시~6시 사이면 오늘 오후 6시
+      nextRaidTime = sixPM;
+    } else {
+      // 오후 6시 이후면 내일 오후 12시
+      nextRaidTime = new Date(kst);
+      nextRaidTime.setDate(nextRaidTime.getDate() + 1);
+      nextRaidTime.setHours(12, 0, 0, 0);
     }
     
     // UTC로 다시 변환하여 반환
-    const utc6PM = new Date(next6PM.getTime() - (kstOffset * 60000));
-    return utc6PM;
+    const utcRaidTime = new Date(nextRaidTime.getTime() - (kstOffset * 60000));
+    return utcRaidTime;
   }
 
   // 모든 레이드 보스 자동 소환
@@ -90,35 +104,36 @@ class RaidScheduler {
     }
     
     this.isRunning = true;
-    console.log('🕛 [RaidScheduler] 레이드 자동 소환 스케줄러 시작');
+    console.log('🕛 [RaidScheduler] 레이드 자동 소환 스케줄러 시작 (오후 12시, 오후 6시)');
     
-    // 다음 오후 6시까지의 시간 계산
-    const next6PM = this.getNext6PMKST();
-    const timeUntil6PM = next6PM.getTime() - Date.now();
-    
-    console.log(`[RaidScheduler] 다음 자동 소환 시간: ${next6PM.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
-    console.log(`[RaidScheduler] 남은 시간: ${Math.round(timeUntil6PM / 1000 / 60)}분`);
-    
-    // 첫 번째 오후 6시까지 타이머 설정
-    const firstTimeout = setTimeout(() => {
-      this.scheduleDailyRaids();
-    }, timeUntil6PM);
-    
-    this.scheduledJobs.set('first6PM', firstTimeout);
+    // 다음 레이드 시간 계산
+    this.scheduleNextRaid();
   }
 
-  // 매일 오후 6시에 레이드 소환하는 스케줄 설정
-  scheduleDailyRaids() {
-    // 즉시 한 번 실행
-    this.summonAllRaids();
+  // 다음 레이드 시간에 소환 스케줄 설정 (오후 12시 또는 오후 6시)
+  scheduleNextRaid() {
+    // 다음 레이드 시간 계산
+    const nextRaidTime = this.getNextRaidTimeKST();
+    const timeUntilRaid = nextRaidTime.getTime() - Date.now();
     
-    // 매일 오후 6시(24시간마다)에 실행하는 인터벌 설정
-    const dailyInterval = setInterval(() => {
-      this.summonAllRaids();
-    }, 24 * 60 * 60 * 1000); // 24시간 = 24 * 60 * 60 * 1000ms
+    console.log(`[RaidScheduler] 다음 자동 소환 시간: ${nextRaidTime.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
+    console.log(`[RaidScheduler] 남은 시간: ${Math.round(timeUntilRaid / 1000 / 60)}분`);
     
-    this.scheduledJobs.set('dailyRaids', dailyInterval);
-    console.log('🕛 [RaidScheduler] 매일 오후 6시 레이드 소환 스케줄 설정 완료');
+    // 기존 타이머가 있다면 취소
+    if (this.scheduledJobs.has('nextRaid')) {
+      clearTimeout(this.scheduledJobs.get('nextRaid'));
+    }
+    
+    // 다음 레이드 시간에 실행할 타이머 설정
+    const raidTimeout = setTimeout(async () => {
+      // 레이드 소환 실행
+      await this.summonAllRaids();
+      
+      // 다음 레이드 스케줄 설정
+      this.scheduleNextRaid();
+    }, timeUntilRaid);
+    
+    this.scheduledJobs.set('nextRaid', raidTimeout);
   }
 
   // 스케줄러 중지
@@ -148,7 +163,7 @@ class RaidScheduler {
     return {
       isRunning: this.isRunning,
       scheduledJobs: Array.from(this.scheduledJobs.keys()),
-      next6PM: this.getNext6PMKST().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })
+      nextRaidTime: this.getNextRaidTimeKST().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })
     };
   }
 

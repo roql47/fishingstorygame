@@ -66,7 +66,7 @@ export const COMPANION_DATA = {
     growthAttack: 2,   // 1 * 1.5 = 1.5 → 2
     growthSpeed: 0.5,    // 레벨당 속도 증가량
     description: "쌍둥이 궁수",
-    rarity: "희귀",
+    rarity: "일반",
     skill: {
       name: "마탄 발사",
       description: "2명의 적에게 각각 100% 공격력으로 공격합니다",

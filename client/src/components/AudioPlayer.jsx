@@ -26,6 +26,27 @@ const AudioPlayer = () => {
       subtitle: 'Piano Instrumental Ver.',
       src: 'https://d2lals9bcc7in1.cloudfront.net/audio/stellar-mist-xynsia.opus',
       license: 'https://www.youtube.com/watch?v=65NntC7mgPw&list=RD65NntC7mgPw&start_radio=1'
+    },
+    {
+      title: 'Catch Me If You Can',
+      artist: 'HYP Music',
+      subtitle: 'Upbeat piano music',
+      src: 'https://d2lals9bcc7in1.cloudfront.net/audio/catch-me-if-you-can-hyp.opus',
+      license: 'https://clipdown.net/view/youtube/LrTkfYqNJFU/'
+    },
+    {
+      title: '붉은 연꽃 - 홍련',
+      artist: 'Neal K',
+      subtitle: 'Oriental epic music',
+      src: 'https://d2lals9bcc7in1.cloudfront.net/audio/red-lotus-neal-k.opus',
+      license: 'https://clipdown.net/view/youtube/bxL3fgAa9gw/'
+    },
+    {
+      title: 'Again - 어게인',
+      artist: 'Neal K',
+      subtitle: 'Dreamy epic piano',
+      src: 'https://d2lals9bcc7in1.cloudfront.net/audio/again-neal-k.opus',
+      license: 'https://clipdown.net/view/youtube/xjSp2sIQAWY/'
     }
   ];
 
@@ -284,28 +305,25 @@ const AudioPlayer = () => {
                     <div
                       key={index}
                       onClick={() => selectTrack(index)}
-                      className={`p-3 rounded-lg cursor-pointer transition-all ${
+                      className={`p-2 rounded-lg cursor-pointer transition-all ${
                         index === currentTrack
                           ? 'bg-gray-700 border border-gray-600'
                           : 'hover:bg-gray-700/50'
                       }`}
                     >
-                      <div className="flex items-start gap-2">
+                      <div className="flex items-center gap-2">
                         <div className="flex-1 min-w-0">
-                          <div className={`font-semibold text-sm truncate ${
+                          <div className={`font-semibold text-xs truncate ${
                             index === currentTrack ? 'text-white' : 'text-gray-200'
                           }`}>
                             {track.title}
                           </div>
-                          <div className="text-gray-400 text-xs truncate">
+                          <div className="text-gray-400 text-[10px] truncate">
                             {track.artist}
-                          </div>
-                          <div className="text-gray-500 text-[10px] truncate">
-                            {track.subtitle}
                           </div>
                         </div>
                         {index === currentTrack && (
-                          <div className="flex-shrink-0 text-green-400">
+                          <div className="flex-shrink-0 text-green-400 text-xs">
                             {isPlaying ? '▶' : '⏸'}
                           </div>
                         )}

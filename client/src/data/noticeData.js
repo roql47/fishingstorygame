@@ -1,6 +1,23 @@
 // 공지사항 데이터 (ID 내림차순 정렬 - 최신이 가장 높은 ID)
 export const NOTICE_DATA = [
   {
+    id: 36,
+    date: "2025.10.23",
+    title: "🔨 재료 조합/분해 시스템 개선",
+    content: [
+      "재료 분해 비율 조정:",
+      "- 상위 재료 1개 → 하위 재료 2개로 변경",
+      "자동 조합/분해 기능 개선:",
+      "- 개별 재료 모달에서 목표 재료 선택 가능",
+      "- 목표 재료 수량 직접 입력 기능 추가",
+      "- 필요한 재료량 자동 계산",
+      "- 다단계 조합/분해 체인 자동 실행",
+      "레이드 마르가글레숨 난이도 하향"
+    ],
+    isNew: true,
+    type: "major_update"
+  },
+  {
     id: 35,
     date: "2025.10.21",
     title: "🎵 BGM 오디오 플레이어 추가",
@@ -17,7 +34,7 @@ export const NOTICE_DATA = [
       "에테르 던전 스테이지 업그레이드 버그 수정",
       "에테르 던전 UI모달 개선"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
@@ -606,5 +623,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.312"
+  version: "v1.313"
 };

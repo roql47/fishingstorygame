@@ -71,6 +71,21 @@ async function uploadAudioToS3() {
       localPath: path.join(__dirname, '../assets/sound/별안개 - 피아노 연주곡 Ver. (XYNSIA).opus'),
       s3FileName: 'stellar-mist-xynsia.opus',
       contentType: 'audio/opus'
+    },
+    {
+      localPath: path.join(__dirname, '../assets/sound/Catch Me If You Can - (HYP Music).opus'),
+      s3FileName: 'catch-me-if-you-can-hyp.opus',
+      contentType: 'audio/opus'
+    },
+    {
+      localPath: path.join(__dirname, '../assets/sound/붉은 연꽃 - 홍련 (Neal K).opus'),
+      s3FileName: 'red-lotus-neal-k.opus',
+      contentType: 'audio/opus'
+    },
+    {
+      localPath: path.join(__dirname, '../assets/sound/Again - 어게인 (Neal K).opus'),
+      s3FileName: 'again-neal-k.opus',
+      contentType: 'audio/opus'
     }
   ];
 

@@ -9507,11 +9507,11 @@ const { getCraftingRecipe, getDecomposeRecipe, getSourceFishForMaterial } = requ
 // 재료 조합 API (하위 재료 3개 → 상위 재료 1개)
 app.post("/api/craft-material", authenticateJWT, async (req, res) => {
   try {
-    const { inputMaterial, inputCount, outputMaterial, outputCount } = req.body;
+    const { inputMaterial, inputCount, outputMaterial, outputCount, quantity = 1 } = req.body;
     // 🔐 JWT에서 사용자 정보 추출
     const { userUuid, username } = req.user;
     
-    console.log("Craft material request:", { inputMaterial, inputCount, outputMaterial, outputCount, username, userUuid });
+    console.log("Craft material request:", { inputMaterial, inputCount, outputMaterial, outputCount, quantity, username, userUuid });
     
     // 레시피 유효성 검증
     const recipe = getCraftingRecipe(inputMaterial);
@@ -9542,9 +9542,13 @@ app.post("/api/craft-material", authenticateJWT, async (req, res) => {
     
     console.log(`Found ${currentInputCount} ${inputMaterial} for user`);
     
-    if (currentInputCount < inputCount) {
-      console.log(`❌ 재료 부족: ${inputMaterial} (보유: ${currentInputCount}, 필요: ${inputCount})`);
-      return res.status(400).json({ error: `재료가 부족합니다. (보유: ${currentInputCount}/${inputCount})` });
+    // 실제 필요한 재료 개수 (quantity만큼 조합)
+    const totalInputNeeded = inputCount * quantity;
+    const totalOutputGained = outputCount * quantity;
+    
+    if (currentInputCount < totalInputNeeded) {
+      console.log(`❌ 재료 부족: ${inputMaterial} (보유: ${currentInputCount}, 필요: ${totalInputNeeded})`);
+      return res.status(400).json({ error: `재료가 부족합니다. (보유: ${currentInputCount}/${totalInputNeeded})` });
     }
     
     // 💰 조합 비용 계산 및 차감 (원형 물고기 가격 기반)
@@ -9553,30 +9557,31 @@ app.post("/api/craft-material", authenticateJWT, async (req, res) => {
       console.log(`Warning: No source fish found for material ${inputMaterial}`);
     }
     
-    const craftingCost = sourceFish ? sourceFish.price : 0;
+    const craftingCostPerCraft = sourceFish ? sourceFish.price : 0;
+    const totalCraftingCost = craftingCostPerCraft * quantity;
     
-    if (craftingCost > 0) {
+    if (totalCraftingCost > 0) {
       // 사용자 정보 조회 (골드 확인)
       const userMoney = await UserMoneyModel.findOne(query);
       const currentGold = userMoney?.money || 0;
       
-      if (currentGold < craftingCost) {
-        console.log(`❌ 골드 부족: ${inputMaterial} 조합 (보유: ${currentGold}, 필요: ${craftingCost})`);
+      if (currentGold < totalCraftingCost) {
+        console.log(`❌ 골드 부족: ${inputMaterial} 조합 (보유: ${currentGold}, 필요: ${totalCraftingCost})`);
         return res.status(400).json({ 
-          error: `골드가 부족합니다. (보유: ${currentGold.toLocaleString()}G / 필요: ${craftingCost.toLocaleString()}G)`,
-          requiredGold: craftingCost,
+          error: `골드가 부족합니다. (보유: ${currentGold.toLocaleString()}G / 필요: ${totalCraftingCost.toLocaleString()}G)`,
+          requiredGold: totalCraftingCost,
           currentGold: currentGold
         });
       }
       
       // 골드 차감
-      await UserMoneyModel.updateOne(query, { $inc: { money: -craftingCost } });
-      console.log(`Deducted ${craftingCost} gold for crafting (remaining: ${currentGold - craftingCost})`);
+      await UserMoneyModel.updateOne(query, { $inc: { money: -totalCraftingCost } });
+      console.log(`Deducted ${totalCraftingCost} gold for crafting (remaining: ${currentGold - totalCraftingCost})`);
     }
     
     // 📦 인벤토리 제한 확인 (재료 조합 시)
-    // inputCount개 소비, outputCount개 생성 → 순 증가는 (outputCount - inputCount)
-    const netChange = outputCount - inputCount;
+    // totalInputNeeded개 소비, totalOutputGained개 생성 → 순 증가는 (totalOutputGained - totalInputNeeded)
+    const netChange = totalOutputGained - totalInputNeeded;
     if (netChange > 0) {
       const inventoryCheck = await checkInventoryLimit(query, netChange);
       
@@ -9592,16 +9597,16 @@ app.post("/api/craft-material", authenticateJWT, async (req, res) => {
     }
     
     // 🚀 입력 재료 감소 (count 필드 업데이트)
-    const newInputCount = currentInputCount - inputCount;
+    const newInputCount = currentInputCount - totalInputNeeded;
     if (newInputCount <= 0) {
       await MaterialModel.deleteOne({ ...query, material: inputMaterial });
       console.log(`Consumed all ${inputMaterial} (deleted document)`);
     } else {
       await MaterialModel.updateOne(
         { ...query, material: inputMaterial },
-        { $inc: { count: -inputCount } }
+        { $inc: { count: -totalInputNeeded } }
       );
-      console.log(`Consumed ${inputCount} ${inputMaterial} (${newInputCount} remaining)`);
+      console.log(`Consumed ${totalInputNeeded} ${inputMaterial} (${newInputCount} remaining)`);
     }
     
     // 🚀 출력 재료 증가 (upsert로 count 증가)
@@ -9618,13 +9623,13 @@ app.post("/api/craft-material", authenticateJWT, async (req, res) => {
     const updateResult = await MaterialModel.findOneAndUpdate(
       { ...query, material: outputMaterial },
       {
-        $inc: { count: outputCount },
+        $inc: { count: totalOutputGained },
         $setOnInsert: materialData
       },
       { upsert: true, new: true }
     );
     
-    console.log(`✅ 조합 성공: ${inputMaterial} ${inputCount}개 → ${outputMaterial} ${outputCount}개 (총 ${updateResult.count}개 보유)`);
+    console.log(`✅ 조합 성공: ${inputMaterial} ${totalInputNeeded}개 → ${outputMaterial} ${totalOutputGained}개 (총 ${updateResult.count}개 보유)`);
     
     // 최종 골드 조회
     const finalUserMoney = await UserMoneyModel.findOne(query);
@@ -9634,7 +9639,7 @@ app.post("/api/craft-material", authenticateJWT, async (req, res) => {
       success: true, 
       inputRemaining: Math.max(0, newInputCount), 
       outputTotal: updateResult.count,
-      craftingCost: craftingCost || 0,
+      craftingCost: totalCraftingCost || 0,
       currentGold: finalGold
     });
   } catch (error) {
@@ -10345,14 +10350,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.312"
+    version: "v1.313"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.312",
+    version: "v1.313",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [

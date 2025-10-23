@@ -1,6 +1,6 @@
 // 조합 레시피 데이터
 // 하위 재료 3개 → 상위 재료 1개
-// 상위 재료 1개 → 하위 재료 3개 (분해)
+// 상위 재료 1개 → 하위 재료 2개 (분해)
 
 export const CRAFTING_RECIPES = [
   // rank 1 → rank 2
@@ -257,4 +257,119 @@ export const getMaterialTier = (materialName) => {
   
   // 찾지 못하면 999 반환 (맨 뒤로)
   return 999;
+};
+
+// 두 재료 간의 조합/분해 체인 계산
+export const calculateCraftingChain = (sourceMaterial, targetMaterial, targetAmount) => {
+  const sourceTier = getMaterialTier(sourceMaterial);
+  const targetTier = getMaterialTier(targetMaterial);
+  
+  // 같은 tier면 변환 불가
+  if (sourceTier === targetTier || sourceTier === 999 || targetTier === 999) {
+    return null;
+  }
+  
+  const isDecompose = sourceTier > targetTier; // 분해 (상위 → 하위)
+  const steps = [];
+  let currentAmount = targetAmount;
+  let currentMaterial = targetMaterial;
+  let currentTier = targetTier;
+  
+  if (isDecompose) {
+    // 분해: 소스 재료(높은 tier)에서 시작해서 목표 재료(낮은 tier)까지 계산
+    currentMaterial = sourceMaterial;
+    currentTier = sourceTier;
+    let accumulatedAmount = 1; // 시작은 소스 재료 1개
+    
+    while (currentTier > targetTier) {
+      // 현재 재료를 분해할 때 사용할 레시피 (현재 재료를 만드는 레시피)
+      const recipe = CRAFTING_RECIPES.find(r => r.outputMaterial === currentMaterial);
+      if (!recipe) break;
+      
+      // 분해 시 1개당 2개 획득
+      const outputAmount = accumulatedAmount * 2;
+      
+      steps.push({
+        fromMaterial: currentMaterial,
+        toMaterial: recipe.inputMaterial,
+        fromAmount: accumulatedAmount,
+        toAmount: outputAmount,
+        action: 'decompose'
+      });
+      
+      currentMaterial = recipe.inputMaterial;
+      accumulatedAmount = outputAmount;
+      currentTier--;
+    }
+    
+    // 최종 필요한 소스 재료 개수 계산 (역으로 계산)
+    // targetAmount를 얻기 위해 필요한 소스 재료 개수
+    const finalOutputAmount = accumulatedAmount; // 소스 1개로 얻을 수 있는 타겟 재료 개수
+    const requiredSourceAmount = Math.ceil(targetAmount / finalOutputAmount);
+    
+    // 단계별 수량 재조정
+    steps.forEach((step, idx) => {
+      step.fromAmount = step.fromAmount * requiredSourceAmount;
+      step.toAmount = step.toAmount * requiredSourceAmount;
+    });
+    
+    return {
+      isDecompose,
+      sourceMaterial,
+      targetMaterial,
+      targetAmount,
+      requiredSourceAmount,
+      steps,
+      isValid: currentMaterial === targetMaterial
+    };
+  } else {
+    // 조합: 목표 재료에서 시작해서 소스 재료까지 역으로 계산
+    while (currentTier > sourceTier) {
+      // 현재 재료를 만들기 위해 필요한 하위 재료
+      const recipe = CRAFTING_RECIPES.find(r => r.outputMaterial === currentMaterial);
+      if (!recipe) break;
+      
+      // 필요한 하위 재료 개수 계산
+      const neededAmount = currentAmount * 3;
+      
+      steps.unshift({
+        fromMaterial: recipe.inputMaterial,
+        toMaterial: currentMaterial,
+        fromAmount: neededAmount,
+        toAmount: currentAmount,
+        action: 'craft'
+      });
+      
+      currentMaterial = recipe.inputMaterial;
+      currentAmount = neededAmount;
+      currentTier--;
+    }
+  }
+  
+  // 최종 필요한 소스 재료 개수
+  const requiredSourceAmount = currentAmount;
+  
+  return {
+    isDecompose,
+    sourceMaterial,
+    targetMaterial,
+    targetAmount,
+    requiredSourceAmount,
+    steps,
+    isValid: currentMaterial === sourceMaterial
+  };
+};
+
+// 모든 재료 리스트 가져오기 (tier 순서대로)
+export const getAllMaterials = () => {
+  const materials = new Set();
+  
+  CRAFTING_RECIPES.forEach(recipe => {
+    materials.add(recipe.inputMaterial);
+    materials.add(recipe.outputMaterial);
+  });
+  
+  return Array.from(materials).sort((a, b) => {
+    return getMaterialTier(a) - getMaterialTier(b);
+  });
 };

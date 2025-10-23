@@ -25,7 +25,7 @@ import RoguelikeModal from './components/RoguelikeModal';
 import ClickerModal from './components/ClickerModal';
 import AudioPlayer from './components/AudioPlayer';
 import { VERSION_INFO } from './data/noticeData';
-import { CRAFTING_RECIPES, getCraftingRecipe, getDecomposeRecipe, getMaterialTier } from './data/craftingData';
+import { CRAFTING_RECIPES, getCraftingRecipe, getDecomposeRecipe, getMaterialTier, calculateCraftingChain, getAllMaterials } from './data/craftingData';
 import { 
   Fish, 
   MessageCircle, 
@@ -211,9 +211,9 @@ function App() {
     }
   }, []);
 
-  // 🔄 버전 업데이트 시 캐시 초기화 (v1.312)
+  // 🔄 버전 업데이트 시 캐시 초기화 (v1.313)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.312";
+    const CURRENT_VERSION = "v1.313";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -6966,24 +6966,63 @@ function App() {
 
   // 수량 모달 열기
   const openQuantityModal = (type, fishName, maxQuantity, materialName = null, recipe = null) => {
-    setQuantityModalData({ type, fishName, maxQuantity, materialName, recipe });
+    setQuantityModalData({ 
+      type, 
+      fishName, 
+      maxQuantity, 
+      materialName, 
+      recipe,
+      targetMaterial: '', // 목표 재료
+      targetAmount: 1, // 목표 재료 수량
+      useChain: false // 체인 조합/분해 사용 여부
+    });
     setInputQuantity(1);
     setShowQuantityModal(true);
   };
 
   // 수량 모달에서 확인 버튼
-  const handleQuantityConfirm = () => {
+  const handleQuantityConfirm = async () => {
     if (!quantityModalData) return;
     
-    const { type, fishName, materialName, recipe } = quantityModalData;
+    const { type, fishName, materialName, recipe, useChain, targetMaterial, targetAmount } = quantityModalData;
     const quantity = Math.min(inputQuantity, quantityModalData.maxQuantity);
     
     if (type === 'sell') {
       sellFish(fishName, quantity);
     } else if (type === 'decompose') {
       decomposeFish(fishName, quantity);
+    } else if (type === 'material_decompose' && useChain && targetMaterial) {
+      // 체인 분해 실행
+      const chain = calculateCraftingChain(materialName, targetMaterial, targetAmount || 1);
+      if (chain && chain.isValid) {
+        try {
+          for (const step of chain.steps) {
+            const stepRecipe = getDecomposeRecipe(step.fromMaterial);
+            await handleDecompose(step.fromMaterial, stepRecipe, step.fromAmount);
+          }
+        } catch (error) {
+          console.error('체인 분해 실패:', error);
+          alert('체인 분해 중 오류가 발생했습니다.');
+        }
+      }
     } else if (type === 'material_decompose') {
       handleDecompose(materialName, recipe, quantity);
+    } else if (type === 'material_craft' && useChain && targetMaterial) {
+      // 체인 조합 실행
+      const chain = calculateCraftingChain(materialName, targetMaterial, targetAmount || 1);
+      if (chain && chain.isValid) {
+        try {
+          for (const step of chain.steps) {
+            const stepRecipe = getCraftingRecipe(step.fromMaterial);
+            await handleCraft(step.fromMaterial, stepRecipe, step.fromAmount / 3);
+          }
+        } catch (error) {
+          console.error('체인 조합 실패:', error);
+          alert('체인 조합 중 오류가 발생했습니다.');
+        }
+      }
+    } else if (type === 'material_craft') {
+      handleCraft(materialName, recipe, quantity);
     }
     
     setShowQuantityModal(false);
@@ -7344,13 +7383,13 @@ function App() {
   };
 
   // 재료 조합 함수 (하위 재료 3개 → 상위 재료 1개)
-  const handleCraft = async (materialName, recipe) => {
+  const handleCraft = async (materialName, recipe, quantity = 1) => {
     if (!username) {
       alert('사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.');
       return;
     }
 
-    console.log('🔨 조합 시도:', { materialName, recipe });
+    console.log('🔨 조합 시도:', { materialName, recipe, quantity });
 
     try {
       const userId = idToken ? 'user' : 'null';
@@ -7361,7 +7400,8 @@ function App() {
         inputMaterial: recipe.inputMaterial,
         inputCount: recipe.inputCount,
         outputMaterial: recipe.outputMaterial,
-        outputCount: recipe.outputCount
+        outputCount: recipe.outputCount,
+        quantity: quantity
       });
 
       console.log('✅ 조합 응답:', response.data);
@@ -7379,9 +7419,12 @@ function App() {
           ? ` (비용: ${response.data.craftingCost.toLocaleString()}골드)` 
           : '';
         
+        const totalInputUsed = recipe.inputCount * quantity;
+        const totalOutputGained = recipe.outputCount * quantity;
+        
         setMessages(prev => [...prev, {
           system: true,
-          content: `✨ ${recipe.inputMaterial} ${recipe.inputCount}개를 조합하여 ${recipe.outputMaterial} ${recipe.outputCount}개를 획득했습니다!${costMessage}`,
+          content: `✨ ${recipe.inputMaterial} ${totalInputUsed}개를 조합하여 ${recipe.outputMaterial} ${totalOutputGained}개를 획득했습니다!${costMessage}`,
           timestamp: new Date().toISOString()
         }]);
       } else {
@@ -7412,7 +7455,7 @@ function App() {
       const response = await authenticatedRequest.post(`${serverUrl}/api/decompose-material`, {
         inputMaterial: recipe.outputMaterial, // 분해할 재료 (상위)
         outputMaterial: recipe.inputMaterial, // 얻을 재료 (하위)
-        outputCount: 3, // 분해 시 3개 획득
+        outputCount: 2, // 분해 시 2개 획득
         quantity: quantity // 분해할 개수
       });
 
@@ -7427,7 +7470,7 @@ function App() {
           setUserMoney(response.data.currentGold);
         }
         
-        const totalGained = quantity * 3; // 1개당 3개씩 획득
+        const totalGained = quantity * 2; // 1개당 2개씩 획득
         const costMessage = response.data.decomposeCost > 0 
           ? ` (비용: ${response.data.decomposeCost.toLocaleString()}골드)` 
           : '';
@@ -7672,7 +7715,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.312
+                여우이야기 v1.313
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -9028,7 +9071,7 @@ function App() {
                       isDarkMode ? "text-gray-400" : "text-gray-600"
                     }`}>
                       • 하위 재료 3개를 조합하여 상위 재료 1개를 만들 수 있습니다<br />
-                      • 상위 재료 1개를 분해하여 하위 재료 3개를 얻을 수 있습니다
+                      • 상위 재료 1개를 분해하여 하위 재료 2개를 얻을 수 있습니다
                     </p>
                   </div>
 
@@ -9103,7 +9146,11 @@ function App() {
                                 {/* 조합 버튼 */}
                                 {craftRecipe && (
                                   <button
-                                    onClick={() => handleCraft(item.material, craftRecipe)}
+                                    onClick={() => {
+                                      // 조합 가능한 최대 횟수 계산
+                                      const maxCraftCount = Math.floor(item.count / craftRecipe.inputCount);
+                                      openQuantityModal('material_craft', craftRecipe.outputMaterial, maxCraftCount, item.material, craftRecipe);
+                                    }}
                                     disabled={!canCraft}
                                     className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
                                       canCraft
@@ -9141,7 +9188,7 @@ function App() {
                                     }`}
                                     title={
                                       canDecompose 
-                                        ? `${decomposeRecipe.outputMaterial} → ${decomposeRecipe.inputMaterial} (1개당 3개 획득, 비용: ${decomposeCost.toLocaleString()}G/개)` 
+                                        ? `${decomposeRecipe.outputMaterial} → ${decomposeRecipe.inputMaterial} (1개당 2개 획득, 비용: ${decomposeCost.toLocaleString()}G/개)` 
                                         : !hasEnoughMaterialsForDecompose && !hasEnoughGoldForDecompose
                                         ? `재료와 골드가 부족합니다 (재료: ${item.count}/1, 골드: ${userMoney.toLocaleString()}/${decomposeCost.toLocaleString()})`
                                         : !hasEnoughMaterialsForDecompose
@@ -11561,6 +11608,8 @@ function App() {
                     ? "from-emerald-500/20 to-green-500/20" 
                     : quantityModalData.type === 'material_decompose'
                     ? "from-blue-500/20 to-cyan-500/20"
+                    : quantityModalData.type === 'material_craft'
+                    ? "from-amber-500/20 to-orange-500/20"
                     : "from-purple-500/20 to-pink-500/20"
                 } border ${
                   isDarkMode ? "border-white/10" : "border-gray-300/30"
@@ -11573,6 +11622,10 @@ function App() {
                     <Gem className={`w-5 h-5 ${
                       isDarkMode ? "text-blue-400" : "text-blue-600"
                     }`} />
+                  ) : quantityModalData.type === 'material_craft' ? (
+                    <Hammer className={`w-5 h-5 ${
+                      isDarkMode ? "text-amber-400" : "text-amber-600"
+                    }`} />
                   ) : (
                     <Trash2 className={`w-5 h-5 ${
                       isDarkMode ? "text-purple-400" : "text-purple-600"
@@ -11583,7 +11636,7 @@ function App() {
                   <h2 className={`text-lg font-semibold ${
                     isDarkMode ? "text-white" : "text-gray-800"
                   }`}>
-                    {quantityModalData.type === 'sell' ? '물고기 판매' : quantityModalData.type === 'material_decompose' ? '재료 분해' : '물고기 분해'}
+                    {quantityModalData.type === 'sell' ? '물고기 판매' : quantityModalData.type === 'material_decompose' ? '재료 분해' : quantityModalData.type === 'material_craft' ? '재료 조합' : '물고기 분해'}
                   </h2>
                   <p className={`text-sm ${
                     isDarkMode ? "text-gray-400" : "text-gray-600"
@@ -11610,17 +11663,17 @@ function App() {
                 <div className="flex items-center justify-between mb-3">
                   <span className={`text-sm ${
                     isDarkMode ? "text-gray-300" : "text-gray-700"
-                  }`}>보유량:</span>
+                  }`}>{quantityModalData.type === 'material_craft' ? '조합 가능 횟수:' : '보유량:'}</span>
                   <span className={`font-bold ${
                     isDarkMode ? "text-white" : "text-gray-800"
-                  }`}>{quantityModalData.maxQuantity}{quantityModalData.type === 'material_decompose' ? '개' : '마리'}</span>
+                  }`}>{quantityModalData.maxQuantity}{quantityModalData.type === 'material_decompose' || quantityModalData.type === 'material_craft' ? '개' : '마리'}</span>
                 </div>
                 
                 <div className="space-y-3">
                   <label className={`block text-sm font-medium ${
                     isDarkMode ? "text-gray-300" : "text-gray-700"
                   }`}>
-                    {quantityModalData.type === 'sell' ? '판매' : '분해'} 수량:
+                    {quantityModalData.type === 'sell' ? '판매' : quantityModalData.type === 'material_craft' ? '조합' : '분해'} 수량:
                   </label>
                   <input
                     type="number"
@@ -11669,6 +11722,11 @@ function App() {
                   </div>
                 </div>
                 
+                {/* 재료 조합/분해 시 간격 추가 */}
+                {(quantityModalData.type === 'material_decompose' || quantityModalData.type === 'material_craft') && (
+                  <div className="mb-4"></div>
+                )}
+                
                 {quantityModalData.type === 'sell' && (
                   <div className={`mt-4 p-3 rounded-lg ${
                     isDarkMode ? "bg-emerald-500/10 border border-emerald-400/20" : "bg-emerald-500/5 border border-emerald-500/20"
@@ -11704,32 +11762,379 @@ function App() {
                 )}
                 
                 {quantityModalData.type === 'material_decompose' && quantityModalData.recipe && (
-                  <div className={`mt-4 p-3 rounded-lg ${
-                    isDarkMode ? "bg-blue-500/10 border border-blue-400/20" : "bg-blue-500/5 border border-blue-500/20"
-                  }`}>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className={`text-sm ${
-                        isDarkMode ? "text-blue-300" : "text-blue-700"
-                      }`}>획득 재료:</span>
-                      <span className={`font-bold ${
-                        isDarkMode ? "text-blue-400" : "text-blue-600"
-                      }`}>
-                        {quantityModalData.recipe.inputMaterial} {inputQuantity * 3}개
-                      </span>
+                  <div className="space-y-3">
+                    {/* 목표 재료 선택 옵션 */}
+                    <div className={`p-3 rounded-lg ${
+                      isDarkMode ? "bg-purple-500/10 border border-purple-400/20" : "bg-purple-500/5 border border-purple-500/20"
+                    }`}>
+                      <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={quantityModalData.useChain || false}
+                          onChange={(e) => {
+                            setQuantityModalData(prev => ({
+                              ...prev,
+                              useChain: e.target.checked,
+                              targetMaterial: e.target.checked ? prev.targetMaterial : ''
+                            }));
+                          }}
+                          className={`w-4 h-4 rounded cursor-pointer ${
+                            isDarkMode ? "accent-purple-500" : "accent-purple-600"
+                          }`}
+                        />
+                        <span className={`text-sm font-medium ${
+                          isDarkMode ? "text-purple-300" : "text-purple-700"
+                        }`}>
+                          목표 재료까지 자동 분해
+                        </span>
+                      </label>
+                      
+                      {quantityModalData.useChain && (
+                        <div className="space-y-2">
+                          <select
+                            value={quantityModalData.targetMaterial || ''}
+                            onChange={(e) => {
+                              setQuantityModalData(prev => ({
+                                ...prev,
+                                targetMaterial: e.target.value
+                              }));
+                            }}
+                            className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 ${
+                              isDarkMode 
+                                ? "bg-gray-700/50 text-white border border-gray-600 hover:bg-gray-700 focus:ring-purple-500/50 focus:border-purple-500" 
+                                : "bg-white text-gray-800 border border-gray-300 hover:border-purple-400 focus:ring-purple-500/30 focus:border-purple-500"
+                            }`}
+                          >
+                            <option value="" className={isDarkMode ? "bg-gray-800 text-white" : "bg-white text-gray-800"}>
+                              목표 재료 선택
+                            </option>
+                            {getAllMaterials()
+                              .filter(mat => getMaterialTier(mat) < getMaterialTier(quantityModalData.materialName))
+                              .map((mat, idx) => (
+                                <option key={idx} value={mat} className={isDarkMode ? "bg-gray-800 text-white" : "bg-white text-gray-800"}>
+                                  {mat}
+                                </option>
+                              ))
+                            }
+                          </select>
+                          
+                          {quantityModalData.targetMaterial && (
+                            <div>
+                              <label className={`block text-xs font-medium mb-1 ${
+                                isDarkMode ? "text-gray-400" : "text-gray-600"
+                              }`}>
+                                목표 수량:
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={quantityModalData.targetAmount || 1}
+                                onChange={(e) => {
+                                  setQuantityModalData(prev => ({
+                                    ...prev,
+                                    targetAmount: Math.max(1, parseInt(e.target.value) || 1)
+                                  }));
+                                }}
+                                className={`w-full px-3 py-2 rounded-lg text-sm font-medium text-center transition-all duration-200 focus:outline-none focus:ring-2 ${
+                                  isDarkMode 
+                                    ? "bg-gray-700/50 text-white border border-gray-600 hover:bg-gray-700 focus:ring-purple-500/50 focus:border-purple-500" 
+                                    : "bg-white text-gray-800 border border-gray-300 hover:border-purple-400 focus:ring-purple-500/30 focus:border-purple-500"
+                                }`}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div className="flex items-center justify-between pt-2 border-t border-blue-400/20">
-                      <span className={`text-sm ${
-                        isDarkMode ? "text-yellow-300" : "text-yellow-700"
-                      }`}>예상 소모 골드:</span>
-                      <span className={`font-bold ${
-                        isDarkMode ? "text-yellow-400" : "text-yellow-600"
-                      }`}>
-                        {(() => {
+
+                    <div className={`mt-4 p-3 rounded-lg ${
+                      isDarkMode ? "bg-blue-500/10 border border-blue-400/20" : "bg-blue-500/5 border border-blue-500/20"
+                    }`}>
+                      {quantityModalData.useChain && quantityModalData.targetMaterial ? (
+                        // 체인 분해 정보 표시
+                        (() => {
+                          const chain = calculateCraftingChain(
+                            quantityModalData.materialName,
+                            quantityModalData.targetMaterial,
+                            quantityModalData.targetAmount || 1
+                          );
+                          
+                          if (!chain || !chain.isValid) {
+                            return (
+                              <div className={`text-sm text-center ${
+                                isDarkMode ? "text-red-400" : "text-red-600"
+                              }`}>
+                                해당 재료로는 변환할 수 없습니다.
+                              </div>
+                            );
+                          }
+                          
                           const sourceFish = getMaterialToFish(quantityModalData.materialName);
-                          const cost = sourceFish ? getFishPrice(sourceFish.name) * inputQuantity : 0;
-                          return cost.toLocaleString();
-                        })()}G
-                      </span>
+                          const totalCost = sourceFish ? getFishPrice(sourceFish.name) * chain.steps.length : 0;
+                          
+                          return (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className={`text-sm ${
+                                  isDarkMode ? "text-blue-300" : "text-blue-700"
+                                }`}>필요 재료:</span>
+                                <span className={`font-bold ${
+                                  isDarkMode ? "text-blue-400" : "text-blue-600"
+                                }`}>
+                                  {quantityModalData.materialName} {chain.requiredSourceAmount.toLocaleString()}개
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className={`text-sm ${
+                                  isDarkMode ? "text-emerald-300" : "text-emerald-700"
+                                }`}>획득 재료:</span>
+                                <span className={`font-bold ${
+                                  isDarkMode ? "text-emerald-400" : "text-emerald-600"
+                                }`}>
+                                  {quantityModalData.targetMaterial} {quantityModalData.targetAmount || 1}개
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between pt-2 border-t border-blue-400/20">
+                                <span className={`text-sm ${
+                                  isDarkMode ? "text-yellow-300" : "text-yellow-700"
+                                }`}>예상 소모 골드:</span>
+                                <span className={`font-bold ${
+                                  isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                                }`}>
+                                  {totalCost.toLocaleString()}G
+                                </span>
+                              </div>
+                              <div className={`text-xs mt-2 pt-2 border-t ${
+                                isDarkMode ? "text-gray-400 border-blue-400/10" : "text-gray-600 border-blue-400/20"
+                              }`}>
+                                {chain.steps.length}단계 분해
+                              </div>
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        // 일반 분해 정보 표시
+                        <>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className={`text-sm ${
+                              isDarkMode ? "text-blue-300" : "text-blue-700"
+                            }`}>획득 재료:</span>
+                            <span className={`font-bold ${
+                              isDarkMode ? "text-blue-400" : "text-blue-600"
+                            }`}>
+                              {quantityModalData.recipe.inputMaterial} {inputQuantity * 2}개
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between pt-2 border-t border-blue-400/20">
+                            <span className={`text-sm ${
+                              isDarkMode ? "text-yellow-300" : "text-yellow-700"
+                            }`}>예상 소모 골드:</span>
+                            <span className={`font-bold ${
+                              isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                            }`}>
+                              {(() => {
+                                const sourceFish = getMaterialToFish(quantityModalData.materialName);
+                                const cost = sourceFish ? getFishPrice(sourceFish.name) * inputQuantity : 0;
+                                return cost.toLocaleString();
+                              })()}G
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {quantityModalData.type === 'material_craft' && quantityModalData.recipe && (
+                  <div className="space-y-3">
+                    {/* 목표 재료 선택 옵션 */}
+                    <div className={`p-3 rounded-lg ${
+                      isDarkMode ? "bg-purple-500/10 border border-purple-400/20" : "bg-purple-500/5 border border-purple-500/20"
+                    }`}>
+                      <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={quantityModalData.useChain || false}
+                          onChange={(e) => {
+                            setQuantityModalData(prev => ({
+                              ...prev,
+                              useChain: e.target.checked,
+                              targetMaterial: e.target.checked ? prev.targetMaterial : ''
+                            }));
+                          }}
+                          className={`w-4 h-4 rounded cursor-pointer ${
+                            isDarkMode ? "accent-purple-500" : "accent-purple-600"
+                          }`}
+                        />
+                        <span className={`text-sm font-medium ${
+                          isDarkMode ? "text-purple-300" : "text-purple-700"
+                        }`}>
+                          목표 재료까지 자동 조합
+                        </span>
+                      </label>
+                      
+                      {quantityModalData.useChain && (
+                        <div className="space-y-2">
+                          <select
+                            value={quantityModalData.targetMaterial || ''}
+                            onChange={(e) => {
+                              setQuantityModalData(prev => ({
+                                ...prev,
+                                targetMaterial: e.target.value
+                              }));
+                            }}
+                            className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 ${
+                              isDarkMode 
+                                ? "bg-gray-700/50 text-white border border-gray-600 hover:bg-gray-700 focus:ring-purple-500/50 focus:border-purple-500" 
+                                : "bg-white text-gray-800 border border-gray-300 hover:border-purple-400 focus:ring-purple-500/30 focus:border-purple-500"
+                            }`}
+                          >
+                            <option value="" className={isDarkMode ? "bg-gray-800 text-white" : "bg-white text-gray-800"}>
+                              목표 재료 선택
+                            </option>
+                            {getAllMaterials()
+                              .filter(mat => getMaterialTier(mat) > getMaterialTier(quantityModalData.materialName))
+                              .map((mat, idx) => (
+                                <option key={idx} value={mat} className={isDarkMode ? "bg-gray-800 text-white" : "bg-white text-gray-800"}>
+                                  {mat}
+                                </option>
+                              ))
+                            }
+                          </select>
+                          
+                          {quantityModalData.targetMaterial && (
+                            <div>
+                              <label className={`block text-xs font-medium mb-1 ${
+                                isDarkMode ? "text-gray-400" : "text-gray-600"
+                              }`}>
+                                목표 수량:
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={quantityModalData.targetAmount || 1}
+                                onChange={(e) => {
+                                  setQuantityModalData(prev => ({
+                                    ...prev,
+                                    targetAmount: Math.max(1, parseInt(e.target.value) || 1)
+                                  }));
+                                }}
+                                className={`w-full px-3 py-2 rounded-lg text-sm font-medium text-center transition-all duration-200 focus:outline-none focus:ring-2 ${
+                                  isDarkMode 
+                                    ? "bg-gray-700/50 text-white border border-gray-600 hover:bg-gray-700 focus:ring-purple-500/50 focus:border-purple-500" 
+                                    : "bg-white text-gray-800 border border-gray-300 hover:border-purple-400 focus:ring-purple-500/30 focus:border-purple-500"
+                                }`}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className={`mt-4 p-3 rounded-lg ${
+                      isDarkMode ? "bg-amber-500/10 border border-amber-400/20" : "bg-amber-500/5 border border-amber-500/20"
+                    }`}>
+                      {quantityModalData.useChain && quantityModalData.targetMaterial ? (
+                        // 체인 조합 정보 표시
+                        (() => {
+                          const chain = calculateCraftingChain(
+                            quantityModalData.materialName,
+                            quantityModalData.targetMaterial,
+                            quantityModalData.targetAmount || 1
+                          );
+                          
+                          if (!chain || !chain.isValid) {
+                            return (
+                              <div className={`text-sm text-center ${
+                                isDarkMode ? "text-red-400" : "text-red-600"
+                              }`}>
+                                해당 재료로는 변환할 수 없습니다.
+                              </div>
+                            );
+                          }
+                          
+                          const sourceFish = getMaterialToFish(quantityModalData.materialName);
+                          const totalCost = sourceFish ? getFishPrice(sourceFish.name) * chain.steps.length : 0;
+                          
+                          return (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className={`text-sm ${
+                                  isDarkMode ? "text-amber-300" : "text-amber-700"
+                                }`}>필요 재료:</span>
+                                <span className={`font-bold ${
+                                  isDarkMode ? "text-amber-400" : "text-amber-600"
+                                }`}>
+                                  {quantityModalData.materialName} {chain.requiredSourceAmount.toLocaleString()}개
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className={`text-sm ${
+                                  isDarkMode ? "text-emerald-300" : "text-emerald-700"
+                                }`}>획득 재료:</span>
+                                <span className={`font-bold ${
+                                  isDarkMode ? "text-emerald-400" : "text-emerald-600"
+                                }`}>
+                                  {quantityModalData.targetMaterial} {quantityModalData.targetAmount || 1}개
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between pt-2 border-t border-amber-400/20">
+                                <span className={`text-sm ${
+                                  isDarkMode ? "text-yellow-300" : "text-yellow-700"
+                                }`}>예상 소모 골드:</span>
+                                <span className={`font-bold ${
+                                  isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                                }`}>
+                                  {totalCost.toLocaleString()}G
+                                </span>
+                              </div>
+                              <div className={`text-xs mt-2 pt-2 border-t ${
+                                isDarkMode ? "text-gray-400 border-amber-400/10" : "text-gray-600 border-amber-400/20"
+                              }`}>
+                                {chain.steps.length}단계 조합
+                              </div>
+                            </div>
+                          );
+                        })()
+                      ) : (
+                        // 일반 조합 정보 표시
+                        <>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className={`text-sm ${
+                              isDarkMode ? "text-amber-300" : "text-amber-700"
+                            }`}>소모 재료:</span>
+                            <span className={`font-bold ${
+                              isDarkMode ? "text-amber-400" : "text-amber-600"
+                            }`}>
+                              {quantityModalData.recipe.inputMaterial} {inputQuantity * quantityModalData.recipe.inputCount}개
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between mb-2 pt-2 border-t border-amber-400/20">
+                            <span className={`text-sm ${
+                              isDarkMode ? "text-emerald-300" : "text-emerald-700"
+                            }`}>획득 재료:</span>
+                            <span className={`font-bold ${
+                              isDarkMode ? "text-emerald-400" : "text-emerald-600"
+                            }`}>
+                              {quantityModalData.recipe.outputMaterial} {inputQuantity * quantityModalData.recipe.outputCount}개
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between pt-2 border-t border-amber-400/20">
+                            <span className={`text-sm ${
+                              isDarkMode ? "text-yellow-300" : "text-yellow-700"
+                            }`}>예상 소모 골드:</span>
+                            <span className={`font-bold ${
+                              isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                            }`}>
+                              {(() => {
+                                const sourceFish = getMaterialToFish(quantityModalData.materialName);
+                                const cost = sourceFish ? getFishPrice(sourceFish.name) * inputQuantity : 0;
+                                return cost.toLocaleString();
+                              })()}G
+                            </span>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
@@ -11757,12 +12162,16 @@ function App() {
                         ? isDarkMode
                           ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
                           : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20"
-                        : isDarkMode
-                          ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30"
-                          : "bg-purple-500/10 text-purple-600 hover:bg-purple-500/20"
+                        : quantityModalData.type === 'material_craft'
+                          ? isDarkMode
+                            ? "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30"
+                            : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
+                          : isDarkMode
+                            ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30"
+                            : "bg-purple-500/10 text-purple-600 hover:bg-purple-500/20"
                   }`}
                 >
-                  {quantityModalData.type === 'sell' ? '판매하기' : '분해하기'}
+                  {quantityModalData.type === 'sell' ? '판매하기' : quantityModalData.type === 'material_craft' ? '조합하기' : '분해하기'}
                 </button>
               </div>
             </div>

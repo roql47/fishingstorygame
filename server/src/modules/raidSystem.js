@@ -19,7 +19,7 @@ class RaidSystem {
     this.bossTypes = {
       'beginner': {
         name: '마르가글레숨',
-        hp: 3000,
+        hp: 1500,
         requiredSkill: { min: 1, max: 10 },
         rewards: {
           rank1: 100,
