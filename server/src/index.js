@@ -2463,6 +2463,7 @@ io.on("connection", (socket) => {
       socket.data.idToken = idToken;
       socket.data.originalGoogleId = user.originalGoogleId;
       socket.data.originalKakaoId = user.originalKakaoId;
+      socket.data.isAuthenticated = true; // 🔐 모든 사용자(게스트 포함) 인증 완료
     
       // 같은 구글 아이디로 중복 접속 방지 (PC/모바일 동시 접속 차단)
       if (socialId) {
@@ -2720,17 +2721,29 @@ io.on("connection", (socket) => {
       return;
     }
     
-    // 사용자 정보 가져오기
-    const user = connectedUsers.get(socket.id);
+    // 사용자 정보 가져오기 (connectedUsers 또는 socket.data에서)
+    let user = connectedUsers.get(socket.id);
+    
+    // connectedUsers에 없으면 socket.data에서 가져오기 (게스트 또는 타이밍 이슈)
+    if (!user && socket.data.username && socket.data.userUuid) {
+      console.log("⚠️ User not in connectedUsers, using socket.data:", socket.data.username);
+      user = {
+        userUuid: socket.data.userUuid,
+        username: socket.data.username,
+        displayName: socket.data.displayName || socket.data.username
+      };
+    }
+    
     if (!user || !user.userUuid) {
       socket.emit("chat:error", { message: "사용자 인증이 필요합니다." });
+      console.log("🚨 [AUTH] User authentication required:", { socketId: socket.id, hasUser: !!user, hasUserUuid: user?.userUuid });
       return;
     }
     
     // 🔐 메시지 사용자와 Socket 사용자 일치 확인
-    if (msg.username !== socket.data.username) {
+    if (msg.username !== socket.data.username && msg.username !== user.username) {
       socket.emit("chat:error", { message: "사용자 정보 불일치" });
-      console.log(`🚨 [SECURITY] Username mismatch: msg=${msg.username}, socket=${socket.data.username}`);
+      console.log(`🚨 [SECURITY] Username mismatch: msg=${msg.username}, socket=${socket.data.username}, user=${user.username}`);
       return;
     }
     

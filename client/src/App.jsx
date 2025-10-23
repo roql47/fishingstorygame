@@ -2122,6 +2122,18 @@ function App() {
     
     // 게스트도 서버에 chat:join을 보내서 socket.data에 정보 저장
     const socket = getSocket();
+    
+    // user:uuid 이벤트를 받을 때까지 기다리기
+    const handleUserUuid = (data) => {
+      console.log("👤 Guest userUuid received:", data.userUuid);
+      setUserUuid(data.userUuid);
+      localStorage.setItem("userUuid", data.userUuid);
+      // 한 번만 실행되도록 리스너 제거
+      socket.off("user:uuid", handleUserUuid);
+    };
+    
+    socket.once("user:uuid", handleUserUuid);
+    
     socket.emit("chat:join", { 
       username: guestName, 
       idToken: null, // 게스트는 idToken 없음
