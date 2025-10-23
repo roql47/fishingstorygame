@@ -2199,21 +2199,26 @@ class ExpeditionSystem {
         // 처치한 몬스터 기반으로 보상 계산
         room.monsters.forEach(monster => {
             if (!monster.isAlive) {
-                // 몬스터의 기본 물고기를 보상으로 지급 (1~3개 랜덤)
+                // 몬스터의 기본 물고기를 보상으로 지급 (접두어별 차등)
                 const fishName = monster.baseFish;
-                const baseQuantity = Math.floor(Math.random() * 3) + 1; // 1~3개 랜덤
                 
-                // 접두어에 따른 추가 보상
-                let bonusQuantity = 0;
+                // 접두어에 따른 보상 수량 차등 지급
+                let quantity = 0;
                 switch (monster.prefix?.name) {
+                    case '거대한':
+                        quantity = Math.floor(Math.random() * 3) + 2; // 2~4개
+                        break;
                     case '변종':
-                        bonusQuantity = Math.random() < 0.3 ? 1 : 0; // 30% 확률로 +1
+                        quantity = Math.floor(Math.random() * 3) + 2; // 2~4개
                         break;
                     case '심연의':
-                        bonusQuantity = Math.random() < 0.5 ? 2 : 0; // 50% 확률로 +2
+                        quantity = Math.floor(Math.random() * 4) + 3; // 3~6개
                         break;
                     case '깊은어둠의':
-                        bonusQuantity = Math.random() < 0.7 ? 3 : 0; // 70% 확률로 +3
+                        quantity = Math.floor(Math.random() * 4) + 4; // 4~7개
+                        break;
+                    default:
+                        quantity = Math.floor(Math.random() * 3) + 2; // 2~4개 (기본)
                         break;
                 }
                 
@@ -2221,7 +2226,7 @@ class ExpeditionSystem {
                         playerId: player.id,
                         playerName: player.name,
                     fishName: fishName,
-                    quantity: baseQuantity + bonusQuantity,
+                    quantity: quantity,
                         prefix: monster.prefix?.name || '거대한',
                         rarity: 'common'
                 });

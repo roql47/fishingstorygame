@@ -18,6 +18,7 @@ const ChatTab = ({
   setUsernameInput,
   setActiveTab,
   setUserUuid,
+  isGuest,
   setIsGuest,
   isDarkMode,
   isAdmin,
@@ -192,8 +193,8 @@ const ChatTab = ({
         return;
       }
       
-      // 🛡️ 2. 쿨타임 확인 (쿨타임이 로드되지 않았으면 대기)
-      if (!cooldownLoaded) {
+      // 🛡️ 2. 쿨타임 확인 (게스트는 쿨타임 로드 대기 생략)
+      if (!isGuest && !cooldownLoaded) {
         alert("쿨타임 정보를 로딩 중입니다. 잠시 후 다시 시도해주세요.");
         return;
       }
@@ -206,7 +207,7 @@ const ChatTab = ({
       // 🛡️ 3. 처리 중 상태 설정
       setIsProcessingFishing(true);
       
-      // 서버에 낚시 쿨타임 설정 (서버에서 쿨타임 계산) - JWT 인증 필요
+      // 서버에 낚시 쿨타임 설정 (게스트 포함)
       try {
         const params = { username, userUuid };
         const response = await authenticatedRequest.post(`${serverUrl}/api/set-fishing-cooldown`, {}, { params });
@@ -241,6 +242,18 @@ const ChatTab = ({
           setIsProcessingFishing(false);
         }, 1000);
       }
+      
+      // 낚시하기는 소켓으로 메시지를 전송 (서버에서 물고기 처리)
+      const socket = getSocket();
+      const payload = { 
+        username, 
+        content: text, 
+        timestamp: new Date().toISOString(),
+        userUuid: localStorage.getItem('userUuid')
+      };
+      socket.emit("chat:message", payload);
+      setInput("");
+      return;
     }
     
     const socket = getSocket();

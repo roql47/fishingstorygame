@@ -2114,12 +2114,32 @@ function App() {
     setIsGuest(true);
     localStorage.setItem("nickname", guestName);
     localStorage.setItem("isGuest", "true");
+    
+    // 게스트는 쿨타임을 0으로 시작하고 로드 완료 상태로 설정
+    setFishingCooldown(0);
+    setCooldownLoaded(true);
+    localStorage.removeItem('fishingCooldownEnd');
+    
+    // 게스트도 서버에 chat:join을 보내서 socket.data에 정보 저장
+    const socket = getSocket();
+    socket.emit("chat:join", { 
+      username: guestName, 
+      idToken: null, // 게스트는 idToken 없음
+      userUuid: null // 게스트는 처음에 userUuid 없음 (서버에서 생성)
+    });
   };
 
   // 쿨타임 상태를 서버에서 가져오는 함수
   const fetchCooldownStatus = async (tempUsername = '', tempUserUuid = '') => {
     try {
       console.log('🔄 Fetching cooldown status from server...');
+      
+      // 게스트는 서버와 쿨타임 동기화 하지 않음
+      if (isGuest) {
+        console.log('👤 Guest user - using local cooldown only');
+        setCooldownLoaded(true);
+        return;
+      }
       
       // localStorage 쿨타임 확인
       const storedFishingCooldownEnd = localStorage.getItem('fishingCooldownEnd');
@@ -8423,6 +8443,7 @@ function App() {
               setUsernameInput={setUsernameInput}
               setActiveTab={setActiveTab}
               setUserUuid={setUserUuid}
+              isGuest={isGuest}
               setIsGuest={setIsGuest}
               userProfileImages={userProfileImages}
               loadProfileImage={loadProfileImage}
@@ -11794,9 +11815,28 @@ function App() {
                           <select
                             value={quantityModalData.targetMaterial || ''}
                             onChange={(e) => {
+                              const selectedTarget = e.target.value;
+                              
+                              // 목표 재료가 선택되면 최소 수량 계산
+                              let minAmount = 1;
+                              if (selectedTarget) {
+                                const testChain = calculateCraftingChain(
+                                  quantityModalData.materialName,
+                                  selectedTarget,
+                                  1
+                                );
+                                
+                                if (testChain && testChain.isValid && testChain.requiredSourceAmount < 1) {
+                                  // 소스 재료 1개로 얻을 수 있는 타겟 재료 수량
+                                  const outputPerSource = 1 / testChain.requiredSourceAmount;
+                                  minAmount = Math.ceil(outputPerSource);
+                                }
+                              }
+                              
                               setQuantityModalData(prev => ({
                                 ...prev,
-                                targetMaterial: e.target.value
+                                targetMaterial: selectedTarget,
+                                targetAmount: minAmount
                               }));
                             }}
                             className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 ${
@@ -11809,7 +11849,26 @@ function App() {
                               목표 재료 선택
                             </option>
                             {getAllMaterials()
-                              .filter(mat => getMaterialTier(mat) < getMaterialTier(quantityModalData.materialName))
+                              .filter(mat => {
+                                // tier가 더 낮은 재료만
+                                if (getMaterialTier(mat) >= getMaterialTier(quantityModalData.materialName)) return false;
+                                
+                                // 현재 보유한 재료로 해당 목표 재료를 최소 1개라도 만들 수 있는지 확인
+                                const testChain = calculateCraftingChain(
+                                  quantityModalData.materialName,
+                                  mat,
+                                  1
+                                );
+                                
+                                if (!testChain || !testChain.isValid) return false;
+                                
+                                // 현재 보유 수량 확인
+                                const currentMaterial = materials.find(m => m.material === quantityModalData.materialName);
+                                const currentAmount = currentMaterial?.count || 0;
+                                
+                                // 필요한 재료가 현재 보유량 이하인지 확인
+                                return currentAmount >= testChain.requiredSourceAmount;
+                              })
                               .map((mat, idx) => (
                                 <option key={idx} value={mat} className={isDarkMode ? "bg-gray-800 text-white" : "bg-white text-gray-800"}>
                                   {mat}
@@ -11982,9 +12041,28 @@ function App() {
                           <select
                             value={quantityModalData.targetMaterial || ''}
                             onChange={(e) => {
+                              const selectedTarget = e.target.value;
+                              
+                              // 목표 재료가 선택되면 최소 수량 계산
+                              let minAmount = 1;
+                              if (selectedTarget) {
+                                const testChain = calculateCraftingChain(
+                                  quantityModalData.materialName,
+                                  selectedTarget,
+                                  1
+                                );
+                                
+                                if (testChain && testChain.isValid && testChain.requiredSourceAmount < 1) {
+                                  // 소스 재료 1개로 얻을 수 있는 타겟 재료 수량
+                                  const outputPerSource = 1 / testChain.requiredSourceAmount;
+                                  minAmount = Math.ceil(outputPerSource);
+                                }
+                              }
+                              
                               setQuantityModalData(prev => ({
                                 ...prev,
-                                targetMaterial: e.target.value
+                                targetMaterial: selectedTarget,
+                                targetAmount: minAmount
                               }));
                             }}
                             className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 ${
@@ -11997,7 +12075,26 @@ function App() {
                               목표 재료 선택
                             </option>
                             {getAllMaterials()
-                              .filter(mat => getMaterialTier(mat) > getMaterialTier(quantityModalData.materialName))
+                              .filter(mat => {
+                                // tier가 더 높은 재료만
+                                if (getMaterialTier(mat) <= getMaterialTier(quantityModalData.materialName)) return false;
+                                
+                                // 현재 보유한 재료로 해당 목표 재료를 최소 1개라도 만들 수 있는지 확인
+                                const testChain = calculateCraftingChain(
+                                  quantityModalData.materialName,
+                                  mat,
+                                  1
+                                );
+                                
+                                if (!testChain || !testChain.isValid) return false;
+                                
+                                // 현재 보유 수량 확인
+                                const currentMaterial = materials.find(m => m.material === quantityModalData.materialName);
+                                const currentAmount = currentMaterial?.count || 0;
+                                
+                                // 필요한 재료가 현재 보유량 이하인지 확인
+                                return currentAmount >= testChain.requiredSourceAmount;
+                              })
                               .map((mat, idx) => (
                                 <option key={idx} value={mat} className={isDarkMode ? "bg-gray-800 text-white" : "bg-white text-gray-800"}>
                                   {mat}

@@ -3376,13 +3376,7 @@ io.on("connection", (socket) => {
 
     if (trimmed === "낚시하기") {
       try {
-        // 🔐 사용자 UUID 확인 (인증만 체크, 쿨타임은 클라이언트에서 관리)
-        if (!socket.data.userUuid) {
-          socket.emit("chat:error", { message: "인증이 필요합니다." });
-          return;
-        }
-        
-        // 사용자 쿼리 생성
+        // 사용자 쿼리 생성 (게스트도 허용)
         let query;
         if (socket.data.userUuid) {
           query = { userUuid: socket.data.userUuid };
@@ -6369,7 +6363,7 @@ const calculateFishingCooldownTime = async (userQuery) => {
 };
 
 // 낚시 쿨타임 설정 API (JWT 인증 필수)
-app.post("/api/set-fishing-cooldown", authenticateJWT, async (req, res) => {
+app.post("/api/set-fishing-cooldown", authenticateOptionalJWT, async (req, res) => {
   try {
     // JWT에서 사용자 정보 추출 (보안 강화)
     const { userUuid, username } = req.user;
@@ -11797,6 +11791,46 @@ function authenticateJWT(req, res, next) {
     return res.status(401).json({ 
       error: "Access token required",
       code: "JWT_MISSING" 
+    });
+  }
+  
+  const decoded = verifyJWT(token);
+  if (!decoded) {
+    return res.status(403).json({ 
+      error: "Invalid or expired token",
+      code: "JWT_INVALID" 
+    });
+  }
+  
+  // 요청 객체에 사용자 정보 추가
+  req.user = decoded;
+  req.userUuid = decoded.userUuid;
+  req.username = decoded.username;
+  
+  console.log(`🔐 JWT authenticated: ${decoded.username} (${decoded.userUuid})`);
+  next();
+}
+
+// 선택적 JWT 인증 (토큰이 없어도 진행, 있으면 검증)
+function authenticateOptionalJWT(req, res, next) {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  
+  if (!token) {
+    // 토큰이 없으면 쿼리 파라미터에서 사용자 정보 가져오기
+    const { username, userUuid } = req.query;
+    if (username && userUuid) {
+      req.user = { username, userUuid };
+      req.userUuid = userUuid;
+      req.username = username;
+      console.log(`👤 Guest user authenticated via query params: ${username} (${userUuid})`);
+      return next();
+    }
+    
+    console.log("🚨 No JWT token and no query params");
+    return res.status(401).json({ 
+      error: "Access token or query params required",
+      code: "AUTH_MISSING" 
     });
   }
   
