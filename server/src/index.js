@@ -3535,6 +3535,7 @@ io.on("connection", (socket) => {
         });
 
         // 사용자 데이터 업데이트 전송
+        console.log(`🔄 Calling sendUserDataUpdate with userUuid: ${user.userUuid}, username: ${user.username}`);
         sendUserDataUpdate(socket, user.userUuid, user.username);
 
         console.log(`🎁 엔판 황구 홀덤 여우이야기 레츠고 쿠폰 사용: ${user.username} (${user.userUuid}) - alchemyPotions +${alchemyPotionsRewardAmount}, gold +${goldRewardAmount}, starPieces +${starPiecesRewardAmount}, amber +${amberRewardAmount}`);
@@ -4183,13 +4184,14 @@ async function sendUserDataUpdate(socket, userUuid, username) {
     console.log(`🔄 Sending data update to ${username}:`, {
       inventoryCount: safeData.inventory?.length || 0,
       materialsCount: safeData.materials?.length || 0,
+      inventoryFirstItem: safeData.inventory?.[0],
+      materialsFirstItem: safeData.materials?.[0],
       money: safeData.money?.money || 0,
       amber: safeData.amber?.amber || 0
     });
     
     try {
-      socket.emit('data:update', safeData);
-      // 개별 이벤트도 emit (쿠폰 사용 등 즉시 반영되도록)
+      // 먼저 개별 이벤트를 보낸 후 data:update를 보냄 (순서 보장)
       socket.emit('data:inventory', safeData.inventory);
       socket.emit('data:materials', safeData.materials);
       socket.emit('data:money', safeData.money);
@@ -4197,6 +4199,9 @@ async function sendUserDataUpdate(socket, userUuid, username) {
       socket.emit('data:starPieces', safeData.starPieces);
       socket.emit('data:etherKeys', safeData.etherKeys);
       socket.emit('data:alchemyPotions', safeData.alchemyPotions);
+      
+      // 마지막에 전체 데이터 업데이트
+      socket.emit('data:update', safeData);
     } catch (emitError) {
       console.error(`Socket emit failed for ${username}:`, emitError.message);
       // 최후의 수단: 기본 데이터만 전송
@@ -4226,62 +4231,53 @@ async function sendUserDataUpdate(socket, userUuid, username) {
 }
 
 async function getInventoryData(userUuid) {
-  return await measureDBQuery("인벤토리조회", async () => {
-    // 🔍 Query Profiler 최적화: $match를 최대한 앞으로, IXSCAN 보장
-    const catches = await CatchModel.aggregate([
-      // 1단계: 인덱스 활용을 위한 정확한 필터
-      { $match: { userUuid: userUuid } }, // 명시적 타입 매칭
-      
-      // 2단계: 필요한 필드만 projection (docsExamined 최소화)
-      { $project: { fish: 1, _id: 0 } },
-      
-      // 3단계: 그룹핑 (메모리 사용량 최소화)
-      { $group: { _id: "$fish", count: { $sum: 1 } } },
-      
-      // 4단계: 최종 출력 형태
-      { $project: { _id: 0, fish: "$_id", count: 1 } },
-      
-      // 5단계: 정렬 (일관된 결과)
-      { $sort: { fish: 1 } }
-    ], {
-      // Profiler 기반 최적화 옵션
-      allowDiskUse: false, // 메모리만 사용 (IXSCAN → FETCH만)
-      cursor: { batchSize: 100 }, // 작은 배치로 메모리 효율성
-      maxTimeMS: 5000, // 5초 타임아웃
-      collation: { locale: "simple" } // 단순 정렬로 성능 향상
-    });
-    console.log(`🔍 getInventoryData for ${userUuid}: found ${catches.length} items`);
+  console.log(`🔍 getInventoryData called with userUuid: ${userUuid}`);
+  
+  // 먼저 간단한 find로 실제 데이터가 있는지 확인
+  const totalCount = await CatchModel.countDocuments({ userUuid: userUuid });
+  console.log(`🔍 CatchModel.countDocuments({ userUuid: "${userUuid}" }): ${totalCount}`);
+  
+  const result = await measureDBQuery("인벤토리조회", async () => {
+    // 간단한 find 사용 (count 필드가 이미 있으므로 aggregate 불필요)
+    const catches = await CatchModel.find(
+      { userUuid: userUuid },
+      { fish: 1, count: 1, _id: 0 }
+    )
+    .sort({ fish: 1 })
+    .lean();
+    
     return catches;
   });
+  console.log(`🔍 getInventoryData for ${userUuid}: found ${result?.length || 0} items`);
+  if (result && result.length > 0) {
+    console.log(`🔍 First inventory item:`, result[0]);
+  }
+  return result;
 }
 
 async function getMaterialsData(userUuid) {
-  return await measureDBQuery("재료조회", async () => {
-    // 🔍 Query Profiler 최적화: 인벤토리와 동일한 패턴 적용
-    const materials = await MaterialModel.aggregate([
-      // 1단계: 인덱스 기반 필터
-      { $match: { userUuid: userUuid } },
-      
-      // 2단계: 필요한 필드만 projection
-      { $project: { material: 1, _id: 0 } },
-      
-      // 3단계: 그룹핑
-      { $group: { _id: "$material", count: { $sum: 1 } } },
-      
-      // 4단계: 최종 형태
-      { $project: { _id: 0, material: "$_id", count: 1 } },
-      
-      // 5단계: 정렬
-      { $sort: { material: 1 } }
-    ], {
-      allowDiskUse: false,
-      cursor: { batchSize: 100 },
-      maxTimeMS: 5000,
-      collation: { locale: "simple" }
-    });
-    console.log(`🔍 getMaterialsData for ${userUuid}: found ${materials.length} items`);
+  console.log(`🔍 getMaterialsData called with userUuid: ${userUuid}`);
+  
+  // 먼저 간단한 find로 실제 데이터가 있는지 확인
+  const totalCount = await MaterialModel.countDocuments({ userUuid: userUuid });
+  console.log(`🔍 MaterialModel.countDocuments({ userUuid: "${userUuid}" }): ${totalCount}`);
+  
+  const result = await measureDBQuery("재료조회", async () => {
+    // 간단한 find 사용 (count 필드가 이미 있으므로 aggregate 불필요)
+    const materials = await MaterialModel.find(
+      { userUuid: userUuid },
+      { material: 1, count: 1, _id: 0 }
+    )
+    .sort({ material: 1 })
+    .lean();
+    
     return materials;
   });
+  console.log(`🔍 getMaterialsData for ${userUuid}: found ${result?.length || 0} items`);
+  if (result && result.length > 0) {
+    console.log(`🔍 First material item:`, result[0]);
+  }
+  return result;
 }
 
 async function getMoneyData(userUuid) {
