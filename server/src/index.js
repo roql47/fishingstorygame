@@ -4180,9 +4180,18 @@ async function sendUserDataUpdate(socket, userUuid, username) {
 
     const safeData = createSafeData();
     
+    console.log(`🔄 Sending data update to ${username}:`, {
+      inventoryCount: safeData.inventory?.length || 0,
+      materialsCount: safeData.materials?.length || 0,
+      money: safeData.money?.money || 0,
+      amber: safeData.amber?.amber || 0
+    });
+    
     try {
       socket.emit('data:update', safeData);
       // 개별 이벤트도 emit (쿠폰 사용 등 즉시 반영되도록)
+      socket.emit('data:inventory', safeData.inventory);
+      socket.emit('data:materials', safeData.materials);
       socket.emit('data:money', safeData.money);
       socket.emit('data:amber', safeData.amber);
       socket.emit('data:starPieces', safeData.starPieces);
@@ -4241,6 +4250,7 @@ async function getInventoryData(userUuid) {
       maxTimeMS: 5000, // 5초 타임아웃
       collation: { locale: "simple" } // 단순 정렬로 성능 향상
     });
+    console.log(`🔍 getInventoryData for ${userUuid}: found ${catches.length} items`);
     return catches;
   });
 }
@@ -4269,6 +4279,7 @@ async function getMaterialsData(userUuid) {
       maxTimeMS: 5000,
       collation: { locale: "simple" }
     });
+    console.log(`🔍 getMaterialsData for ${userUuid}: found ${materials.length} items`);
     return materials;
   });
 }

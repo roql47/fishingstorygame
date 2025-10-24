@@ -3428,12 +3428,16 @@ function App() {
 
     // 실시간 데이터 업데이트 리스너
     const handleDataUpdate = (data) => {
-      console.log('Received data update:', data);
+      console.log('🔄 Received data update:', data);
       if (data.inventory) {
+        console.log('🔄 Data update - inventory:', data.inventory);
         const safeInventory = Array.isArray(data.inventory) ? data.inventory : [];
         setInventory(safeInventory);
       }
-      if (data.materials) setMaterials(data.materials);
+      if (data.materials) {
+        console.log('🔄 Data update - materials:', data.materials);
+        setMaterials(data.materials);
+      }
       if (data.money) setUserMoney(data.money.money);
       if (data.amber) setUserAmber(data.amber.amber);
       if (data.starPieces) setUserStarPieces(data.starPieces.starPieces);
@@ -3489,14 +3493,18 @@ function App() {
     };
 
     const handleInventoryUpdate = (data) => {
+      console.log('🔄 Inventory update received:', data);
       const safeInventory = Array.isArray(data) ? data : [];
+      console.log('🔄 Setting inventory to:', safeInventory);
       setInventory(safeInventory);
     };
     const handleMaterialsUpdate = (data) => {
-      console.log('🔄 Materials updated:', data);
+      console.log('🔄 Materials update received:', data);
       if (data.materials) {
+        console.log('🔄 Setting materials from data.materials:', data.materials);
         setMaterials(data.materials);
       } else if (Array.isArray(data)) {
+        console.log('🔄 Setting materials from array data:', data);
         setMaterials(data);
       }
     };
