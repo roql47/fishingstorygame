@@ -262,7 +262,7 @@ const ShopTab = ({
                                 isDarkMode ? "text-purple-400" : "text-purple-600"
                               }`} />
                               <div className="flex items-center justify-between flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 mr-3">
                                   <span className={`text-sm font-bold ${
                                     isDarkMode ? "text-purple-200" : "text-purple-800"
                                   }`}>{item.material}</span>
@@ -409,7 +409,7 @@ const ShopTab = ({
                                 isDarkMode ? "text-purple-400" : "text-purple-600"
                               }`} />
                               <div className="flex items-center justify-between flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 mr-3">
                                   <span className={`text-sm font-bold ${
                                     isDarkMode ? "text-purple-200" : "text-purple-800"
                                   }`}>{item.material}</span>

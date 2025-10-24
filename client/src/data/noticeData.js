@@ -1,6 +1,22 @@
 // 공지사항 데이터 (ID 내림차순 정렬 - 최신이 가장 높은 ID)
 export const NOTICE_DATA = [
   {
+    id: 37,
+    date: "2025.10.24",
+    title: "🔧 게임 시스템 개선 및 버그 수정",
+    content: [
+      "- 자동 클릭 기능 변경",
+      "- 스테이지 업그레이드 시 버튼 비활성화 조건 수정",
+      "- 물고기 분해 시 수집도감에서 사라지는 문제 해결",
+      "- 상점 탭 재료 표시 오류 수정",
+      "- 모바일에서 스크롤 자동으로 내려가던 문제 개선",
+      "- '너를 위해 준비했어' 업적 조건 변경 (100개 → 1000개)",
+      "시크릿 쿠폰 추가"
+    ],
+    isNew: true,
+    type: "major_update"
+  },
+  {
     id: 36,
     date: "2025.10.23",
     title: "🔨 재료 조합/분해 시스템 개선",
@@ -15,7 +31,7 @@ export const NOTICE_DATA = [
       "레이드 마르가글레숨 난이도 하향",
       "원정 물고기 보상 증가"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
@@ -624,5 +640,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.313"
+  version: "v1.314"
 };

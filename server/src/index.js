@@ -3387,6 +3387,171 @@ io.on("connection", (socket) => {
       }
     }
 
+    // 🎁 엔판 황구 홀덤 여우이야기 레츠고 쿠폰 코드 처리
+    if (trimmed === "엔판 황구 홀덤 여우이야기 레츠고") {
+      try {
+        // 쿠폰 만료일 체크 (한국시간 기준 2025년 11월 30일 오후 11시 59분)
+        const now = new Date();
+        const kstOffset = 9 * 60 * 60 * 1000; // 9시간을 밀리초로
+        const kstNow = new Date(now.getTime() + kstOffset);
+        const expiryDate = new Date('2025-11-30T23:59:59+09:00'); // 한국시간 기준
+        
+        if (kstNow > expiryDate) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 이 쿠폰은 만료되었습니다. (유효기간: 2025년 11월 30일까지)",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // Guest 사용자 체크 - DB에서 사용자 정보 조회
+        const dbUser = await UserUuidModel.findOne({ userUuid: user.userUuid });
+        
+        if (!dbUser || (!dbUser.originalGoogleId && !dbUser.originalKakaoId)) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 쿠폰은 구글 또는 카카오 소셜 로그인 후에만 사용할 수 있습니다.",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // 이미 사용한 쿠폰인지 확인
+        const existingUsage = await CouponUsageModel.findOne({
+          userUuid: user.userUuid,
+          couponCode: "엔판 황구 홀덤 여우이야기 레츠고"
+        });
+
+        if (existingUsage) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 이미 사용한 쿠폰입니다. 쿠폰은 계정당 한 번만 사용할 수 있습니다.",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        const queryResult = await getUserQuery('user', user.username, user.userUuid);
+        let query;
+        if (queryResult.userUuid) {
+          query = { userUuid: queryResult.userUuid };
+        } else {
+          query = queryResult;
+        }
+
+        // 먼저 쿠폰 사용 기록을 저장하여 중복 사용 방지
+        const couponUsage = new CouponUsageModel({
+          userUuid: user.userUuid,
+          username: user.username,
+          couponCode: "엔판 황구 홀덤 여우이야기 레츠고",
+          reward: "alchemyPotions:10,gold:100000,starPieces:3,amber:100"
+        });
+        await couponUsage.save();
+
+        // 1. 연금술포션 10개 지급
+        const alchemyPotionsRewardAmount = 10;
+        let userAlchemyPotions = await AlchemyPotionModel.findOne(query);
+        
+        if (!userAlchemyPotions) {
+          const createData = {
+            userId: query.userId || 'user',
+            username: query.username || user.username,
+            userUuid: query.userUuid || user.userUuid,
+            alchemyPotions: alchemyPotionsRewardAmount
+          };
+          userAlchemyPotions = new AlchemyPotionModel(createData);
+        } else {
+          userAlchemyPotions.alchemyPotions = (userAlchemyPotions.alchemyPotions || 0) + alchemyPotionsRewardAmount;
+        }
+        await userAlchemyPotions.save();
+
+        // 2. 골드 100,000개 지급
+        const goldRewardAmount = 100000;
+        let userMoney = await UserMoneyModel.findOne(query);
+        
+        if (!userMoney) {
+          const createData = {
+            userId: query.userId || 'user',
+            username: query.username || user.username,
+            userUuid: query.userUuid || user.userUuid,
+            money: goldRewardAmount
+          };
+          userMoney = new UserMoneyModel(createData);
+        } else {
+          userMoney.money = (userMoney.money || 0) + goldRewardAmount;
+        }
+        await userMoney.save();
+
+        // 3. 별조각 3개 지급
+        const starPiecesRewardAmount = 3;
+        let userStarPieces = await StarPieceModel.findOne(query);
+        
+        if (!userStarPieces) {
+          const createData = {
+            userId: query.userId || 'user',
+            username: query.username || user.username,
+            userUuid: query.userUuid || user.userUuid,
+            starPieces: starPiecesRewardAmount
+          };
+          userStarPieces = new StarPieceModel(createData);
+        } else {
+          userStarPieces.starPieces = (userStarPieces.starPieces || 0) + starPiecesRewardAmount;
+        }
+        await userStarPieces.save();
+
+        // 4. 호박석 100개 지급
+        const amberRewardAmount = 100;
+        let userAmber = await UserAmberModel.findOne(query);
+        
+        if (!userAmber) {
+          const createData = {
+            userId: query.userId || 'user',
+            username: query.username || user.username,
+            userUuid: query.userUuid || user.userUuid,
+            amber: amberRewardAmount
+          };
+          userAmber = new UserAmberModel(createData);
+        } else {
+          userAmber.amber = (userAmber.amber || 0) + amberRewardAmount;
+        }
+        await userAmber.save();
+
+        // 캐시 무효화
+        invalidateCache('alchemyPotions', user.userUuid);
+        invalidateCache('userMoney', user.userUuid);
+        invalidateCache('starPieces', user.userUuid);
+        invalidateCache('userAmber', user.userUuid);
+
+        // 성공 메시지 전송
+        socket.emit("chat:message", {
+          system: true,
+          username: "system",
+          content: `🎉 축하합니다! 엔판 황구 홀덤 여우이야기 레츠고 쿠폰이 성공적으로 사용되었습니다!\n🧪 연금술포션 ${alchemyPotionsRewardAmount}개\n💰 골드 ${goldRewardAmount.toLocaleString()}개\n⭐ 별조각 ${starPiecesRewardAmount}개\n💎 호박석 ${amberRewardAmount}개를 받았습니다!`,
+          timestamp: new Date().toISOString()
+        });
+
+        // 사용자 데이터 업데이트 전송
+        sendUserDataUpdate(socket, user.userUuid, user.username);
+
+        console.log(`🎁 엔판 황구 홀덤 여우이야기 레츠고 쿠폰 사용: ${user.username} (${user.userUuid}) - alchemyPotions +${alchemyPotionsRewardAmount}, gold +${goldRewardAmount}, starPieces +${starPiecesRewardAmount}, amber +${amberRewardAmount}`);
+        return;
+
+      } catch (error) {
+        console.error("엔판 황구 홀덤 여우이야기 레츠고 쿠폰 처리 중 오류:", error);
+        socket.emit("chat:message", {
+          system: true,
+          username: "system",
+          content: "🚫 쿠폰 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+    }
+
     if (trimmed === "낚시하기") {
       try {
         // 사용자 쿼리 생성 (게스트도 허용)
@@ -3945,7 +4110,7 @@ io.on("connection", (socket) => {
 // WebSocket 데이터 조회 함수들
 async function sendUserDataUpdate(socket, userUuid, username) {
   try {
-    const [inventory, materials, money, amber, starPieces, cooldown, totalCatches, companions, adminStatus, equipment, etherKeys] = await Promise.all([
+    const [inventory, materials, money, amber, starPieces, cooldown, totalCatches, companions, adminStatus, equipment, etherKeys, alchemyPotions] = await Promise.all([
       getInventoryData(userUuid),
       getMaterialsData(userUuid),
       getMoneyData(userUuid),
@@ -3956,7 +4121,8 @@ async function sendUserDataUpdate(socket, userUuid, username) {
       getCompanionsData(userUuid),
       getAdminStatusData(userUuid),
       getEquipmentData(userUuid),
-      getEtherKeysData(userUuid)
+      getEtherKeysData(userUuid),
+      getAlchemyPotionsData(userUuid)
     ]);
     
     // 완전히 안전한 데이터 직렬화 (순환 참조 완전 제거)
@@ -3977,6 +4143,7 @@ async function sendUserDataUpdate(socket, userUuid, username) {
           amber: { amber: Number(amber?.amber || 0) },
           starPieces: { starPieces: Number(starPieces?.starPieces || 0) },
           etherKeys: { etherKeys: Number(etherKeys?.etherKeys || 0) },
+          alchemyPotions: { alchemyPotions: Number(alchemyPotions?.alchemyPotions || 0) },
           cooldown: { 
             fishingCooldown: Math.max(0, Number(cooldown?.fishingCooldown || 0))
           },
@@ -4001,6 +4168,7 @@ async function sendUserDataUpdate(socket, userUuid, username) {
           amber: { amber: 0 },
           starPieces: { starPieces: 0 },
           etherKeys: { etherKeys: 0 },
+          alchemyPotions: { alchemyPotions: 0 },
           cooldown: { fishingCooldown: 0 },
           totalCatches: { totalFishCaught: 0 },
           companions: { companions: [] },
@@ -4019,6 +4187,7 @@ async function sendUserDataUpdate(socket, userUuid, username) {
       socket.emit('data:amber', safeData.amber);
       socket.emit('data:starPieces', safeData.starPieces);
       socket.emit('data:etherKeys', safeData.etherKeys);
+      socket.emit('data:alchemyPotions', safeData.alchemyPotions);
     } catch (emitError) {
       console.error(`Socket emit failed for ${username}:`, emitError.message);
       // 최후의 수단: 기본 데이터만 전송
@@ -4030,6 +4199,7 @@ async function sendUserDataUpdate(socket, userUuid, username) {
           amber: { amber: 0 },
           starPieces: { starPieces: 0 },
           etherKeys: { etherKeys: 0 },
+          alchemyPotions: { alchemyPotions: 0 },
           cooldown: { fishingCooldown: 0 },
           totalCatches: { totalFishCaught: 0 },
           companions: { companions: [] },
@@ -4201,6 +4371,23 @@ async function getEquipmentData(userUuid) {
 async function getEtherKeysData(userUuid) {
   const etherKeys = await EtherKeyModel.findOne({ userUuid });
   return { etherKeys: etherKeys?.etherKeys || 0 };
+}
+
+async function getAlchemyPotionsData(userUuid) {
+  // 캐시 확인
+  const cached = getCachedData('alchemyPotions', userUuid);
+  if (cached) {
+    return cached;
+  }
+
+  const result = await measureDBQuery("연금술포션조회", async () => {
+    const alchemyPotions = await AlchemyPotionModel.findOne({ userUuid }, { alchemyPotions: 1, _id: 0 });
+    return { alchemyPotions: alchemyPotions?.alchemyPotions || 0 };
+  });
+  
+  // 캐시에 저장
+  setCachedData('alchemyPotions', userUuid, result);
+  return result;
 }
 
 // 데이터 변경 시 모든 해당 사용자에게 업데이트 전송
@@ -7914,9 +8101,9 @@ app.get("/api/clicker/stage", authenticateJWT, async (req, res) => {
     const userFishingSkill = baseSkill + achievementBonus;
     
     // 자동 다운그레이드: 현재 스테이지가 낚시실력을 초과하면 조정
-    if (clickerStage.currentStage > userFishingSkill) {
+    if (clickerStage.currentStage - 1 > userFishingSkill) {
       const originalStage = clickerStage.currentStage;
-      clickerStage.currentStage = Math.max(1, userFishingSkill); // 최소 1 스테이지
+      clickerStage.currentStage = Math.max(1, userFishingSkill + 1); // 최소 1 스테이지
       await clickerStage.save();
       
       console.log(`[Auto Downgrade] ${username}: Stage ${originalStage} → ${clickerStage.currentStage} (Fishing Skill: ${baseSkill} + ${achievementBonus} = ${userFishingSkill})`);
@@ -7974,10 +8161,10 @@ app.post("/api/clicker/upgrade-stage", authenticateJWT, async (req, res) => {
     
     // 낚시실력 제한 확인 (다음 스테이지가 낚시실력을 초과하는지 체크)
     const nextStage = currentStage + 1;
-    if (nextStage > userFishingSkill) {
+    if (nextStage - 1 > userFishingSkill) {
       return res.status(400).json({ 
-        error: `낚시실력이 부족합니다. 스테이지 ${nextStage}는 낚시실력 ${nextStage} 이상이 필요합니다. (현재: ${userFishingSkill} = 기본 ${baseSkill} + 업적 ${achievementBonus})`,
-        requiredSkill: nextStage,
+        error: `낚시실력이 부족합니다. 스테이지 ${nextStage}는 낚시실력 ${nextStage - 1} 이상이 필요합니다. (현재: ${userFishingSkill} = 기본 ${baseSkill} + 업적 ${achievementBonus})`,
+        requiredSkill: nextStage - 1,
         currentSkill: userFishingSkill
       });
     }
@@ -8664,27 +8851,13 @@ app.get("/api/fish-discoveries/:userId", optionalJWT, async (req, res) => {
     
     console.log("Fish discoveries query:", query);
     
-    // FishDiscoveryModel에서 조회
+    // FishDiscoveryModel에서만 조회 (발견 기록은 영구적으로 보존)
     const discoveries = await FishDiscoveryModel.find(query).select('fishName firstCaughtAt');
-    let discoveredFishNames = new Set(discoveries.map(d => d.fishName));
+    const discoveredFishNames = discoveries.map(d => d.fishName);
     
-    console.log(`Found ${discoveredFishNames.size} fish in FishDiscovery collection`);
+    console.log(`Found ${discoveredFishNames.length} discovered fish`);
     
-    // CatchModel에서도 조회 (레거시 데이터 호환 및 누락된 데이터 보완)
-    const catchAggregation = await CatchModel.aggregate([
-      { $match: query },
-      { $group: { _id: "$fish" } }
-    ]);
-    const catchFishNames = catchAggregation.map(c => c._id).filter(name => name); // null 제거
-    console.log(`Found ${catchFishNames.length} fish in Catch collection`);
-    
-    // 두 곳의 데이터를 합침 (중복 제거)
-    catchFishNames.forEach(name => discoveredFishNames.add(name));
-    
-    const result = Array.from(discoveredFishNames);
-    console.log(`Total unique fish: ${result.length}`);
-    
-    res.json(result);
+    res.json(discoveredFishNames);
   } catch (error) {
     console.error("Failed to fetch fish discoveries:", error);
     res.status(500).json({ error: "Failed to fetch fish discoveries" });
@@ -10357,14 +10530,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.313"
+    version: "v1.314"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.313",
+    version: "v1.314",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [

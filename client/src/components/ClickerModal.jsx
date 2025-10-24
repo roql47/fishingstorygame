@@ -35,6 +35,9 @@ const ClickerModal = ({
   // 자동 회복 타이머
   const healTimerRef = useRef(null);
   
+  // 자동 공격 타이머
+  const autoAttackTimerRef = useRef(null);
+  
   // 보상 상태
   const [showReward, setShowReward] = useState(false);
   const [rewards, setRewards] = useState([]);
@@ -142,6 +145,7 @@ const ClickerModal = ({
     if (currentStage >= 2) {
       startAutoHeal(hp);
     }
+    // 자동 공격은 useEffect에서 gameStarted 변경 감지로 시작됨
   };
   
   // 스테이지별 회복량 계산 (해당 스테이지 1난이도 체력의 10%)
@@ -193,61 +197,97 @@ const ClickerModal = ({
     }
   };
   
+  // 자동 공격 핸들러
+  const handleAutoAttack = () => {
+    setMonsterHp(prevHp => {
+      if (prevHp <= 0) return prevHp;
+
+      // 데미지 범위 ±20% 적용
+      const baseAttack = getPlayerAttack();
+      const minDamage = Math.floor(baseAttack * 0.8);
+      const maxDamage = Math.floor(baseAttack * 1.2);
+      const damage = Math.floor(Math.random() * (maxDamage - minDamage + 1)) + minDamage;
+      
+      const newHp = Math.max(0, prevHp - damage);
+
+      // 데미지 숫자 애니메이션 (랜덤 위치)
+      const x = Math.random() * 300 + 50;
+      const y = Math.random() * 300 + 50;
+      
+      const damageId = Date.now() + Math.random();
+      setDamageNumbers(prev => [...prev, {
+        id: damageId,
+        damage,
+        x,
+        y,
+        isCritical: false
+      }]);
+
+      // 흔들림 효과
+      setIsShaking(true);
+      setTimeout(() => setIsShaking(false), 100);
+
+      // 데미지 숫자 제거
+      setTimeout(() => {
+        setDamageNumbers(prev => prev.filter(d => d.id !== damageId));
+      }, 1000);
+
+      // 몬스터 처치 확인
+      if (newHp === 0) {
+        setTimeout(() => {
+          handleMonsterDefeated();
+        }, 0);
+      }
+      
+      return newHp;
+    });
+  };
+  
+  // 자동 공격 시작
+  const startAutoAttack = () => {
+    if (autoAttackTimerRef.current) {
+      clearInterval(autoAttackTimerRef.current);
+    }
+    
+    autoAttackTimerRef.current = setInterval(() => {
+      handleAutoAttack();
+    }, 1000); // 1초마다 자동 공격
+  };
+  
+  // 자동 공격 정지
+  const stopAutoAttack = () => {
+    if (autoAttackTimerRef.current) {
+      clearInterval(autoAttackTimerRef.current);
+      autoAttackTimerRef.current = null;
+    }
+  };
+  
   // 게임 종료 시 타이머 정리
   useEffect(() => {
     return () => {
       stopAutoHeal();
+      stopAutoAttack();
     };
   }, []);
   
   // 몬스터 처치 시 타이머 정지
   useEffect(() => {
-    if (monsterHp <= 0) {
+    if (monsterHp <= 0 && gameStarted) {
       stopAutoHeal();
+      stopAutoAttack();
     }
-  }, [monsterHp]);
-
-  // 몬스터 클릭 핸들러
-  const handleMonsterClick = (e) => {
-    if (!gameStarted || monsterHp <= 0 || isProcessing) return;
-
-    // 데미지 범위 ±20% 적용
-    const baseAttack = getPlayerAttack();
-    const minDamage = Math.floor(baseAttack * 0.8);
-    const maxDamage = Math.floor(baseAttack * 1.2);
-    const damage = Math.floor(Math.random() * (maxDamage - minDamage + 1)) + minDamage;
-    
-    const newHp = Math.max(0, monsterHp - damage);
-    setMonsterHp(newHp);
-
-    // 데미지 숫자 애니메이션
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    const damageId = Date.now() + Math.random();
-    setDamageNumbers(prev => [...prev, {
-      id: damageId,
-      damage,
-      x,
-      y,
-      isCritical: false
-    }]);
-
-    // 흔들림 효과
-    setIsShaking(true);
-    setTimeout(() => setIsShaking(false), 100);
-
-    // 데미지 숫자 제거
-    setTimeout(() => {
-      setDamageNumbers(prev => prev.filter(d => d.id !== damageId));
-    }, 1000);
-
-    // 몬스터 처치 확인
-    if (newHp === 0) {
-      handleMonsterDefeated();
+  }, [monsterHp, gameStarted]);
+  
+  // 게임 시작/종료 시 자동 공격 타이머 관리
+  useEffect(() => {
+    if (gameStarted && monsterHp > 0) {
+      console.log('🎮 자동 공격 시작');
+      startAutoAttack();
+    } else {
+      console.log('🎮 자동 공격 중지');
+      stopAutoAttack();
     }
-  };
+  }, [gameStarted]);
 
   // 몬스터 처치 처리
   const handleMonsterDefeated = async () => {
@@ -430,6 +470,7 @@ const ClickerModal = ({
             <button
               onClick={() => {
                 stopAutoHeal();
+                stopAutoAttack();
                 onClose();
               }}
               className={`p-2 rounded-lg transition-colors ${
@@ -575,15 +616,15 @@ const ClickerModal = ({
               {(completedDifficulties[currentStage] >= 10) && (
                 <button
                   onClick={() => {
-                    if (currentStage + 1 > fishingSkill) {
-                      alert(`낚시실력이 부족합니다.\n\n필요 낚시실력: ${currentStage + 1}\n현재 낚시실력: ${fishingSkill}`);
+                    if (currentStage > fishingSkill) {
+                      alert(`낚시실력이 부족합니다.\n\n필요 낚시실력: ${currentStage}\n현재 낚시실력: ${fishingSkill}`);
                       return;
                     }
                     setShowUpgradeModal(true);
                   }}
-                  disabled={currentStage + 1 > fishingSkill}
+                  disabled={currentStage > fishingSkill}
                   className={`w-full py-4 rounded-xl font-bold text-lg transition-all duration-300 ${
-                    currentStage + 1 > fishingSkill
+                    currentStage > fishingSkill
                       ? (isDarkMode 
                         ? "bg-gray-700/50 text-gray-500 border-2 border-gray-600/50 cursor-not-allowed" 
                         : "bg-gray-300/50 text-gray-500 border-2 border-gray-400/50 cursor-not-allowed")
@@ -592,8 +633,8 @@ const ClickerModal = ({
                         : "bg-green-500/10 text-green-700 border-2 border-green-500/50 hover:bg-green-500/20 hover:scale-[1.02]")
                   }`}
                 >
-                  {currentStage + 1 > fishingSkill 
-                    ? `스테이지 ${currentStage + 1} (낚시실력 ${currentStage + 1} 필요)` 
+                  {currentStage > fishingSkill 
+                    ? `스테이지 ${currentStage + 1} (낚시실력 ${currentStage} 필요)` 
                     : `스테이지 ${currentStage + 1} 잠금해제`
                   }
                 </button>
@@ -730,13 +771,11 @@ const ClickerModal = ({
 
               {/* 몬스터 */}
               <div className="relative">
-                <button
-                  onClick={handleMonsterClick}
-                  disabled={monsterHp <= 0 || isProcessing}
+                <div
                   className={`w-full aspect-square relative overflow-hidden rounded-2xl border-4 transition-all duration-100 ${
                     monsterHp <= 0 
-                      ? 'opacity-50 cursor-not-allowed' 
-                      : 'cursor-pointer'
+                      ? 'opacity-50' 
+                      : ''
                   } ${
                     isShaking ? 'animate-shake' : ''
                   } ${
@@ -772,13 +811,13 @@ const ClickerModal = ({
                       {dmg.isHeal ? dmg.damage : `-${dmg.damage}`}
                     </div>
                   ))}
-                </button>
+                </div>
 
                 {monsterHp > 0 && (
                   <p className={`text-center mt-4 text-sm ${
                     isDarkMode ? "text-gray-400" : "text-gray-600"
                   }`}>
-                    몬스터를 클릭하여 공격하세요!
+                    자동 공격 중...
                   </p>
                 )}
               </div>
@@ -789,6 +828,7 @@ const ClickerModal = ({
                   setGameStarted(false);
                   setDifficulty(1);
                   stopAutoHeal();
+                  stopAutoAttack();
                 }}
                 className={`w-full py-3 rounded-xl text-sm font-semibold transition-all duration-300 hover:scale-[1.02] ${
                   isDarkMode 
@@ -887,7 +927,7 @@ const ClickerModal = ({
 
             {/* 낚시실력 요구 조건 */}
             <div className={`p-5 rounded-2xl ${
-              currentStage + 1 > fishingSkill
+              currentStage > fishingSkill
                 ? (isDarkMode 
                   ? "bg-gradient-to-br from-red-900/20 to-pink-900/20 border border-red-500/30" 
                   : "bg-gradient-to-br from-red-50 to-pink-50 border border-red-400/50")
@@ -896,7 +936,7 @@ const ClickerModal = ({
                   : "bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-400/50")
             }`}>
               <div className={`text-sm font-bold mb-3 ${
-                currentStage + 1 > fishingSkill
+                currentStage > fishingSkill
                   ? (isDarkMode ? "text-red-300" : "text-red-700")
                   : (isDarkMode ? "text-blue-300" : "text-blue-700")
               }`}>
@@ -906,14 +946,14 @@ const ClickerModal = ({
                 <div className={`text-xl font-bold ${
                   isDarkMode ? "text-white" : "text-gray-900"
                 }`}>
-                  낚시실력 {currentStage + 1}
+                  낚시실력 {currentStage}
                 </div>
                 <div className={`text-2xl font-black ${
-                  currentStage + 1 > fishingSkill
+                  currentStage > fishingSkill
                     ? (isDarkMode ? "text-red-400" : "text-red-600")
                     : (isDarkMode ? "text-green-400" : "text-green-600")
                 }`}>
-                  {currentStage + 1 > fishingSkill ? '✗' : '✓'}
+                  {currentStage > fishingSkill ? '✗' : '✓'}
                 </div>
               </div>
               <div className="mt-2">
@@ -921,7 +961,7 @@ const ClickerModal = ({
                   isDarkMode ? "text-gray-400" : "text-gray-600"
                 }`}>
                   현재 낚시실력: <span className={`font-bold ${
-                    currentStage + 1 > fishingSkill
+                    currentStage > fishingSkill
                       ? (isDarkMode ? "text-red-400" : "text-red-600")
                       : (isDarkMode ? "text-green-400" : "text-green-600")
                   }`}>{fishingSkill}</span>
@@ -984,9 +1024,9 @@ const ClickerModal = ({
               </button>
               <button
                 onClick={handleUpgradeStage}
-                disabled={currentStage + 1 > fishingSkill || getMaterialCount(getRequiredMaterial()?.material) < 100}
+                disabled={currentStage > fishingSkill || getMaterialCount(getRequiredMaterial()?.material) < 100}
                 className={`flex-1 py-3 rounded-xl font-bold transition-all duration-300 ${
-                  currentStage + 1 > fishingSkill || getMaterialCount(getRequiredMaterial()?.material) < 100
+                  currentStage > fishingSkill || getMaterialCount(getRequiredMaterial()?.material) < 100
                     ? (isDarkMode 
                       ? "bg-gray-700 text-gray-500 cursor-not-allowed" 
                       : "bg-gray-300 text-gray-500 cursor-not-allowed")

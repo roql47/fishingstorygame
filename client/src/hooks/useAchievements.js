@@ -17,7 +17,7 @@ export const ACHIEVEMENT_DEFINITIONS = {
   fish_collector: {
     id: "fish_collector",
     name: "너를 위해 준비했어",
-    description: "보유물고기 100마리 이상",
+    description: "보유물고기 1000마리 이상",
     autoCheck: true
   },
   rare_fish_hunter: {

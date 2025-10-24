@@ -211,9 +211,9 @@ function App() {
     }
   }, []);
 
-  // 🔄 버전 업데이트 시 캐시 초기화 (v1.313)
+  // 🔄 버전 업데이트 시 캐시 초기화 (v1.314)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.313";
+    const CURRENT_VERSION = "v1.314";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -3438,6 +3438,7 @@ function App() {
       if (data.amber) setUserAmber(data.amber.amber);
       if (data.starPieces) setUserStarPieces(data.starPieces.starPieces);
       if (data.etherKeys) setUserEtherKeys(data.etherKeys.etherKeys);
+      if (data.alchemyPotions) setUserAlchemyPotions(data.alchemyPotions.alchemyPotions);
       if (data.cooldown) {
         const newFishingCooldown = data.cooldown.fishingCooldown || 0;
         
@@ -3585,6 +3586,13 @@ function App() {
       console.log('🔄 Received etherKeys update via WebSocket:', data);
       if (data && typeof data.etherKeys === 'number') {
         setUserEtherKeys(data.etherKeys);
+      }
+    });
+
+    socket.on('data:alchemyPotions', (data) => {
+      console.log('🔄 Received alchemyPotions update via WebSocket:', data);
+      if (data && typeof data.alchemyPotions === 'number') {
+        setUserAlchemyPotions(data.alchemyPotions);
       }
     });
 
@@ -7747,7 +7755,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.313
+                여우이야기 v1.314
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -10751,7 +10759,7 @@ function App() {
               </div>
 
               {/* 접속자 목록 */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ overscrollBehavior: 'contain' }}>
                 {connectedUsers.map((user, index) => (
                   <div 
                     key={index} 

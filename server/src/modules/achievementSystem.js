@@ -37,7 +37,7 @@ const ACHIEVEMENT_DEFINITIONS = {
   fish_collector: {
     id: "fish_collector",
     name: "너를 위해 준비했어",
-    description: "보유물고기 100마리 이상",
+    description: "보유물고기 1000마리 이상",
     autoCheck: true // 자동으로 체크 가능
   },
   rare_fish_hunter: {
@@ -80,7 +80,7 @@ class AchievementSystem {
       const totalFish = await this.CatchModel.countDocuments({ userUuid });
       console.log(`🐟 Total fish for ${username}: ${totalFish}`);
       
-      if (totalFish >= 100) {
+      if (totalFish >= 1000) {
         const existingAchievement = await AchievementModel.findOne({
           userUuid,
           achievementId: "fish_collector"
@@ -351,7 +351,7 @@ class AchievementSystem {
         
         if (def.id === "fish_collector") {
           progress = totalFish;
-          maxProgress = 100;
+          maxProgress = 1000;
         } else if (def.id === "rare_fish_hunter") {
           progress = rareFishCount;
           maxProgress = 10;

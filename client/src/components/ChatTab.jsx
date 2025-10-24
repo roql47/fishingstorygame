@@ -53,6 +53,7 @@ const ChatTab = ({
   setShowClickerModal
 }) => {
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   
   // 스크롤 고정 상태 (localStorage에 저장하여 탭 전환 시에도 유지)
   const [isScrollLocked, setIsScrollLocked] = useState(() => {
@@ -116,7 +117,7 @@ const ChatTab = ({
       
       const parts = text.split(' ');
       if (parts.length !== 3) {
-        alert('❌ 사용법: /grant_achievement <사용자명> <업적ID>\n\n업적 ID:\n- fox_location: 여우가 어디사는지 아니?\n- fox_gamble: 여우는 겜블을 좋아해\n- fish_collector: 너를 위해 준비했어');
+        alert('❌ 사용법: /grant_achievement <사용자명> <업적ID>\n\n업적 ID:\n- fox_location: 여우가 어디사는지 아니?\n- fox_gamble: 여우는 겜블을 좋아해\n- fish_collector: 너를 위해 준비했어 (물고기 1000마리)');
         setInput("");
         return;
       }
@@ -127,7 +128,7 @@ const ChatTab = ({
       // 유효한 업적 ID 체크
       const validAchievements = ['fox_location', 'fox_gamble', 'fish_collector'];
       if (!validAchievements.includes(achievementId)) {
-        alert('❌ 잘못된 업적 ID입니다.\n\n사용 가능한 업적 ID:\n- fox_location: 여우가 어디사는지 아니?\n- fox_gamble: 여우는 겜블을 좋아해\n- fish_collector: 너를 위해 준비했어');
+        alert('❌ 잘못된 업적 ID입니다.\n\n사용 가능한 업적 ID:\n- fox_location: 여우가 어디사는지 아니?\n- fox_gamble: 여우는 겜블을 좋아해\n- fish_collector: 너를 위해 준비했어 (물고기 1000마리)');
         setInput("");
         return;
       }
@@ -152,7 +153,7 @@ const ChatTab = ({
       
       const parts = text.split(' ');
       if (parts.length !== 3) {
-        alert('❌ 사용법: /revoke_achievement <사용자명> <업적ID>\n\n업적 ID:\n- fox_location: 여우가 어디사는지 아니?\n- fox_gamble: 여우는 겜블을 좋아해\n- fish_collector: 너를 위해 준비했어');
+        alert('❌ 사용법: /revoke_achievement <사용자명> <업적ID>\n\n업적 ID:\n- fox_location: 여우가 어디사는지 아니?\n- fox_gamble: 여우는 겜블을 좋아해\n- fish_collector: 너를 위해 준비했어 (물고기 1000마리)');
         setInput("");
         return;
       }
@@ -163,7 +164,7 @@ const ChatTab = ({
       // 유효한 업적 ID 체크
       const validAchievements = ['fox_location', 'fox_gamble', 'fish_collector'];
       if (!validAchievements.includes(achievementId)) {
-        alert('❌ 잘못된 업적 ID입니다.\n\n사용 가능한 업적 ID:\n- fox_location: 여우가 어디사는지 아니?\n- fox_gamble: 여우는 겜블을 좋아해\n- fish_collector: 너를 위해 준비했어');
+        alert('❌ 잘못된 업적 ID입니다.\n\n사용 가능한 업적 ID:\n- fox_location: 여우가 어디사는지 아니?\n- fox_gamble: 여우는 겜블을 좋아해\n- fish_collector: 너를 위해 준비했어 (물고기 1000마리)');
         setInput("");
         return;
       }
@@ -294,9 +295,11 @@ const ChatTab = ({
 
 
   // 메시지 스크롤 자동 이동 (스크롤 고정 상태가 아닐 때만)
+  // 📱 모바일 스크롤 최적화: scrollIntoView 대신 scrollTop 직접 조작
   useEffect(() => {
-    if (!isScrollLocked) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!isScrollLocked && messagesContainerRef.current) {
+      // 컨테이너 내부에서만 스크롤 (페이지 전체 스크롤 방지)
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
     }
   }, [messages.length, isScrollLocked]);
 
@@ -469,7 +472,7 @@ const ChatTab = ({
         )}
 
         {/* 채팅 메시지 영역 */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[50vh]">
+        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[50vh]" style={{ overscrollBehavior: 'contain' }}>
           {messages.map((m, i) => (
             <div key={i} className="group">
               {m.system ? (
