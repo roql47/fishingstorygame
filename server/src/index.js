@@ -614,8 +614,7 @@ const io = new Server(server, {
       "http://localhost:5173", 
       "http://127.0.0.1:4000",
       "http://127.0.0.1:5173",
-      "https://fising-master.onrender.com", // 이전 프로덕션 URL
-      "https://foxstory.kr", // 새 프로덕션 URL
+      "https://fising-master.onrender.com", // 프로덕션 URL 추가
       process.env.CLIENT_URL // 환경변수에서 클라이언트 URL 가져오기
     ].filter(Boolean), // undefined 값 제거
     credentials: true,
@@ -1923,7 +1922,7 @@ function randomFish(fishingSkill = 0) {
 }
 
 // Google auth
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "29134467617-5tpp0ivftiqci9bkfighpgfm8i3cgpa4.apps.googleusercontent.com";
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "1023938003062-256niij987fc2q7o74qmssi2bca7vdnf.apps.googleusercontent.com";
 const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 
 // Kakao auth
@@ -8581,17 +8580,30 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: "Item not found" });
     }
     
-    // 클라이언트에서 보낸 재료 정보와 서버 재료 정보 비교 (보안 검증)
-    if (clientMaterial !== serverItem.material || clientMaterialCount !== serverItem.materialCount) {
-      console.warn(`Material manipulation detected! Client: ${clientMaterial}x${clientMaterialCount}, Server: ${serverItem.material}x${serverItem.materialCount}, Item: ${itemName}, User: ${username}`);
-      return res.status(400).json({ error: "Invalid material requirement" });
+    // 🪙 골드 구매 아이템 체크
+    const isGoldPurchase = serverItem.material === 'gold';
+    
+    if (isGoldPurchase) {
+      // 골드 구매 아이템: price 필드 확인
+      if (clientMaterial !== 'gold' || !serverItem.price) {
+        console.warn(`Gold purchase manipulation detected! Client: ${clientMaterial}, Server: gold, Item: ${itemName}, User: ${username}`);
+        return res.status(400).json({ error: "Invalid purchase type" });
+      }
+      console.log(`Gold purchase item: ${itemName}, Price: ${serverItem.price}`);
+    } else {
+      // 재료 기반 구매: 기존 검증 로직
+      if (clientMaterial !== serverItem.material || clientMaterialCount !== serverItem.materialCount) {
+        console.warn(`Material manipulation detected! Client: ${clientMaterial}x${clientMaterialCount}, Server: ${serverItem.material}x${serverItem.materialCount}, Item: ${itemName}, User: ${username}`);
+        return res.status(400).json({ error: "Invalid material requirement" });
+      }
     }
     
     // 서버에서 검증된 실제 재료 정보 사용
     const requiredMaterial = serverItem.material;
-    const requiredCount = serverItem.materialCount;
+    const requiredCount = serverItem.materialCount || 0;
+    const requiredPrice = serverItem.price || 0;
     
-    console.log(`Server validated material: ${requiredMaterial} x${requiredCount} for ${itemName}`);
+    console.log(`Server validated: ${isGoldPurchase ? `Gold ${requiredPrice}` : `${requiredMaterial} x${requiredCount}`} for ${itemName}`);
     
     // UUID 기반 사용자 조회
     console.log("=== USER QUERY DEBUG ===");
@@ -8619,83 +8631,104 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: "User not found" });
     }
     
-    // 💰 낚시대와 악세사리는 골드도 필요함 (재료 물고기 판매가의 1/10)
-    let requiredGold = 0;
-    if (category === 'fishing_rod' || category === 'accessories') {
-      // 재료에 해당하는 물고기 찾기
-      const sourceFish = getFishByMaterial(requiredMaterial);
-      if (sourceFish) {
-        // 물고기 판매가의 1/10 * 필요한 재료 개수
-        requiredGold = Math.floor((sourceFish.price / 10) * requiredCount);
-        console.log(`Required gold for ${itemName}: ${requiredGold} (${sourceFish.name} price: ${sourceFish.price}, material: ${requiredMaterial} x${requiredCount})`);
-        
-        // 사용자 골드 확인
-        const userMoney = await UserMoneyModel.findOne(query);
-        const userGold = userMoney?.money || 0;
-        
-        if (userGold < requiredGold) {
-          console.log(`Gold shortage: User has ${userGold}, needs ${requiredGold}`);
-          return res.status(400).json({ error: "Not enough gold", requiredGold });
+    // 💰 골드 구매 처리
+    if (isGoldPurchase) {
+      // 순수 골드로만 구매하는 아이템
+      const userMoney = await UserMoneyModel.findOne(query);
+      const userGold = userMoney?.money || 0;
+      
+      if (userGold < requiredPrice) {
+        console.log(`Gold shortage: User has ${userGold}, needs ${requiredPrice}`);
+        return res.status(400).json({ error: "Not enough gold", requiredGold: requiredPrice });
+      }
+      
+      // 골드 차감
+      await UserMoneyModel.updateOne(
+        query,
+        { $inc: { money: -requiredPrice } }
+      );
+      console.log(`Gold deducted: -${requiredPrice} (${userGold} → ${userGold - requiredPrice})`);
+    } else {
+      // 💰 재료 기반 구매 - 낚시대와 악세사리는 골드도 필요함 (재료 물고기 판매가의 1/10)
+      let requiredGold = 0;
+      if (category === 'fishing_rod' || category === 'accessories') {
+        // 재료에 해당하는 물고기 찾기
+        const sourceFish = getFishByMaterial(requiredMaterial);
+        if (sourceFish) {
+          // 물고기 판매가의 1/10 * 필요한 재료 개수
+          requiredGold = Math.floor((sourceFish.price / 10) * requiredCount);
+          console.log(`Required gold for ${itemName}: ${requiredGold} (${sourceFish.name} price: ${sourceFish.price}, material: ${requiredMaterial} x${requiredCount})`);
+          
+          // 사용자 골드 확인
+          const userMoney = await UserMoneyModel.findOne(query);
+          const userGold = userMoney?.money || 0;
+          
+          if (userGold < requiredGold) {
+            console.log(`Gold shortage: User has ${userGold}, needs ${requiredGold}`);
+            return res.status(400).json({ error: "Not enough gold", requiredGold });
+          }
+          
+          // 골드 차감
+          await UserMoneyModel.updateOne(
+            query,
+            { $inc: { money: -requiredGold } }
+          );
+          console.log(`Gold deducted: -${requiredGold} (${userGold} → ${userGold - requiredGold})`);
+        } else {
+          console.warn(`Source fish not found for material: ${requiredMaterial}`);
         }
-        
-        // 골드 차감
-        await UserMoneyModel.updateOne(
-          query,
-          { $inc: { money: -requiredGold } }
-        );
-        console.log(`Gold deducted: -${requiredGold} (${userGold} → ${userGold - requiredGold})`);
-      } else {
-        console.warn(`Source fish not found for material: ${requiredMaterial}`);
       }
     }
     
-    // 🎯 재료 확인 및 차감 (별조각과 일반 재료 구분)
-    let userMaterialCount = 0;
-    
-    if (requiredMaterial === '별조각') {
-      // 별조각인 경우 StarPieceModel에서 확인
-      const userStarPieces = await StarPieceModel.findOne(query);
-      userMaterialCount = userStarPieces?.starPieces || 0;
+    // 🎯 재료 확인 및 차감 (골드 구매가 아닐 때만, 별조각과 일반 재료 구분)
+    if (!isGoldPurchase) {
+      let userMaterialCount = 0;
       
-      if (userMaterialCount < requiredCount) {
-        console.log(`Star pieces shortage: User has ${userMaterialCount}, needs ${requiredCount}`);
-        return res.status(400).json({ error: "Not enough star pieces" });
-      }
-      
-      // 별조각 차감
-      await StarPieceModel.updateOne(
-        query,
-        { $inc: { starPieces: -requiredCount } }
-      );
-      console.log(`Star pieces reduced by ${requiredCount} (${userMaterialCount} → ${userMaterialCount - requiredCount})`);
-    } else {
-      // 일반 재료인 경우 MaterialModel에서 확인
-      const userMaterial = await MaterialModel.findOne({
-        ...query,
-        material: requiredMaterial
-      });
-      
-      userMaterialCount = userMaterial?.count || 0;
-      
-      if (userMaterialCount < requiredCount) {
-        console.log(`Material shortage: User has ${userMaterialCount}, needs ${requiredCount}`);
-        return res.status(400).json({ error: "Not enough materials" });
-      }
-      
-      // 재료 차감 (count 필드 업데이트)
-      const newCount = userMaterialCount - requiredCount;
-      
-      if (newCount <= 0) {
-        // 남은 개수가 0 이하면 document 삭제
-        await MaterialModel.deleteOne({ ...query, material: requiredMaterial });
-        console.log(`Material ${requiredMaterial} completely consumed (deleted document)`);
-      } else {
-        // 남은 개수가 있으면 count만 업데이트
-        await MaterialModel.updateOne(
-          { ...query, material: requiredMaterial },
-          { $inc: { count: -requiredCount } }
+      if (requiredMaterial === '별조각') {
+        // 별조각인 경우 StarPieceModel에서 확인
+        const userStarPieces = await StarPieceModel.findOne(query);
+        userMaterialCount = userStarPieces?.starPieces || 0;
+        
+        if (userMaterialCount < requiredCount) {
+          console.log(`Star pieces shortage: User has ${userMaterialCount}, needs ${requiredCount}`);
+          return res.status(400).json({ error: "Not enough star pieces" });
+        }
+        
+        // 별조각 차감
+        await StarPieceModel.updateOne(
+          query,
+          { $inc: { starPieces: -requiredCount } }
         );
-        console.log(`Material ${requiredMaterial} reduced by ${requiredCount} (${userMaterialCount} → ${newCount})`);
+        console.log(`Star pieces reduced by ${requiredCount} (${userMaterialCount} → ${userMaterialCount - requiredCount})`);
+      } else {
+        // 일반 재료인 경우 MaterialModel에서 확인
+        const userMaterial = await MaterialModel.findOne({
+          ...query,
+          material: requiredMaterial
+        });
+        
+        userMaterialCount = userMaterial?.count || 0;
+        
+        if (userMaterialCount < requiredCount) {
+          console.log(`Material shortage: User has ${userMaterialCount}, needs ${requiredCount}`);
+          return res.status(400).json({ error: "Not enough materials" });
+        }
+        
+        // 재료 차감 (count 필드 업데이트)
+        const newCount = userMaterialCount - requiredCount;
+        
+        if (newCount <= 0) {
+          // 남은 개수가 0 이하면 document 삭제
+          await MaterialModel.deleteOne({ ...query, material: requiredMaterial });
+          console.log(`Material ${requiredMaterial} completely consumed (deleted document)`);
+        } else {
+          // 남은 개수가 있으면 count만 업데이트
+          await MaterialModel.updateOne(
+            { ...query, material: requiredMaterial },
+            { $inc: { count: -requiredCount } }
+          );
+          console.log(`Material ${requiredMaterial} reduced by ${requiredCount} (${userMaterialCount} → ${newCount})`);
+        }
       }
     }
 
@@ -10554,14 +10587,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.4"
+    version: "v1.314"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.4",
+    version: "v1.314",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [

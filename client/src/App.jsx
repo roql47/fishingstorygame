@@ -211,9 +211,9 @@ function App() {
     }
   }, []);
 
-  // 🔄 버전 업데이트 시 캐시 초기화 (v1.4)
+  // 🔄 버전 업데이트 시 캐시 초기화 (v1.314)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.4";
+    const CURRENT_VERSION = "v1.314";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -7537,7 +7537,7 @@ function App() {
     }
   };
 
-  // 아이템 구매 함수 (재료 기반)
+  // 아이템 구매 함수 (재료 기반 + 골드 구매)
   const buyItem = async (item) => {
     console.log("buyItem called with:", { item, username, userUuid });
     
@@ -7546,27 +7546,39 @@ function App() {
       return;
     }
     
-    // 재료 확인 (별조각과 일반 재료 구분)
-    let userMaterialCount = 0;
-    if (item.material === '별조각') {
-      // 별조각인 경우 userStarPieces에서 가져오기
-      userMaterialCount = userStarPieces || 0;
-    } else {
-      // 일반 재료는 materials 배열에서 찾기
-      const userMaterial = materials.find(m => m.material === item.material);
-      userMaterialCount = userMaterial?.count || 0;
-    }
+    // 🪙 골드 구매 아이템 체크
+    const isGoldPurchase = item.material === 'gold';
     
-    if (userMaterialCount < item.materialCount) {
-      alert(`재료가 부족합니다! (${item.material} ${userMaterialCount}/${item.materialCount})`);
-      return;
-    }
-    
-    // 💰 낚시대와 악세사리는 골드도 필요함 (재료 물고기 판매가의 1/10)
-    if (item.category === 'fishing_rod' || item.category === 'accessories') {
-      if (item.requiredGold && userMoney < item.requiredGold) {
-        alert(`골드가 부족합니다! (${userMoney.toLocaleString()}/${item.requiredGold.toLocaleString()})`);
+    if (isGoldPurchase) {
+      // 순수 골드 구매
+      if (userMoney < item.price) {
+        alert(`골드가 부족합니다! (${userMoney.toLocaleString()}/${item.price.toLocaleString()})`);
         return;
+      }
+    } else {
+      // 재료 기반 구매
+      // 재료 확인 (별조각과 일반 재료 구분)
+      let userMaterialCount = 0;
+      if (item.material === '별조각') {
+        // 별조각인 경우 userStarPieces에서 가져오기
+        userMaterialCount = userStarPieces || 0;
+      } else {
+        // 일반 재료는 materials 배열에서 찾기
+        const userMaterial = materials.find(m => m.material === item.material);
+        userMaterialCount = userMaterial?.count || 0;
+      }
+      
+      if (userMaterialCount < item.materialCount) {
+        alert(`재료가 부족합니다! (${item.material} ${userMaterialCount}/${item.materialCount})`);
+        return;
+      }
+      
+      // 💰 낚시대와 악세사리는 골드도 필요함 (재료 물고기 판매가의 1/10)
+      if (item.category === 'fishing_rod' || item.category === 'accessories') {
+        if (item.requiredGold && userMoney < item.requiredGold) {
+          alert(`골드가 부족합니다! (${userMoney.toLocaleString()}/${item.requiredGold.toLocaleString()})`);
+          return;
+        }
       }
     }
     
@@ -7591,25 +7603,31 @@ function App() {
       });
       
       if (response.data.success) {
-        // 재료 차감 (로컬) - 별조각과 일반 재료 구분
-        if (item.material === '별조각') {
-          // 별조각 차감
-          setUserStarPieces(prev => prev - item.materialCount);
+        // 🪙 골드 구매인 경우
+        if (isGoldPurchase) {
+          // 골드만 차감
+          setUserMoney(prev => prev - item.price);
         } else {
-          // 일반 재료 차감
-          setMaterials(prev => {
-            const updated = prev.map(m => 
-              m.material === item.material
-                ? { ...m, count: m.count - item.materialCount }
-                : m
-            ).filter(m => m.count > 0);
-            return updated;
-          });
-        }
-        
-        // 💰 낚시대/악세사리 구매 시 골드 차감 (로컬)
-        if ((item.category === 'fishing_rod' || item.category === 'accessories') && item.requiredGold) {
-          setUserMoney(prev => prev - item.requiredGold);
+          // 재료 차감 (로컬) - 별조각과 일반 재료 구분
+          if (item.material === '별조각') {
+            // 별조각 차감
+            setUserStarPieces(prev => prev - item.materialCount);
+          } else {
+            // 일반 재료 차감
+            setMaterials(prev => {
+              const updated = prev.map(m => 
+                m.material === item.material
+                  ? { ...m, count: m.count - item.materialCount }
+                  : m
+              ).filter(m => m.count > 0);
+              return updated;
+            });
+          }
+          
+          // 💰 낚시대/악세사리 구매 시 골드도 차감 (로컬)
+          if ((item.category === 'fishing_rod' || item.category === 'accessories') && item.requiredGold) {
+            setUserMoney(prev => prev - item.requiredGold);
+          }
         }
         
         // 장비 자동 장착
@@ -7719,16 +7737,19 @@ function App() {
           const currentEnhancement = userEquipment.fishingRodEnhancement || 0;
           const newEnhancement = currentEnhancement > 5 ? currentEnhancement - 5 : 0;
           const enhancementMessage = newEnhancement > 0 ? ` [강화 수치 +${currentEnhancement} → +${newEnhancement} 유지]` : '';
-          purchaseMessage = `${item.name}을(를) ${item.material} x${item.materialCount}(으)로 구매하고 장착했습니다! (낚시실력 +1)${enhancementMessage}`;
+          const costMessage = isGoldPurchase ? `${item.price.toLocaleString()}골드` : `${item.material} x${item.materialCount}`;
+          purchaseMessage = `${item.name}을(를) ${costMessage}(으)로 구매하고 장착했습니다! (낚시실력 +1)${enhancementMessage}`;
         } else if (item.category === 'accessories') {
           // 악세사리
           const currentEnhancement = userEquipment.accessoryEnhancement || 0;
           const newEnhancement = currentEnhancement > 5 ? currentEnhancement - 5 : 0;
           const enhancementMessage = newEnhancement > 0 ? ` [강화 수치 +${currentEnhancement} → +${newEnhancement} 유지]` : '';
-          purchaseMessage = `${item.name}을(를) ${item.material} x${item.materialCount}(으)로 구매하고 장착했습니다!${enhancementMessage}`;
+          const costMessage = isGoldPurchase ? `${item.price.toLocaleString()}골드` : `${item.material} x${item.materialCount}`;
+          purchaseMessage = `${item.name}을(를) ${costMessage}(으)로 구매하고 장착했습니다!${enhancementMessage}`;
         } else {
           // 기타 아이템
-          purchaseMessage = `${item.name}을(를) ${item.material} x${item.materialCount}(으)로 구매하고 장착했습니다!`;
+          const costMessage = isGoldPurchase ? `${item.price.toLocaleString()}골드` : `${item.material} x${item.materialCount}`;
+          purchaseMessage = `${item.name}을(를) ${costMessage}(으)로 구매하고 장착했습니다!`;
         }
         setMessages(prev => [...prev, {
           system: true,
@@ -7790,7 +7811,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.4
+                여우이야기 v1.314
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -7809,7 +7830,7 @@ function App() {
                     const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
                     
                     if (isEmbeddedBrowser || (isMobile && window.navigator.standalone === false)) {
-                      alert('앱 내 브라우저에서는 Google 로그인이 제한됩니다.\n\n✅ 해결 방법:\n1. 링크를 길게 눌러 "브라우저에서 열기" 선택\n2. 또는 Safari/Chrome 앱을 열어서 주소를 직접 입력\n\n주소: https://foxstory.kr');
+                      alert('앱 내 브라우저에서는 Google 로그인이 제한됩니다.\n\n✅ 해결 방법:\n1. 링크를 길게 눌러 "브라우저에서 열기" 선택\n2. 또는 Safari/Chrome 앱을 열어서 주소를 직접 입력\n\n주소: https://fising-master.onrender.com');
                       return;
                     }
                     
