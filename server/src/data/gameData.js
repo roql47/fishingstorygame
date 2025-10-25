@@ -145,7 +145,7 @@ const SHOP_DATA = {
     { name: '벚꽃낚시대', material: '꽃술', materialCount: 55, description: '벚꽃의 아름다움을 담은 환상적인 낚시대입니다', requiredSkill: 10 },
     { name: '꽃망울낚시대', material: '프레첼', materialCount: 60, description: '꽃망울처럼 생긴 신비한 낚시대입니다', requiredSkill: 11 },
     { name: '호롱불낚시대', material: '베놈', materialCount: 65, description: '호롱불처럼 따뜻한 빛을 내는 낚시대입니다', requiredSkill: 12 },
-    { name: '산고등낚시대', material: '장어꼬리', materialCount: 70, description: '바다 깊은 곳의 산고로 만든 낚시대입니다', requiredSkill: 13 },
+    { name: '산호등낚시대', material: '장어꼬리', materialCount: 70, description: '바다 깊은 곳의 산호로 만든 낚시대입니다', requiredSkill: 13 },
     { name: '피크닉', material: '아인스바인', materialCount: 75, description: '즐거운 피크닉 분위기의 특별한 낚시대입니다', requiredSkill: 14 },
     { name: '마녀빗자루', material: '헤븐즈서펀트', materialCount: 80, description: '마녀의 마법이 깃든 신비로운 빗자루 낚시대입니다', requiredSkill: 15 },
     { name: '에테르낚시대', material: '집게다리', materialCount: 85, description: '에테르의 힘으로 만들어진 초월적인 낚시대입니다', requiredSkill: 16 },

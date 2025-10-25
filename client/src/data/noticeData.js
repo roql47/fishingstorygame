@@ -1,6 +1,25 @@
 // 공지사항 데이터 (ID 내림차순 정렬 - 최신이 가장 높은 ID)
 export const NOTICE_DATA = [
   {
+    id: 38,
+    date: "2025.10.25",
+    title: "v1.4 🌐 도메인 변경 및 소셜 로그인 시스템 개선",
+    content: [
+      "도메인 변경:",
+      "- 새 도메인: https://foxstory.kr",
+      "- 기존 도메인에서 자동 리디렉션",
+      "소셜 로그인 시스템 개선:",
+      "- Google OAuth 클라이언트 ID 업데이트",
+      "- 새 도메인에서 Google/Kakao 로그인 정상 작동",
+      "- 로그인 안정성 향상",
+      "서버 보안 강화:",
+      "- CORS 설정 최신화",
+      "- 새 도메인 추가 인증"
+    ],
+    isNew: true,
+    type: "major_update"
+  },
+  {
     id: 37,
     date: "2025.10.24",
     title: "🔧 게임 시스템 개선 및 버그 수정",
@@ -13,7 +32,7 @@ export const NOTICE_DATA = [
       "- '너를 위해 준비했어' 업적 조건 변경 (100개 → 1000개)",
       "시크릿 쿠폰 추가"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
@@ -640,5 +659,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.314"
+  version: "v1.4"
 };

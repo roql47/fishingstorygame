@@ -49,10 +49,20 @@ const NoticeModal = ({ showNoticeModal, setShowNoticeModal, isDarkMode }) => {
                   : isDarkMode ? "glass-input" : "bg-gray-50"
               }`}
             >
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
                 {notice.isNew && (
                   <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-500 text-white">
                     NEW
+                  </span>
+                )}
+                {/* 버전 뱃지 추출 */}
+                {notice.title.match(/v\d+\.\d+/) && (
+                  <span className={`px-2 py-1 text-xs font-bold rounded ${
+                    isDarkMode 
+                      ? "bg-gradient-to-r from-purple-500/30 to-blue-500/30 text-purple-300 border border-purple-400/30" 
+                      : "bg-gradient-to-r from-purple-100 to-blue-100 text-purple-700 border border-purple-300"
+                  }`}>
+                    {notice.title.match(/v\d+\.\d+/)[0]}
                   </span>
                 )}
                 <span className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>
@@ -60,7 +70,7 @@ const NoticeModal = ({ showNoticeModal, setShowNoticeModal, isDarkMode }) => {
                 </span>
               </div>
               <h3 className={`font-semibold mb-2 ${isDarkMode ? "text-white" : "text-gray-800"}`}>
-                {notice.title}
+                {notice.title.replace(/v\d+\.\d+\s*/, '')}
               </h3>
               <div className={`text-sm leading-relaxed ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
                 {notice.content.map((item, itemIndex) => (

@@ -79,7 +79,7 @@ const CollectionModal = ({
     { name: '벚꽃낚시대', price: 968000, description: '벚꽃의 아름다움을 담은 환상적인 낚시대입니다', currency: 'gold' },
     { name: '꽃망울낚시대', price: 1434000, description: '꽃망울처럼 생긴 신비한 낚시대입니다', currency: 'gold' },
     { name: '호롱불낚시대', price: 1885000, description: '호롱불처럼 따뜻한 빛을 내는 낚시대입니다', currency: 'gold' },
-    { name: '산고등낚시대', price: 2485000, description: '바다 깊은 곳의 산고로 만든 낚시대입니다', currency: 'gold' },
+    { name: '산호등낚시대', price: 2485000, description: '바다 깊은 곳의 산호로 만든 낚시대입니다', currency: 'gold' },
     { name: '피크닉', price: 3240000, description: '즐거운 피크닉 분위기의 특별한 낚시대입니다', currency: 'gold' },
     { name: '마녀빗자루', price: 4168000, description: '마녀의 마법이 깃든 신비로운 빗자루 낚시대입니다', currency: 'gold' },
     { name: '에테르낚시대', price: 6247500, description: '에테르의 힘으로 만들어진 초월적인 낚시대입니다', currency: 'gold' },

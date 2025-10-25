@@ -211,9 +211,9 @@ function App() {
     }
   }, []);
 
-  // 🔄 버전 업데이트 시 캐시 초기화 (v1.314)
+  // 🔄 버전 업데이트 시 캐시 초기화 (v1.4)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.314";
+    const CURRENT_VERSION = "v1.4";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -4712,7 +4712,7 @@ function App() {
     const fishingRods = [
       '나무낚시대', '낡은낚시대', '기본낚시대', '단단한낚시대', '은낚시대', '금낚시대',
       '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대', '레드다이아몬드낚시대',
-      '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산고등낚시대', '피크닉', '마녀빗자루',
+      '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산호등낚시대', '피크닉', '마녀빗자루',
       '에테르낚시대', '별조각낚시대', '여우꼬리낚시대', '초콜릿롤낚시대', '호박유령낚시대',
       '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
     ];
@@ -7614,19 +7614,37 @@ function App() {
         
         // 장비 자동 장착
         if (item.category === 'fishing_rod') {
+          // 🎣 현재 낚시대 강화 수치 유지 로직
+          const currentEnhancement = userEquipment.fishingRodEnhancement || 0;
+          let newEnhancement = 0;
+          
+          // 현재 강화 수치가 +6 이상이면 -5해서 유지, +5 이하면 0으로 초기화
+          if (currentEnhancement > 5) {
+            newEnhancement = currentEnhancement - 5;
+          }
+          
           setUserEquipment(prev => ({ 
             ...prev, 
             fishingRod: item.name,
-            fishingRodEnhancement: 0,
+            fishingRodEnhancement: newEnhancement,
             fishingRodFailCount: 0
           }));
           // 낚시대 구매 시에만 낚시실력 +1
           setFishingSkill(prev => prev + 1);
         } else if (item.category === 'accessories') {
+          // 🎣 현재 악세사리 강화 수치 유지 로직
+          const currentEnhancement = userEquipment.accessoryEnhancement || 0;
+          let newEnhancement = 0;
+          
+          // 현재 강화 수치가 +6 이상이면 -5해서 유지, +5 이하면 0으로 초기화
+          if (currentEnhancement > 5) {
+            newEnhancement = currentEnhancement - 5;
+          }
+          
           setUserEquipment(prev => ({ 
             ...prev, 
             accessory: item.name,
-            accessoryEnhancement: 0,
+            accessoryEnhancement: newEnhancement,
             accessoryFailCount: 0
           }));
           // 악세사리 구매 시에는 낚시실력 증가 안함
@@ -7696,10 +7714,21 @@ function App() {
         if (item.category === 'items') {
           // 연금술포션 등 소모품
           purchaseMessage = `${item.name} 10개를 ${item.material} x${item.materialCount}(으)로 교환했습니다!`;
+        } else if (item.category === 'fishing_rod') {
+          // 낚시대
+          const currentEnhancement = userEquipment.fishingRodEnhancement || 0;
+          const newEnhancement = currentEnhancement > 5 ? currentEnhancement - 5 : 0;
+          const enhancementMessage = newEnhancement > 0 ? ` [강화 수치 +${currentEnhancement} → +${newEnhancement} 유지]` : '';
+          purchaseMessage = `${item.name}을(를) ${item.material} x${item.materialCount}(으)로 구매하고 장착했습니다! (낚시실력 +1)${enhancementMessage}`;
+        } else if (item.category === 'accessories') {
+          // 악세사리
+          const currentEnhancement = userEquipment.accessoryEnhancement || 0;
+          const newEnhancement = currentEnhancement > 5 ? currentEnhancement - 5 : 0;
+          const enhancementMessage = newEnhancement > 0 ? ` [강화 수치 +${currentEnhancement} → +${newEnhancement} 유지]` : '';
+          purchaseMessage = `${item.name}을(를) ${item.material} x${item.materialCount}(으)로 구매하고 장착했습니다!${enhancementMessage}`;
         } else {
-          // 장비 (낚시대, 악세사리)
-          const skillMessage = (item.category === 'fishing_rod') ? ' (낚시실력 +1)' : '';
-          purchaseMessage = `${item.name}을(를) ${item.material} x${item.materialCount}(으)로 구매하고 장착했습니다!${skillMessage}`;
+          // 기타 아이템
+          purchaseMessage = `${item.name}을(를) ${item.material} x${item.materialCount}(으)로 구매하고 장착했습니다!`;
         }
         setMessages(prev => [...prev, {
           system: true,
@@ -7761,7 +7790,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.314
+                여우이야기 v1.4
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -7780,7 +7809,7 @@ function App() {
                     const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
                     
                     if (isEmbeddedBrowser || (isMobile && window.navigator.standalone === false)) {
-                      alert('앱 내 브라우저에서는 Google 로그인이 제한됩니다.\n\n✅ 해결 방법:\n1. 링크를 길게 눌러 "브라우저에서 열기" 선택\n2. 또는 Safari/Chrome 앱을 열어서 주소를 직접 입력\n\n주소: https://fising-master.onrender.com');
+                      alert('앱 내 브라우저에서는 Google 로그인이 제한됩니다.\n\n✅ 해결 방법:\n1. 링크를 길게 눌러 "브라우저에서 열기" 선택\n2. 또는 Safari/Chrome 앱을 열어서 주소를 직접 입력\n\n주소: https://foxstory.kr');
                       return;
                     }
                     

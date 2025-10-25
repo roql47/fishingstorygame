@@ -614,7 +614,8 @@ const io = new Server(server, {
       "http://localhost:5173", 
       "http://127.0.0.1:4000",
       "http://127.0.0.1:5173",
-      "https://fising-master.onrender.com", // 프로덕션 URL 추가
+      "https://fising-master.onrender.com", // 이전 프로덕션 URL
+      "https://foxstory.kr", // 새 프로덕션 URL
       process.env.CLIENT_URL // 환경변수에서 클라이언트 URL 가져오기
     ].filter(Boolean), // undefined 값 제거
     credentials: true,
@@ -1922,7 +1923,7 @@ function randomFish(fishingSkill = 0) {
 }
 
 // Google auth
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "1023938003062-256niij987fc2q7o74qmssi2bca7vdnf.apps.googleusercontent.com";
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "29134467617-5tpp0ivftiqci9bkfighpgfm8i3cgpa4.apps.googleusercontent.com";
 const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 
 // Kakao auth
@@ -8741,16 +8742,32 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
       
       if (category === 'fishing_rod') {
         userEquipment.fishingRod = itemName;
-        // 낚시대 구매 시 강화 수치 리셋
-        userEquipment.fishingRodEnhancement = 0;
+        // 🎣 현재 낚시대 강화 수치 유지 로직
+        const currentEnhancement = userEquipment.fishingRodEnhancement || 0;
+        let newEnhancement = 0;
+        
+        // 현재 강화 수치가 +6 이상이면 -5해서 유지, +5 이하면 0으로 초기화
+        if (currentEnhancement > 5) {
+          newEnhancement = currentEnhancement - 5;
+        }
+        
+        userEquipment.fishingRodEnhancement = newEnhancement;
         userEquipment.fishingRodFailCount = 0;
-        console.log(`Fishing rod: ${oldFishingRod} → ${itemName} (강화 수치 리셋)`);
+        console.log(`Fishing rod: ${oldFishingRod} → ${itemName} (강화 수치: +${currentEnhancement} → +${newEnhancement})`);
       } else if (category === 'accessories') {
         userEquipment.accessory = itemName;
-        // 악세사리 구매 시 강화 수치 리셋
-        userEquipment.accessoryEnhancement = 0;
+        // 🎣 현재 악세사리 강화 수치 유지 로직
+        const currentEnhancement = userEquipment.accessoryEnhancement || 0;
+        let newEnhancement = 0;
+        
+        // 현재 강화 수치가 +6 이상이면 -5해서 유지, +5 이하면 0으로 초기화
+        if (currentEnhancement > 5) {
+          newEnhancement = currentEnhancement - 5;
+        }
+        
+        userEquipment.accessoryEnhancement = newEnhancement;
         userEquipment.accessoryFailCount = 0;
-        console.log(`Accessory: ${oldAccessory} → ${itemName} (강화 수치 리셋)`);
+        console.log(`Accessory: ${oldAccessory} → ${itemName} (강화 수치: +${currentEnhancement} → +${newEnhancement})`);
         
         // 🚀 악세사리 구매 시 캐시 무효화 (성능 최적화)
         const cacheKey = userUuid || username;
@@ -8917,7 +8934,7 @@ app.post("/api/enhance-equipment", authenticateJWT, async (req, res) => {
         const fishingRodOrder = [
           '나무낚시대', '낡은낚시대', '기본낚시대', '단단한낚시대', '은낚시대', '금낚시대',
           '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대', '레드다이아몬드낚시대',
-          '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산고등낚시대', '피크닉', '마녀빗자루',
+          '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산호등낚시대', '피크닉', '마녀빗자루',
           '에테르낚시대', '별조각낚시대', '여우꼬리낚시대', '초콜릿롤낚시대', '호박유령낚시대',
           '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
         ];
@@ -10537,14 +10554,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.314"
+    version: "v1.4"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.314",
+    version: "v1.4",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
