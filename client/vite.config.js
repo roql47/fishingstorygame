@@ -8,6 +8,11 @@ export default defineConfig({
     port: 5173,
   },
   base: './',
+  // 🚀 Web Worker 지원
+  worker: {
+    format: 'es', // ES 모듈 형식 사용
+    plugins: []
+  },
   build: {
     // 🔒 소스맵 완전 비활성화 (소스 코드 숨김)
     sourcemap: false,

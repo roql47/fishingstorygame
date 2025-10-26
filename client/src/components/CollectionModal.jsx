@@ -66,11 +66,11 @@ const CollectionModal = ({
   // 낚시대 목록 (실제 상점 가격과 동일하게 계산)
   const fishingRods = [
     { name: '나무낚시대', price: 0, description: '기본 낚시대', currency: 'gold' },
-    { name: '낡은낚시대', price: 1500, description: '오래된 낚시대입니다', currency: 'gold' },
-    { name: '기본낚시대', price: 5000, description: '기본적인 낚시대입니다', currency: 'gold' },
-    { name: '단단한낚시대', price: 12000, description: '견고한 낚시대입니다', currency: 'gold' },
-    { name: '은낚시대', price: 24000, description: '은으로 만든 고급 낚시대입니다', currency: 'gold' },
-    { name: '금낚시대', price: 45000, description: '금으로 만든 최고급 낚시대입니다', currency: 'gold' },
+    { name: '낡은낚시대', price: 7500, description: '오래된 낚시대입니다', currency: 'gold' },
+    { name: '기본낚시대', price: 25000, description: '기본적인 낚시대입니다', currency: 'gold' },
+    { name: '단단한낚시대', price: 60000, description: '견고한 낚시대입니다', currency: 'gold' },
+    { name: '은낚시대', price: 120000, description: '은으로 만든 고급 낚시대입니다', currency: 'gold' },
+    { name: '금낚시대', price: 225000, description: '금으로 만든 최고급 낚시대입니다', currency: 'gold' },
     { name: '강철낚시대', price: 90000, description: '강철로 제련된 견고한 낚시대입니다', currency: 'gold' },
     { name: '사파이어낚시대', price: 164500, description: '사파이어가 박힌 신비로운 낚시대입니다', currency: 'gold' },
     { name: '루비낚시대', price: 288000, description: '루비의 힘이 깃든 화려한 낚시대입니다', currency: 'gold' },
@@ -94,11 +94,11 @@ const CollectionModal = ({
 
   // 악세사리 목록 (실제 상점 가격과 동일하게 계산 - 골드 단위)
   const accessories = [
-    { name: '오래된반지', price: 3000, description: '낡았지만 의미있는 반지입니다', currency: 'gold' },
-    { name: '은목걸이', price: 10000, description: '은으로 만든 아름다운 목걸이입니다', currency: 'gold' },
-    { name: '금귀걸이', price: 24000, description: '금으로 만든 화려한 귀걸이입니다', currency: 'gold' },
-    { name: '마법의펜던트', price: 48000, description: '마법의 힘이 깃든 신비한 펜던트입니다', currency: 'gold' },
-    { name: '에메랄드브로치', price: 90000, description: '에메랄드가 박힌 고급스러운 브로치입니다', currency: 'gold' },
+    { name: '오래된반지', price: 15000, description: '낡았지만 의미있는 반지입니다', currency: 'gold' },
+    { name: '은목걸이', price: 50000, description: '은으로 만든 아름다운 목걸이입니다', currency: 'gold' },
+    { name: '금귀걸이', price: 120000, description: '금으로 만든 화려한 귀걸이입니다', currency: 'gold' },
+    { name: '마법의펜던트', price: 240000, description: '마법의 힘이 깃든 신비한 펜던트입니다', currency: 'gold' },
+    { name: '에메랄드브로치', price: 450000, description: '에메랄드가 박힌 고급스러운 브로치입니다', currency: 'gold' },
     { name: '토파즈이어링', price: 180000, description: '토파즈의 빛이 아름다운 이어링입니다', currency: 'gold' },
     { name: '자수정팔찌', price: 329000, description: '자수정으로 만든 우아한 팔찌입니다', currency: 'gold' },
     { name: '백금티아라', price: 576000, description: '백금으로 제작된 고귀한 티아라입니다', currency: 'gold' },

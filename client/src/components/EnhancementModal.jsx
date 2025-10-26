@@ -101,7 +101,7 @@ const EnhancementModal = ({
   // 장비 기본 스탯 계산
   const getEquipmentBaseStat = () => {
     if (equipmentType === 'fishingRod') {
-      // 낚시대 기본 공격력 계산
+      // 낚시대 기본 공격력 계산 (실전 공식 사용 - 낚시실력 기반)
       const fishingRodOrder = [
         '나무낚시대', '낡은낚시대', '기본낚시대', '단단한낚시대', '은낚시대', '금낚시대',
         '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대', '레드다이아몬드낚시대',
@@ -110,9 +110,11 @@ const EnhancementModal = ({
         '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
       ];
       const fishingRodLevel = fishingRodOrder.indexOf(equipment);
-      if (fishingRodLevel === -1) return 10;
-      if (fishingRodLevel === 0) return 10;
-      return Math.floor(Math.pow(fishingRodLevel, 1.4) + fishingRodLevel * 2 + 10);
+      if (fishingRodLevel === -1) return 3;
+      // 낚시실력 기반 공격력: 3차방정식
+      const fishingSkillValue = fishingRodLevel; // EnhancementModal에서는 업적 정보가 없으므로 레벨만 사용
+      const baseAttack = 0.00225 * Math.pow(fishingSkillValue, 3) + 0.165 * Math.pow(fishingSkillValue, 2) + 2 * fishingSkillValue + 3;
+      return Math.floor(baseAttack);
     } else if (equipmentType === 'accessory') {
       // 악세사리 기본 체력 계산
       const accessoryOrder = [

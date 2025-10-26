@@ -50,7 +50,8 @@ const ChatTab = ({
   alchemyPotions,
   setAlchemyPotions,
   handleExpeditionInviteClick,
-  setShowClickerModal
+  setShowClickerModal,
+  cooldownWorkerRef // 🚀 Web Worker ref
 }) => {
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -218,15 +219,30 @@ const ChatTab = ({
         setFishingCooldown(serverCooldownTime);
         setCooldownLoaded(true); // 쿨타임 로드 완료 상태 설정
         
-        // localStorage에 쿨타임 종료 시간 저장
+        // localStorage에 쿨타임 종료 시간 저장 및 Worker에 전달
         if (serverCooldownTime > 0) {
           const fishingEndTime = new Date(Date.now() + serverCooldownTime);
           localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
+          
+          // Worker에 쿨타임 시작 전달
+          if (cooldownWorkerRef && cooldownWorkerRef.current) {
+            cooldownWorkerRef.current.postMessage({
+              action: 'start',
+              cooldownType: 'fishing',
+              endTime: fishingEndTime.toISOString()
+            });
+          }
         } else {
           localStorage.removeItem('fishingCooldownEnd');
+          
+          // Worker에 쿨타임 중지 전달
+          if (cooldownWorkerRef && cooldownWorkerRef.current) {
+            cooldownWorkerRef.current.postMessage({
+              action: 'stop',
+              cooldownType: 'fishing'
+            });
+          }
         }
-        
-        console.log(`Fishing cooldown set: ${serverCooldownTime}ms`);
       } catch (error) {
         console.error('Failed to set fishing cooldown:', error);
         // 서버 설정 실패 시 기본 쿨타임 설정 (5분)
@@ -234,9 +250,18 @@ const ChatTab = ({
         setFishingCooldown(fallbackCooldownTime);
         setCooldownLoaded(true); // 에러 시에도 로드 완료 상태 설정
         
-        // localStorage에 쿨타임 종료 시간 저장
+        // localStorage에 쿨타임 종료 시간 저장 및 Worker에 전달
         const fishingEndTime = new Date(Date.now() + fallbackCooldownTime);
         localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
+        
+        // Worker에 쿨타임 시작 전달
+        if (cooldownWorkerRef && cooldownWorkerRef.current) {
+          cooldownWorkerRef.current.postMessage({
+            action: 'start',
+            cooldownType: 'fishing',
+            endTime: fishingEndTime.toISOString()
+          });
+        }
       } finally {
         // 🛡️ 4. 처리 완료 후 상태 해제 (1초 후)
         setTimeout(() => {

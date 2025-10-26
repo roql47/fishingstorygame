@@ -12,9 +12,11 @@ import ChatTab from "./components/ChatTab";
 import NoticeModal from "./components/NoticeModal";
 import TutorialModal from "./components/TutorialModal";
 import CollectionModal from './components/CollectionModal';
+import { termsOfService, privacyPolicy } from './data/termsData';
 import EnhancementModal from './components/EnhancementModal';
 import MarketModal from './components/MarketModal';
 import MailModal from './components/MailModal';
+import GuestLoginModal from './components/GuestLoginModal';
 import { CompanionTab, processCompanionSkill, canUseCompanionSkill } from './components/companions';
 import ExpeditionTab from './components/ExpeditionTab';
 import ShopTab from './components/ShopTab';
@@ -61,6 +63,8 @@ import {
   Mail
 } from "lucide-react";
 import "./App.css";
+// 🚀 Web Worker import for background cooldown management
+import CooldownWorker from "./workers/cooldownWorker.js?worker";
 
 // 🔐 JWT 토큰 안전 파싱 유틸리티
 const safeParseJWT = (token) => {
@@ -278,6 +282,9 @@ function App() {
   const [fishingCooldown, setFishingCooldown] = useState(0); // 🛡️ 쿨타임 상태 (위치 이동)
   const [cooldownLoaded, setCooldownLoaded] = useState(false); // 🛡️ 쿨타임 로드 상태 (위치 이동)
   
+  // 🚀 Web Worker ref for background cooldown management
+  const cooldownWorkerRef = useRef(null);
+  
   // 🔧 모든 상태 변수들을 상단으로 이동 (TDZ 문제 해결)
   const [userMoney, setUserMoney] = useState(0);
   const [userAmber, setUserAmber] = useState(0);
@@ -363,7 +370,10 @@ function App() {
   // 업적 관련 상태
   const [showAchievements, setShowAchievements] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const [isGuestTermsOnly, setIsGuestTermsOnly] = useState(false); // 🎯 게스트 계정용 이용약관만 표시
+  const [termsTab, setTermsTab] = useState("terms"); // 📋 약관 탭 ("terms" 또는 "privacy")
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [initialNickname, setInitialNickname] = useState("");
   
   // 🔧 추가 상태 변수들 (TDZ 문제 해결)
@@ -382,6 +392,7 @@ function App() {
   const [showMarketModal, setShowMarketModal] = useState(false); // 거래소 모달
   const [showMailModal, setShowMailModal] = useState(false); // 편지함 모달
   const [unreadMailCount, setUnreadMailCount] = useState(0); // 읽지 않은 메일 개수
+  const [showGuestModal, setShowGuestModal] = useState(false); // 게스트 계정 모달
   
   // 레이드 관련 상태
   const [raidBosses, setRaidBosses] = useState({ beginner: null, intermediate: null, advanced: null });
@@ -634,7 +645,6 @@ function App() {
     if (fishRank === 0) return Math.floor(Math.random() * 3) + 8;
     return Math.floor(Math.pow(fishRank, 1.65) + fishRank * 1.3 + 10 + Math.random() * 5);
   };
-
   // 크리티컬 히트 계산 함수
   const calculateCriticalHit = (baseDamage, criticalChance = 0.05, companionName = null, companionBuffs = {}) => {
     const finalCriticalChance = (() => {
@@ -670,7 +680,6 @@ function App() {
     speedBarIntervalsRef.current = {};
     setSpeedBars({});
   }, []);
-
   // 속도바 시작 함수 (원정 전투와 동일한 방식)
   const startSpeedBar = useCallback((characterId, speed, characterType) => {
     // 기존 타이머가 있으면 정리
@@ -1224,7 +1233,6 @@ function App() {
       })
       .sort((a, b) => b.damage - a.damage);
   };
-
   // 순위 변동 감지 및 애니메이션 트리거
   const detectRankingChanges = useCallback((newRanking) => {
     // 📱 모바일에서는 순위 변동 애니메이션 비활성화
@@ -1377,7 +1385,6 @@ function App() {
     setShowDamageEffect(true);
     setTimeout(() => setShowDamageEffect(false), 100);
   };
-
   // 레이드 보스 공격 함수
   const attackRaidBoss = async () => {
     const boss = raidBosses[selectedRaidType];
@@ -1866,7 +1873,6 @@ function App() {
 
     initKakaoSDK();
   }, []);
-
   // 카카오 로그인 처리 함수
   const handleKakaoLogin = async () => {
     console.log('카카오 로그인 시작');
@@ -1946,7 +1952,8 @@ function App() {
             console.log('Kakao user info:', response);
             
             const kakaoId = response.id;
-            const kakaoNickname = response.kakao_account?.profile?.nickname || `카카오사용자${kakaoId}`;
+            // 🔒 개인정보 보호: 실명 대신 익명 닉네임 사용
+            const kakaoNickname = `카카오사용자`;
             
             // 카카오 ID 저장 (서버에서 기존 사용자 식별용)
             localStorage.setItem("kakaoId", kakaoId);
@@ -2101,46 +2108,42 @@ function App() {
     return { valid: true, message: "", trimmed };
   };
 
-  // 게스트 닉네임 자동 생성 함수
-  const generateGuestNickname = () => {
-    const randomNum = Math.floor(Math.random() * 9999) + 1;
-    return `Guest#${randomNum}`;
+  // 게스트 로그인 (모달 표시)
+  const handleGuestLogin = () => {
+    setShowGuestModal(true);
   };
 
-  // 게스트 로그인 함수
-  const handleGuestLogin = () => {
-    const guestName = generateGuestNickname();
-    setUsername(guestName);
-    setIsGuest(true);
-    localStorage.setItem("nickname", guestName);
-    localStorage.setItem("isGuest", "true");
+  // 계정 기반 게스트 로그인 처리
+  const handleAccountGuestLogin = (userUuidFromServer, usernameFromServer, accountId) => {
+    console.log("계정 게스트 로그인:", { userUuidFromServer, usernameFromServer, accountId });
     
-    // 게스트는 쿨타임을 0으로 시작하고 로드 완료 상태로 설정
+    setUsername(usernameFromServer);
+    setUserUuid(userUuidFromServer);
+    setIsGuest(true);
+    
+    localStorage.setItem("nickname", usernameFromServer);
+    localStorage.setItem("userUuid", userUuidFromServer);
+    localStorage.setItem("isGuest", "true");
+    localStorage.setItem("guestAccountId", accountId);
+    
+    // 쿨타임을 0으로 시작하고 로드 완료 상태로 설정
     setFishingCooldown(0);
     setCooldownLoaded(true);
     localStorage.removeItem('fishingCooldownEnd');
     
-    // 게스트도 서버에 chat:join을 보내서 socket.data에 정보 저장
+    // 🔒 게스트 계정용 이용약관만 표시 (닉네임 설정 없음)
+    setIsFirstLogin(true);
+    setIsGuestTermsOnly(true);
+    setShowTermsModal(true);
+    
+    // 서버에 chat:join을 보내서 socket.data에 정보 저장
     const socket = getSocket();
-    
-    // user:uuid 이벤트를 받을 때까지 기다리기
-    const handleUserUuid = (data) => {
-      console.log("👤 Guest userUuid received:", data.userUuid);
-      setUserUuid(data.userUuid);
-      localStorage.setItem("userUuid", data.userUuid);
-      // 한 번만 실행되도록 리스너 제거
-      socket.off("user:uuid", handleUserUuid);
-    };
-    
-    socket.once("user:uuid", handleUserUuid);
-    
     socket.emit("chat:join", { 
-      username: guestName, 
-      idToken: null, // 게스트는 idToken 없음
-      userUuid: null // 게스트는 처음에 userUuid 없음 (서버에서 생성)
+      username: usernameFromServer, 
+      idToken: null,
+      userUuid: userUuidFromServer
     });
   };
-
   // 쿨타임 상태를 서버에서 가져오는 함수
   const fetchCooldownStatus = async (tempUsername = '', tempUserUuid = '') => {
     try {
@@ -2233,14 +2236,29 @@ function App() {
       setFishingCooldown(maxCooldown);
       setCooldownLoaded(true);
       
-      // localStorage에 최종 쿨타임 종료 시간 저장
+      // localStorage에 최종 쿨타임 종료 시간 저장 및 Worker에 전달
       if (maxCooldown > 0) {
         const fishingEndTime = new Date(Date.now() + maxCooldown);
         localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
-        console.log('💾 Updated localStorage with final cooldown:', fishingEndTime.toISOString());
+        
+        // Worker에 쿨타임 시작 전달
+        if (cooldownWorkerRef.current) {
+          cooldownWorkerRef.current.postMessage({
+            action: 'start',
+            cooldownType: 'fishing',
+            endTime: fishingEndTime.toISOString()
+          });
+        }
       } else {
         localStorage.removeItem('fishingCooldownEnd');
-        console.log('🗑️ Removed expired cooldown from localStorage');
+        
+        // Worker에 쿨타임 중지 전달
+        if (cooldownWorkerRef.current) {
+          cooldownWorkerRef.current.postMessage({
+            action: 'stop',
+            cooldownType: 'fishing'
+          });
+        }
       }
       
       // 레이드 쿨타임도 localStorage에 저장
@@ -2353,28 +2371,80 @@ function App() {
     }
   };
 
-  // 쿨타임 타이머 useEffect - 쿨타임이 로드된 후에만 실행
+  // 🚀 Web Worker 초기화 및 쿨타임 관리
   useEffect(() => {
-    const timerRef = { current: null };
-    
-    // 쿨타임이 로드되고 0보다 클 때만 타이머 시작
-    if (cooldownLoaded && fishingCooldown > 0) {
-      timerRef.current = setInterval(() => {
-        setFishingCooldown(prev => {
-          const newValue = Math.max(0, prev - 1000);
-          // 쿨타임이 끝나면 localStorage에서 제거
-          if (newValue <= 0) {
-            localStorage.removeItem('fishingCooldownEnd');
+    // Web Worker 초기화
+    if (!cooldownWorkerRef.current) {
+      try {
+        cooldownWorkerRef.current = new CooldownWorker();
+        
+        // Worker로부터 메시지 수신
+        cooldownWorkerRef.current.onmessage = (event) => {
+          const { type, cooldownType, remainingTime, message } = event.data;
+          
+          switch (type) {
+            case 'worker_ready':
+              // Worker 준비 완료 후 localStorage에서 쿨타임 복원
+              const storedFishingCooldownEnd = localStorage.getItem('fishingCooldownEnd');
+              if (storedFishingCooldownEnd) {
+                const now = new Date();
+                const cooldownEndTime = new Date(storedFishingCooldownEnd);
+                const remainingTime = Math.max(0, cooldownEndTime.getTime() - now.getTime());
+                
+                if (remainingTime > 0) {
+                  cooldownWorkerRef.current.postMessage({
+                    action: 'start',
+                    cooldownType: 'fishing',
+                    endTime: storedFishingCooldownEnd
+                  });
+                  setFishingCooldown(remainingTime);
+                  setCooldownLoaded(true);
+                } else {
+                  localStorage.removeItem('fishingCooldownEnd');
+                  setCooldownLoaded(true);
+                }
+              } else {
+                setCooldownLoaded(true);
+              }
+              break;
+              
+            case 'cooldown_update':
+              // Worker로부터 쿨타임 업데이트 수신
+              if (cooldownType === 'fishing') {
+                setFishingCooldown(remainingTime);
+                
+                // 쿨타임이 끝났으면 localStorage에서 제거
+                if (remainingTime <= 0) {
+                  localStorage.removeItem('fishingCooldownEnd');
+                }
+              }
+              break;
+              
+            case 'cooldown_stopped':
+            case 'pong':
+            default:
+              break;
           }
-          return newValue;
-        });
-      }, 1000);
+        };
+        
+        // Worker 에러 핸들링
+        cooldownWorkerRef.current.onerror = () => {
+          setCooldownLoaded(true);
+        };
+      } catch (error) {
+        // Worker 초기화 실패 시 fallback으로 일반 타이머 사용
+        setCooldownLoaded(true);
+      }
     }
     
+    // Cleanup
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (cooldownWorkerRef.current) {
+        cooldownWorkerRef.current.terminate();
+        cooldownWorkerRef.current = null;
+      }
     };
-  }, [fishingCooldown, cooldownLoaded]);
+  }, []); // 컴포넌트 마운트 시 한 번만 실행
 
   // 구글 로그인 토큰 처리 함수
   const handleCredentialResponse = async (token) => {
@@ -2450,7 +2520,6 @@ function App() {
       delete window.handleCredentialResponse;
     };
   }, []);
-
   // URL에서 ID 토큰 처리 (리디렉션 후)
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.hash.substring(1));
@@ -2531,7 +2600,8 @@ function App() {
                       if (payload) {
                         console.log('Kakao id_token payload:', payload);
                         kakaoId = payload.sub;
-                        kakaoNickname = payload.nickname || `카카오사용자${kakaoId}`;
+                        // 🔒 개인정보 보호: 실명 대신 익명 닉네임 사용
+                        kakaoNickname = `카카오사용자`;
                         console.log('✅ 카카오 사용자 정보 (id_token에서):', { kakaoId, kakaoNickname });
                       }
                     } catch (tokenError) {
@@ -2552,7 +2622,8 @@ function App() {
                     
                     console.log('Kakao user info from API:', userResponse);
                     kakaoId = userResponse.id;
-                    kakaoNickname = userResponse.kakao_account?.profile?.nickname || `카카오사용자${kakaoId}`;
+                    // 🔒 개인정보 보호: 실명 대신 익명 닉네임 사용
+                    kakaoNickname = `카카오사용자`;
                   }
                   
                   // 카카오 ID 저장 (서버에서 기존 사용자 식별용)
@@ -3095,9 +3166,7 @@ function App() {
         alert(`입장 실패: ${data.message}`);
       }
     };
-    
     socket.on("join:error", onJoinError);
-    
     // 채팅 에러 처리 (스팸 방지 등)
     const onChatError = (data) => {
       console.error("Chat error:", data);
@@ -3280,9 +3349,15 @@ function App() {
     return getAvailableFish(fishingSkill);
   }, [fishingSkill, allFishTypes, probabilityTemplate]);
 
-  // 🔄 앱 버전 체크 및 자동 새로고침 시스템
+  // 🔄 앱 버전 체크 및 자동 새로고침 시스템 (프로덕션 환경에서만)
   useEffect(() => {
     if (!socket) return;
+    
+    // 로컬 개발 환경에서는 버전 체크 건너뛰기
+    if (!import.meta.env.PROD) {
+      console.log('🔧 개발 환경: WebSocket 버전 체크 건너뛰기');
+      return;
+    }
 
     // 로컬에 저장된 버전 확인
     const localVersion = localStorage.getItem('appVersion');
@@ -3323,7 +3398,6 @@ function App() {
       socket.off('app:update-available');
     };
   }, [socket]);
-
   // WebSocket을 통한 실시간 데이터 동기화
   useEffect(() => {
     if (!username || !userUuid || !socket) return;
@@ -3463,14 +3537,29 @@ function App() {
         setFishingCooldown(calculatedCooldown);
         setCooldownLoaded(true);
         
-        // localStorage에 최종 쿨타임 종료 시간 저장
+        // localStorage에 최종 쿨타임 종료 시간 저장 및 Worker에 전달
         if (calculatedCooldown > 0) {
           const fishingEndTime = new Date(Date.now() + calculatedCooldown);
           localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
-          console.log('💾 Saved cooldown to localStorage:', fishingEndTime.toISOString());
+          
+          // Worker에 쿨타임 시작 전달
+          if (cooldownWorkerRef.current) {
+            cooldownWorkerRef.current.postMessage({
+              action: 'start',
+              cooldownType: 'fishing',
+              endTime: fishingEndTime.toISOString()
+            });
+          }
         } else {
           localStorage.removeItem('fishingCooldownEnd');
-          console.log('🗑️ Removed cooldown from localStorage (expired)');
+          
+          // Worker에 쿨타임 중지 전달
+          if (cooldownWorkerRef.current) {
+            cooldownWorkerRef.current.postMessage({
+              action: 'stop',
+              cooldownType: 'fishing'
+            });
+          }
         }
       }
       if (data.totalCatches) setMyCatches(data.totalCatches.totalCatches);
@@ -3660,11 +3749,8 @@ function App() {
       socket.emit('data:unsubscribe', { userUuid, username });
     };
   }, [username, userUuid, socket]);
-
   // 사용자 돈은 WebSocket으로 실시간 업데이트됨 (위에서 처리)
-
   // 사용자 호박석, 별조각은 WebSocket으로 실시간 업데이트됨 (위에서 처리)
-
   // 🚀 사용자 동료 정보와 관리자 상태를 병렬로 가져오기 (성능 최적화)
   useEffect(() => {
     if (!username) return;
@@ -3894,8 +3980,14 @@ function App() {
 
   // 쿨타임과 총 낚은 수는 WebSocket으로 실시간 업데이트됨 (위에서 처리)
 
-  // 🔄 버전 체크 및 자동 리프레시 (앱 로드 시 1회 실행)
+  // 🔄 버전 체크 및 자동 리프레시 (앱 로드 시 1회 실행, 프로덕션 환경에서만)
   useEffect(() => {
+    // 로컬 개발 환경에서는 버전 체크 건너뛰기
+    if (!import.meta.env.PROD) {
+      console.log('🔧 개발 환경: 버전 체크 건너뛰기');
+      return;
+    }
+    
     const checkVersion = async () => {
       try {
         const res = await axios.get(`${serverUrl}/api/version`);
@@ -4001,8 +4093,6 @@ function App() {
     // 서버에도 저장
     await saveUserSettings({ darkMode: newDarkMode });
   };
-
-
   // 🛡️ [SECURITY] 보안 강화된 계정 초기화 함수
   const resetAccount = async () => {
     if (!userUuid || !username) {
@@ -4105,7 +4195,6 @@ function App() {
       alert('계정 초기화에 실패했습니다: ' + (error.response?.data?.error || error.message));
     }
   };
-
   // 🚫 계정 차단 함수
   const blockAccount = async (targetUserUuid, targetUsername) => {
     if (!isAdmin) {
@@ -4248,7 +4337,6 @@ function App() {
       console.error('Failed to fetch blocked accounts:', error);
     }
   };
-
   // 🛡️ [SECURITY] 보안 강화된 계정 삭제 함수
   const deleteAccount = async () => {
     if (!userUuid || !username) {
@@ -4721,12 +4809,12 @@ function App() {
     return level >= 0 ? level : 0;
   };
 
-  // 낚시대 공격력 계산 함수
-  const getFishingRodAttack = (fishingRodLevel) => {
-    if (fishingRodLevel === 0) return 10; // 기본 공격력
-    return Math.floor(Math.pow(fishingRodLevel, 1.4) + fishingRodLevel * 2 + 10);
+  // 낚시대 공격력 계산 함수 (실전 공식 사용 - 낚시실력 기반)
+  const getFishingRodAttack = (fishingSkillValue) => {
+    // 3차방정식: 0.00225 * skill³ + 0.165 * skill² + 2 * skill + 3
+    const baseAttack = 0.00225 * Math.pow(fishingSkillValue, 3) + 0.165 * Math.pow(fishingSkillValue, 2) + 2 * fishingSkillValue + 3;
+    return Math.floor(baseAttack);
   };
-
   // 장비 효과 계산 함수들
   const getEquipmentEffects = (equipmentName, equipmentType) => {
     if (!equipmentName) return null;
@@ -4734,7 +4822,10 @@ function App() {
     if (equipmentType === 'fishingRod') {
       const fishingRodLevel = getFishingRodLevel(equipmentName);
       const skillBonus = fishingRodLevel + 1; // 레벨 + 1
-      const baseAttackPower = getFishingRodAttack(fishingRodLevel);
+      
+      // 낚시실력 = 낚시대 레벨 + 1 + 업적 보너스
+      const currentFishingSkill = skillBonus + (fishingSkillDetails.achievementBonus || 0);
+      const baseAttackPower = getFishingRodAttack(currentFishingSkill);
       
       // 강화 보너스 계산
       const enhancementLevel = userEquipment.fishingRodEnhancement || 0;
@@ -4750,13 +4841,13 @@ function App() {
         effects.push({
           label: '공격력',
           value: `${Math.floor(totalAttackPower)}`,
-          description: `탐사 전투에서의 공격력입니다 (기본: ${Math.floor(baseAttackPower)}, 강화: +${Math.floor(enhancementBonus)}%)`
+          description: `전투에서의 공격력입니다 (기본: ${Math.floor(baseAttackPower)}, 강화: +${Math.floor(enhancementBonus)}%)`
         });
       } else {
         effects.push({
           label: '공격력',
           value: `${baseAttackPower}`,
-          description: '탐사 전투에서의 공격력입니다'
+          description: '전투에서의 공격력입니다'
         });
       }
 
@@ -4848,7 +4939,6 @@ function App() {
       setShowEnhancementModal(true);
     }
   };
-
   // 장비 강화 함수
   const handleEnhanceEquipment = async (equipmentType, targetLevel, amberCost) => {
     try {
@@ -5450,7 +5540,6 @@ function App() {
       return false;
     }
   };
-
   // 🛡️ [SECURITY] 보안 강화된 관리자 권한 토글 함수
   const secureToggleAdminRights = async (adminKey) => {
     try {
@@ -5517,7 +5606,6 @@ function App() {
       secureToggleAdminRights(adminKey);
     }
   };
-
   // 📸 프로필 이미지 업로드 함수 - AWS S3 직접 업로드 (관리자 전용)
   const handleProfileImageUpload = async (event, targetUserUuid = null, targetUsername = null) => {
     const file = event.target.files?.[0];
@@ -6045,7 +6133,6 @@ function App() {
       loadProfileImage(targetUserUuid);
     }
   }, [showProfile, otherUserData?.userUuid, userUuid, loadProfileImage]);
-
   // 🔑 관리자 권한: 다른 사용자 계정 초기화
   const adminResetUserAccount = async (targetUsername) => {
     if (!isAdmin) {
@@ -6316,7 +6403,6 @@ function App() {
       return false;
     }
   };
-
   // 접두어별 속도 배율 반환 함수
   const getPrefixSpeedMultiplier = (prefixName) => {
     switch (prefixName) {
@@ -6538,7 +6624,6 @@ function App() {
     
     return newState;
   };
-
   // 동료 공격 함수
   const companionAttack = (companionName, currentState) => {
     setBattleState(prevState => {
@@ -7075,7 +7160,6 @@ function App() {
     setQuantityModalData(null);
     setInputQuantity(1);
   };
-
   // 물고기 판매 함수
   const sellFish = async (fishName, quantity) => {
     try {
@@ -7153,7 +7237,6 @@ function App() {
       alert('물고기 판매에 실패했습니다.');
     }
   };
-
   // 전체 판매 함수
   const sellAllFish = async () => {
     if (isProcessingSellAll || isProcessingDecomposeAll) {
@@ -7785,7 +7868,6 @@ function App() {
       </div>
     );
   }
-
   // 로그인 화면 표시 조건: username이 없고, idToken도 없고, 이용약관 모달도 표시되지 않는 경우
   if (!username && !idToken && !showTermsModal) {
     return (
@@ -7889,13 +7971,13 @@ function App() {
                 <div className="space-y-3">
                   <button
                     onClick={handleGuestLogin}
-                    className="w-full px-6 py-3 bg-gray-700/50 hover:bg-gray-600/50 text-white rounded-lg transition-all duration-300 transform hover:scale-105 border border-gray-600/50 flex items-center justify-center gap-2"
+                    className="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-lg transition-all duration-300 transform hover:scale-105 border border-green-500/50 flex items-center justify-center gap-2 font-semibold"
                   >
-                    <User className="w-4 h-4" />
-                    게스트로 접속
+                    <User className="w-5 h-5" />
+                    게스트 로그인
                   </button>
                   <p className="text-xs text-gray-400 text-center">
-                    게스트로 접속하면 데이터가 저장되지 않습니다
+                    💡 계정을 생성하여 데이터를 안전하게 저장하세요
                   </p>
                 </div>
                 
@@ -7911,6 +7993,14 @@ function App() {
             </div>
           </div>
         </div>
+
+        {/* 게스트 계정 모달 - 로그인 화면에서도 표시 */}
+        <GuestLoginModal 
+          showModal={showGuestModal}
+          setShowModal={setShowGuestModal}
+          onLogin={handleAccountGuestLogin}
+          isDarkMode={true}
+        />
       </div>
     );
   }
@@ -8315,7 +8405,6 @@ function App() {
           </button>
         </div>
       </div>
-
       {/* 메인 콘텐츠 */}
       <div className="relative z-10 max-w-7xl mx-auto p-6">
         <div className={`grid gap-6 min-h-[75vh] ${
@@ -8543,6 +8632,7 @@ function App() {
               secureToggleAdminRights={secureToggleAdminRights}
               toggleAdminRights={toggleAdminRights}
               cooldownLoaded={cooldownLoaded}
+              cooldownWorkerRef={cooldownWorkerRef}
               setCooldownLoaded={setCooldownLoaded}
               grantAchievement={grantAchievement}
               revokeAchievement={revokeAchievement}
@@ -8717,7 +8807,6 @@ function App() {
                 )}
               </div>
             </div>
-            
             {/* 인벤토리 목록 */}
             <div className="flex-1 p-4">
               {/* 물고기 인벤토리 */}
@@ -9020,7 +9109,8 @@ function App() {
                                 장착됨 • 클릭하여 효과 보기
                                 {userEquipment.fishingRodEnhancement > 0 && (() => {
                                   const fishingRodLevel = getFishingRodLevel(userEquipment.fishingRod);
-                                  const baseAttack = getFishingRodAttack(fishingRodLevel);
+                                  const currentSkill = (fishingRodLevel + 1) + (fishingSkillDetails.achievementBonus || 0);
+                                  const baseAttack = getFishingRodAttack(currentSkill);
                                   const bonusPercent = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement);
                                   const actualBonus = (baseAttack * bonusPercent / 100).toFixed(1);
                                   return (
@@ -10534,9 +10624,7 @@ function App() {
               isDarkMode ? "border-white/10" : "border-gray-300/30"
             }`}>
               <div className="flex items-center gap-3">
-                <Target className={`w-6 h-6 ${
-                  isDarkMode ? "text-yellow-400" : "text-yellow-600"
-                }`} />
+                <Target className="w-6 h-6 text-yellow-400" />
                 <h2 className={`text-xl font-bold ${
                   isDarkMode ? "text-white" : "text-gray-800"
                 }`}>[Quest] 일일 퀘스트</h2>
@@ -10781,10 +10869,8 @@ function App() {
             </div>
           </div>
           )}
-
           </div>
           )}
-          
           {/* 사이드바 - 접속자 목록 - 랭킹 탭에서는 숨김 */}
           {activeTab !== "ranking" && (
           <div className="xl:col-span-1 h-full">
@@ -11688,7 +11774,6 @@ function App() {
         </div> {/* 숨겨진 div 닫기 */}
             </div>
       )}
-
       {/* 수량 입력 모달 */}
       {showQuantityModal && quantityModalData && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -12320,7 +12405,6 @@ function App() {
                   </div>
                 )}
               </div>
-              
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowQuantityModal(false)}
@@ -12359,7 +12443,6 @@ function App() {
           </div>
         </div>
       )}
-
       {/* IP 차단 관리 모달 */}
       {showIPManager && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -12832,7 +12915,6 @@ function App() {
           </div>
         </div>
       )}
-
       {/* 탐사 재료 선택 모달 */}
       {showExplorationModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -13031,7 +13113,6 @@ function App() {
           </div>
         </div>
       )}
-
       {/* 전투 모달 */}
       {showBattleModal && battleState && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -13350,9 +13431,9 @@ function App() {
                           ? isDarkMode
                             ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30"
                             : "bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20"
-                        : isDarkMode
-                          ? "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30"
-                          : "bg-gray-300/30 text-gray-600 hover:bg-gray-300/50"
+                          : isDarkMode
+                            ? "bg-gray-500/20 text-gray-400 hover:bg-gray-500/30"
+                            : "bg-gray-300/30 text-gray-600 hover:bg-gray-300/50"
                     }`}
                   >
                       {battleState && battleState.turn === 'victory' ? '승리!' : battleState && battleState.turn === 'fled' ? '도망 성공!' : '패배...'}
@@ -13365,10 +13446,10 @@ function App() {
         </div>
       )}
 
-      {/* 이용약관 및 닉네임 설정 모달 */}
+      {/* 이용약관 및 개인정보보호정책 모달 */}
       {showTermsModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className={`w-full max-w-lg rounded-2xl board-shadow ${
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className={`w-full max-w-3xl rounded-2xl board-shadow max-h-[90vh] flex flex-col ${
             isDarkMode ? "glass-card" : "bg-white/95 backdrop-blur-md border border-gray-300/30"
           }`}>
             {/* 모달 헤더 */}
@@ -13385,53 +13466,143 @@ function App() {
                 </div>
                 <h2 className={`text-2xl font-bold ${
                   isDarkMode ? "text-white" : "text-gray-800"
-                }`}>여우이야기에 오신 것을 환영합니다!</h2>
+                }`}>
+                  {isGuestTermsOnly ? "이용약관 및 개인정보 처리방침" : "여우이야기에 오신 것을 환영합니다!"}
+                </h2>
                 <p className={`text-sm mt-2 ${
                   isDarkMode ? "text-gray-400" : "text-gray-600"
-                }`}>서비스 이용을 위해 약관 동의와 닉네임 설정이 필요합니다</p>
+                }`}>
+                  {isGuestTermsOnly 
+                    ? "서비스 이용을 위해 약관에 동의해주세요" 
+                    : "서비스 이용을 위해 약관 동의와 닉네임 설정이 필요합니다"
+                  }
+                </p>
               </div>
+            </div>
+
+            {/* 탭 네비게이션 */}
+            <div className={`flex border-b ${isDarkMode ? "border-white/10" : "border-gray-300/20"}`}>
+              <button
+                onClick={() => setTermsTab("terms")}
+                className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                  termsTab === "terms"
+                    ? isDarkMode
+                      ? "text-blue-400 border-b-2 border-blue-400"
+                      : "text-blue-600 border-b-2 border-blue-600"
+                    : isDarkMode
+                      ? "text-gray-400 hover:text-gray-300"
+                      : "text-gray-600 hover:text-gray-800"
+                }`}
+              >
+                📜 이용약관
+              </button>
+              <button
+                onClick={() => setTermsTab("privacy")}
+                className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                  termsTab === "privacy"
+                    ? isDarkMode
+                      ? "text-blue-400 border-b-2 border-blue-400"
+                      : "text-blue-600 border-b-2 border-blue-600"
+                    : isDarkMode
+                      ? "text-gray-400 hover:text-gray-300"
+                      : "text-gray-600 hover:text-gray-800"
+                }`}
+              >
+                🔒 개인정보 처리방침
+              </button>
             </div>
             
             {/* 모달 콘텐츠 */}
-            <div className="p-6 space-y-6">
-              {/* 이용약관 */}
-              <div className={`p-4 rounded-xl max-h-48 overflow-y-auto ${
-                isDarkMode ? "glass-input" : "bg-gray-50/80 border border-gray-300/30"
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {/* 이용약관 탭 */}
+              {termsTab === "terms" && (
+                <div className="space-y-4">
+                  <div className="text-center mb-4">
+                    <h3 className={`text-lg font-bold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
+                      {termsOfService.title}
+                    </h3>
+                    <p className={`text-xs mt-1 ${isDarkMode ? "text-gray-500" : "text-gray-600"}`}>
+                      최종 수정일: {termsOfService.lastUpdated}
+                    </p>
+                  </div>
+                  {termsOfService.content.map((section, index) => (
+                    <div key={index} className={`p-4 rounded-lg ${isDarkMode ? "bg-gray-800/50" : "bg-gray-50"}`}>
+                      <h4 className={`font-semibold mb-2 ${isDarkMode ? "text-blue-400" : "text-blue-600"}`}>
+                        {section.section}
+                      </h4>
+                      <div className={`text-xs space-y-1 ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
+                        {section.items.map((item, itemIndex) => (
+                          <p key={itemIndex} className="leading-relaxed">{item}</p>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* 개인정보 처리방침 탭 */}
+              {termsTab === "privacy" && (
+                <div className="space-y-4">
+                  <div className="text-center mb-4">
+                    <h3 className={`text-lg font-bold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
+                      {privacyPolicy.title}
+                    </h3>
+                    <p className={`text-xs mt-1 ${isDarkMode ? "text-gray-500" : "text-gray-600"}`}>
+                      최종 수정일: {privacyPolicy.lastUpdated}
+                    </p>
+                  </div>
+                  {privacyPolicy.content.map((section, index) => (
+                    <div key={index} className={`p-4 rounded-lg ${isDarkMode ? "bg-gray-800/50" : "bg-gray-50"}`}>
+                      <h4 className={`font-semibold mb-2 ${isDarkMode ? "text-purple-400" : "text-purple-600"}`}>
+                        {section.section}
+                      </h4>
+                      <div className={`text-xs space-y-1 ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
+                        {section.items.map((item, itemIndex) => (
+                          <p key={itemIndex} className="leading-relaxed whitespace-pre-line">{item}</p>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* 약관 동의 체크박스 */}
+              <div className={`sticky bottom-0 pt-4 pb-2 space-y-3 ${
+                isDarkMode ? "bg-gradient-to-t from-gray-900 via-gray-900" : "bg-gradient-to-t from-white via-white"
               }`}>
-                <h3 className={`font-semibold mb-3 ${
-                  isDarkMode ? "text-white" : "text-gray-800"
-                }`}>이용약관</h3>
-                <div className={`text-sm space-y-2 ${
-                  isDarkMode ? "text-gray-300" : "text-gray-700"
-                }`}>
-                  <p>1. 본 서비스는 실시간 채팅 낚시 게임 서비스입니다.</p>
-                  <p>2. 사용자는 건전한 게임 문화 조성에 협조해야 합니다.</p>
-                  <p>3. 부적절한 닉네임이나 채팅은 제재 대상입니다.</p>
-                  <p>4. 게임 내 데이터는 서버에 안전하게 저장됩니다.</p>
-                  <p>5. 서비스 개선을 위한 업데이트가 있을 수 있습니다.</p>
-                  <p>6. 문의사항은 카카오톡 채널방을 통해 연락 바랍니다.</p>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="termsCheckbox"
+                    checked={termsAccepted}
+                    onChange={(e) => setTermsAccepted(e.target.checked)}
+                    className="w-5 h-5 rounded border-2 border-blue-500 text-blue-500 focus:ring-blue-500"
+                  />
+                  <label htmlFor="termsCheckbox" className={`text-sm cursor-pointer font-medium ${
+                    isDarkMode ? "text-gray-300" : "text-gray-700"
+                  }`}>
+                    이용약관에 동의합니다 (필수)
+                  </label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="privacyCheckbox"
+                    checked={privacyAccepted}
+                    onChange={(e) => setPrivacyAccepted(e.target.checked)}
+                    className="w-5 h-5 rounded border-2 border-purple-500 text-purple-500 focus:ring-purple-500"
+                  />
+                  <label htmlFor="privacyCheckbox" className={`text-sm cursor-pointer font-medium ${
+                    isDarkMode ? "text-gray-300" : "text-gray-700"
+                  }`}>
+                    개인정보 처리방침에 동의합니다 (필수)
+                  </label>
                 </div>
               </div>
               
-              {/* 약관 동의 체크박스 */}
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="termsCheckbox"
-                  checked={termsAccepted}
-                  onChange={(e) => setTermsAccepted(e.target.checked)}
-                  className="w-5 h-5 rounded border-2 border-blue-500 text-blue-500 focus:ring-blue-500"
-                />
-                <label htmlFor="termsCheckbox" className={`text-sm cursor-pointer ${
-                  isDarkMode ? "text-gray-300" : "text-gray-700"
-                }`}>
-                  위 이용약관에 동의합니다 (필수)
-                </label>
-              </div>
-              
-              {/* 닉네임 입력 */}
-              {termsAccepted && (
-                <div className="space-y-3">
+              {/* 닉네임 입력 - 게스트 계정이 아닐 때만 표시 */}
+              {!isGuestTermsOnly && termsAccepted && privacyAccepted && (
+                <div className="space-y-3 pt-2">
                   <label className={`block text-sm font-medium ${
                     isDarkMode ? "text-gray-300" : "text-gray-700"
                   }`}>
@@ -13450,7 +13621,9 @@ function App() {
                     maxLength={12}
                     autoFocus
                     onKeyPress={(e) => {
-                      if (e.key === 'Enter') setInitialNicknameFunc();
+                      if (e.key === 'Enter' && termsAccepted && privacyAccepted && initialNickname.trim()) {
+                        setInitialNicknameFunc();
+                      }
                     }}
                   />
                   <p className={`text-xs ${
@@ -13466,24 +13639,47 @@ function App() {
             <div className={`p-6 border-t ${
               isDarkMode ? "border-white/10" : "border-gray-300/20"
             }`}>
-              <button
-                onClick={setInitialNicknameFunc}
-                disabled={!termsAccepted || !initialNickname.trim()}
-                className={`w-full py-3 px-6 rounded-lg font-medium transition-all duration-300 ${
-                  (!termsAccepted || !initialNickname.trim())
-                    ? "opacity-50 cursor-not-allowed bg-gray-500/20 text-gray-500"
-                    : isDarkMode
-                      ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-400/30 hover:scale-105"
-                      : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border border-blue-500/30 hover:scale-105"
-                }`}
-              >
-                게임 시작하기
-              </button>
+              {isGuestTermsOnly ? (
+                // 🎯 게스트 계정용 버튼 (약관 동의만 필요)
+                <button
+                  onClick={() => {
+                    setShowTermsModal(false);
+                    setIsGuestTermsOnly(false);
+                    setTermsTab("terms");
+                    setTermsAccepted(false);
+                    setPrivacyAccepted(false);
+                  }}
+                  disabled={!termsAccepted || !privacyAccepted}
+                  className={`w-full py-3 px-6 rounded-lg font-medium transition-all duration-300 ${
+                    (!termsAccepted || !privacyAccepted)
+                      ? "opacity-50 cursor-not-allowed bg-gray-500/20 text-gray-500"
+                      : isDarkMode
+                        ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-400/30 hover:scale-105"
+                        : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border border-blue-500/30 hover:scale-105"
+                  }`}
+                >
+                  게임 시작하기
+                </button>
+              ) : (
+                // 🔐 소셜 로그인용 버튼 (약관 동의 + 닉네임 설정)
+                <button
+                  onClick={setInitialNicknameFunc}
+                  disabled={!termsAccepted || !privacyAccepted || !initialNickname.trim()}
+                  className={`w-full py-3 px-6 rounded-lg font-medium transition-all duration-300 ${
+                    (!termsAccepted || !privacyAccepted || !initialNickname.trim())
+                      ? "opacity-50 cursor-not-allowed bg-gray-500/20 text-gray-500"
+                      : isDarkMode
+                        ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-400/30 hover:scale-105"
+                        : "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border border-blue-500/30 hover:scale-105"
+                  }`}
+                >
+                  게임 시작하기
+                </button>
+              )}
             </div>
           </div>
         </div>
       )}
-
       {/* 공지사항 모달 */}
       <NoticeModal 
         showNoticeModal={showNoticeModal}
@@ -13495,6 +13691,14 @@ function App() {
       <TutorialModal 
         showTutorialModal={showTutorialModal}
         setShowTutorialModal={setShowTutorialModal}
+        isDarkMode={isDarkMode}
+      />
+
+      {/* 게스트 계정 모달 */}
+      <GuestLoginModal 
+        showModal={showGuestModal}
+        setShowModal={setShowGuestModal}
+        onLogin={handleAccountGuestLogin}
         isDarkMode={isDarkMode}
       />
 

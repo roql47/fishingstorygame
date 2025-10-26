@@ -694,7 +694,6 @@ function notifyClientUpdate(newVersion) {
   
   console.log(`📢 새 버전 배포 알림 전송: ${newVersion} (연결된 클라이언트: ${io.sockets.sockets.size}개)`);
 }
-
 io.on('connection', (socket) => {
   console.log(`🔌 Socket connected: ${socket.id}`);
   
@@ -1428,7 +1427,6 @@ async function findKakaoUser(kakaoId) {
   
   return user;
 }
-
 // 사용자 등록/조회 함수
 async function getOrCreateUser(username, googleId = null, kakaoId = null) {
   try {
@@ -2203,7 +2201,6 @@ app.get('/api/security/stats', (req, res) => {
     server: 'fishing-game-server'
   });
 });
-
 // 🛡️ Socket.IO 연결 보안 강화
 io.on("connection", (socket) => {
   const clientIP = getClientIP({ headers: socket.handshake.headers, connection: socket.conn });
@@ -2322,15 +2319,25 @@ io.on("connection", (socket) => {
           } else {
             // displayName이 없는 경우에만 클라이언트 username 또는 소셜 displayName 사용
             const defaultName = provider === 'kakao' ? "카카오사용자" : "구글사용자";
-            const rawName = username || info?.displayName || defaultName;
-            effectiveName = fixEncoding(rawName); // 인코딩 수정 적용
+            // 🔒 개인정보 보호: 카카오 로그인 시 실명 대신 기본 닉네임만 사용
+            if (provider === 'kakao') {
+              effectiveName = defaultName; // 카카오는 항상 기본 닉네임 사용
+            } else {
+              const rawName = username || info?.displayName || defaultName;
+              effectiveName = fixEncoding(rawName); // 구글은 기존 로직 유지
+            }
             console.log(`No stored displayName, using client username or ${provider} displayName:`, effectiveName);
           }
         } else {
           // 새 소셜 사용자인 경우
           const defaultName = provider === 'kakao' ? "카카오사용자" : "구글사용자";
-          const rawName = username || info?.displayName || defaultName;
-          effectiveName = fixEncoding(rawName); // 인코딩 수정 적용
+          // 🔒 개인정보 보호: 카카오 로그인 시 실명 대신 기본 닉네임만 사용
+          if (provider === 'kakao') {
+            effectiveName = defaultName; // 카카오는 항상 기본 닉네임 사용
+          } else {
+            const rawName = username || info?.displayName || defaultName;
+            effectiveName = fixEncoding(rawName); // 구글은 기존 로직 유지
+          }
           console.log(`New ${provider} user - using username/displayName:`, effectiveName);
         }
       } else {
@@ -2707,7 +2714,6 @@ io.on("connection", (socket) => {
       currentReaction // 기존 반응 정보도 전송
     });
   });
-
   socket.on("chat:message", async (msg) => {
     const trimmed = msg.content.trim();
     const timestamp = msg.timestamp || new Date().toISOString();
@@ -3386,7 +3392,6 @@ io.on("connection", (socket) => {
         return;
       }
     }
-
     // 🎁 엔판 황구 홀덤 여우이야기 레츠고 쿠폰 코드 처리
     if (trimmed === "엔판 황구 홀덤 여우이야기 레츠고") {
       try {
@@ -4107,7 +4112,6 @@ io.on("connection", (socket) => {
     }
   });
 });
-
 // WebSocket 데이터 조회 함수들
 async function sendUserDataUpdate(socket, userUuid, username) {
   try {
@@ -4894,6 +4898,159 @@ app.get("/api/inventory/:userId", optionalJWT, async (req, res) => {
     res.status(500).json({ error: "Failed to fetch inventory" });
   }
 });
+// ============================================
+// 게스트 계정 시스템 API
+// ============================================
+// 아이디 중복 체크 API
+app.get("/api/guest/check-id/:accountId", async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    
+    // 아이디 유효성 검증
+    const regex = /^[가-힣a-zA-Z0-9]{1,8}$/;
+    if (!regex.test(accountId)) {
+      return res.json({ available: false, error: "아이디는 한글, 영문, 숫자만 가능합니다 (최대 8글자)" });
+    }
+    
+    // 🔒 중복 체크: 모든 사용자 타입(게스트, 구글, 카카오)와 비교
+    const existingUser = await UserUuidModel.findOne({ 
+      $or: [
+        { username: accountId },           // 게스트 계정
+        { displayName: accountId }          // 다른 모든 사용자
+      ]
+    });
+    
+    if (existingUser) {
+      return res.json({ available: false });
+    }
+    
+    res.json({ available: true });
+  } catch (error) {
+    console.error("아이디 중복 체크 실패:", error);
+    res.status(500).json({ available: false, error: "중복 체크 중 오류가 발생했습니다" });
+  }
+});
+
+// 회원가입 API
+app.post("/api/guest/signup", async (req, res) => {
+  try {
+    const { accountId, password } = req.body;
+    
+    // 유효성 검증
+    const regex = /^[가-힣a-zA-Z0-9]{1,8}$/;
+    if (!regex.test(accountId)) {
+      return res.status(400).json({ error: "아이디는 한글, 영문, 숫자만 가능합니다 (최대 8글자)" });
+    }
+    
+    if (!password || password.length < 4) {
+      return res.status(400).json({ error: "비밀번호는 최소 4자 이상이어야 합니다" });
+    }
+    
+    // 🔒 중복 체크: 모든 사용자 타입(게스트, 구글, 카카오)와 비교
+    const existingUser = await UserUuidModel.findOne({ 
+      $or: [
+        { username: accountId },           // 게스트 계정
+        { displayName: accountId }          // 다른 모든 사용자
+      ]
+    });
+    
+    if (existingUser) {
+      return res.status(400).json({ error: "이미 사용 중인 아이디입니다" });
+    }
+    
+    // 비밀번호 해시 (bcrypt, salt rounds: 10)
+    const passwordHash = await bcrypt.hash(password, 10);
+    
+    // 새 사용자 생성
+    const userUuid = await generateNextUuid();
+    const newUser = await UserUuidModel.create({
+      userUuid,
+      username: accountId,
+      displayName: accountId,
+      passwordHash,
+      isGuest: true,
+      termsAccepted: true, // 계정을 생성했으므로 약관 동의로 처리
+      darkMode: true
+    });
+    
+    // 초기 장비 설정
+    await UserEquipmentModel.create({
+      userUuid: newUser.userUuid,
+      username: newUser.username,
+      fishingRod: '나무낚시대',
+      accessory: null
+    });
+    
+    console.log(`✅ 게스트 계정 생성 성공: ${accountId} (${userUuid})`);
+    
+    res.json({
+      success: true,
+      userUuid: newUser.userUuid,
+      username: newUser.username
+    });
+    
+  } catch (error) {
+    console.error("회원가입 실패:", error);
+    res.status(500).json({ error: "회원가입 중 오류가 발생했습니다" });
+  }
+});
+
+// 로그인 API
+app.post("/api/guest/login", async (req, res) => {
+  try {
+    const { accountId, password } = req.body;
+    
+    // 유효성 검증
+    if (!accountId || !password) {
+      return res.status(400).json({ error: "아이디와 비밀번호를 입력해주세요" });
+    }
+    
+    // 사용자 조회 (비밀번호가 있는 게스트 계정만 - 구글/카카오는 비밀번호 없음)
+    const user = await UserUuidModel.findOne({ 
+      username: accountId,
+      passwordHash: { $ne: null }  // 비밀번호가 있는 계정 (게스트 계정)
+    });
+    
+    if (!user) {
+      // 🔒 보안: 게스트 계정이 없으면, 같은 닉네임의 다른 사용자(구글/카카오)가 있는지 확인
+      const socialUser = await UserUuidModel.findOne({ 
+        username: accountId,
+        passwordHash: { $eq: null }  // 비밀번호가 없는 계정 (구글/카카오)
+      });
+      
+      if (socialUser) {
+        // 같은 닉네임의 소셜 로그인 계정이 있으면 "비밀번호 불일치"로 표시 (닉네임 사용 중 알림 방지)
+        return res.status(400).json({ error: "비밀번호가 일치하지 않습니다" });
+      }
+      
+      // 해당 닉네임을 사용하는 사용자가 없으면 "존재하지 않는 아이디"
+      return res.status(400).json({ error: "존재하지 않는 아이디입니다" });
+    }
+    
+    // 비밀번호 검증
+    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    
+    if (!isPasswordValid) {
+      return res.status(400).json({ error: "비밀번호가 일치하지 않습니다" });
+    }
+    
+    // 마지막 로그인 정보 업데이트
+    user.lastLoginAt = new Date();
+    await user.save();
+    
+    console.log(`✅ 게스트 로그인 성공: ${accountId} (${user.userUuid})`);
+    
+    res.json({
+      success: true,
+      userUuid: user.userUuid,
+      username: user.username
+    });
+    
+  } catch (error) {
+    console.error("로그인 실패:", error);
+    res.status(500).json({ error: "로그인 중 오류가 발생했습니다" });
+  }
+});
 
 // User Money API (보안 강화 + JWT 인증)
 app.get("/api/user-money/:userId", authenticateJWT, async (req, res) => {
@@ -5519,7 +5676,6 @@ app.get("/api/admin/companion-rollback-logs", authenticateJWT, async (req, res) 
     res.status(500).json({ error: "롤백 로그 조회에 실패했습니다." });
   }
 });
-
 // 동료 능력치 업데이트 API (롤백 방지 강화 + 중복 방지)
 app.post("/api/update-companion-stats", authenticateJWT, async (req, res) => {
   try {
@@ -6273,7 +6429,6 @@ app.post("/api/profile-image/get-upload-url", authenticateJWT, async (req, res) 
     });
   }
 });
-
 // 💾 프로필 이미지 메타데이터 저장 API (업로드 완료 후 호출)
 app.post("/api/profile-image/save-metadata", authenticateJWT, async (req, res) => {
   try {
@@ -6954,7 +7109,6 @@ const getServerPrefixData = () => {
     { name: '깊은어둠의', hpMultiplier: 3.25, amberMultiplier: 1.8, probability: 2 }
   ];
 };
-
 // 전투 시작 API (JWT 인증 필수)
 app.post("/api/start-battle", authenticateJWT, async (req, res) => {
   try {
@@ -7699,9 +7853,7 @@ app.get("/api/ranking", async (req, res) => {
     res.status(500).json({ error: "랭킹 정보를 가져올 수 없습니다." });
   }
 });
-
 // [Quest] Daily Quest APIs
-
 // 일일 퀴스트 조회 API
 app.get("/api/daily-quests/:userId", async (req, res) => {
   try {
@@ -8477,7 +8629,6 @@ app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
     res.status(500).json({ error: "Failed to sell fish" });
   }
 });
-
 // 전체 물고기 판매 API (일괄 처리로 동기화 문제 해결)
 app.post("/api/sell-all-fish", authenticateJWT, async (req, res) => {
   try {
@@ -9245,7 +9396,6 @@ app.post("/api/enhance-equipment", authenticateJWT, async (req, res) => {
     });
   }
 });
-
 // User Equipment API
 app.get("/api/user-equipment/:userId", optionalJWT, async (req, res) => {
   try {
@@ -10036,7 +10186,6 @@ app.post("/api/decompose-material", authenticateJWT, async (req, res) => {
     res.status(500).json({ error: "재료 분해에 실패했습니다." });
   }
 });
-
 // Fishing Skill API (보안 강화)
 app.get("/api/fishing-skill/:userId", optionalJWT, async (req, res) => {
   try {
@@ -10587,14 +10736,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.401"
+    version: "v1.403"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.401",
+    version: "v1.403",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
@@ -10806,7 +10955,6 @@ app.post("/api/reset-account", authenticateJWT, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
 // 🔑 관리자 권한: 사용자 계정 초기화 API (JWT + AdminKey 이중 보안)
 app.post("/api/admin/reset-user-account", authenticateJWT, async (req, res) => {
   try {
@@ -11593,7 +11741,6 @@ app.post("/api/admin/notify-update", authenticateJWT, async (req, res) => {
     });
   }
 });
-
 app.post("/api/admin/delete-user-account", authenticateJWT, async (req, res) => {
   try {
     const { targetUsername, adminKey, confirmationKey } = req.body;
@@ -12258,7 +12405,6 @@ app.post("/api/market/list", authenticateJWT, async (req, res) => {
     res.status(500).json({ message: "아이템 등록에 실패했습니다." });
   }
 });
-
 // 아이템 구매
 app.post("/api/market/purchase/:listingId", authenticateJWT, async (req, res) => {
   try {

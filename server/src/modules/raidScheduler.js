@@ -11,37 +11,40 @@ class RaidScheduler {
   getNextRaidTimeKST() {
     const now = new Date();
     
-    // 한국시간으로 변환 (UTC+9)
-    const kstOffset = 9 * 60; // 9시간을 분으로 변환
-    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-    const kst = new Date(utc + (kstOffset * 60000));
+    // 현재 시간을 한국 시간으로 변환
+    const kstTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
     
-    // 오후 12시와 오후 6시 시간 계산
-    const noon = new Date(kst);
+    // 오늘 오후 12시 (KST)
+    const noon = new Date(kstTime);
     noon.setHours(12, 0, 0, 0);
     
-    const sixPM = new Date(kst);
+    // 오늘 오후 6시 (KST)
+    const sixPM = new Date(kstTime);
     sixPM.setHours(18, 0, 0, 0);
     
-    // 다음 레이드 시간 결정
-    let nextRaidTime;
+    // 내일 오후 12시 (KST)
+    const tomorrowNoon = new Date(kstTime);
+    tomorrowNoon.setDate(tomorrowNoon.getDate() + 1);
+    tomorrowNoon.setHours(12, 0, 0, 0);
     
-    if (kst < noon) {
+    // 다음 레이드 시간 결정
+    let nextRaidTimeKST;
+    
+    if (kstTime < noon) {
       // 오전이면 오늘 오후 12시
-      nextRaidTime = noon;
-    } else if (kst < sixPM) {
+      nextRaidTimeKST = noon;
+    } else if (kstTime < sixPM) {
       // 오후 12시~6시 사이면 오늘 오후 6시
-      nextRaidTime = sixPM;
+      nextRaidTimeKST = sixPM;
     } else {
       // 오후 6시 이후면 내일 오후 12시
-      nextRaidTime = new Date(kst);
-      nextRaidTime.setDate(nextRaidTime.getDate() + 1);
-      nextRaidTime.setHours(12, 0, 0, 0);
+      nextRaidTimeKST = tomorrowNoon;
     }
     
-    // UTC로 다시 변환하여 반환
-    const utcRaidTime = new Date(nextRaidTime.getTime() - (kstOffset * 60000));
-    return utcRaidTime;
+    // 현재 시간과의 차이를 계산해서 실제 실행 시간 반환
+    const kstNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+    const timeDiff = nextRaidTimeKST.getTime() - kstNow.getTime();
+    return new Date(Date.now() + timeDiff);
   }
 
   // 모든 레이드 보스 자동 소환
@@ -114,7 +117,13 @@ class RaidScheduler {
   scheduleNextRaid() {
     // 다음 레이드 시간 계산
     const nextRaidTime = this.getNextRaidTimeKST();
-    const timeUntilRaid = nextRaidTime.getTime() - Date.now();
+    let timeUntilRaid = nextRaidTime.getTime() - Date.now();
+    
+    // 음수 시간이면 즉시 실행 (1초 후)
+    if (timeUntilRaid < 0) {
+      console.log('[RaidScheduler] ⚠️ 계산된 시간이 과거입니다. 즉시 레이드를 소환합니다.');
+      timeUntilRaid = 1000; // 1초 후 실행
+    }
     
     console.log(`[RaidScheduler] 다음 자동 소환 시간: ${nextRaidTime.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
     console.log(`[RaidScheduler] 남은 시간: ${Math.round(timeUntilRaid / 1000 / 60)}분`);
