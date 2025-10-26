@@ -7,7 +7,8 @@ export const NOTICE_DATA = [
     content: [
       "재료 전투 시스템에서 누락된 데이터 추가",
       "연금술 포션 적용 안되던 점 수정",
-      "PC환경에서 세선keep 유지시간 증가"
+      "PC환경에서 세선keep 유지시간 증가",
+      "연금술포션 핫픽스"
     ],
     isNew: true,
     type: "bug_fix"

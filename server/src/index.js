@@ -6970,13 +6970,10 @@ app.post("/api/use-alchemy-potion", authenticateJWT, async (req, res) => {
         { fishingCooldownEnd: newCooldownEnd }
       );
       
-      // 쿨타임 캐시를 10초로 설정 (삭제하지 않고 업데이트)
+      // 🔧 쿨타임 캐시 삭제 (포션 사용 후 악세사리 효과로 다시 계산되도록)
       const cacheKey = userUuid || username;
       if (cacheKey) {
-        cooldownCache.set(cacheKey, {
-          cooldownTime: 10000, // 10초
-          timestamp: Date.now()
-        });
+        cooldownCache.delete(cacheKey); // 캐시 삭제
       }
       
       // WebSocket으로 쿨타임 업데이트 브로드캐스트 (강제 업데이트)
