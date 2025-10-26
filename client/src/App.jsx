@@ -215,7 +215,7 @@ function App() {
     }
   }, []);
 
-  // 🔄 버전 업데이트 시 캐시 초기화 (v1.401)
+  // 🔄 버전 업데이트 시 캐시 초기화 (v1.403)
   useEffect(() => {
     const CURRENT_VERSION = "v1.403";
     const CACHE_VERSION_KEY = "app_cache_version";
