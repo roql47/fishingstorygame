@@ -1,6 +1,18 @@
 // 공지사항 데이터 (ID 내림차순 정렬 - 최신이 가장 높은 ID)
 export const NOTICE_DATA = [
   {
+    id: 42,
+    date: "2025.10.26",
+    title: "[v1.404] 🐟 물고기 체력 버그 수정",
+    content: [
+      "재료 전투 시스템에서 누락된 데이터 추가",
+      "연금술 포션 적용 안되던 점 수정",
+      "PC환경에서 세선keep 유지시간 증가가"
+    ],
+    isNew: true,
+    type: "bug_fix"
+  },
+  {
     id: 41,
     date: "2025.10.26",
     title: "[v1.403] 👤 게스트 계정 시스템 및 약관 개선",
@@ -17,7 +29,7 @@ export const NOTICE_DATA = [
       "- 모든 로그인 방식에 약관 동의 필수",
       "- 카카오톡 실명 마스킹 ('카카오사용자')"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
@@ -707,5 +719,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.403"
+  version: "v1.404"
 };

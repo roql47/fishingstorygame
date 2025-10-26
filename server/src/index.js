@@ -622,7 +622,7 @@ const io = new Server(server, {
   },
   // 성능 최적화 설정
   transports: ["websocket", "polling"], // websocket 우선
-  pingTimeout: 60000, // 60초 ping timeout
+  pingTimeout: 300000, // 300초(5분) ping timeout - PC 백그라운드 탭 대응
   pingInterval: 25000, // 25초마다 ping
   upgradeTimeout: 30000, // 30초 upgrade timeout
   allowEIO3: true, // EIO3 호환성
@@ -848,11 +848,12 @@ io.on('connection', (socket) => {
     socket.lastActivity = Date.now();
   });
   
-  // 📱 백그라운드 keep-alive 처리
+  // 📱 백그라운드 keep-alive 처리 (트래픽 최적화)
   socket.on('keep-alive', () => {
     socket.isAlive = true;
     socket.lastActivity = Date.now();
-    console.log(`📡 Keep-alive received from ${socket.username || socket.id}`);
+    // 응답 없이 단순히 상태만 업데이트 (트래픽 절약)
+    // console.log(`📡 Keep-alive received from ${socket.username || socket.id}`);
   });
   
   // 활동 감지를 위한 이벤트들
@@ -3965,7 +3966,7 @@ io.on("connection", (socket) => {
               io.emit("users:update", uniqueUsers);
             }
           }
-        }, 5 * 60 * 1000); // 5분 = 5 * 60 * 1000ms
+        }, 30 * 60 * 1000); // 30분 = 30 * 60 * 1000ms (PC 백그라운드 탭 대응)
         
         disconnectionGracePeriod.set(user.userUuid, {
           timeoutId: graceTimeout,
@@ -6969,11 +6970,19 @@ app.post("/api/use-alchemy-potion", authenticateJWT, async (req, res) => {
         { fishingCooldownEnd: newCooldownEnd }
       );
       
-      // 쿨타임 캐시 무효화
+      // 쿨타임 캐시를 10초로 설정 (삭제하지 않고 업데이트)
       const cacheKey = userUuid || username;
       if (cacheKey) {
-        cooldownCache.delete(cacheKey);
+        cooldownCache.set(cacheKey, {
+          cooldownTime: 10000, // 10초
+          timestamp: Date.now()
+        });
       }
+      
+      // WebSocket으로 쿨타임 업데이트 브로드캐스트 (강제 업데이트)
+      broadcastUserDataUpdate(query.userUuid, query.username, 'cooldown', {
+        fishingCooldown: 10000
+      });
     }
     
     console.log(`🧪 연금술포션 사용 완료: 낚시 쿨타임 10초로 설정`);
@@ -7049,7 +7058,7 @@ const getServerFishHealthMap = () => {
     "천사해파리": 1015, "악마복어": 1160, "칠성장어": 1315, "닥터블랙": 1480, "해룡": 1655,
     "메카핫킹크랩": 1840, "램프리": 2035, "마지막잎새": 2240, "아이스브리더": 2455, "해신": 2680,
     "핑키피쉬": 2915, "콘토퍼스": 3160, "딥원": 3415, "큐틀루": 3680, "꽃술나리": 3955,
-    "다무스": 4240, "수호자": 4535, "태양가사리": 4840
+    "다무스": 4240, "수호자": 4535, "태양가사리": 4840, "빅파더펭귄": 5155, "크레인터틀": 5480
   };
 };
 
@@ -10736,14 +10745,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.403"
+    version: "v1.404"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.403",
+    version: "v1.404",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
@@ -11957,6 +11966,12 @@ app.post("/api/fishing", authenticateJWT, async (req, res) => {
     const cooldownDuration = await calculateFishingCooldownTime({ userUuid });
     const cooldownEnd = new Date(now.getTime() + cooldownDuration);
     
+    // 낚시 후 쿨타임 캐시 무효화 (연금술 포션 효과가 한 번만 적용되도록)
+    const cacheKey = userUuid || username;
+    if (cacheKey) {
+      cooldownCache.delete(cacheKey);
+    }
+    
     await UserUuidModel.updateOne(
       { userUuid },
       { 
@@ -12150,7 +12165,7 @@ function verifyJWT(token) {
     // 토큰 만료 시간 상세 로깅
     const now = Math.floor(Date.now() / 1000);
     const timeUntilExpiry = decoded.exp - now;
-    console.log(`🔐 JWT 검증 성공: ${decoded.username} (${decoded.userUuid}), 만료까지 ${Math.floor(timeUntilExpiry / 3600)}시간 ${Math.floor((timeUntilExpiry % 3600) / 60)}분 남음`);
+    // console.log(`🔐 JWT 검증 성공: ${decoded.username} (${decoded.userUuid}), 만료까지 ${Math.floor(timeUntilExpiry / 3600)}시간 ${Math.floor((timeUntilExpiry % 3600) / 60)}분 남음`);
     
     return decoded;
   } catch (error) {
@@ -12197,7 +12212,7 @@ function authenticateJWT(req, res, next) {
   req.userUuid = decoded.userUuid;
   req.username = decoded.username;
   
-  console.log(`🔐 JWT authenticated: ${decoded.username} (${decoded.userUuid})`);
+  // console.log(`🔐 JWT authenticated: ${decoded.username} (${decoded.userUuid})`);
   next();
 }
 
@@ -12237,7 +12252,7 @@ function authenticateOptionalJWT(req, res, next) {
   req.userUuid = decoded.userUuid;
   req.username = decoded.username;
   
-  console.log(`🔐 JWT authenticated: ${decoded.username} (${decoded.userUuid})`);
+  // console.log(`🔐 JWT authenticated: ${decoded.username} (${decoded.userUuid})`);
   next();
 }
 

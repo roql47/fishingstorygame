@@ -11,21 +11,21 @@ let socket = null;
 let isBackground = false;
 let backgroundTimer = null;
 
-// 백그라운드 감지 및 연결 유지
+// 백그라운드 감지 및 연결 유지 (트래픽 최적화)
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     // 백그라운드로 전환
     isBackground = true;
     console.log('📱 앱이 백그라운드로 전환됨');
     
-    // 10초마다 keep-alive 전송하여 연결 유지 (더 빠른 감지)
+    // 15초마다 keep-alive 전송 (트래픽 부담 최소화)
     backgroundTimer = setInterval(() => {
       const socket = getSocket();
       if (socket && socket.connected) {
         socket.emit('keep-alive');
-        console.log('📡 백그라운드 keep-alive 전송');
+        console.log('📡 백그라운드 keep-alive 전송 (15초 간격)');
       }
-    }, 10000);
+    }, 15000);
   } else {
     // 포그라운드로 복귀
     isBackground = false;
@@ -163,17 +163,17 @@ export function getSocket() {
       console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
     });
     
-    // 연결 상태 주기적 체크 (30초마다)
+    // 연결 상태 주기적 체크 (60초마다 - 트래픽 최적화)
     setInterval(() => {
       const socket = getSocket();
       const nickname = localStorage.getItem("nickname");
       const userUuid = localStorage.getItem("userUuid");
       
       if (socket && socket.connected && nickname && userUuid) {
-        // 서버에 연결 상태 확인 요청
+        // 서버에 연결 상태 확인 요청 (간격 증가로 트래픽 절약)
         socket.emit('check:connection-status', { userUuid });
       }
-    }, 30000);
+    }, 60000);
     
     // 서버 응답에서 명단에 없다고 하면 자동 재가입
     socket.on('connection:not-registered', () => {

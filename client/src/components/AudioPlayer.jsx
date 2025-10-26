@@ -32,21 +32,21 @@ const AudioPlayer = () => {
       artist: 'HYP Music',
       subtitle: 'Upbeat piano music',
       src: 'https://d2lals9bcc7in1.cloudfront.net/audio/catch-me-if-you-can-hyp.opus',
-      license: 'https://clipdown.net/view/youtube/LrTkfYqNJFU/'
+      license: 'https://www.youtube.com/watch?v=LrTkfYqNJFU&list=RDLrTkfYqNJFU&start_radio=1'
     },
     {
       title: '붉은 연꽃 - 홍련',
       artist: 'Neal K',
       subtitle: 'Oriental epic music',
       src: 'https://d2lals9bcc7in1.cloudfront.net/audio/red-lotus-neal-k.opus',
-      license: 'https://clipdown.net/view/youtube/bxL3fgAa9gw/'
+      license: 'https://youtu.be/bxL3fgAa9gw?si=0lLN2zIfWpos39Go5'
     },
     {
       title: 'Again - 어게인',
       artist: 'Neal K',
       subtitle: 'Dreamy epic piano',
       src: 'https://d2lals9bcc7in1.cloudfront.net/audio/again-neal-k.opus',
-      license: 'https://clipdown.net/view/youtube/xjSp2sIQAWY/'
+      license: 'https://www.youtube.com/watch?v=xjSp2sIQAWY&list=RDxjSp2sIQAWY&start_radio=1'
     }
   ];
 

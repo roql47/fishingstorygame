@@ -215,9 +215,9 @@ function App() {
     }
   }, []);
 
-  // 🔄 버전 업데이트 시 캐시 초기화 (v1.403)
+  // 🔄 버전 업데이트 시 캐시 초기화 (v1.404)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.403";
+    const CURRENT_VERSION = "v1.404";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -2194,13 +2194,14 @@ function App() {
       console.log('📡 Server cooldown:', serverCooldown);
       console.log('⚔️ Server raid cooldown:', serverRaidCooldown);
       
-      // localStorage와 서버 쿨타임 중 더 긴 것 사용
-      const maxCooldown = Math.max(localRemainingTime, serverCooldown);
-      console.log('⏰ Final cooldown (max of local/server):', maxCooldown);
+      // 서버 쿨타임을 우선 사용 (서버가 권위 있는 소스)
+      // localStorage는 참고용으로만 사용
+      const maxCooldown = serverCooldown;
+      console.log('⏰ Final cooldown (using server):', maxCooldown);
       
-      // 레이드 쿨타임도 localStorage와 서버 중 더 긴 것 사용
-      const maxRaidCooldown = Math.max(localRaidRemainingTime, serverRaidCooldown);
-      console.log('⚔️ Final raid cooldown (max of local/server):', maxRaidCooldown);
+      // 레이드 쿨타임도 서버 값 우선 사용
+      const maxRaidCooldown = serverRaidCooldown;
+      console.log('⚔️ Final raid cooldown (using server):', maxRaidCooldown);
       
       // 레이드 공격 쿨타임 설정
       if (maxRaidCooldown > 0) {
@@ -3514,32 +3515,16 @@ function App() {
         
         console.log('📡 Received cooldown update from server:', newFishingCooldown);
         
-        // localStorage 쿨타임과 비교해서 더 긴 쿨타임 사용
-        const storedFishingCooldownEnd = localStorage.getItem('fishingCooldownEnd');
-        const calculatedCooldown = (() => {
-          if (storedFishingCooldownEnd) {
-            const cooldownEndTime = new Date(storedFishingCooldownEnd);
-            const now = new Date();
-            const localRemainingTime = Math.max(0, cooldownEndTime.getTime() - now.getTime());
-            
-            // localStorage의 쿨타임이 더 길면 그것을 사용
-            if (localRemainingTime > newFishingCooldown) {
-              console.log('📱 Using localStorage cooldown (longer):', localRemainingTime);
-              return localRemainingTime;
-            } else {
-              console.log('📡 Using server cooldown:', newFishingCooldown);
-              return newFishingCooldown;
-            }
-          }
-          return newFishingCooldown;
-        })();
+        // 서버 쿨타임을 우선 사용 (서버가 권위 있는 소스)
+        // localStorage는 오프라인 시에만 참고용
+        console.log('📡 Using server cooldown (authoritative):', newFishingCooldown);
         
-        setFishingCooldown(calculatedCooldown);
+        setFishingCooldown(newFishingCooldown);
         setCooldownLoaded(true);
         
         // localStorage에 최종 쿨타임 종료 시간 저장 및 Worker에 전달
-        if (calculatedCooldown > 0) {
-          const fishingEndTime = new Date(Date.now() + calculatedCooldown);
+        if (newFishingCooldown > 0) {
+          const fishingEndTime = new Date(Date.now() + newFishingCooldown);
           localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
           
           // Worker에 쿨타임 시작 전달
@@ -7893,7 +7878,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.403
+                여우이야기 v1.404
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다

@@ -42,6 +42,7 @@ const ChatTab = ({
   secureToggleAdminRights,
   toggleAdminRights,
   cooldownLoaded,
+  cooldownWorkerRef,
   setCooldownLoaded,
   grantAchievement,
   revokeAchievement,
@@ -50,8 +51,7 @@ const ChatTab = ({
   alchemyPotions,
   setAlchemyPotions,
   handleExpeditionInviteClick,
-  setShowClickerModal,
-  cooldownWorkerRef // 🚀 Web Worker ref
+  setShowClickerModal
 }) => {
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -412,6 +412,15 @@ const ChatTab = ({
                       // localStorage에 쿨타임 종료 시간 저장
                       const fishingEndTime = new Date(Date.now() + response.data.newCooldown);
                       localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
+                      
+                      // Worker에 쿨타임 시작 전달
+                      if (cooldownWorkerRef?.current) {
+                        cooldownWorkerRef.current.postMessage({
+                          action: 'start',
+                          cooldownType: 'fishing',
+                          endTime: fishingEndTime.toISOString()
+                        });
+                      }
                       
                       // 연금술포션 개수 업데이트
                       setAlchemyPotions(response.data.remainingPotions);
