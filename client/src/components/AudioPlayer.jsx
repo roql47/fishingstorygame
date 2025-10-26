@@ -170,28 +170,28 @@ const AudioPlayer = () => {
     }
   }, [currentTrack]);
 
-  // 컴포넌트 마운트 시 자동 재생 시도
-  useEffect(() => {
-    const autoPlayAudio = async () => {
-      if (audioRef.current) {
-        try {
-          await audioRef.current.play();
-          setIsPlaying(true);
-        } catch (error) {
-          // 브라우저 자동 재생 정책에 의해 차단될 수 있음
-          // 사용자가 수동으로 재생할 수 있도록 에러를 무시
-          console.log('자동 재생이 차단되었습니다. 수동으로 재생해주세요.');
-        }
-      }
-    };
+  // 컴포넌트 마운트 시 자동 재생 비활성화 (사용자가 수동으로 재생해야 함)
+  // useEffect(() => {
+  //   const autoPlayAudio = async () => {
+  //     if (audioRef.current) {
+  //       try {
+  //         await audioRef.current.play();
+  //         setIsPlaying(true);
+  //       } catch (error) {
+  //         // 브라우저 자동 재생 정책에 의해 차단될 수 있음
+  //         // 사용자가 수동으로 재생할 수 있도록 에러를 무시
+  //         console.log('자동 재생이 차단되었습니다. 수동으로 재생해주세요.');
+  //       }
+  //     }
+  //   };
 
-    // 컴포넌트 마운트 후 짧은 딜레이를 주고 자동 재생 시도
-    const timer = setTimeout(() => {
-      autoPlayAudio();
-    }, 500);
+  //   // 컴포넌트 마운트 후 짧은 딜레이를 주고 자동 재생 시도
+  //   const timer = setTimeout(() => {
+  //     autoPlayAudio();
+  //   }, 500);
 
-    return () => clearTimeout(timer);
-  }, []); // 빈 배열로 마운트 시에만 실행
+  //   return () => clearTimeout(timer);
+  // }, []); // 빈 배열로 마운트 시에만 실행
 
   // 플레이리스트 외부 클릭 시 닫기
   useEffect(() => {

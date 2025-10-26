@@ -70,7 +70,7 @@ const NoticeModal = ({ showNoticeModal, setShowNoticeModal, isDarkMode }) => {
                 </span>
               </div>
               <h3 className={`font-semibold mb-2 ${isDarkMode ? "text-white" : "text-gray-800"}`}>
-                {notice.title.replace(/v\d+\.\d+\s*/, '')}
+                {notice.title.replace(/\[v\d+\.\d+\]\s*/, '')}
               </h3>
               <div className={`text-sm leading-relaxed ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
                 {notice.content.map((item, itemIndex) => (

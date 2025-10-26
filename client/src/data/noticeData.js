@@ -7,7 +7,7 @@ export const NOTICE_DATA = [
     content: [
       "재료 전투 시스템에서 누락된 데이터 추가",
       "연금술 포션 적용 안되던 점 수정",
-      "PC환경에서 세선keep 유지시간 증가가"
+      "PC환경에서 세선keep 유지시간 증가"
     ],
     isNew: true,
     type: "bug_fix"
@@ -201,7 +201,7 @@ export const NOTICE_DATA = [
       "- HTTP 응답과 소켓 이벤트 중복 처리 문제 해결",
       "원정 전투 동료 표시문제 수정"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
