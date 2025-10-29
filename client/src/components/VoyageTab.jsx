@@ -15,7 +15,8 @@ const VoyageTab = ({
   socket,
   username,
   userUuid,
-  userStats
+  userStats,
+  updateQuestProgress
 }) => {
   const [currentView, setCurrentView] = useState('select'); // 'select', 'battle', 'result'
   const [selectedFish, setSelectedFish] = useState(null);
@@ -354,6 +355,11 @@ const VoyageTab = ({
       const data = await response.json();
       
       if (data.success) {
+        // 🎯 항해 승리 퀘스트 진행도 업데이트
+        if (updateQuestProgress) {
+          updateQuestProgress('voyage_win', 1);
+        }
+        
         // 소켓으로 업데이트 알림
         if (socket) {
           socket.emit('inventoryUpdated', {

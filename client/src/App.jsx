@@ -9848,6 +9848,7 @@ function App() {
               username={username}
               userUuid={userUuid}
               userStats={userStats}
+              updateQuestProgress={updateQuestProgress}
             />
           )}
 
