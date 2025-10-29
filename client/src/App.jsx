@@ -777,11 +777,12 @@ function App() {
                   }
                 }
                 
-                // 플레이어 속도바 재시작 (살아있을 때만)
+                // 플레이어 속도바 재시작 (살아있을 때만) + 🌟 속도 스탯 적용
                 setTimeout(() => {
                   setBattleState(state => {
                     if (state && state?.playerHp > 0) {
-                      startSpeedBar('player', 100, 'player');
+                      const playerSpeed = 100 + (state.speedStat || 0) * 2;
+                      startSpeedBar('player', playerSpeed, 'player');
                     }
                     return state;
                   });
