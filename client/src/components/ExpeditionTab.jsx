@@ -862,10 +862,13 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
         setForceUpdateCounter(prev => prev + 1);
         setCurrentView('battle');
         
-        // 플레이어 속도바 시작
+        // 플레이어 속도바 시작 (🌟 속도 스탯 적용: 기본 100 + 속도 레벨 × 2)
         updateData.room?.players?.forEach(player => {
           if (updateData.room.battleState?.playerHp?.[player.id] > 0) {
-            startSpeedBar(`player_${player.id}`, 100);
+            const playerData = updateData.room?.playerData?.[player.id];
+            const playerSpeed = 100 + ((playerData?.speedStat || 0) * 2);
+            console.log(`[EXPEDITION] Player ${player.name} speed: ${playerSpeed} (base 100 + speedStat ${playerData?.speedStat || 0} × 2)`);
+            startSpeedBar(`player_${player.id}`, playerSpeed);
           }
         });
         

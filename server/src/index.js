@@ -7482,6 +7482,7 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
       accessoryEnhancement: accessoryEnhancement, // 악세사리 강화 레벨
       accessoryEnhancementBonus: accessoryEnhancementBonus, // 악세사리 강화 보너스 (%)
       attackStat: userStats?.attack || 0, // 🌟 공격력 스탯
+      speedStat: userStats?.speed || 0, // 🌟 속도 스탯
       fishingRodIndex: fishingRodIndex // 🌟 낚시대 인덱스
     };
     

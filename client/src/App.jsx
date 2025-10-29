@@ -748,11 +748,15 @@ function App() {
                 // 랜덤 적 선택
                 const targetEnemy = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
                 console.log(`[SPEED] 랜덤 대상 선택: ${targetEnemy.name}`);
-                // battleState에 저장된 강화 보너스 사용 (서버에서 계산된 값)
+                // battleState에 저장된 강화 보너스 + 🌟 공격력 스탯 사용
                 const fishingRodEnhancementBonus = currentState.fishingRodEnhancementBonus || 0;
                 const battleFishingSkill = currentState.fishingSkill || fishingSkill;
+                const fishingRodIndex = currentState.fishingRodIndex || 0;
+                const attackStat = currentState.attackStat || 0;
+                const attackStatBonus = fishingRodIndex * attackStat; // 🌟 낚시대 index × 성장 레벨
                 const baseDamage = calculatePlayerAttack(battleFishingSkill, fishingRodEnhancementBonus);
-                const { damage, isCritical } = calculateCriticalHit(baseDamage);
+                const finalDamage = baseDamage + attackStatBonus;
+                const { damage, isCritical } = calculateCriticalHit(finalDamage);
                 
                 const newEnemies = [...currentState.enemies];
                 const enemy = newEnemies.find(e => e.id === targetEnemy.id);
@@ -6631,8 +6635,10 @@ function App() {
         // 전투 시작 직후 속도바 시작
         console.log('[SPEED] startExploration - 속도바 시작');
         setTimeout(() => {
-          // 플레이어 속도바
-          startSpeedBar('player', 100, 'player');
+          // 플레이어 속도바 (🌟 속도 스탯 적용: 기본 100 + 속도 레벨 × 2)
+          const playerSpeed = 100 + (userStats?.speed || 0) * 2;
+          console.log(`[SPEED] 플레이어 속도: ${playerSpeed} (기본 100 + 성장 스탯 ${userStats?.speed || 0} × 2)`);
+          startSpeedBar('player', playerSpeed, 'player');
           
           // 적들의 속도바
           newBattleState.enemies.forEach(enemy => {

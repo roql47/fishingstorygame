@@ -46,7 +46,10 @@ const VoyageTab = ({
     { rank: 12, name: '유령치', image: '/assets/images/monster12.jpeg', hp: 1850, attack: 120, speed: 160, gold: 17000 },
     { rank: 13, name: '바이트독', image: '/assets/images/monster13.jpeg', hp: 2350, attack: 155, speed: 170, gold: 21500 },
     { rank: 14, name: '호박고래', image: '/assets/images/monster14.jpeg', hp: 3000, attack: 200, speed: 180, gold: 27000, imagePosition: 'center 40%' },
-    { rank: 15, name: '천사해파리', image: '/assets/images/monster15.jpeg', hp: 3800, attack: 250, speed: 190, gold: 34000, imagePosition: 'center 35%' }
+    { rank: 15, name: '바이킹조개', image: '/assets/images/monster15.jpeg', hp: 3800, attack: 250, speed: 190, gold: 34000, imagePosition: 'center 50%' },
+    { rank: 16, name: '천사해파리', image: '/assets/images/monster16.jpeg', hp: 4800, attack: 320, speed: 200, gold: 43000, imagePosition: 'center 70%' },
+    { rank: 17, name: '악마복어', image: '/assets/images/monster17.jpeg', hp: 6100, attack: 410, speed: 210, gold: 54000, imagePosition: 'center 55%' },
+    { rank: 18, name: '칠성장어', image: '/assets/images/monster18.jpeg', hp: 7700, attack: 520, speed: 220, gold: 68000 }
   ];
   
   // 페이지네이션 설정
@@ -106,8 +109,9 @@ const VoyageTab = ({
       };
     });
 
-    // 플레이어 속도 계산: 100 + 낚시실력 * 10
-    const playerSpeed = 100 + fishingSkill * 10;
+    // 플레이어 속도 계산: 100 + 낚시실력 * 10 + 🌟 속도 스탯 (레벨 × 2)
+    const speedStatBonus = (userStats?.speed || 0) * 2;
+    const playerSpeed = 100 + fishingSkill * 10 + speedStatBonus;
     const playerMaxCooldown = 3000;
     
     // 적 속도에 따른 쿨다운 계산

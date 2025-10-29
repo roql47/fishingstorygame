@@ -18,10 +18,40 @@ class RoguelikeSystem {
 
     // 사용자 정보 가져오기
     const UserUuidModel = mongoose.model('UserUuid');
-    const user = await UserUuidModel.findOne({ userUuid });
+    const FishingSkillModel = mongoose.model('FishingSkill');
+    const UserEquipmentModel = mongoose.model('UserEquipment');
+    const UserStatsModel = mongoose.model('UserStats');
+    
+    const [user, fishingSkillData, userEquipment, userStats] = await Promise.all([
+      UserUuidModel.findOne({ userUuid }),
+      FishingSkillModel.findOne({ userUuid }),
+      UserEquipmentModel.findOne({ userUuid }),
+      UserStatsModel.findOne({ userUuid })
+    ]);
+    
     if (!user) {
       return { error: "사용자를 찾을 수 없습니다." };
     }
+
+    // 🌟 플레이어 공격력 계산 (성장 스탯 적용)
+    const fishingSkill = fishingSkillData?.skill || 1;
+    const fishingRodEnhancement = userEquipment?.fishingRodEnhancement || 0;
+    
+    // 낚시대 인덱스 계산
+    const fishingRods = [
+      '나무낚시대', '낡은낚시대', '기본낚시대', '단단한낚시대', '은낚시대', '금낚시대',
+      '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대', '레드다이아몬드낚시대',
+      '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산호등낚시대', '피크닉', '마녀빗자루',
+      '에테르낚시대', '별조각낚시대', '여우꼬리낚시대', '초콜릿롤낚시대', '호박유령낚시대',
+      '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
+    ];
+    const fishingRodIndex = fishingRods.indexOf(userEquipment?.fishingRod) >= 0 ? fishingRods.indexOf(userEquipment?.fishingRod) : 0;
+    const attackStat = userStats?.attack || 0;
+    const attackStatBonus = fishingRodIndex * attackStat;
+    
+    // 기본 공격력 계산
+    const baseAttack = 0.00225 * Math.pow(fishingSkill, 3) + 0.165 * Math.pow(fishingSkill, 2) + 2 * fishingSkill + 3;
+    const playerAttack = Math.floor(baseAttack + attackStatBonus);
 
     // 게임 상태 초기화
     const gameState = {
@@ -31,6 +61,7 @@ class RoguelikeSystem {
       maxStage: 10,
       hp: user.hp || 100,
       maxHp: user.maxHp || 100,
+      playerAttack: playerAttack, // 🌟 플레이어 공격력 추가
       inventory: [],
       gold: 0,
       startTime: new Date()
@@ -414,12 +445,23 @@ class RoguelikeSystem {
     const { enemy } = eventData;
 
     if (choiceId === 'attack') {
-      gameState.hp -= enemy.damage;
+      // 🌟 플레이어 공격력에 따라 받는 데미지 감소
+      const playerAttack = gameState.playerAttack || 0;
+      const damageReduction = Math.floor(playerAttack / 10); // 공격력 10당 1 데미지 감소
+      const finalDamage = Math.max(Math.floor(enemy.damage * 0.2), enemy.damage - damageReduction); // 최소 20%는 받음
+      
+      gameState.hp -= finalDamage;
       gameState.gold += enemy.gold;
+      
+      // 공격력이 높으면 추가 메시지 표시
+      const damageInfo = damageReduction > 0 
+        ? `\n🛡️ 공격력으로 데미지 ${damageReduction} 감소! (원래 ${enemy.damage} → ${finalDamage})`
+        : '';
+      
       return {
         success: true,
-        message: `⚔️ ${enemy.name}을(를) 물리쳤습니다!\n💰 골드 +${enemy.gold}\n❤️ HP -${enemy.damage}`,
-        hpChange: -enemy.damage,
+        message: `⚔️ ${enemy.name}을(를) 물리쳤습니다!\n💰 골드 +${enemy.gold}\n❤️ HP -${finalDamage}${damageInfo}`,
+        hpChange: -finalDamage,
         goldChange: enemy.gold
       };
     } else if (choiceId === 'dodge') {
@@ -433,12 +475,22 @@ class RoguelikeSystem {
           goldChange: halfGold
         };
       } else {
-        const damage = Math.floor(enemy.damage * 1.5);
-        gameState.hp -= damage;
+        // 🌟 회피 실패 시에도 공격력 적용
+        const playerAttack = gameState.playerAttack || 0;
+        const damageReduction = Math.floor(playerAttack / 10);
+        const baseDamage = Math.floor(enemy.damage * 1.5);
+        const finalDamage = Math.max(Math.floor(enemy.damage * 0.3), baseDamage - damageReduction); // 최소 30%는 받음
+        
+        gameState.hp -= finalDamage;
+        
+        const damageInfo = damageReduction > 0 
+          ? `\n🛡️ 공격력으로 데미지 ${damageReduction} 감소!`
+          : '';
+        
         return {
           success: false,
-          message: `💥 회피 실패! 더 큰 피해를 입었습니다!\n❤️ HP -${damage}`,
-          hpChange: -damage
+          message: `💥 회피 실패! 큰 피해를 입었습니다!\n❤️ HP -${finalDamage}${damageInfo}`,
+          hpChange: -finalDamage
         };
       }
     }
