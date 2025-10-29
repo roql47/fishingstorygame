@@ -8,7 +8,7 @@ const RaidScheduler = require('../modules/raidScheduler');
 const raidSystem = new RaidSystem();
 
 // 레이드 라우트 설정 함수
-function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, oldAchievementSystem, AdminModel, CooldownModel, StarPieceModel, RaidDamageModel, RareFishCountModel, CatchModel, RaidKillCountModel, UserEquipmentModel) {
+function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, oldAchievementSystem, AdminModel, CooldownModel, StarPieceModel, RaidDamageModel, RareFishCountModel, CatchModel, RaidKillCountModel, UserEquipmentModel, UserStatsModel) {
   
   // 🏆 레이드 라우트 전용 업적 시스템 인스턴스 생성 (모든 모델 포함)
   const achievementSystem = new AchievementSystem(
@@ -228,6 +228,20 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         }
       }
       
+      // 🌟 유저 성장 스탯 가져오기
+      let userStats = null;
+      if (UserStatsModel) {
+        let cachedStats = cacheSystem.getCachedData('raidUserStats', 'stats', userUuid);
+        
+        if (!cachedStats) {
+          cachedStats = await UserStatsModel.findOne({ userUuid }).lean();
+          if (cachedStats) {
+            cacheSystem.setCachedData('raidUserStats', 'stats', cachedStats, userUuid);
+          }
+        }
+        userStats = cachedStats;
+      }
+      
       // 강화 보너스 계산 함수 (3차방정식 - 퍼센트로 표시)
       const calculateEnhancementBonus = (level) => {
         if (level <= 0) return 0;
@@ -242,20 +256,35 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         return totalBonus; // 퍼센트이므로 소수점 유지
       };
       
-      // 탐사 전투와 동일한 calculatePlayerAttack 함수 로직 + 강화 보너스 (퍼센트)
-      const calculatePlayerAttack = (skill, enhancementBonusPercent = 0) => {
+      // 탐사 전투와 동일한 calculatePlayerAttack 함수 로직 + 강화 보너스 (퍼센트) + 유저 스탯
+      const calculatePlayerAttack = (skill, enhancementBonusPercent = 0, attackStatBonus = 0) => {
         // 3차방정식: 0.00225 * skill³ + 0.165 * skill² + 2 * skill + 3
         const baseAttack = 0.00225 * Math.pow(skill, 3) + 0.165 * Math.pow(skill, 2) + 2 * skill + 3;
         // 강화 보너스 퍼센트 적용
         const totalAttack = baseAttack + (baseAttack * enhancementBonusPercent / 100);
+        // 🌟 유저 스탯 공격력 보너스 추가 (레벨당 +5 공격력)
+        const attackWithStatBonus = totalAttack + attackStatBonus;
         // 랜덤 요소 추가 (±20%)
         const randomFactor = 0.8 + Math.random() * 0.4;
-        return Math.floor(totalAttack * randomFactor);
+        return Math.floor(attackWithStatBonus * randomFactor);
       };
       
       // 낚시대 강화 보너스 계산
       const fishingRodEnhancementBonus = calculateTotalEnhancementBonus(userEquipment?.fishingRodEnhancement || 0);
-      const playerDamage = calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus);
+      
+      // 🌟 낚시대 인덱스 계산
+      const fishingRods = [
+        '나무낚시대', '낡은낚시대', '기본낚시대', '단단한낚시대', '은낚시대', '금낚시대',
+        '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대', '레드다이아몬드낚시대',
+        '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산호등낚시대', '피크닉', '마녀빗자루',
+        '에테르낚시대', '별조각낚시대', '여우꼬리낚시대', '초콜릿롤낚시대', '호박유령낚시대',
+        '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
+      ];
+      const fishingRodIndex = fishingRods.indexOf(userEquipment?.fishingRod) >= 0 ? fishingRods.indexOf(userEquipment?.fishingRod) : 0;
+      
+      // 🌟 유저 스탯 공격력 보너스 계산 (낚시대 index × 성장 레벨)
+      const attackStatBonus = fishingRodIndex * (userStats?.attack || 0);
+      const playerDamage = calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus, attackStatBonus);
       
       // 동료 공격력 계산 (탐사와 동일한 방식)
       let companionDamage = 0;

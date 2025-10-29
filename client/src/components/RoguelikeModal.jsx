@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Heart, Coins, Package, TrendingUp } from 'lucide-react';
+import { X, Heart, Coins, Package, TrendingUp, Lock, CheckCircle, Zap } from 'lucide-react';
 
 const RoguelikeModal = ({ 
   isOpen, 
@@ -307,6 +307,187 @@ const RoguelikeModal = ({
   );
 };
 
+const RoguelikeDungeonSelectModal = ({ 
+  isOpen, 
+  onClose, 
+  dungeonProgress,
+  onDungeonSelect,
+  isDarkMode
+}) => {
+  if (!isOpen) return null;
+
+  const dungeons = [
+    { level: "n-1", name: "초심자의 에테르던전", icon: "🌙", difficulty: "⭐" },
+    { level: "n-2", name: "견습생의 에테르던전", icon: "🌙", difficulty: "⭐⭐" },
+    { level: "n-3", name: "숙련자의 에테르던전", icon: "🌙", difficulty: "⭐⭐⭐" },
+    { level: "n-4", name: "전사의 에테르던전", icon: "🌙", difficulty: "⭐⭐⭐⭐" },
+    { level: "n-5", name: "영웅의 에테르던전", icon: "🌙", difficulty: "⭐⭐⭐⭐⭐" },
+    { level: "n-6", name: "신비의 에테르던전", icon: "✨", difficulty: "⭐⭐⭐⭐⭐" },
+    { level: "n-7", name: "전설의 에테르던전", icon: "✨", difficulty: "⭐⭐⭐⭐⭐" },
+    { level: "n-8", name: "신성한 에테르던전", icon: "✨", difficulty: "⭐⭐⭐⭐⭐" },
+    { level: "n-9", name: "심연의 에테르던전", icon: "🔥", difficulty: "⭐⭐⭐⭐⭐" },
+    { level: "n-10", name: "최후의 에테르던전", icon: "🔥", difficulty: "⭐⭐⭐⭐⭐" }
+  ];
+
+  const getDungeonStatus = (level, index) => {
+    const progress = dungeonProgress[level] || 0;
+    const isFirstDungeon = index === 0;
+    
+    if (isFirstDungeon) {
+      return { accessible: true, completed: progress === 10, progress };
+    }
+    
+    const prevLevel = dungeons[index - 1].level;
+    const prevProgress = dungeonProgress[prevLevel] || 0;
+    const accessible = prevProgress === 10;
+    
+    return { accessible, completed: progress === 10, progress };
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className={`max-w-2xl w-full max-h-[90vh] overflow-y-auto rounded-2xl border-2 ${
+        isDarkMode 
+          ? "bg-gray-900/95 border-purple-500/30" 
+          : "bg-white/95 border-purple-300/50"
+      } backdrop-blur-md`}>
+        
+        {/* 헤더 */}
+        <div className={`sticky top-0 p-6 border-b ${
+          isDarkMode ? "border-white/10 bg-gray-900/95" : "border-gray-300/20 bg-white/95"
+        } backdrop-blur-md z-10`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">🎮</span>
+              <div>
+                <h2 className={`text-2xl font-bold ${
+                  isDarkMode ? "text-purple-300" : "text-purple-700"
+                }`}>
+                  에테르던전 선택
+                </h2>
+                <p className={`text-sm ${
+                  isDarkMode ? "text-gray-400" : "text-gray-600"
+                }`}>
+                  도전할 던전을 선택하세요
+                </p>
+              </div>
+            </div>
+            
+            <button
+              onClick={onClose}
+              className={`p-2 rounded-lg transition-colors ${
+                isDarkMode 
+                  ? "hover:bg-white/10 text-gray-400 hover:text-white" 
+                  : "hover:bg-gray-100 text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+
+        {/* 던전 목록 */}
+        <div className="p-6 space-y-3">
+          {dungeons.map((dungeon, index) => {
+            const status = getDungeonStatus(dungeon.level, index);
+            
+            return (
+              <button
+                key={dungeon.level}
+                onClick={() => {
+                  if (status.accessible) {
+                    onDungeonSelect(dungeon.level);
+                  }
+                }}
+                disabled={!status.accessible}
+                className={`w-full p-4 rounded-xl border-2 transition-all duration-300 text-left ${
+                  status.accessible
+                    ? status.completed
+                      ? isDarkMode
+                        ? "bg-green-900/20 border-green-500/30 hover:border-green-400/50 hover:bg-green-900/30"
+                        : "bg-green-50 border-green-300/50 hover:border-green-400/70 hover:bg-green-100/30"
+                      : isDarkMode
+                        ? "bg-gray-800/50 border-purple-500/30 hover:border-purple-400/50 hover:bg-purple-900/20"
+                        : "bg-white border-purple-300/50 hover:border-purple-400/70 hover:bg-purple-50"
+                    : isDarkMode
+                        ? "bg-gray-800/20 border-gray-600/30 cursor-not-allowed"
+                        : "bg-gray-100/50 border-gray-300/30 cursor-not-allowed"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4 flex-1">
+                    {/* 던전 아이콘 */}
+                    <span className="text-4xl">{dungeon.icon}</span>
+                    
+                    {/* 던전 정보 */}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className={`font-bold text-lg ${
+                          isDarkMode ? "text-white" : "text-gray-900"
+                        }`}>
+                          {dungeon.level} - {dungeon.name}
+                        </h3>
+                        <span className="text-sm">{dungeon.difficulty}</span>
+                      </div>
+                      
+                      {/* 진행도 바 */}
+                      <div className="w-full h-2 rounded-full overflow-hidden" style={{
+                        backgroundColor: isDarkMode ? "#374151" : "#e5e7eb"
+                      }}>
+                        <div 
+                          className="h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-500"
+                          style={{ width: `${(status.progress / 10) * 100}%` }}
+                        />
+                      </div>
+                      <p className={`text-xs mt-1 ${
+                        isDarkMode ? "text-gray-400" : "text-gray-600"
+                      }`}>
+                        {status.progress} / 10 스테이지 완료
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* 상태 아이콘 */}
+                  <div className="ml-4">
+                    {status.completed ? (
+                      <CheckCircle className="w-6 h-6 text-green-500" />
+                    ) : !status.accessible ? (
+                      <Lock className="w-6 h-6 text-gray-500" />
+                    ) : (
+                      <Zap className="w-6 h-6 text-yellow-500" />
+                    )}
+                  </div>
+                </div>
+
+                {/* 진입 불가 메시지 */}
+                {!status.accessible && (
+                  <div className={`mt-2 text-xs ${
+                    isDarkMode ? "text-gray-400" : "text-gray-600"
+                  }`}>
+                    🔒 {dungeons[index - 1].level} 던전을 먼저 완료해주세요
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 하단 설명 */}
+        <div className={`p-6 border-t ${
+          isDarkMode ? "border-white/10 bg-gray-900/95" : "border-gray-300/20 bg-white/95"
+        } backdrop-blur-md`}>
+          <p className={`text-sm ${
+            isDarkMode ? "text-gray-400" : "text-gray-600"
+          }`}>
+            💡 각 던전의 모든 스테이지(10/10)를 완료해야 다음 던전에 진입할 수 있습니다.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default RoguelikeModal;
+export { RoguelikeDungeonSelectModal };
 
 

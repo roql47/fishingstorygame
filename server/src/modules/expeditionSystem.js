@@ -1,12 +1,13 @@
 const { getFishData, getFishHealthData, getPrefixData } = require('../data/gameData');
 
 class ExpeditionSystem {
-    constructor(EtherKeyModel, CompanionStatsModel) {
+    constructor(EtherKeyModel, CompanionStatsModel, UserStatsModel) {
         this.expeditionRooms = new Map(); // roomId -> room data
         this.playerRooms = new Map(); // playerId -> roomId
         this.roomCounter = 1;
         this.EtherKeyModel = EtherKeyModel; // 에테르 열쇠 모델
         this.CompanionStatsModel = CompanionStatsModel; // 동료 능력치 모델
+        this.UserStatsModel = UserStatsModel; // 🌟 유저 성장 스탯 모델
         this.claimingRewards = new Set(); // 🔒 보상 수령 중인 사용자 UUID 추적 (중복 방지)
         
         // 게임 데이터 캐싱
@@ -350,8 +351,10 @@ class ExpeditionSystem {
             const accessoryEnhancement = playerData?.accessoryEnhancement || 0;
             const accessoryEnhancementBonus = this.calculateTotalEnhancementBonus(accessoryEnhancement);
             
-            // 체력 계산: 내정보 탭과 동일하게 강화 보너스 포함
-            const maxHp = this.calculatePlayerMaxHp(accessoryLevel, accessoryEnhancementBonus);
+            // 체력 계산: 내정보 탭과 동일하게 강화 보너스 포함 + 🌟 유저 스탯
+            const baseMaxHp = this.calculatePlayerMaxHp(accessoryLevel, accessoryEnhancementBonus);
+            const healthStatBonus = accessoryLevel * (playerData?.healthStat || 0) * 10; // 🌟 악세사리 index × 성장 레벨 × 10
+            const maxHp = baseMaxHp + healthStatBonus;
             
             playerHp[player.id] = maxHp;
             playerMaxHp[player.id] = maxHp;
@@ -618,15 +621,17 @@ class ExpeditionSystem {
         return this.prefixData[0]; // 기본값
     }
 
-    // 플레이어 공격력 계산 함수 (탐사와 동일) + 강화 보너스 (퍼센트)
-    calculatePlayerAttack(fishingSkill, enhancementBonusPercent = 0) {
+    // 플레이어 공격력 계산 함수 (탐사와 동일) + 강화 보너스 (퍼센트) + 유저 스탯
+    calculatePlayerAttack(fishingSkill, enhancementBonusPercent = 0, attackStatBonus = 0) {
         // 3차방정식: 0.00225 * skill³ + 0.165 * skill² + 2 * skill + 3
         const baseAttack = 0.00225 * Math.pow(fishingSkill, 3) + 0.165 * Math.pow(fishingSkill, 2) + 2 * fishingSkill + 3;
         // 강화 보너스 퍼센트 적용
         const totalAttack = baseAttack + (baseAttack * enhancementBonusPercent / 100);
+        // 🌟 유저 스탯 공격력 보너스 추가 (레벨당 +5 공격력)
+        const attackWithStatBonus = totalAttack + attackStatBonus;
         // 랜덤 요소 추가 (±20%)
         const randomFactor = 0.8 + Math.random() * 0.4;
-        return Math.floor(totalAttack * randomFactor);
+        return Math.floor(attackWithStatBonus * randomFactor);
     }
 
     // 동료 기본 데이터 가져오기
@@ -933,12 +938,14 @@ class ExpeditionSystem {
         
         const targetMonster = aliveMonsters[Math.floor(Math.random() * aliveMonsters.length)];
         
-        // 플레이어 공격력 계산 (강화 보너스 포함)
+            // 플레이어 공격력 계산 (강화 보너스 포함) + 🌟 유저 스탯
                 const playerData = room.playerData?.[player.id];
         const fishingSkill = playerData?.fishingSkill || 1;
         const fishingRodEnhancement = playerData?.fishingRodEnhancement || 0;
         const fishingRodEnhancementBonus = this.calculateTotalEnhancementBonus(fishingRodEnhancement);
-        const baseDamage = this.calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus);
+        const fishingRodIndex = playerData?.fishingRodIndex || 0;
+        const attackStatBonus = fishingRodIndex * (playerData?.attackStat || 0); // 🌟 낚시대 index × 성장 레벨
+        const baseDamage = this.calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus, attackStatBonus);
         const { damage: finalDamage, isCritical } = this.calculateCriticalHit(baseDamage);
         
         // 몬스터에게 데미지 적용
@@ -1021,7 +1028,9 @@ class ExpeditionSystem {
                     const accessoryLevel = playerData?.accessoryLevel || 0;
                     const accessoryEnhancement = playerData?.accessoryEnhancement || 0;
                     const accessoryEnhancementBonus = this.calculateTotalEnhancementBonus(accessoryEnhancement);
-                    const maxHp = this.calculatePlayerMaxHp(accessoryLevel, accessoryEnhancementBonus);
+                    const baseMaxHp = this.calculatePlayerMaxHp(accessoryLevel, accessoryEnhancementBonus);
+                    const healthStatBonus = accessoryLevel * (playerData?.healthStat || 0) * 10; // 🌟 악세사리 index × 성장 레벨 × 10
+                    const maxHp = baseMaxHp + healthStatBonus;
                     const hpRatio = currentHp / maxHp;
                     
                     if (currentHp > 0 && hpRatio < lowestHpRatio) {
@@ -1255,12 +1264,13 @@ class ExpeditionSystem {
             
             const targetMonster = aliveMonsters[Math.floor(Math.random() * aliveMonsters.length)];
             
-            // 플레이어 공격력 계산 (탐사전투와 동일, 강화 보너스 포함)
+            // 플레이어 공격력 계산 (탐사전투와 동일, 강화 보너스 포함) + 🌟 유저 스탯
             const playerData = room.playerData?.[player.id];
             const fishingSkill = playerData?.fishingSkill || 1;
             const fishingRodEnhancement = playerData?.fishingRodEnhancement || 0;
             const fishingRodEnhancementBonus = this.calculateTotalEnhancementBonus(fishingRodEnhancement);
-            const baseDamage = this.calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus);
+            const attackStatBonus = (playerData?.attackStat || 0) * 5; // 🌟 공격력 스탯 보너스
+            const baseDamage = this.calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus, attackStatBonus);
             const { damage: finalDamage, isCritical } = this.calculateCriticalHit(baseDamage);
             
             // 몬스터에게 데미지 적용
@@ -1729,10 +1739,11 @@ class ExpeditionSystem {
         const playerData = room.playerData?.[userUuid];
         const fishingSkill = playerData?.fishingSkill || 1;
         
-        // 공격력 계산 (강화 보너스 포함)
+        // 공격력 계산 (강화 보너스 포함) + 🌟 유저 스탯
         const fishingRodEnhancement = playerData?.fishingRodEnhancement || 0;
         const fishingRodEnhancementBonus = this.calculateTotalEnhancementBonus(fishingRodEnhancement);
-        const baseDamage = this.calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus);
+        const attackStatBonus = (playerData?.attackStat || 0) * 1; // 🌟 공격력 스탯 보너스
+        const baseDamage = this.calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus, attackStatBonus);
         const { damage: finalDamage, isCritical } = this.calculateCriticalHit(baseDamage);
 
         // 몬스터에게 데미지 적용

@@ -24,6 +24,9 @@ const ShopTab = ({
 }) => {
   const [activeShopTab, setActiveShopTab] = useState('equipment'); // equipment, items
   const [fishData, setFishData] = useState([]);
+  const [showQuantityModal, setShowQuantityModal] = useState(false);
+  const [quantityModalData, setQuantityModalData] = useState(null);
+  const [selectedQuantity, setSelectedQuantity] = useState(1);
   
   // 물고기 데이터 가져오기
   useEffect(() => {
@@ -82,6 +85,35 @@ const ShopTab = ({
     
     // 순차 구매: 현재 아이템보다 바로 다음 레벨만 구매 가능
     return item.requiredSkill === (currentItemLevel + 1);
+  };
+  
+  // 수량 선택 모달 열기
+  const openQuantityModal = (type, itemName, maxQuantity) => {
+    setQuantityModalData({ type, itemName, maxQuantity });
+    setSelectedQuantity(1);
+    setShowQuantityModal(true);
+  };
+  
+  // 수량 확인 및 구매/교환
+  const handleQuantityConfirm = () => {
+    if (!quantityModalData) return;
+    
+    const { type, itemName } = quantityModalData;
+    
+    if (type === 'etherKeys') {
+      // 에테르 열쇠 교환
+      exchangeEtherKeys(selectedQuantity);
+    } else if (type === 'alchemyPotion' || type === 'autoBait') {
+      // 연금술포션 또는 자동미끼 구매
+      const item = getAllShopItems('items').find(i => i.name === itemName);
+      if (item) {
+        const itemWithCategory = { ...item, category: 'items', purchaseQuantity: selectedQuantity };
+        buyItem(itemWithCategory);
+      }
+    }
+    
+    setShowQuantityModal(false);
+    setQuantityModalData(null);
   };
 
   return (
@@ -563,7 +595,7 @@ const ShopTab = ({
                       }`}>별조각</span>
                     </div>
                     <button
-                      onClick={() => exchangeEtherKeys()}
+                      onClick={() => openQuantityModal('etherKeys', '에테르 열쇠', userStarPieces)}
                       disabled={!userStarPieces || userStarPieces < 1}
                       className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
                         !userStarPieces || userStarPieces < 1
@@ -591,7 +623,7 @@ const ShopTab = ({
                 <h3 className="font-semibold">연금술포션</h3>
               </div>
               <div className="space-y-3">
-                {getAllShopItems('items').map((item, index) => {
+                {getAllShopItems('items').filter(item => item.name === '연금술포션').map((item, index) => {
                   const userMaterialCount = getMaterialCount(item.material);
                   const hasEnoughMaterial = userMaterialCount >= item.materialCount;
                   const canBuy = hasEnoughMaterial;
@@ -654,7 +686,7 @@ const ShopTab = ({
                             }`}>{item.material}</span>
                           </div>
                           <button
-                            onClick={() => buyItem(itemWithCategory)}
+                            onClick={() => openQuantityModal('alchemyPotion', item.name, Math.floor(userMaterialCount / item.materialCount))}
                             disabled={!canBuy}
                             className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
                               !canBuy
@@ -675,9 +707,267 @@ const ShopTab = ({
                 })}
               </div>
             </div>
+
+            {/* 자동미끼 섹션 */}
+            <div>
+              <div className={`flex items-center gap-2 mb-4 px-2 ${
+                  isDarkMode ? "text-cyan-400" : "text-cyan-600"
+              }`}>
+                <span className="text-xl">🎣</span>
+                <h3 className="font-semibold">자동미끼</h3>
+              </div>
+              <div className="space-y-3">
+                {getAllShopItems('items').filter(item => item.name === '자동미끼').map((item, index) => {
+                  const userMaterialCount = getMaterialCount(item.material);
+                  const hasEnoughMaterial = userMaterialCount >= item.materialCount;
+                  const canBuy = hasEnoughMaterial;
+                  // buyItem에 전달할 때 필요한 카테고리 정보 추가
+                  const itemWithCategory = { ...item, category: 'items' };
+                  
+                  return (
+                    <div key={index} className={`p-4 rounded-xl border ${
+                      isDarkMode 
+                        ? "bg-cyan-500/10 border-cyan-500/30" 
+                        : "bg-cyan-500/5 border-cyan-500/20"
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className={`p-2 rounded-lg ${
+                              isDarkMode ? "bg-cyan-500/20" : "bg-cyan-500/10"
+                            }`}>
+                              <span className="text-2xl">🎣</span>
+                            </div>
+                            <div>
+                              <h4 className={`font-bold ${
+                                isDarkMode ? "text-white" : "text-gray-800"
+                              }`}>{item.name}</h4>
+                              <p className={`text-sm ${
+                                isDarkMode ? "text-gray-400" : "text-gray-600"
+                              }`}>{item.description}</p>
+                            </div>
+                          </div>
+                          <div className={`text-xs ${
+                            isDarkMode ? "text-gray-400" : "text-gray-600"
+                          }`}>
+                            낚시 쿨타임이 끝날 때마다 자동으로 낚시를 합니다. (30개 제공)
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-2">
+                          <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${
+                            isDarkMode 
+                              ? hasEnoughMaterial
+                                ? "bg-blue-500/20 border border-blue-500/30"
+                                : "bg-red-500/20 border border-red-500/40"
+                              : hasEnoughMaterial
+                                ? "bg-blue-500/10 border border-blue-500/20"
+                                : "bg-red-50 border border-red-200"
+                          }`}>
+                            <Star className={`w-4 h-4 ${
+                              hasEnoughMaterial
+                                ? isDarkMode ? "text-blue-400" : "text-blue-600"
+                                : isDarkMode ? "text-red-400" : "text-red-500"
+                            }`} />
+                            <span className={`text-sm font-bold ${
+                              hasEnoughMaterial
+                                ? isDarkMode ? "text-blue-400" : "text-blue-600"
+                                : isDarkMode ? "text-red-400" : "text-red-600"
+                            }`}>{item.materialCount}</span>
+                            <span className={`text-xs ${
+                              hasEnoughMaterial
+                                ? isDarkMode ? "text-gray-400" : "text-gray-600"
+                                : isDarkMode ? "text-red-400" : "text-red-600"
+                            }`}>{item.material}</span>
+                          </div>
+                          <button
+                            onClick={() => openQuantityModal('autoBait', item.name, Math.floor(userMaterialCount / item.materialCount))}
+                            disabled={!canBuy}
+                            className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                              !canBuy
+                                ? isDarkMode
+                                  ? "bg-gray-600 text-gray-400 cursor-not-allowed"
+                                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                : isDarkMode
+                                  ? "bg-cyan-600 hover:bg-cyan-500 text-white"
+                                  : "bg-cyan-500 hover:bg-cyan-600 text-white"
+                            } hover:scale-105 active:scale-95`}
+                          >
+                            교환하기
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
       </div>
+      
+      {/* 수량 선택 모달 */}
+      {showQuantityModal && quantityModalData && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className={`max-w-md w-full rounded-2xl border-2 ${
+            isDarkMode 
+              ? "bg-gray-900/95 border-blue-500/30" 
+              : "bg-white/95 border-blue-300/50"
+          } backdrop-blur-md p-6`}>
+            <h3 className={`text-xl font-bold mb-4 ${
+              isDarkMode ? "text-white" : "text-gray-800"
+            }`}>
+              {quantityModalData.type === 'etherKeys' ? '에테르 열쇠 교환' : 
+               quantityModalData.type === 'alchemyPotion' ? '연금술포션 구매' : '자동미끼 구매'}
+            </h3>
+            
+            <div className={`mb-6 p-4 rounded-lg ${
+              isDarkMode ? "bg-blue-500/10" : "bg-blue-50"
+            }`}>
+              <p className={`text-sm mb-2 ${
+                isDarkMode ? "text-gray-300" : "text-gray-700"
+              }`}>
+                {quantityModalData.type === 'etherKeys' 
+                  ? '별조각 1개당 에테르 열쇠 5개를 받습니다.'
+                  : quantityModalData.type === 'alchemyPotion'
+                  ? '별조각 1개당 연금술포션 10개를 받습니다.'
+                  : '별조각 1개당 자동미끼 30개를 받습니다.'}
+              </p>
+              <p className={`text-xs ${
+                isDarkMode ? "text-gray-400" : "text-gray-600"
+              }`}>
+                구매 가능 최대: {quantityModalData.maxQuantity}회
+              </p>
+            </div>
+            
+            <div className="mb-6">
+              <label className={`block mb-2 text-sm font-medium ${
+                isDarkMode ? "text-gray-300" : "text-gray-700"
+              }`}>
+                구매 횟수
+              </label>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setSelectedQuantity(Math.max(1, selectedQuantity - 1))}
+                  className={`px-4 py-2 rounded-lg font-bold ${
+                    isDarkMode 
+                      ? "bg-gray-700 hover:bg-gray-600 text-white" 
+                      : "bg-gray-200 hover:bg-gray-300 text-gray-800"
+                  }`}
+                >
+                  -
+                </button>
+                <input
+                  type="number"
+                  min="1"
+                  max={quantityModalData.maxQuantity}
+                  value={selectedQuantity}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) || 1;
+                    setSelectedQuantity(Math.min(Math.max(1, val), quantityModalData.maxQuantity));
+                  }}
+                  className={`flex-1 px-4 py-2 rounded-lg text-center font-bold ${
+                    isDarkMode 
+                      ? "bg-gray-800 text-white border border-gray-700" 
+                      : "bg-white text-gray-800 border border-gray-300"
+                  }`}
+                />
+                <button
+                  onClick={() => setSelectedQuantity(Math.min(quantityModalData.maxQuantity, selectedQuantity + 1))}
+                  className={`px-4 py-2 rounded-lg font-bold ${
+                    isDarkMode 
+                      ? "bg-gray-700 hover:bg-gray-600 text-white" 
+                      : "bg-gray-200 hover:bg-gray-300 text-gray-800"
+                  }`}
+                >
+                  +
+                </button>
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => setSelectedQuantity(1)}
+                  className={`px-3 py-1 rounded text-xs ${
+                    isDarkMode ? "bg-gray-700 hover:bg-gray-600 text-white" : "bg-gray-200 hover:bg-gray-300 text-gray-800"
+                  }`}
+                >
+                  1
+                </button>
+                <button
+                  onClick={() => setSelectedQuantity(Math.min(10, quantityModalData.maxQuantity))}
+                  className={`px-3 py-1 rounded text-xs ${
+                    isDarkMode ? "bg-gray-700 hover:bg-gray-600 text-white" : "bg-gray-200 hover:bg-gray-300 text-gray-800"
+                  }`}
+                >
+                  10
+                </button>
+                <button
+                  onClick={() => setSelectedQuantity(quantityModalData.maxQuantity)}
+                  className={`px-3 py-1 rounded text-xs ${
+                    isDarkMode ? "bg-gray-700 hover:bg-gray-600 text-white" : "bg-gray-200 hover:bg-gray-300 text-gray-800"
+                  }`}
+                >
+                  최대
+                </button>
+              </div>
+            </div>
+            
+            <div className={`mb-6 p-4 rounded-lg ${
+              isDarkMode ? "bg-gray-800" : "bg-gray-100"
+            }`}>
+              <div className="flex justify-between items-center">
+                <span className={`font-medium ${
+                  isDarkMode ? "text-gray-300" : "text-gray-700"
+                }`}>
+                  필요한 별조각:
+                </span>
+                <span className={`text-lg font-bold ${
+                  isDarkMode ? "text-blue-400" : "text-blue-600"
+                }`}>
+                  {selectedQuantity}개
+                </span>
+              </div>
+              <div className="flex justify-between items-center mt-2">
+                <span className={`font-medium ${
+                  isDarkMode ? "text-gray-300" : "text-gray-700"
+                }`}>
+                  받는 아이템:
+                </span>
+                <span className={`text-lg font-bold ${
+                  isDarkMode ? "text-green-400" : "text-green-600"
+                }`}>
+                  {quantityModalData.type === 'etherKeys' 
+                    ? `${selectedQuantity * 5}개`
+                    : quantityModalData.type === 'alchemyPotion'
+                    ? `${selectedQuantity * 10}개`
+                    : `${selectedQuantity * 30}개`}
+                </span>
+              </div>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowQuantityModal(false)}
+                className={`flex-1 px-4 py-3 rounded-lg font-medium ${
+                  isDarkMode 
+                    ? "bg-gray-700 hover:bg-gray-600 text-white" 
+                    : "bg-gray-200 hover:bg-gray-300 text-gray-800"
+                }`}
+              >
+                취소
+              </button>
+              <button
+                onClick={handleQuantityConfirm}
+                className={`flex-1 px-4 py-3 rounded-lg font-medium ${
+                  isDarkMode 
+                    ? "bg-blue-600 hover:bg-blue-500 text-white" 
+                    : "bg-blue-500 hover:bg-blue-600 text-white"
+                }`}
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

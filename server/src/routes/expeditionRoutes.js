@@ -2,9 +2,9 @@ const express = require('express');
 const ExpeditionSystem = require('../modules/expeditionSystem');
 
 // 원정 라우트 설정 함수
-function setupExpeditionRoutes(authenticateJWT, CompanionStatsModel, FishingSkillModel, UserEquipmentModel, EtherKeyModel) {
+function setupExpeditionRoutes(authenticateJWT, CompanionStatsModel, FishingSkillModel, UserEquipmentModel, EtherKeyModel, UserStatsModel) {
     const router = express.Router();
-    const expeditionSystem = new ExpeditionSystem(EtherKeyModel, CompanionStatsModel);
+    const expeditionSystem = new ExpeditionSystem(EtherKeyModel, CompanionStatsModel, UserStatsModel);
 
 // 원정 지역 목록 조회
 router.get('/areas', (req, res) => {
@@ -268,10 +268,11 @@ router.post('/rooms/start', authenticateJWT, async (req, res) => {
         );
         
         for (const player of room.players) {
-            const [companions, fishingSkillData, userEquipment] = await Promise.all([
+            const [companions, fishingSkillData, userEquipment, userStats] = await Promise.all([
                 CompanionStatsModel.find({ userUuid: player.id, isInBattle: true }).lean(),
                 FishingSkillModel.findOne({ userUuid: player.id }).lean(),
-                UserEquipmentModel.findOne({ userUuid: player.id }).lean()
+                UserEquipmentModel.findOne({ userUuid: player.id }).lean(),
+                UserStatsModel ? UserStatsModel.findOne({ userUuid: player.id }).lean() : Promise.resolve(null)
             ]);
 
             // 기본 낚시실력 + 업적 보너스 계산 (내정보 탭과 동일)
@@ -297,13 +298,27 @@ router.post('/rooms/start', authenticateJWT, async (req, res) => {
             
             const accessoryLevel = getAccessoryLevel(userEquipment?.accessory) || 1;
             
-            // 강화 정보도 포함 (내정보 탭과 동일한 능력치를 참조하도록)
+            // 🌟 낚시대 인덱스 계산
+            const fishingRods = [
+                '나무낚시대', '낡은낚시대', '기본낚시대', '단단한낚시대', '은낚시대', '금낚시대',
+                '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대', '레드다이아몬드낚시대',
+                '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산호등낚시대', '피크닉', '마녀빗자루',
+                '에테르낚시대', '별조각낚시대', '여우꼬리낚시대', '초콜릿롤낚시대', '호박유령낚시대',
+                '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
+            ];
+            const fishingRodIndex = fishingRods.indexOf(userEquipment?.fishingRod) >= 0 ? fishingRods.indexOf(userEquipment?.fishingRod) : 0;
+            
+            // 강화 정보도 포함 (내정보 탭과 동일한 능력치를 참조하도록) + 🌟 유저 성장 스탯
             allPlayerData[player.id] = {
                 companions: companions,
                 fishingSkill: fishingSkill,
                 accessoryLevel: accessoryLevel,
                 fishingRodEnhancement: userEquipment?.fishingRodEnhancement || 0,
-                accessoryEnhancement: userEquipment?.accessoryEnhancement || 0
+                accessoryEnhancement: userEquipment?.accessoryEnhancement || 0,
+                attackStat: userStats?.attack || 0,  // 🌟 공격력 스탯
+                healthStat: userStats?.health || 0,  // 🌟 체력 스탯
+                speedStat: userStats?.speed || 0,    // 🌟 속도 스탯
+                fishingRodIndex: fishingRodIndex     // 🌟 낚시대 인덱스
             };
             
             console.log(`[EXPEDITION] Player ${player.name} data:`, {

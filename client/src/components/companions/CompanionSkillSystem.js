@@ -197,7 +197,7 @@ export const processDamageSkill = ({
 };
 
 /**
- * 다중 타겟/AOE 스킬을 처리하는 함수 (탐사 전투용 - 단일 적에게만 적용)
+ * 다중 타겟/AOE 스킬을 처리하는 함수 (탐사 전투용)
  * @param {Object} params - 스킬 파라미터
  * @returns {Object} - 업데이트된 전투 상태와 데미지 정보
  */
@@ -211,37 +211,68 @@ export const processMultiTargetSkill = ({
   companionBuffs,
   calculateCriticalHit
 }) => {
-  // 탐사 전투는 단일 적이므로 다중 타겟 스킬도 단일 적에게만 적용
-  const baseDamage = Math.floor(baseAttack * skill.damageMultiplier * (0.9 + Math.random() * 0.2));
-  const criticalResult = calculateCriticalHit(baseDamage, 0.05, companionName, companionBuffs);
-  const damage = criticalResult.damage;
-  const isCritical = criticalResult.isCritical;
-  
   // 스킬 사용 후 사기 초기화
   const newCompanionMorale = { ...companionMorale };
   newCompanionMorale[companionName].morale = 0;
   
-  const newEnemyHp = Math.max(0, battleState.enemyHp - damage);
   let newLog = [...battleState.log];
   
-  const skillMessage = isCritical ? 
-    `💥 크리티컬! ${companionName}(Lv.${companionLevel})이(가) 스킬 '${skill.name}'을(를) 사용했습니다!` : 
-    `${companionName}(Lv.${companionLevel})이(가) 스킬 '${skill.name}'을(를) 사용했습니다!`;
+  const skillMessage = `${companionName}(Lv.${companionLevel})이(가) 스킬 '${skill.name}'을(를) 사용했습니다!`;
   newLog.push(skillMessage);
   
   // 다중 타겟 스킬 설명 추가
   if (skill.skillType === 'aoe') {
     newLog.push(`🌪️ 전체공격! 모든 적에게 데미지를 입힙니다!`);
   } else if (skill.skillType === 'multi_target') {
-    newLog.push(`🎯 ${skill.targetCount}명의 적을 동시에 공격합니다!`);
+    newLog.push(`🎯 최대 ${skill.targetCount}명의 적을 동시에 공격합니다!`);
   }
   
-  newLog.push(`💥 ${damage} 데미지! (${battleState.enemy}: ${newEnemyHp}/${battleState.enemyMaxHp})`);
+  // 살아있는 적들 찾기
+  const aliveEnemies = battleState.enemies.filter(e => e.isAlive);
+  
+  // 타겟 수 결정 (AOE는 모든 적, multi_target은 지정된 수만큼)
+  const targetCount = skill.skillType === 'aoe' ? aliveEnemies.length : Math.min(skill.targetCount || 2, aliveEnemies.length);
+  
+  // 타겟 선택 (랜덤으로 선택)
+  const targets = [];
+  const availableTargets = [...aliveEnemies];
+  for (let i = 0; i < targetCount && availableTargets.length > 0; i++) {
+    const randomIndex = Math.floor(Math.random() * availableTargets.length);
+    targets.push(availableTargets[randomIndex]);
+    availableTargets.splice(randomIndex, 1);
+  }
+  
+  // 새로운 enemies 배열 생성
+  const newEnemies = [...battleState.enemies];
+  
+  // 각 타겟에게 데미지 적용
+  targets.forEach(target => {
+    const baseDamage = Math.floor(baseAttack * skill.damageMultiplier * (0.9 + Math.random() * 0.2));
+    const criticalResult = calculateCriticalHit(baseDamage, 0.05, companionName, companionBuffs);
+    const damage = criticalResult.damage;
+    const isCritical = criticalResult.isCritical;
+    
+    // 적의 체력 감소
+    const enemyIndex = newEnemies.findIndex(e => e.id === target.id);
+    if (enemyIndex !== -1) {
+      newEnemies[enemyIndex] = {
+        ...newEnemies[enemyIndex],
+        hp: Math.max(0, newEnemies[enemyIndex].hp - damage)
+      };
+      
+      const criticalText = isCritical ? '💥 크리티컬! ' : '';
+      newLog.push(`${criticalText}${target.name}에게 ${damage} 데미지! (${newEnemies[enemyIndex].hp}/${newEnemies[enemyIndex].maxHp})`);
+      
+      // 적이 죽었는지 확인
+      if (newEnemies[enemyIndex].hp <= 0) {
+        newEnemies[enemyIndex].isAlive = false;
+        newLog.push(`${target.name}을(를) 물리쳤습니다!`);
+      }
+    }
+  });
   
   return {
-    damage,
-    isCritical,
-    enemyHp: newEnemyHp,
+    enemies: newEnemies,
     log: newLog,
     companionMorale: newCompanionMorale,
     companionBuffs
@@ -308,13 +339,16 @@ export const processCompanionSkill = ({
       calculateCriticalHit
     });
     
-    if (result.enemyHp <= 0) {
+    // 모든 적이 죽었는지 확인
+    const allEnemiesDead = result.enemies.every(e => !e.isAlive);
+    
+    if (allEnemiesDead) {
       // 승리 처리는 기존 로직 사용
       return null; // App.jsx의 승리 처리 로직으로 돌아감
     } else {
       return nextTurn({
         ...battleState,
-        enemyHp: result.enemyHp,
+        enemies: result.enemies,
         log: result.log,
         companionMorale: result.companionMorale,
         companionBuffs: result.companionBuffs

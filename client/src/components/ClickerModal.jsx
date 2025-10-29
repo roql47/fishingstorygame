@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Sword, Heart, Trophy } from 'lucide-react';
+import etherDungeonImage from '../assets/ether_dungeon.png';
 
 const ClickerModal = ({
   onClose,
@@ -15,7 +16,8 @@ const ClickerModal = ({
   authenticatedRequest,
   username,
   userUuid,
-  setMessages
+  setMessages,
+  setUserMoney
 }) => {
   // 스테이지 및 난이도
   const [currentStage, setCurrentStage] = useState(1);
@@ -40,10 +42,13 @@ const ClickerModal = ({
   
   // 보상 상태
   const [showReward, setShowReward] = useState(false);
-  const [rewards, setRewards] = useState([]);
+  const [goldReward, setGoldReward] = useState(0);
   
   // 클릭 처리 중 상태
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  // 이미지 로드 실패 상태
+  const [imageLoadError, setImageLoadError] = useState(false);
 
   // 스테이지 정보 로드
   useEffect(() => {
@@ -139,7 +144,8 @@ const ClickerModal = ({
     setMaxMonsterHp(hp);
     setGameStarted(true);
     setShowReward(false);
-    setRewards([]);
+    setGoldReward(0);
+    setImageLoadError(false); // 이미지 에러 상태 초기화
     
     // 스테이지 2 이상에서 자동 회복 시작
     if (currentStage >= 2) {
@@ -303,8 +309,14 @@ const ClickerModal = ({
       });
 
       if (response.data.success) {
-        setRewards(response.data.rewards);
+        const receivedGold = response.data.goldReward || 0;
+        setGoldReward(receivedGold);
         setShowReward(true);
+        
+        // 골드 로컬 상태 업데이트
+        if (setUserMoney && receivedGold > 0) {
+          setUserMoney(prev => prev + receivedGold);
+        }
         
         // 난이도 완료 기록 업데이트
         setCompletedDifficulties(prev => {
@@ -314,24 +326,12 @@ const ClickerModal = ({
           }
           return prev;
         });
-        
-        // 인벤토리 갱신 (다른 곳과 동일한 방식)
-        try {
-          const inventoryResponse = await authenticatedRequest.get(`${serverUrl}/api/inventory/user`, {
-            params: { username, userUuid }
-          });
-          
-          const safeInventory = Array.isArray(inventoryResponse.data) ? inventoryResponse.data : [];
-          setInventory(safeInventory);
-        } catch (invError) {
-          console.error('Failed to refresh inventory:', invError);
-        }
 
         // 채팅에 시스템 메시지 추가
         if (setMessages) {
           setMessages(prev => [...prev, {
             system: true,
-            content: `에테르 던전 ${currentStage}-${difficulty}: ${response.data.rewards.map(r => `${r.name} x${r.count}`).join(', ')} 획득!`,
+            content: `에테르 던전 ${currentStage}-${difficulty}: 골드 ${receivedGold.toLocaleString()} 획득!`,
             timestamp: new Date().toISOString()
           }]);
         }
@@ -364,6 +364,8 @@ const ClickerModal = ({
         alert(response.data.message);
         setCurrentStage(response.data.newStage);
         setShowUpgradeModal(false);
+        setShowReward(false); // 보상 화면 닫기
+        setGameStarted(false); // 게임 상태 초기화
         setDifficulty(1); // 난이도 초기화
         
         // 재료 갱신
@@ -431,6 +433,13 @@ const ClickerModal = ({
       { rank: 35, name: '크레인터틀', material: '타파스' }
     ];
     return fishData.find(f => f.rank === currentStage);
+  };
+
+  // 난이도 잠금 확인 (이전 난이도를 클리어해야 다음 난이도 도전 가능)
+  const isDifficultyLocked = (targetDifficulty) => {
+    if (targetDifficulty === 1) return false; // 1난이도는 항상 가능
+    const completedDiff = completedDifficulties[currentStage] || 0;
+    return targetDifficulty > completedDiff + 1; // 이전 난이도를 클리어해야 함
   };
 
   return (
@@ -544,25 +553,39 @@ const ClickerModal = ({
 
                 {/* 난이도 그리드 선택 */}
                 <div className="grid grid-cols-10 gap-1 sm:gap-2">
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(level => (
-                    <button
-                      key={level}
-                      onClick={() => setDifficulty(level)}
-                      className={`aspect-square rounded-lg sm:rounded-xl font-bold text-sm sm:text-lg transition-all duration-300 ${
-                        difficulty === level
-                          ? (isDarkMode 
-                            ? "bg-white text-slate-900 shadow-lg shadow-white/30 scale-110" 
-                            : "bg-slate-900 text-white shadow-lg shadow-slate-900/30 scale-110")
-                          : level < difficulty
-                            ? (isDarkMode ? "bg-slate-700/50 text-slate-500" : "bg-slate-200 text-slate-400")
-                            : (isDarkMode 
-                              ? "bg-slate-800/50 text-slate-400 hover:bg-slate-700/50 hover:text-white hover:scale-105" 
-                              : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 hover:scale-105")
-                      }`}
-                    >
-                      {level}
-                    </button>
-                  ))}
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(level => {
+                    const isLocked = isDifficultyLocked(level);
+                    return (
+                      <button
+                        key={level}
+                        onClick={() => {
+                          if (isLocked) {
+                            alert(`${currentStage}-${level - 1} 난이도를 먼저 클리어해야 합니다.`);
+                            return;
+                          }
+                          setDifficulty(level);
+                        }}
+                        disabled={isLocked}
+                        className={`aspect-square rounded-lg sm:rounded-xl font-bold text-sm sm:text-lg transition-all duration-300 relative ${
+                          difficulty === level
+                            ? (isDarkMode 
+                              ? "bg-white text-slate-900 shadow-lg shadow-white/30 scale-110" 
+                              : "bg-slate-900 text-white shadow-lg shadow-slate-900/30 scale-110")
+                            : isLocked
+                              ? (isDarkMode 
+                                ? "bg-slate-800/30 text-slate-700 cursor-not-allowed opacity-50" 
+                                : "bg-slate-100/50 text-slate-400 cursor-not-allowed opacity-50")
+                              : level <= (completedDifficulties[currentStage] || 0)
+                                ? (isDarkMode ? "bg-slate-700/50 text-slate-500" : "bg-slate-200 text-slate-400")
+                                : (isDarkMode 
+                                  ? "bg-slate-800/50 text-slate-400 hover:bg-slate-700/50 hover:text-white hover:scale-105" 
+                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 hover:scale-105")
+                        }`}
+                      >
+                        {isLocked ? '🔒' : level}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -672,53 +695,141 @@ const ClickerModal = ({
                 isDarkMode ? "border-gray-700" : "border-gray-200"
               }`}>
                 <div className={`px-5 py-3 border-b ${
-                  isDarkMode ? "bg-blue-500/10 border-gray-700" : "bg-blue-50/50 border-gray-200"
+                  isDarkMode ? "bg-yellow-500/10 border-gray-700" : "bg-yellow-50/50 border-gray-200"
                 }`}>
                   <h5 className={`font-bold text-sm ${
-                    isDarkMode ? "text-blue-300" : "text-blue-700"
+                    isDarkMode ? "text-yellow-300" : "text-yellow-700"
                   }`}>
                     획득한 보상
                   </h5>
                 </div>
-                <div className="p-4 space-y-2">
-                  {rewards.map((reward, index) => (
-                    <div key={index} className={`flex items-center justify-between p-4 rounded-xl ${
+                <div className="p-4">
+                  <div className={`flex items-center justify-between p-4 rounded-xl ${
+                    isDarkMode 
+                      ? "bg-gradient-to-r from-yellow-900/30 to-orange-900/30 border border-yellow-500/30" 
+                      : "bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-300"
+                  } shadow-sm`}>
+                    <span className={`text-lg font-bold ${
+                      isDarkMode ? "text-yellow-300" : "text-yellow-700"
+                    }`}>
+                      💰 골드
+                    </span>
+                    <span className={`px-4 py-1 rounded-full font-bold text-lg ${
                       isDarkMode 
-                        ? "bg-gradient-to-r from-gray-700/50 to-gray-800/50 border border-gray-600/30" 
-                        : "bg-gradient-to-r from-white to-gray-50 border border-gray-200"
-                    } shadow-sm`}>
-                      <span className={`text-lg font-bold ${
-                        isDarkMode ? "text-white" : "text-gray-900"
-                      }`}>
-                        {reward.name}
-                      </span>
-                      <span className={`px-4 py-1 rounded-full font-bold ${
-                        isDarkMode 
-                          ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" 
-                          : "bg-blue-100 text-blue-700 border border-blue-300"
-                      }`}>
-                        ×{reward.count}
-                      </span>
-                    </div>
-                  ))}
+                        ? "bg-yellow-500/20 text-yellow-300 border border-yellow-500/30" 
+                        : "bg-yellow-100 text-yellow-700 border border-yellow-300"
+                    }`}>
+                      +{goldReward.toLocaleString()}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* 다시 하기 버튼 */}
-              <button
-                onClick={() => {
-                  setGameStarted(false);
-                  setShowReward(false);
-                }}
-                className={`relative w-full py-4 rounded-2xl font-bold text-lg overflow-hidden group transition-all duration-300 hover:scale-[1.02] shadow-xl ${
-                  isDarkMode 
-                    ? "bg-gradient-to-r from-purple-600 via-blue-600 to-purple-600 hover:shadow-purple-500/50 text-white" 
-                    : "bg-gradient-to-r from-purple-500 via-blue-500 to-purple-500 hover:shadow-purple-400/50 text-white"
-                }`}
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-                <span className="relative">다시 도전하기</span>
-              </button>
+              {/* 선택지 버튼들 */}
+              <div className="space-y-3">
+                {/* 같은 난이도 다시 도전 */}
+                <button
+                  onClick={() => {
+                    setShowReward(false);
+                    setGameStarted(false);
+                    
+                    // 잠시 후 자동으로 게임 시작
+                    setTimeout(() => {
+                      const hp = getMonsterHp(currentStage, difficulty);
+                      setMonsterHp(hp);
+                      setMaxMonsterHp(hp);
+                      setGameStarted(true);
+                      setGoldReward(0);
+                      setImageLoadError(false);
+                      if (currentStage >= 2) {
+                        startAutoHeal(hp);
+                      }
+                    }, 100);
+                  }}
+                  className={`relative w-full py-3 rounded-xl font-bold overflow-hidden group transition-all duration-300 hover:scale-[1.02] ${
+                    isDarkMode 
+                      ? "bg-gradient-to-r from-blue-600 to-blue-700 hover:shadow-blue-500/50 text-white" 
+                      : "bg-gradient-to-r from-blue-500 to-blue-600 hover:shadow-blue-400/50 text-white"
+                  } shadow-lg`}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                  <span className="relative">🔄 같은 난이도 다시 도전</span>
+                </button>
+
+                {/* 다음 난이도 도전 (난이도 < 10) */}
+                {difficulty < 10 && (
+                  <button
+                    onClick={() => {
+                      const nextDifficulty = difficulty + 1;
+                      setDifficulty(nextDifficulty);
+                      setShowReward(false);
+                      setGameStarted(false);
+                      
+                      // 잠시 후 자동으로 게임 시작
+                      setTimeout(() => {
+                        const hp = getMonsterHp(currentStage, nextDifficulty);
+                        setMonsterHp(hp);
+                        setMaxMonsterHp(hp);
+                        setGameStarted(true);
+                        setGoldReward(0);
+                        setImageLoadError(false);
+                        if (currentStage >= 2) {
+                          startAutoHeal(hp);
+                        }
+                      }, 100);
+                    }}
+                    className={`relative w-full py-3 rounded-xl font-bold overflow-hidden group transition-all duration-300 hover:scale-[1.02] ${
+                      isDarkMode 
+                        ? "bg-gradient-to-r from-purple-600 to-purple-700 hover:shadow-purple-500/50 text-white" 
+                        : "bg-gradient-to-r from-purple-500 to-purple-600 hover:shadow-purple-400/50 text-white"
+                    } shadow-lg`}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                    <span className="relative">⬆️ 다음 난이도 도전 (난이도 {difficulty + 1})</span>
+                  </button>
+                )}
+
+                {/* 스테이지 업그레이드 (난이도 10 클리어 + 조건 충족) */}
+                {difficulty === 10 && fishingSkill >= currentStage + 1 && (
+                  <button
+                    onClick={handleUpgradeStage}
+                    className={`relative w-full py-3 rounded-xl font-bold overflow-hidden group transition-all duration-300 hover:scale-[1.02] ${
+                      isDarkMode 
+                        ? "bg-gradient-to-r from-yellow-600 via-orange-600 to-yellow-600 hover:shadow-yellow-500/50 text-white" 
+                        : "bg-gradient-to-r from-yellow-500 via-orange-500 to-yellow-500 hover:shadow-yellow-400/50 text-white"
+                    } shadow-lg`}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                    <span className="relative">🌟 다음 스테이지로 ({currentStage + 1})</span>
+                  </button>
+                )}
+
+                {/* 스테이지 업그레이드 불가 안내 (난이도 10 클리어했지만 조건 미달) */}
+                {difficulty === 10 && fishingSkill < currentStage + 1 && (
+                  <div className={`w-full py-3 rounded-xl text-center ${
+                    isDarkMode 
+                      ? "bg-gray-700/50 border border-gray-600 text-gray-400" 
+                      : "bg-gray-200/50 border border-gray-300 text-gray-600"
+                  }`}>
+                    <div className="font-bold">🔒 다음 스테이지 잠김</div>
+                    <div className="text-xs mt-1">
+                      필요 낚시실력: {currentStage + 1} (현재: {fishingSkill})
+                    </div>
+                  </div>
+                )}
+
+                {/* 나가기 */}
+                <button
+                  onClick={onClose}
+                  className={`relative w-full py-3 rounded-xl font-bold overflow-hidden group transition-all duration-300 hover:scale-[1.02] ${
+                    isDarkMode 
+                      ? "bg-gray-700 hover:bg-gray-600 text-white" 
+                      : "bg-gray-300 hover:bg-gray-400 text-gray-800"
+                  }`}
+                >
+                  <span className="relative">🚪 나가기</span>
+                </button>
+              </div>
             </div>
           ) : (
             // 게임 화면 - Premium Design
@@ -784,16 +895,18 @@ const ClickerModal = ({
                       : "border-purple-300/50 bg-gradient-to-br from-purple-100/50 via-blue-100/30 to-pink-100/50"
                   }`}
                 >
-                  <img 
-                    src="/assets/images/a466886577be4425b8b222800ed472.png"
-                    alt="Monster"
-                    className="w-full h-full object-contain"
-                    onError={(e) => {
-                      // 이미지 로드 실패 시 대체 텍스트 표시
-                      e.target.style.display = 'none';
-                      e.target.parentElement.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-size: 3rem; font-weight: bold; color: #888;">Monster</div>';
-                    }}
-                  />
+                  {!imageLoadError ? (
+                    <img 
+                      src={etherDungeonImage}
+                      alt="Ether Dungeon"
+                      className="w-full h-full object-contain"
+                      onError={() => setImageLoadError(true)}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center w-full h-full text-5xl font-bold text-gray-500">
+                      Ether Dungeon
+                    </div>
+                  )}
                   
                   {/* 데미지/회복 숫자들 */}
                   {damageNumbers.map(dmg => (
@@ -869,6 +982,7 @@ const ClickerModal = ({
         
       `}</style>
     </div>
+
 
     {/* 스테이지 업그레이드 모달 - Premium Design */}
     {showUpgradeModal && (

@@ -50,6 +50,10 @@ const ChatTab = ({
   authenticatedRequest,
   alchemyPotions,
   setAlchemyPotions,
+  autoBaitCount,
+  setAutoBaitCount,
+  autoFishingEnabled,
+  setAutoFishingEnabled,
   handleExpeditionInviteClick,
   setShowClickerModal
 }) => {
@@ -440,6 +444,38 @@ const ChatTab = ({
                 title="연금술포션 사용 (낚시 쿨타임 10초로 감소)"
               >
                 🧪
+              </button>
+              
+              {/* 자동미끼 토글 버튼 */}
+              <button
+                className={`p-2 rounded-lg hover:glow-effect transition-all duration-300 ${
+                  autoFishingEnabled 
+                    ? (isDarkMode ? "glass-input text-cyan-400 border border-cyan-400/50" : "bg-cyan-50/80 backdrop-blur-sm border border-cyan-400/60 text-cyan-600")
+                    : (isDarkMode ? "glass-input text-gray-400" : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-gray-600")
+                }`}
+                onClick={() => {
+                  if (!autoFishingEnabled && autoBaitCount <= 0) {
+                    alert('자동미끼가 없습니다! 상점에서 구매해주세요.');
+                    return;
+                  }
+                  
+                  const newState = !autoFishingEnabled;
+                  setAutoFishingEnabled(newState);
+                  
+                  setMessages(prev => [...prev, {
+                    system: true,
+                    content: newState 
+                      ? `🎣 자동낚시가 활성화되었습니다! (남은 미끼: ${autoBaitCount}개)` 
+                      : `🎣 자동낚시가 비활성화되었습니다.`,
+                    timestamp: new Date().toISOString()
+                  }]);
+                }}
+                title={autoFishingEnabled 
+                  ? `자동낚시 활성화 중 (남은 미끼: ${autoBaitCount}개)` 
+                  : `자동낚시 비활성화 (보유 미끼: ${autoBaitCount}개)`
+                }
+              >
+                🎣
               </button>
               
               {/* 로그아웃 버튼 */}

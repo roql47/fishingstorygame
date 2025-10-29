@@ -27,6 +27,9 @@ const RaidScheduler = require('./modules/raidScheduler');
 // 원정 시스템 모듈 import
 const setupExpeditionRoutes = require('./routes/expeditionRoutes');
 
+// 항해 시스템 모듈 import
+const setupVoyageRoutes = require('./routes/voyageRoutes');
+
 // 🦊 여우 AI 챗봇 모듈 import
 const FoxAiBot = require('./modules/foxAiBot');
 const roguelikeSystem = require('./modules/roguelikeSystem');
@@ -993,6 +996,21 @@ const starPieceSchema = new mongoose.Schema(
 
 const StarPieceModel = mongoose.model("StarPiece", starPieceSchema);
 
+// User Stats Schema (유저 성장 스탯)
+const userStatsSchema = new mongoose.Schema(
+  {
+    userId: { type: String, required: true },
+    username: { type: String, required: true },
+    userUuid: { type: String, index: true },
+    health: { type: Number, default: 0 }, // 체력 레벨
+    attack: { type: Number, default: 0 }, // 공격력 레벨
+    speed: { type: Number, default: 0 }, // 속도 레벨
+  },
+  { timestamps: true }
+);
+
+const UserStatsModel = mongoose.model("UserStats", userStatsSchema);
+
 // Companion Schema (동료 시스템)
 const companionSchema = new mongoose.Schema(
   {
@@ -1064,6 +1082,16 @@ const alchemyPotionSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 const AlchemyPotionModel = mongoose.model("AlchemyPotion", alchemyPotionSchema);
+
+// Auto Bait Schema (자동미끼 - 자동 낚시 아이템)
+const autoBaitSchema = new mongoose.Schema({
+  userId: { type: String, required: true },
+  username: { type: String, required: true },
+  userUuid: { type: String, index: true },
+  autoBaitCount: { type: Number, default: 0 }, // 보유한 자동미끼 수
+}, { timestamps: true });
+
+const AutoBaitModel = mongoose.model("AutoBait", autoBaitSchema);
 
 // Coupon Usage Schema (쿠폰 사용 기록)
 const couponUsageSchema = new mongoose.Schema(
@@ -3571,6 +3599,23 @@ io.on("connection", (socket) => {
           query = { userId: socket.data.userId || 'user' };
         }
         
+        // 🎣 자동낚시 플래그 확인 및 자동미끼 차감
+        if (msg.isAutoFishing) {
+          console.log('🎣 자동낚시 감지:', socket.data.username);
+          let userBaits = await AutoBaitModel.findOne(query);
+          
+          if (userBaits && userBaits.autoBaitCount > 0) {
+            userBaits.autoBaitCount -= 1;
+            await userBaits.save();
+            console.log(`🎣 자동미끼 차감: ${socket.data.username} (남은 미끼: ${userBaits.autoBaitCount}개)`);
+            
+            // 클라이언트에 업데이트 전송
+            socket.emit('data:autoBaitCount', { autoBaitCount: userBaits.autoBaitCount });
+          } else {
+            console.log('🎣 자동미끼 부족:', socket.data.username);
+          }
+        }
+        
         // 낚시 스킬 조회 (기본 실력)
         const fishingSkill = await FishingSkillModel.findOne(query);
         const baseSkill = fishingSkill ? fishingSkill.skill : 0;
@@ -5299,6 +5344,56 @@ app.get("/api/alchemy-potions/:userId", authenticateJWT, async (req, res) => {
   }
 });
 
+// Auto Bait API (자동미끼 조회)
+app.get("/api/auto-bait/:userId", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid, username } = req.user || {};
+    const { userId } = req.params;
+    
+    debugLog(`🔐 JWT Auto bait request: ${username} (${userUuid})`);
+    
+    const queryResult = await getUserQuery(userId, username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+      console.log("Using UUID query for auto bait:", query);
+    } else {
+      query = queryResult;
+      console.log("Using fallback query for auto bait:", query);
+    }
+    
+    // 🔒 보안 검증: 본인 데이터만 조회 가능
+    const ownershipValidation = await validateUserOwnership(query, userUuid, username);
+    if (!ownershipValidation.isValid) {
+      console.warn("Unauthorized auto bait access:", ownershipValidation.reason);
+      return res.status(403).json({ error: "Access denied: You can only view your own data" });
+    }
+    
+    let userBaits = await AutoBaitModel.findOne(query);
+    
+    if (!userBaits) {
+      // 새 사용자인 경우 초기 자동미끼 0개로 생성
+      const createData = {
+        userId: query.userId || 'user',
+        username: query.username || username,
+        userUuid: query.userUuid || userUuid,
+        autoBaitCount: 0
+      };
+      
+      console.log("Creating new auto bait record with data:", createData);
+      userBaits = new AutoBaitModel(createData);
+      await userBaits.save();
+      console.log("Created new user auto bait record:", userBaits);
+    }
+    
+    res.json({ autoBaitCount: userBaits.autoBaitCount || 0 });
+  } catch (error) {
+    console.error("Failed to fetch auto bait:", error);
+    console.error("Error stack:", error.stack);
+    res.status(500).json({ error: "Failed to fetch auto bait", details: error.message });
+  }
+});
+
 // Add Star Pieces API (별조각 추가)
 app.post("/api/add-star-pieces", authenticateJWT, async (req, res) => {
   try {
@@ -5458,6 +5553,127 @@ app.get("/api/companion-stats/:userId", async (req, res) => {
   } catch (error) {
     console.error("Failed to fetch companion stats:", error);
     res.status(500).json({ error: "동료 능력치를 가져올 수 없습니다." });
+  }
+});
+
+// User Stats APIs (유저 성장 스탯 시스템)
+
+// 유저 스탯 조회 API
+app.get("/api/user-stats/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { username, userUuid } = req.query;
+    
+    console.log("User stats request:", { userId, username, userUuid });
+    
+    const queryResult = await getUserQuery(userId, username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    let userStats = await UserStatsModel.findOne(query);
+    
+    // 스탯이 없으면 기본값으로 생성
+    if (!userStats) {
+      userStats = await UserStatsModel.create({
+        userId,
+        username,
+        userUuid: queryResult.userUuid,
+        health: 0,
+        attack: 0,
+        speed: 0
+      });
+      console.log(`Created new user stats for ${username}`);
+    }
+    
+    console.log(`User stats for ${username}:`, userStats);
+    res.json({ 
+      userStats: {
+        health: userStats.health,
+        attack: userStats.attack,
+        speed: userStats.speed
+      }
+    });
+    
+  } catch (error) {
+    console.error("Failed to fetch user stats:", error);
+    res.status(500).json({ error: "유저 스탯을 가져올 수 없습니다." });
+  }
+});
+
+// 유저 스탯 업그레이드 API
+app.post("/api/user-stats/upgrade", async (req, res) => {
+  try {
+    const { username, userUuid, statType } = req.body;
+    
+    console.log("User stats upgrade request:", { username, userUuid, statType });
+    
+    if (!username || !userUuid || !statType) {
+      return res.status(400).json({ error: "username, userUuid, statType이 필요합니다." });
+    }
+    
+    if (!['health', 'attack', 'speed'].includes(statType)) {
+      return res.status(400).json({ error: "유효하지 않은 스탯 타입입니다." });
+    }
+    
+    // 유저 스탯 조회
+    let userStats = await UserStatsModel.findOne({ userUuid });
+    if (!userStats) {
+      userStats = await UserStatsModel.create({
+        userId: 'user',
+        username,
+        userUuid,
+        health: 0,
+        attack: 0,
+        speed: 0
+      });
+    }
+    
+    const currentLevel = userStats[statType];
+    const upgradeCost = Math.floor(1000 * Math.pow(1.5, currentLevel));
+    
+    // 골드 확인
+    const userMoney = await UserMoneyModel.findOne({ userUuid });
+    if (!userMoney || userMoney.money < upgradeCost) {
+      return res.status(400).json({ 
+        error: "골드가 부족합니다.",
+        required: upgradeCost,
+        current: userMoney?.money || 0
+      });
+    }
+    
+    // 골드 차감
+    await UserMoneyModel.findOneAndUpdate(
+      { userUuid },
+      { $inc: { money: -upgradeCost } },
+      { new: true }
+    );
+    
+    // 스탯 업그레이드
+    userStats[statType] += 1;
+    await userStats.save();
+    
+    console.log(`${username} upgraded ${statType} to level ${userStats[statType]} (cost: ${upgradeCost}G)`);
+    
+    res.json({
+      success: true,
+      userStats: {
+        health: userStats.health,
+        attack: userStats.attack,
+        speed: userStats.speed
+      },
+      newMoney: userMoney.money - upgradeCost,
+      upgradedStat: statType,
+      newLevel: userStats[statType],
+      cost: upgradeCost
+    });
+    
+  } catch (error) {
+    console.error("Failed to upgrade user stats:", error);
+    res.status(500).json({ error: "스탯 업그레이드에 실패했습니다." });
   }
 });
 
@@ -7133,28 +7349,47 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
     const queryResult = await getUserQuery('user', username, userUuid);
     let query = queryResult.userUuid ? { userUuid: queryResult.userUuid } : queryResult;
     
-    // 🚀 사용자 장비 및 스킬 정보 병렬로 가져오기 (성능 최적화)
-    const [userEquipment, fishingSkillData] = await Promise.all([
+    // 🚀 사용자 장비, 스킬, 스탯 정보 병렬로 가져오기 (성능 최적화)
+    const [userEquipment, fishingSkillData, userStats] = await Promise.all([
       UserEquipmentModel.findOne(query),
-      FishingSkillModel.findOne(query)
+      FishingSkillModel.findOne(query),
+      UserStatsModel.findOne(query)
     ]);
-    const fishingSkill = fishingSkillData ? fishingSkillData.skill : 0;
+    const baseSkill = fishingSkillData ? fishingSkillData.skill : 0;
+    
+    // 🏆 업적 보너스 계산 및 최종 낚시실력 산정
+    let achievementBonus = 0;
+    try {
+      const targetUserUuid = queryResult.userUuid || userUuid;
+      if (targetUserUuid) {
+        achievementBonus = await achievementSystem.calculateAchievementBonus(targetUserUuid);
+      }
+    } catch (error) {
+      console.error("Failed to calculate achievement bonus for exploration:", error);
+    }
+    
+    const fishingSkill = baseSkill + achievementBonus;
+    console.log(`🎣 탐사 전투 낚시실력 - 기본: ${baseSkill}, 업적보너스: ${achievementBonus}, 최종: ${fishingSkill}`);
     
     // 서버에서 전투 상태 계산
     const fishHealthMap = getServerFishHealthMap();
     const prefixData = getServerPrefixData();
     const accessoryLevel = getServerAccessoryLevel(userEquipment?.accessory);
     
-    // 강화 보너스 계산 (내정보 탭과 동일)
+    // 강화 보너스 계산 (내정보 탭과 동일) + 🌟 유저 스탯
     const accessoryEnhancement = userEquipment?.accessoryEnhancement || 0;
     const accessoryEnhancementBonus = calculateServerTotalEnhancementBonus(accessoryEnhancement);
-    const playerMaxHp = calculateServerPlayerMaxHp(accessoryLevel, accessoryEnhancementBonus);
+    const basePlayerMaxHp = calculateServerPlayerMaxHp(accessoryLevel, accessoryEnhancementBonus);
+    const healthStatBonus = accessoryLevel * (userStats?.health || 0) * 10; // 🌟 악세사리 index × 성장 레벨 × 10
+    const playerMaxHp = basePlayerMaxHp + healthStatBonus;
     
     console.log(`[EXPLORATION HP] ${username}:`, {
       accessory: userEquipment?.accessory,
       accessoryLevel: accessoryLevel,
       accessoryEnhancement: accessoryEnhancement,
       accessoryEnhancementBonus: accessoryEnhancementBonus,
+      basePlayerMaxHp: basePlayerMaxHp,
+      healthStatBonus: healthStatBonus,
       playerMaxHp: playerMaxHp
     });
     
@@ -7206,6 +7441,16 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
     const fishingRodEnhancement = userEquipment?.fishingRodEnhancement || 0;
     const fishingRodEnhancementBonus = calculateServerTotalEnhancementBonus(fishingRodEnhancement);
     
+    // 🌟 낚시대 인덱스 계산
+    const fishingRods = [
+      '나무낚시대', '낡은낚시대', '기본낚시대', '단단한낚시대', '은낚시대', '금낚시대',
+      '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대', '레드다이아몬드낚시대',
+      '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산호등낚시대', '피크닉', '마녀빗자루',
+      '에테르낚시대', '별조각낚시대', '여우꼬리낚시대', '초콜릿롤낚시대', '호박유령낚시대',
+      '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
+    ];
+    const fishingRodIndex = fishingRods.indexOf(userEquipment?.fishingRod) >= 0 ? fishingRods.indexOf(userEquipment?.fishingRod) : 0;
+    
     const battleState = {
       enemies: enemies,
       playerHp: playerMaxHp,
@@ -7221,7 +7466,9 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
       fishingRodEnhancement: fishingRodEnhancement, // 낚시대 강화 레벨
       fishingRodEnhancementBonus: fishingRodEnhancementBonus, // 낚시대 강화 보너스 (%)
       accessoryEnhancement: accessoryEnhancement, // 악세사리 강화 레벨
-      accessoryEnhancementBonus: accessoryEnhancementBonus // 악세사리 강화 보너스 (%)
+      accessoryEnhancementBonus: accessoryEnhancementBonus, // 악세사리 강화 보너스 (%)
+      attackStat: userStats?.attack || 0, // 🌟 공격력 스탯
+      fishingRodIndex: fishingRodIndex // 🌟 낚시대 인덱스
     };
     
     const enemyNames = enemies.map(e => e.name).join(', ');
@@ -7257,9 +7504,12 @@ app.post("/api/battle-attack", authenticateJWT, async (req, res) => {
     let battleLog = [];
     
     if (attackType === 'player' && newBattleState.turn === 'player') {
-      // 플레이어 공격 (서버에서 계산) - 강화 보너스 적용
+      // 플레이어 공격 (서버에서 계산) - 강화 보너스 + 🌟 유저 스탯 적용
       const enhancementBonus = newBattleState.fishingRodEnhancementBonus || 0;
-      const damage = calculateServerPlayerAttack(newBattleState.fishingSkill, enhancementBonus);
+      const fishingRodIndex = newBattleState.fishingRodIndex || 0;
+      const attackStatBonus = fishingRodIndex * (newBattleState.attackStat || 0); // 🌟 낚시대 index × 성장 레벨
+      const baseDamage = calculateServerPlayerAttack(newBattleState.fishingSkill, enhancementBonus);
+      const damage = baseDamage + attackStatBonus;
       
       // 살아있는 적 찾기
       const aliveEnemies = newBattleState.enemies.filter(e => e.isAlive);
@@ -8393,10 +8643,7 @@ app.post("/api/clicker/reward", authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: "Invalid difficulty. Must be between 1 and 10." });
     }
     
-    // 난이도 기반 보상 설정
-    let rewardFish = [];
-    
-    // 보상 물고기 개수 계산
+    // 보상 물고기 개수 계산 (골드 계산을 위해 유지)
     // 난이도 1: 1마리 고정
     // 난이도 2: 1~2마리
     // 난이도 3: 2~3마리
@@ -8412,26 +8659,23 @@ app.post("/api/clicker/reward", authenticateJWT, async (req, res) => {
     const maxRank = fishRank;
     
     // 해당 등급 범위의 물고기 필터링
-    const availableFish = allFishData.filter(f => f.rank >= minRank && f.rank <= maxRank && f.rank > 0);
+    let availableFish = allFishData.filter(f => f.rank >= minRank && f.rank <= maxRank && f.rank > 0);
     
     // 보상이 없는 경우 처리
     if (availableFish.length === 0) {
-      const fallbackFish = allFishData.filter(f => f.rank >= 1 && f.rank <= 2);
-      if (fallbackFish.length > 0) {
-        availableFish.push(...fallbackFish);
-      }
+      availableFish = allFishData.filter(f => f.rank >= 1 && f.rank <= 2);
     }
     
-    // 보상 물고기 선택 (같은 물고기면 합산)
+    let goldReward = 0;
+    
+    // 보상 물고기 선택 및 골드로 변환 (물고기 가격의 5%)
     if (availableFish.length > 0) {
       const selectedFish = availableFish[Math.floor(Math.random() * availableFish.length)];
-      rewardFish.push({ 
-        name: selectedFish.name, 
-        count: rewardCount  // 개수를 합산해서 한 번에 지급
-      });
+      const totalFishValue = selectedFish.price * rewardCount;
+      goldReward = Math.floor(totalFishValue * 0.05);  // 물고기 가격의 5%
     }
     
-    // 보상 지급
+    // 골드 지급
     const queryResult = await getUserQuery('user', username, userUuid);
     let query;
     if (queryResult.userUuid) {
@@ -8440,21 +8684,12 @@ app.post("/api/clicker/reward", authenticateJWT, async (req, res) => {
       query = queryResult;
     }
     
-    // 각 물고기를 인벤토리에 추가 (upsert로 race condition 방지)
-    for (const reward of rewardFish) {
-      await CatchModel.updateOne(
+    // 골드를 유저에게 지급
+    if (goldReward > 0) {
+      await UserMoneyModel.updateOne(
+        query,
         {
-          ...query,
-          fish: reward.name
-        },
-        {
-          $inc: { count: reward.count },
-          $setOnInsert: {
-            userId: query.userId || 'user',
-            username: query.username || username,
-            userUuid: query.userUuid || userUuid,
-            fish: reward.name
-          }
+          $inc: { money: goldReward }
         },
         { upsert: true }
       );
@@ -8480,7 +8715,7 @@ app.post("/api/clicker/reward", authenticateJWT, async (req, res) => {
     
     res.json({
       success: true,
-      rewards: rewardFish
+      goldReward: goldReward
     });
   } catch (error) {
     console.error("Failed to give clicker reward:", error);
@@ -8712,15 +8947,18 @@ app.post("/api/sell-all-fish", authenticateJWT, async (req, res) => {
 // Item Buying API (재료 기반 구매 시스템 - 서버에서 재료 검증 + JWT 인증)
 app.post("/api/buy-item", authenticateJWT, async (req, res) => {
   try {
-    const { itemName, material: clientMaterial, materialCount: clientMaterialCount, category } = req.body;
+    const { itemName, material: clientMaterial, materialCount: clientMaterialCount, category, purchaseQuantity: clientPurchaseQuantity } = req.body;
     // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
     const { userUuid, username } = req.user;
+    
+    const purchaseQuantity = clientPurchaseQuantity || 1; // 구매 횟수 (기본값 1)
     
     console.log("=== BUY ITEM REQUEST (MATERIAL-BASED) ===");
     console.log("Item:", itemName);
     console.log("Material:", clientMaterial);
     console.log("Material Count:", clientMaterialCount);
     console.log("Category:", category);
+    console.log("Purchase Quantity:", purchaseQuantity);
     console.log("Username:", username);
     console.log("UserUuid (decoded):", userUuid);
     
@@ -8840,23 +9078,24 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
     // 🎯 재료 확인 및 차감 (골드 구매가 아닐 때만, 별조각과 일반 재료 구분)
     if (!isGoldPurchase) {
       let userMaterialCount = 0;
+      const totalRequiredCount = requiredCount * purchaseQuantity; // 총 필요 재료 = 단위당 재료 * 구매 횟수
       
       if (requiredMaterial === '별조각') {
         // 별조각인 경우 StarPieceModel에서 확인
         const userStarPieces = await StarPieceModel.findOne(query);
         userMaterialCount = userStarPieces?.starPieces || 0;
         
-        if (userMaterialCount < requiredCount) {
-          console.log(`Star pieces shortage: User has ${userMaterialCount}, needs ${requiredCount}`);
+        if (userMaterialCount < totalRequiredCount) {
+          console.log(`Star pieces shortage: User has ${userMaterialCount}, needs ${totalRequiredCount}`);
           return res.status(400).json({ error: "Not enough star pieces" });
         }
         
         // 별조각 차감
         await StarPieceModel.updateOne(
           query,
-          { $inc: { starPieces: -requiredCount } }
+          { $inc: { starPieces: -totalRequiredCount } }
         );
-        console.log(`Star pieces reduced by ${requiredCount} (${userMaterialCount} → ${userMaterialCount - requiredCount})`);
+        console.log(`Star pieces reduced by ${totalRequiredCount} (${userMaterialCount} → ${userMaterialCount - totalRequiredCount})`);
       } else {
         // 일반 재료인 경우 MaterialModel에서 확인
         const userMaterial = await MaterialModel.findOne({
@@ -8866,13 +9105,13 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
         
         userMaterialCount = userMaterial?.count || 0;
         
-        if (userMaterialCount < requiredCount) {
-          console.log(`Material shortage: User has ${userMaterialCount}, needs ${requiredCount}`);
+        if (userMaterialCount < totalRequiredCount) {
+          console.log(`Material shortage: User has ${userMaterialCount}, needs ${totalRequiredCount}`);
           return res.status(400).json({ error: "Not enough materials" });
         }
         
         // 재료 차감 (count 필드 업데이트)
-        const newCount = userMaterialCount - requiredCount;
+        const newCount = userMaterialCount - totalRequiredCount;
         
         if (newCount <= 0) {
           // 남은 개수가 0 이하면 document 삭제
@@ -8882,9 +9121,9 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
           // 남은 개수가 있으면 count만 업데이트
           await MaterialModel.updateOne(
             { ...query, material: requiredMaterial },
-            { $inc: { count: -requiredCount } }
+            { $inc: { count: -totalRequiredCount } }
           );
-          console.log(`Material ${requiredMaterial} reduced by ${requiredCount} (${userMaterialCount} → ${newCount})`);
+          console.log(`Material ${requiredMaterial} reduced by ${totalRequiredCount} (${userMaterialCount} → ${newCount})`);
         }
       }
     }
@@ -9009,7 +9248,8 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
     if (category === 'items') {
       if (itemName === '연금술포션') {
         // 서버 데이터에서 구매 시 받는 개수 확인
-        const purchaseCount = serverItem.count || 10; // 별조각 1개로 10개 구매
+        const baseCount = serverItem.count || 10; // 별조각 1개로 10개 구매
+        const totalPurchaseCount = baseCount * purchaseQuantity; // 총 구매 개수
         
         let userPotions = await AlchemyPotionModel.findOne(query);
         
@@ -9018,14 +9258,35 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
             userId: query.userId || 'user',
             username: query.username || username,
             userUuid: query.userUuid || userUuid,
-            alchemyPotions: purchaseCount
+            alchemyPotions: totalPurchaseCount
           };
           userPotions = await AlchemyPotionModel.create(createData);
-          console.log(`연금술포션 최초 구매: ${purchaseCount}개`, createData);
+          console.log(`연금술포션 최초 구매: ${totalPurchaseCount}개 (${purchaseQuantity}회)`, createData);
         } else {
-          userPotions.alchemyPotions += purchaseCount;
+          userPotions.alchemyPotions += totalPurchaseCount;
           await userPotions.save();
-          console.log(`연금술포션 구매: +${purchaseCount}개 (총 ${userPotions.alchemyPotions}개 보유)`);
+          console.log(`연금술포션 구매: +${totalPurchaseCount}개 (${purchaseQuantity}회, 총 ${userPotions.alchemyPotions}개 보유)`);
+        }
+      } else if (itemName === '자동미끼') {
+        // 서버 데이터에서 구매 시 받는 개수 확인
+        const baseCount = serverItem.count || 30; // 별조각 1개로 30개 구매
+        const totalPurchaseCount = baseCount * purchaseQuantity; // 총 구매 개수
+        
+        let userBaits = await AutoBaitModel.findOne(query);
+        
+        if (!userBaits) {
+          const createData = {
+            userId: query.userId || 'user',
+            username: query.username || username,
+            userUuid: query.userUuid || userUuid,
+            autoBaitCount: totalPurchaseCount
+          };
+          userBaits = await AutoBaitModel.create(createData);
+          console.log(`자동미끼 최초 구매: ${totalPurchaseCount}개 (${purchaseQuantity}회)`, createData);
+        } else {
+          userBaits.autoBaitCount += totalPurchaseCount;
+          await userBaits.save();
+          console.log(`자동미끼 구매: +${totalPurchaseCount}개 (${purchaseQuantity}회, 총 ${userBaits.autoBaitCount}개 보유)`);
         }
       }
     }
@@ -10646,14 +10907,15 @@ async function getUserProfileHandler(req, res) {
       // 🔐 다른 사용자의 프로필은 공개 정보 제공 (장비, 재산 정보 포함)
       console.log(`🔐 Returning public profile for ${username} to ${requesterUsername}`);
       
-      // 모든 공개 정보 병렬 조회 (업적 보너스 포함)
-      const [userMoney, userAmber, userEquipment, fishingSkillData, totalCatches, achievementBonus] = await Promise.all([
+      // 모든 공개 정보 병렬 조회 (업적 보너스 + 🌟 유저 스탯 포함)
+      const [userMoney, userAmber, userEquipment, fishingSkillData, totalCatches, achievementBonus, userStats] = await Promise.all([
         UserMoneyModel.findOne({ userUuid: user.userUuid }),
         UserAmberModel.findOne({ userUuid: user.userUuid }),
         UserEquipmentModel.findOne({ userUuid: user.userUuid }),
         FishingSkillModel.findOne({ userUuid: user.userUuid }),
         CatchModel.countDocuments({ userUuid: user.userUuid }),
-        achievementSystem.calculateAchievementBonus(user.userUuid)
+        achievementSystem.calculateAchievementBonus(user.userUuid),
+        UserStatsModel.findOne({ userUuid: user.userUuid })
       ]);
       
       return res.json({
@@ -10675,6 +10937,11 @@ async function getUserProfileHandler(req, res) {
           achievementBonus: achievementBonus || 0,
           totalSkill: (fishingSkillData?.skill || 0) + (achievementBonus || 0)
         },
+        userStats: { // 🌟 유저 성장 스탯 공개
+          health: userStats?.health || 0,
+          attack: userStats?.attack || 0,
+          speed: userStats?.speed || 0
+        },
         totalFishCaught: user.totalFishCaught || 0,
         totalCatches: totalCatches || 0,
         createdAt: user.createdAt
@@ -10684,13 +10951,14 @@ async function getUserProfileHandler(req, res) {
     // 🔐 본인 프로필이거나 관리자인 경우 상세 정보 제공
     console.log(`🔐 Returning detailed profile for ${username} to ${requesterUsername} (${isOwnProfile ? 'own' : 'admin'})`);
     
-    const [userMoney, userAmber, userEquipment, fishingSkillData, totalCatches, achievementBonus] = await Promise.all([
+    const [userMoney, userAmber, userEquipment, fishingSkillData, totalCatches, achievementBonus, userStats] = await Promise.all([
       UserMoneyModel.findOne({ userUuid: user.userUuid }),
       UserAmberModel.findOne({ userUuid: user.userUuid }),
       UserEquipmentModel.findOne({ userUuid: user.userUuid }),
       FishingSkillModel.findOne({ userUuid: user.userUuid }),
       CatchModel.countDocuments({ userUuid: user.userUuid }),
-      achievementSystem.calculateAchievementBonus(user.userUuid)
+      achievementSystem.calculateAchievementBonus(user.userUuid),
+      UserStatsModel.findOne({ userUuid: user.userUuid })
     ]);
     
     const profileData = {
@@ -10712,6 +10980,11 @@ async function getUserProfileHandler(req, res) {
         baseSkill: fishingSkillData?.skill || 0,
         achievementBonus: achievementBonus || 0,
         totalSkill: (fishingSkillData?.skill || 0) + (achievementBonus || 0)
+      },
+      userStats: { // 🌟 유저 성장 스탯
+        health: userStats?.health || 0,
+        attack: userStats?.attack || 0,
+        speed: userStats?.speed || 0
       },
       totalCatches: totalCatches || 0,
       totalFishCaught: user.totalFishCaught || 0,
@@ -10742,14 +11015,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.404"
+    version: "v1.405"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.404",
+    version: "v1.405",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
@@ -12254,7 +12527,7 @@ function authenticateOptionalJWT(req, res, next) {
 }
 
 // 레이드 라우터 등록
-  const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel, CooldownModel, StarPieceModel, RaidDamageModel, RareFishCountModel, CatchModel, RaidKillCountModel, UserEquipmentModel);
+  const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel, CooldownModel, StarPieceModel, RaidDamageModel, RareFishCountModel, CatchModel, RaidKillCountModel, UserEquipmentModel, UserStatsModel);
   app.use("/api/raid", raidRouter);
 
 // 원정 라우터 등록
@@ -12262,8 +12535,11 @@ app.use((req, res, next) => {
   req.io = io;
   next();
 });
-const expeditionRouter = setupExpeditionRoutes(authenticateJWT, CompanionStatsModel, FishingSkillModel, UserEquipmentModel, EtherKeyModel);
+const expeditionRouter = setupExpeditionRoutes(authenticateJWT, CompanionStatsModel, FishingSkillModel, UserEquipmentModel, EtherKeyModel, UserStatsModel);
 app.use("/api/expedition", expeditionRouter);
+
+// 항해 라우터 등록
+setupVoyageRoutes(app, UserMoneyModel, CatchModel);
 
 // 업적 라우터 등록
 const { router: achievementRouter } = setupAchievementRoutes(authenticateJWT, UserUuidModel, CatchModel, FishingSkillModel, RaidDamageModel, RareFishCountModel);
