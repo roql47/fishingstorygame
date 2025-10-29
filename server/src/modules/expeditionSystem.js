@@ -1,13 +1,14 @@
 const { getFishData, getFishHealthData, getPrefixData } = require('../data/gameData');
 
 class ExpeditionSystem {
-    constructor(EtherKeyModel, CompanionStatsModel, UserStatsModel) {
+    constructor(EtherKeyModel, CompanionStatsModel, UserStatsModel, DailyQuestModel) {
         this.expeditionRooms = new Map(); // roomId -> room data
         this.playerRooms = new Map(); // playerId -> roomId
         this.roomCounter = 1;
         this.EtherKeyModel = EtherKeyModel; // 에테르 열쇠 모델
         this.CompanionStatsModel = CompanionStatsModel; // 동료 능력치 모델
         this.UserStatsModel = UserStatsModel; // 🌟 유저 성장 스탯 모델
+        this.DailyQuestModel = DailyQuestModel; // 일일 퀘스트 모델 (NEW)
         this.claimingRewards = new Set(); // 🔒 보상 수령 중인 사용자 UUID 추적 (중복 방지)
         
         // 게임 데이터 캐싱
@@ -2114,8 +2115,73 @@ class ExpeditionSystem {
         // 동료 경험치 지급
         await this.grantCompanionExperience(room);
         
+        // 🎯 항해 승리 퀘스트 진행도 업데이트 (각 플레이어에게)
+        if (this.DailyQuestModel) {
+            for (const player of room.players) {
+                try {
+                    await this.updateVoyageQuestProgress(player.userUuid);
+                } catch (error) {
+                    console.error(`[EXPEDITION] Failed to update quest for player ${player.username}:`, error);
+                }
+            }
+        }
+        
         room.battleState.battleLog.push('🎉 승리! 모든 몬스터를 물리쳤습니다!');
         room.battleState.battleLog.push(`보상: ${rewards.map(r => `${r.fishName} x${r.quantity}`).join(', ')}`);
+    }
+    
+    // 항해 승리 퀘스트 진행도 업데이트
+    async updateVoyageQuestProgress(userUuid) {
+        if (!this.DailyQuestModel) return;
+        
+        try {
+            // 한국 시간 기준 오늘 날짜 계산
+            const now = new Date();
+            const kstTime = new Date(now.getTime() + (9 * 60 * 60 * 1000));
+            const today = kstTime.toISOString().split('T')[0];
+            
+            let dailyQuest = await this.DailyQuestModel.findOne({ userUuid });
+            
+            // 퀘스트가 없거나 날짜가 다르면 새로 생성/리셋
+            if (!dailyQuest || dailyQuest.lastResetDate !== today) {
+                dailyQuest = await this.DailyQuestModel.findOneAndUpdate(
+                    { userUuid },
+                    {
+                        $set: {
+                            userUuid,
+                            fishCaught: 0,
+                            explorationWins: 0,
+                            fishSold: 0,
+                            voyageWins: 1,
+                            questFishCaught: false,
+                            questExplorationWin: false,
+                            questFishSold: false,
+                            questVoyageWin: false,
+                            lastResetDate: today
+                        }
+                    },
+                    { upsert: true, new: true }
+                );
+                console.log(`[EXPEDITION] Quest progress updated for ${userUuid}: voyageWins = 1`);
+            } else {
+                // 기존 퀘스트 업데이트
+                const newVoyageWins = Math.min(dailyQuest.voyageWins + 1, 5);
+                const questCompleted = newVoyageWins >= 5;
+                
+                await this.DailyQuestModel.findOneAndUpdate(
+                    { userUuid },
+                    {
+                        $set: {
+                            voyageWins: newVoyageWins,
+                            questVoyageWin: questCompleted || dailyQuest.questVoyageWin
+                        }
+                    }
+                );
+                console.log(`[EXPEDITION] Quest progress updated for ${userUuid}: voyageWins = ${newVoyageWins}`);
+            }
+        } catch (error) {
+            console.error('[EXPEDITION] Failed to update voyage quest:', error);
+        }
     }
     
     // 동료 경험치 지급 함수

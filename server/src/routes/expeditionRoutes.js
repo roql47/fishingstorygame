@@ -2,9 +2,9 @@ const express = require('express');
 const ExpeditionSystem = require('../modules/expeditionSystem');
 
 // 원정 라우트 설정 함수
-function setupExpeditionRoutes(authenticateJWT, CompanionStatsModel, FishingSkillModel, UserEquipmentModel, EtherKeyModel, UserStatsModel) {
+function setupExpeditionRoutes(authenticateJWT, CompanionStatsModel, FishingSkillModel, UserEquipmentModel, EtherKeyModel, UserStatsModel, DailyQuestModel) {
     const router = express.Router();
-    const expeditionSystem = new ExpeditionSystem(EtherKeyModel, CompanionStatsModel, UserStatsModel);
+    const expeditionSystem = new ExpeditionSystem(EtherKeyModel, CompanionStatsModel, UserStatsModel, DailyQuestModel);
 
 // 원정 지역 목록 조회
 router.get('/areas', (req, res) => {

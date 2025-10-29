@@ -1286,6 +1286,14 @@ const UserUuidModel = mongoose.model("UserUuid", userUuidSchema);
 const { AchievementModel, AchievementSystem } = require('./modules/achievementSystem');
 const { setupAchievementRoutes } = require('./routes/achievementRoutes');
 
+// 한국 시간(KST) 기준 날짜 계산 함수
+const getKSTDate = () => {
+  const now = new Date();
+  // UTC 시간에 9시간(한국 시간 오프셋) 추가
+  const kstTime = new Date(now.getTime() + (9 * 60 * 60 * 1000));
+  return kstTime.toISOString().split('T')[0]; // YYYY-MM-DD
+};
+
 // [Quest] Daily Quest Schema (일일 퀘스트 시스템)
 const dailyQuestSchema = new mongoose.Schema(
   {
@@ -1297,14 +1305,16 @@ const dailyQuestSchema = new mongoose.Schema(
     fishCaught: { type: Number, default: 0 }, // 물고기 잡은 수
     explorationWins: { type: Number, default: 0 }, // 탐사 승리 수
     fishSold: { type: Number, default: 0 }, // 물고기 판매 수
+    voyageWins: { type: Number, default: 0 }, // 항해 승리 수 (NEW)
     
     // 퀴스트 완료 여부
     questFishCaught: { type: Boolean, default: false }, // 물고기 10마리 잡기 완료
     questExplorationWin: { type: Boolean, default: false }, // 탐사 승리 완료
     questFishSold: { type: Boolean, default: false }, // 물고기 10회 판매 완료
+    questVoyageWin: { type: Boolean, default: false }, // 항해 승리 5회 완료 (NEW)
     
     // 리셋 날짜 (자정 리셋용)
-    lastResetDate: { type: String, required: true } // YYYY-MM-DD 형식
+    lastResetDate: { type: String, required: true } // YYYY-MM-DD 형식 (KST 기준)
   },
   { timestamps: { createdAt: true, updatedAt: true } }
 );
@@ -8127,7 +8137,7 @@ app.get("/api/daily-quests/:userId", async (req, res) => {
       query = queryResult;
     }
     
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const today = getKSTDate(); // 한국 시간 기준 날짜
     
     let dailyQuest = await DailyQuestModel.findOne(query);
     
@@ -8147,9 +8157,11 @@ app.get("/api/daily-quests/:userId", async (req, res) => {
         fishCaught: 0,
         explorationWins: 0,
         fishSold: 0,
+        voyageWins: 0,
         questFishCaught: false,
         questExplorationWin: false,
         questFishSold: false,
+        questVoyageWin: false,
         lastResetDate: today
       };
       
@@ -8157,7 +8169,7 @@ app.get("/api/daily-quests/:userId", async (req, res) => {
         // 기존 데이터 업데이트 (리셋)
         await DailyQuestModel.findOneAndUpdate(query, createData);
         dailyQuest = await DailyQuestModel.findOne(query);
-        console.log("[Quest] Daily quests reset for user:", username);
+        console.log("[Quest] Daily quests reset for user (KST):", username);
       } else {
         // 새 사용자 생성
         dailyQuest = await DailyQuestModel.create(createData);
@@ -8194,6 +8206,15 @@ app.get("/api/daily-quests/:userId", async (req, res) => {
           target: 10,
           completed: dailyQuest.questFishSold,
           reward: '호박석 10개'
+        },
+        {
+          id: 'voyage_win',
+          name: '항해에서 물고기 포획하기',
+          description: '항해전투에서 5회 승리하세요',
+          progress: dailyQuest.voyageWins,
+          target: 5,
+          completed: dailyQuest.questVoyageWin,
+          reward: '별조각 1개'
         }
       ],
       lastResetDate: dailyQuest.lastResetDate
@@ -8223,7 +8244,7 @@ app.post("/api/update-quest-progress", authenticateJWT, async (req, res) => {
       query = queryResult;
     }
     
-    const today = new Date().toISOString().split('T')[0];
+    const today = getKSTDate(); // 한국 시간 기준 날짜
     
     let dailyQuest = await DailyQuestModel.findOne(query);
     if (!dailyQuest || dailyQuest.lastResetDate !== today) {
@@ -8242,9 +8263,11 @@ app.post("/api/update-quest-progress", authenticateJWT, async (req, res) => {
         fishCaught: 0,
         explorationWins: 0,
         fishSold: 0,
+        voyageWins: 0,
         questFishCaught: false,
         questExplorationWin: false,
         questFishSold: false,
+        questVoyageWin: false,
         lastResetDate: today
       };
       
@@ -8271,6 +8294,12 @@ app.post("/api/update-quest-progress", authenticateJWT, async (req, res) => {
         updateData.fishSold = Math.min(dailyQuest.fishSold + amount, 10);
         if (updateData.fishSold >= 10 && !dailyQuest.questFishSold) {
           updateData.questFishSold = true;
+        }
+        break;
+      case 'voyage_win':
+        updateData.voyageWins = Math.min(dailyQuest.voyageWins + amount, 5);
+        if (updateData.voyageWins >= 5 && !dailyQuest.questVoyageWin) {
+          updateData.questVoyageWin = true;
         }
         break;
       default:
@@ -8356,6 +8385,14 @@ app.post("/api/claim-quest-reward", authenticateJWT, async (req, res) => {
         rewardAmount = 10;
         if (canClaim) {
           await DailyQuestModel.findOneAndUpdate(query, { questFishSold: true });
+        }
+        break;
+      case 'voyage_win':
+        canClaim = dailyQuest.voyageWins >= 5 && !dailyQuest.questVoyageWin;
+        rewardType = 'starPieces'; // 별조각
+        rewardAmount = 1; // 1개
+        if (canClaim) {
+          await DailyQuestModel.findOneAndUpdate(query, { questVoyageWin: true });
         }
         break;
       default:
@@ -12535,7 +12572,7 @@ app.use((req, res, next) => {
   req.io = io;
   next();
 });
-const expeditionRouter = setupExpeditionRoutes(authenticateJWT, CompanionStatsModel, FishingSkillModel, UserEquipmentModel, EtherKeyModel, UserStatsModel);
+const expeditionRouter = setupExpeditionRoutes(authenticateJWT, CompanionStatsModel, FishingSkillModel, UserEquipmentModel, EtherKeyModel, UserStatsModel, DailyQuestModel);
 app.use("/api/expedition", expeditionRouter);
 
 // 항해 라우터 등록
@@ -13252,47 +13289,51 @@ async function bootstrap() {
       debugLog("Index optimization:", indexError.message);
     }
     
-    // [Quest] 자정 리셋 시스템 초기화
+    // [Quest] 자정 리셋 시스템 초기화 (한국 시간 기준)
     const resetDailyQuests = async () => {
       try {
-        const today = new Date().toISOString().split('T')[0];
+        const today = getKSTDate(); // 한국 시간 기준 날짜
         const result = await DailyQuestModel.updateMany(
           { lastResetDate: { $ne: today } },
           {
             fishCaught: 0,
             explorationWins: 0,
             fishSold: 0,
+            voyageWins: 0,
             questFishCaught: false,
             questExplorationWin: false,
             questFishSold: false,
+            questVoyageWin: false,
             lastResetDate: today
           }
         );
         
         if (result.modifiedCount > 0) {
-          console.log(`[Quest] Daily quests reset for ${result.modifiedCount} users`);
+          console.log(`[Quest] Daily quests reset for ${result.modifiedCount} users (KST)`);
         }
       } catch (error) {
         console.error('Failed to reset daily quests:', error);
       }
     };
     
-    // 매일 자정에 리셋 스케줄링
+    // 매일 한국 시간 자정에 리셋 스케줄링
     const scheduleQuestReset = () => {
       const now = new Date();
-      const tomorrow = new Date(now);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(0, 0, 0, 0); // 자정으로 설정
+      const kstNow = new Date(now.getTime() + (9 * 60 * 60 * 1000)); // 한국 시간
+      const kstTomorrow = new Date(kstNow);
+      kstTomorrow.setDate(kstTomorrow.getDate() + 1);
+      kstTomorrow.setHours(0, 0, 0, 0); // 한국 시간 자정
       
-      const timeUntilMidnight = tomorrow.getTime() - now.getTime();
+      // UTC 기준으로 되돌리기
+      const timeUntilMidnightKST = kstTomorrow.getTime() - kstNow.getTime();
       
       setTimeout(() => {
         resetDailyQuests();
         // 24시간마다 반복
         setInterval(resetDailyQuests, 24 * 60 * 60 * 1000);
-      }, timeUntilMidnight);
+      }, timeUntilMidnightKST);
       
-      console.log(`[Quest] Next quest reset scheduled in ${Math.round(timeUntilMidnight / 1000 / 60)} minutes`);
+      console.log(`[Quest] Next quest reset scheduled in ${Math.round(timeUntilMidnightKST / 1000 / 60)} minutes (KST 00:00)`);
     };
     
     // 리셋 스케줄링 시작

@@ -16,39 +16,33 @@ const setupVoyageRoutes = (app, UserMoneyModel, CatchModel) => {
         });
       }
 
-      // 골드 지급
-      let moneyDoc = await UserMoneyModel.findOne({ userUuid });
-      
-      if (!moneyDoc) {
-        // 문서가 없으면 새로 생성
-        moneyDoc = new UserMoneyModel({
-          userUuid,
-          username,
-          money: gold
-        });
-      } else {
-        moneyDoc.money += gold;
-      }
-      
-      await moneyDoc.save();
+      // 🎯 골드 지급 (원자적 연산으로 race condition 방지)
+      const moneyDoc = await UserMoneyModel.findOneAndUpdate(
+        { userUuid },
+        {
+          $inc: { money: gold },
+          $setOnInsert: {
+            userUuid,
+            username
+          }
+        },
+        { upsert: true, new: true }
+      );
 
-      // 물고기 지급 (이미 있으면 count 증가, 없으면 새로 생성)
-      let fishDoc = await CatchModel.findOne({ userUuid, fish: fishName });
-      
-      if (fishDoc) {
-        // 이미 존재하면 count 증가
-        fishDoc.count += 1;
-        await fishDoc.save();
-      } else {
-        // 없으면 새로 생성
-        fishDoc = new CatchModel({
-          userUuid,
-          username,
-          fish: fishName,
-          count: 1
-        });
-        await fishDoc.save();
-      }
+      // 🎯 물고기 지급 (원자적 연산으로 race condition 방지)
+      const fishDoc = await CatchModel.findOneAndUpdate(
+        { userUuid, fish: fishName },
+        {
+          $inc: { count: 1 },
+          $setOnInsert: {
+            userUuid,
+            username,
+            fish: fishName,
+            probability: 1.0
+          }
+        },
+        { upsert: true, new: true }
+      );
 
       console.log(`[VOYAGE] ${username} - ${fishName} 전투 완료: +${gold}G, +1 ${fishName}`);
 
@@ -56,7 +50,7 @@ const setupVoyageRoutes = (app, UserMoneyModel, CatchModel) => {
         success: true,
         gold: moneyDoc.money,
         fishName,
-        count: 1
+        count: fishDoc.count
       });
     } catch (error) {
       console.error('[VOYAGE] 보상 지급 오류:', error);
