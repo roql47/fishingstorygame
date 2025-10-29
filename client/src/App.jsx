@@ -9643,7 +9643,7 @@ function App() {
                     }`}>Lv.{userStats.health}</div>
                     <div className={`text-sm ${
                       isDarkMode ? "text-gray-400" : "text-gray-600"
-                    }`}>효과: +{getAccessoryLevel(userEquipment.accessory) * userStats.health * 10} HP</div>
+                    }`}>효과: +{getAccessoryLevel(userEquipment.accessory) * userStats.health * 5} HP</div>
                   </div>
                 </div>
                 <button
@@ -11978,7 +11978,7 @@ function App() {
                             ];
                             const accessoryLevel = accessoryName ? accessories.indexOf(accessoryName) + 1 : 0;
                             const baseMaxHp = calculatePlayerMaxHp(accessoryLevel, enhancementBonus);
-                            const healthStatBonus = accessoryLevel * (otherUserData?.userStats?.health || 0) * 10;
+                            const healthStatBonus = accessoryLevel * (otherUserData?.userStats?.health || 0) * 5;
                             const maxHp = baseMaxHp + healthStatBonus;
                             return Math.floor(maxHp);
                           } else {
@@ -11986,7 +11986,7 @@ function App() {
                             const accessoryLevel = getAccessoryLevel(userEquipment.accessory);
                             const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement || 0);
                             const baseMaxHp = calculatePlayerMaxHp(accessoryLevel, enhancementBonus);
-                            const healthStatBonus = accessoryLevel * (userStats?.health || 0) * 10;
+                            const healthStatBonus = accessoryLevel * (userStats?.health || 0) * 5;
                             const maxHp = baseMaxHp + healthStatBonus;
                             return Math.floor(maxHp);
                           }
@@ -12014,7 +12014,7 @@ function App() {
                               const accessoryLevel = accessoryName ? accessories.indexOf(accessoryName) + 1 : 0;
                               const baseHp = calculatePlayerMaxHp(accessoryLevel, 0);
                               const enhancementHp = (baseHp * enhancementBonus / 100);
-                              const healthStatBonus = accessoryLevel * (otherUserData?.userStats?.health || 0) * 10;
+                              const healthStatBonus = accessoryLevel * (otherUserData?.userStats?.health || 0) * 5;
                               const totalHp = baseHp + enhancementHp + healthStatBonus;
                               
                               return (
@@ -12036,7 +12036,7 @@ function App() {
                               const enhancementBonus = calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement || 0);
                               const baseHp = calculatePlayerMaxHp(accessoryLevel, 0);
                               const enhancementHp = (baseHp * enhancementBonus / 100);
-                              const healthStatBonus = accessoryLevel * (userStats?.health || 0) * 10;
+                              const healthStatBonus = accessoryLevel * (userStats?.health || 0) * 5;
                               const totalHp = baseHp + enhancementHp + healthStatBonus;
                               
                               return (

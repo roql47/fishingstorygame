@@ -7380,7 +7380,7 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
     const accessoryEnhancement = userEquipment?.accessoryEnhancement || 0;
     const accessoryEnhancementBonus = calculateServerTotalEnhancementBonus(accessoryEnhancement);
     const basePlayerMaxHp = calculateServerPlayerMaxHp(accessoryLevel, accessoryEnhancementBonus);
-    const healthStatBonus = accessoryLevel * (userStats?.health || 0) * 10; // 🌟 악세사리 index × 성장 레벨 × 10
+    const healthStatBonus = accessoryLevel * (userStats?.health || 0) * 5; // 🌟 악세사리 index × 성장 레벨 × 5
     const playerMaxHp = basePlayerMaxHp + healthStatBonus;
     
     console.log(`[EXPLORATION HP] ${username}:`, {

@@ -66,7 +66,7 @@ const VoyageTab = ({
     const accessoryLevel = getAccessoryLevel(userEquipment.accessory);
     const accessoryEnhancementBonus = calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement || 0);
     const baseMaxHP = calculatePlayerMaxHp(accessoryLevel, accessoryEnhancementBonus);
-    const healthStatBonus = accessoryLevel * (userStats?.health || 0) * 10; // 🌟 악세사리 index × 성장 레벨 × 10
+    const healthStatBonus = accessoryLevel * (userStats?.health || 0) * 5; // 🌟 악세사리 index × 성장 레벨 × 5
     const playerMaxHP = baseMaxHP + healthStatBonus;
     
     // 2. 공격력: 낚시실력 3차방정식 + 낚시대 강화 보너스 + 🌟 유저 스탯

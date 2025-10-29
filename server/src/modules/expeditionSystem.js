@@ -353,7 +353,7 @@ class ExpeditionSystem {
             
             // 체력 계산: 내정보 탭과 동일하게 강화 보너스 포함 + 🌟 유저 스탯
             const baseMaxHp = this.calculatePlayerMaxHp(accessoryLevel, accessoryEnhancementBonus);
-            const healthStatBonus = accessoryLevel * (playerData?.healthStat || 0) * 10; // 🌟 악세사리 index × 성장 레벨 × 10
+            const healthStatBonus = accessoryLevel * (playerData?.healthStat || 0) * 5; // 🌟 악세사리 index × 성장 레벨 × 5
             const maxHp = baseMaxHp + healthStatBonus;
             
             playerHp[player.id] = maxHp;
@@ -1029,7 +1029,7 @@ class ExpeditionSystem {
                     const accessoryEnhancement = playerData?.accessoryEnhancement || 0;
                     const accessoryEnhancementBonus = this.calculateTotalEnhancementBonus(accessoryEnhancement);
                     const baseMaxHp = this.calculatePlayerMaxHp(accessoryLevel, accessoryEnhancementBonus);
-                    const healthStatBonus = accessoryLevel * (playerData?.healthStat || 0) * 10; // 🌟 악세사리 index × 성장 레벨 × 10
+                    const healthStatBonus = accessoryLevel * (playerData?.healthStat || 0) * 5; // 🌟 악세사리 index × 성장 레벨 × 5
                     const maxHp = baseMaxHp + healthStatBonus;
                     const hpRatio = currentHp / maxHp;
                     
