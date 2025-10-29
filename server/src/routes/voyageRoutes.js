@@ -30,8 +30,9 @@ const setupVoyageRoutes = (app, UserMoneyModel, CatchModel) => {
       );
 
       // 🎯 물고기 지급 (원자적 연산으로 race condition 방지)
+      // username도 쿼리 조건에 포함하여 unique index 충돌 방지
       const fishDoc = await CatchModel.findOneAndUpdate(
-        { userUuid, fish: fishName },
+        { userUuid, username, fish: fishName },
         {
           $inc: { count: 1 },
           $setOnInsert: {

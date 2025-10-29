@@ -610,6 +610,7 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
             }
             
             // 🎯 성능 최적화: upsert로 물고기 개수 증가 (document 1개만 사용)
+            // username도 쿼리 조건에 포함하여 unique index 충돌 방지
             const catchData = {
                 userUuid: userUuid,
                 username: username,
@@ -618,7 +619,7 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
             };
             
             await CatchModel.findOneAndUpdate(
-                { userUuid: userUuid, fish: reward.fishName },
+                { userUuid: userUuid, username: username, fish: reward.fishName },
                 {
                     $inc: { count: reward.quantity },
                     $setOnInsert: catchData

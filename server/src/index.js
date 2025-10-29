@@ -3671,7 +3671,11 @@ io.on("connection", (socket) => {
         // 📦 인벤토리 제한 확인 (물고기 잡을 때)
         let inventoryQuery;
         if (catchData.userUuid) {
-          inventoryQuery = { userUuid: catchData.userUuid };
+          // username도 포함하여 unique index 충돌 방지
+          inventoryQuery = { 
+            userUuid: catchData.userUuid,
+            username: catchData.username
+          };
         } else if (catchData.username) {
           inventoryQuery = { username: catchData.username };
         } else {
