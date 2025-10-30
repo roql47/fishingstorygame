@@ -16,7 +16,8 @@ const VoyageTab = ({
   username,
   userUuid,
   userStats,
-  updateQuestProgress
+  updateQuestProgress,
+  setUserMoney
 }) => {
   const [currentView, setCurrentView] = useState('select'); // 'select', 'battle', 'result'
   const [selectedFish, setSelectedFish] = useState(null);
@@ -31,7 +32,7 @@ const VoyageTab = ({
   const combatIntervalRef = useRef(null);
   const logRef = useRef(null);
 
-  // 물고기 데이터 (rank 1-13)
+  // 물고기 데이터 (rank 1-25)
   const voyageFishes = [
     { rank: 1, name: '타코문어', image: '/assets/images/monster1.jpeg', hp: 50, attack: 5, speed: 50, gold: 500 },
     { rank: 2, name: '풀고등어', image: '/assets/images/monster2.jpeg', hp: 90, attack: 8, speed: 60, gold: 800 },
@@ -47,10 +48,17 @@ const VoyageTab = ({
     { rank: 12, name: '유령치', image: '/assets/images/monster12.jpeg', hp: 1850, attack: 120, speed: 160, gold: 17000 },
     { rank: 13, name: '바이트독', image: '/assets/images/monster13.jpeg', hp: 2350, attack: 155, speed: 170, gold: 21500 },
     { rank: 14, name: '호박고래', image: '/assets/images/monster14.jpeg', hp: 3000, attack: 200, speed: 180, gold: 27000, imagePosition: 'center 40%' },
-    { rank: 15, name: '바이킹조개', image: '/assets/images/monster15.jpeg', hp: 3800, attack: 250, speed: 190, gold: 34000, imagePosition: 'center 50%' },
+    { rank: 15, name: '바이킹조개', image: '/assets/images/monster15-1.jpeg', hp: 3800, attack: 250, speed: 190, gold: 34000, imagePosition: 'center 50%' },
     { rank: 16, name: '천사해파리', image: '/assets/images/monster16.jpeg', hp: 4800, attack: 320, speed: 200, gold: 43000, imagePosition: 'center 38%' },
-    { rank: 17, name: '악마복어', image: '/assets/images/monster17.jpeg', hp: 6100, attack: 410, speed: 210, gold: 54000, imagePosition: 'center 40%' },
-    { rank: 18, name: '칠성장어', image: '/assets/images/monster18.jpeg', hp: 7700, attack: 520, speed: 220, gold: 68000 }
+    { rank: 17, name: '악마복어', image: '/assets/images/monster17.jpeg', hp: 6100, attack: 410, speed: 210, gold: 54000, imagePosition: 'center 45%' },
+    { rank: 18, name: '칠성장어', image: '/assets/images/monster18.jpeg', hp: 7700, attack: 520, speed: 220, gold: 68000 },
+    { rank: 19, name: '닥터블랙', image: '/assets/images/monster19.jpeg', hp: 9700, attack: 660, speed: 230, gold: 86000, imagePosition: 'center 65%' },
+    { rank: 20, name: '해룡', image: '/assets/images/monster20.jpeg', hp: 12200, attack: 840, speed: 240, gold: 108000, imagePosition: 'center 12%' },
+    { rank: 21, name: '메카핫킹크랩', image: '/assets/images/monster21.jpeg', hp: 15400, attack: 1070, speed: 250, gold: 136000, imagePosition: 'center 55%' },
+    { rank: 22, name: '램프리', image: '/assets/images/monster22.jpeg', hp: 19400, attack: 1360, speed: 260, gold: 172000 },
+    { rank: 23, name: '마지막잎새', image: '/assets/images/monster23.jpeg', hp: 24500, attack: 1730, speed: 270, gold: 217000, imagePosition: 'center 48%' },
+    { rank: 24, name: '아이스브리더', image: '/assets/images/monster24.jpeg', hp: 30900, attack: 2200, speed: 280, gold: 274000, imagePosition: 'center 40%' },
+    { rank: 25, name: '해신', image: '/assets/images/monster25.jpeg', hp: 39000, attack: 2800, speed: 290, gold: 345000, imagePosition: 'center 35%'  }
   ];
   
   // 페이지네이션 설정
@@ -271,7 +279,7 @@ const VoyageTab = ({
           if (newState.enemy.cooldown <= 0) {
             const targets = [
               { type: 'player', data: newState.player },
-              ...newState.companions.filter(c => c.hp > 0).map((c, idx) => ({ type: 'companion', data: c, index: idx }))
+              ...newState.companions.map((c, idx) => ({ type: 'companion', data: c, index: idx })).filter(t => t.data.hp > 0)
             ].filter(t => t.data.hp > 0);
 
             if (targets.length > 0) {
@@ -360,7 +368,13 @@ const VoyageTab = ({
           updateQuestProgress('voyage_win', 1);
         }
         
-        // 소켓으로 업데이트 알림
+        // 💰 골드 즉시 업데이트
+        if (setUserMoney && data.gold !== undefined) {
+          setUserMoney(data.gold);
+          console.log(`✅ 항해 보상: 골드 ${data.gold}, 물고기 ${selectedFish.name}`);
+        }
+        
+        // 소켓으로 인벤토리 업데이트 알림
         if (socket) {
           socket.emit('inventoryUpdated', {
             userUuid,
@@ -688,7 +702,7 @@ const VoyageTab = ({
                 isDarkMode ? "text-red-300" : "text-red-700"
               }`}>{battleState.enemy.name}</h3>
               <span className={`text-base font-medium ${
-                isDarkMode ? "text-gray-300" : "text-gray-600"
+                isDarkMode ? "text-gray-200" : "text-gray-800"
               }`}>
                 {Math.max(0, battleState.enemy.hp)} / {battleState.enemy.maxHp}
               </span>
@@ -728,7 +742,9 @@ const VoyageTab = ({
                 <span className={`font-bold text-lg ${
                   isDarkMode ? "text-blue-300" : "text-blue-700"
                 }`}>⚔️ 플레이어</span>
-                <span className="text-base font-medium">
+                <span className={`text-base font-medium ${
+                  isDarkMode ? "text-gray-200" : "text-gray-800"
+                }`}>
                   {Math.max(0, battleState.player.hp)} / {battleState.player.maxHp}
                 </span>
               </div>
@@ -776,7 +792,9 @@ const VoyageTab = ({
                         <span className="text-yellow-500 text-sm animate-pulse">✨</span>
                       )}
                     </div>
-                    <span className="text-base font-medium">
+                    <span className={`text-base font-medium ${
+                      isDarkMode ? "text-gray-200" : "text-gray-800"
+                    }`}>
                       {Math.max(0, companion.hp)} / {companion.maxHp}
                     </span>
                   </div>

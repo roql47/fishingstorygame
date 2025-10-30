@@ -66,8 +66,6 @@ const measureDBQuery = async (queryName, queryFunction) => {
 // 🚀 DB 인덱스 최적화 함수 (중복 방지)
 const optimizeDBIndexes = async () => {
   try {
-    console.log('🔧 DB 인덱스 최적화 시작...');
-    
     const indexesToCreate = [
       { collection: UserUuidModel, indexes: [
         { key: { userUuid: 1 }, name: 'userUuid_1_safe' },
@@ -124,8 +122,6 @@ const optimizeDBIndexes = async () => {
         }
       }
     }
-    
-    console.log(`✅ DB 인덱스 최적화 완료! (생성: ${createdCount}, 스킵: ${skippedCount})`);
   } catch (error) {
     console.error('❌ DB 인덱스 최적화 실패:', error.message);
   }
@@ -170,7 +166,6 @@ setInterval(async () => {
             writeConcern: { w: 1, j: false } 
           })
         );
-        console.log(`✅ 배치 업데이트 완료: ${bulkOps.length}개 사용자 물고기 카운트`);
       }
       batchUpdates.fishCount.clear();
     }
@@ -210,7 +205,6 @@ setInterval(async () => {
             writeConcern: { w: 1, j: false } 
           })
         );
-        console.log(`✅ 배치 업데이트 완료: ${questBulkOps.length}개 사용자 퀘스트 진행도`);
       }
       batchUpdates.questProgress.clear();
     }
@@ -302,7 +296,7 @@ if (process.env.NODE_ENV !== 'production') {
   try {
     require("dotenv").config();
   } catch (err) {
-    console.log("dotenv not available, using environment variables");
+    // dotenv not available, using environment variables
   }
 }
 
@@ -328,10 +322,7 @@ async function initializeFoxBot() {
         createdAt: new Date()
       });
       await foxUser.save();
-      console.log("🦊 여우 봇 사용자 생성 완료");
     }
-    
-    console.log("🦊 여우 봇 초기화 완료!");
   } catch (error) {
     console.error("🦊 여우 봇 초기화 실패:", error);
   }
@@ -358,7 +349,6 @@ function addFoxBotToConnectedUsers() {
       socketId: foxBotUuid, // 가상 소켓 ID
       isBot: true
     });
-    console.log("🦊 여우 봇이 접속자 명단에 추가되었습니다!");
   }
 }
 
@@ -385,7 +375,6 @@ const ddosProtection = (req, res, next) => {
   
   // 차단된 IP 확인
   if (ddosBlockedIPs.has(clientIP)) {
-    console.log(`🚫 차단된 IP 접근 시도: ${clientIP}`);
     return res.status(429).json({ 
       error: "IP가 차단되었습니다. 잠시 후 다시 시도해주세요.",
       retryAfter: 600 
@@ -408,12 +397,10 @@ const ddosProtection = (req, res, next) => {
   // LOIC 공격 패턴 감지 (분당 150회 이상)
   if (requests.count > 150) {
     ddosBlockedIPs.add(clientIP);
-    console.log(`🚨 LOIC/DDoS 공격 감지! IP 차단: ${clientIP} (${requests.count} requests/min)`);
     
     // 10분 후 차단 해제
     setTimeout(() => {
       ddosBlockedIPs.delete(clientIP);
-      console.log(`🔓 IP 차단 해제: ${clientIP}`);
     }, 600000);
     
     return res.status(429).json({ 
@@ -425,7 +412,6 @@ const ddosProtection = (req, res, next) => {
   // 의심스러운 활동 감지 (분당 50회 이상)
   if (requests.count > 50) {
     suspiciousIPs.set(clientIP, now);
-    console.log(`⚠️ 의심스러운 활동 감지: ${clientIP} (${requests.count} requests/min)`);
   }
   
   // 응답 헤더에 제한 정보 추가
@@ -456,8 +442,6 @@ setInterval(() => {
       suspiciousIPs.delete(ip);
     }
   }
-  
-  console.log(`🧹 보안 시스템 정리: ${requestCounts.size} IPs tracked, ${ddosBlockedIPs.size} blocked, ${suspiciousIPs.size} suspicious`);
 }, 300000);
 
 const app = express();
@@ -472,7 +456,6 @@ app.set('trust proxy', true);
 app.use((req, res, next) => {
   // 관리자 API는 IP 차단 예외 (관리자가 차단 해제할 수 있도록)
   if (req.path.startsWith('/api/admin/')) {
-    console.log(`⚠️ [ADMIN-API] Bypassing IP block for admin API: ${req.path}`);
     return next();
   }
   
@@ -11057,14 +11040,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.406"
+    version: "v1.407"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.406",
+    version: "v1.407",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
@@ -12581,7 +12564,7 @@ const expeditionRouter = setupExpeditionRoutes(authenticateJWT, CompanionStatsMo
 app.use("/api/expedition", expeditionRouter);
 
 // 항해 라우터 등록
-setupVoyageRoutes(app, UserMoneyModel, CatchModel);
+setupVoyageRoutes(app, UserMoneyModel, CatchModel, DailyQuestModel, getKSTDate);
 
 // 업적 라우터 등록
 const { router: achievementRouter } = setupAchievementRoutes(authenticateJWT, UserUuidModel, CatchModel, FishingSkillModel, RaidDamageModel, RareFishCountModel);

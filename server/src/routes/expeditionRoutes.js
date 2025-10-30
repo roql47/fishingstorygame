@@ -57,8 +57,6 @@ router.post('/rooms/:roomId/join', authenticateJWT, async (req, res) => {
     try {
         const { roomId } = req.params;
         const { userUuid, username } = req.user; // JWT에서 사용자 정보 추출
-
-        console.log(`[EXPEDITION] Join attempt - roomId: ${roomId}, user: ${username} (${userUuid})`);
         
         // 🔒 방 정보 확인 (입장 조건 체크를 위해)
         const targetRoom = expeditionSystem.getRoomById(roomId);
@@ -104,14 +102,6 @@ router.post('/rooms/:roomId/join', authenticateJWT, async (req, res) => {
         const areaId = targetRoom.area.id;
         const requiredSkill = requiredSkills[areaId] || 1;
         
-        console.log(`[EXPEDITION] ${username} 입장 조건 체크:`, {
-            baseSkill,
-            achievementBonus,
-            totalSkill: playerFishingSkill,
-            requiredSkill,
-            areaId
-        });
-        
         if (playerFishingSkill < requiredSkill) {
             const areaNames = {
                 1: '쓸쓸한 부두',
@@ -130,9 +120,6 @@ router.post('/rooms/:roomId/join', authenticateJWT, async (req, res) => {
         
         // 소켓을 통해 방 참가 알림
         if (req.io) {
-            console.log(`[EXPEDITION] Broadcasting room update for ${roomId}`);
-            console.log(`[EXPEDITION] Room players after join:`, room.players);
-            
             // 방 정보를 소켓용으로 변환
             const socketRoom = expeditionSystem.getRoomForSocket(room);
             
@@ -148,8 +135,6 @@ router.post('/rooms/:roomId/join', authenticateJWT, async (req, res) => {
             
             // 전체 방 목록 업데이트
             req.io.emit('expeditionRoomsRefresh');
-            
-            console.log(`[EXPEDITION] Broadcasted events for room ${roomId} with ${socketRoom.players.length} players`);
         }
         
         res.json({ success: true, room });
@@ -245,7 +230,6 @@ router.post('/rooms/kick', authenticateJWT, (req, res) => {
 router.post('/rooms/start', authenticateJWT, async (req, res) => {
     try {
         const { userUuid } = req.user; // JWT에서 사용자 정보 추출
-        console.log(`[EXPEDITION] Starting expedition for user: ${userUuid}`);
 
         // 방의 모든 플레이어 정보 가져오기
         const room = expeditionSystem.expeditionRooms.get(expeditionSystem.playerRooms.get(userUuid));
@@ -320,23 +304,12 @@ router.post('/rooms/start', authenticateJWT, async (req, res) => {
                 speedStat: userStats?.speed || 0,    // 🌟 속도 스탯
                 fishingRodIndex: fishingRodIndex     // 🌟 낚시대 인덱스
             };
-            
-            console.log(`[EXPEDITION] Player ${player.name} data:`, {
-                baseFishingSkill: baseFishingSkill,
-                achievementBonus: achievementBonus,
-                finalFishingSkill: fishingSkill,
-                accessoryName: userEquipment?.accessory || 'none',
-                accessoryLevel: accessoryLevel,
-                companions: companions.length
-            });
         }
         
         const finalRoom = expeditionSystem.startExpedition(userUuid, allPlayerData);
-        console.log(`[EXPEDITION] Expedition started, room status: ${finalRoom.status}`);
         
         // 턴제 전투 시작 (탐사전투와 동일)
         if (req.io) {
-            console.log(`[EXPEDITION] Starting turn-based battle`);
             expeditionSystem.startSpeedBasedBattle(finalRoom, req.io);
         }
         
@@ -553,7 +526,6 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
         
         if (existingClaim) {
             expeditionSystem.claimingRewards.delete(userUuid); // 정리
-            console.log(`[EXPEDITION] ⚠️ DB 레벨 중복 보상 수령 시도 차단: ${username} (${userUuid}) - Room: ${room.id}`);
             return res.status(400).json({ 
                 success: false, 
                 error: '이미 보상을 수령하였습니다.' 
@@ -581,7 +553,6 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
         
         if (afterReceiving > MAX_INVENTORY) {
             expeditionSystem.claimingRewards.delete(userUuid); // 정리
-            console.log(`❌ Cannot claim expedition rewards - inventory full: ${currentTotal}/${MAX_INVENTORY} (trying to add ${totalRewardCount})`);
             return res.status(400).json({ 
                 success: false, 
                 error: `인벤토리가 부족합니다. (현재: ${currentTotal}/${MAX_INVENTORY})`,
@@ -601,7 +572,6 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
                     username: username,
                     fishName: reward.fishName
                 });
-                console.log(`🎣 New fish discovered from expedition: ${reward.fishName} by ${username}`);
             } catch (error) {
                 // 이미 발견한 물고기인 경우 무시 (unique index 에러)
                 if (error.code !== 11000) {
@@ -640,12 +610,10 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
                 })),
                 claimedAt: new Date()
             });
-            console.log(`[EXPEDITION] ✅ 보상 수령 기록 저장: ${username} (${userUuid}) - Room: ${room.id}`);
         } catch (error) {
             // 중복 키 에러 (이미 수령한 경우)
             if (error.code === 11000) {
                 expeditionSystem.claimingRewards.delete(userUuid); // 정리
-                console.log(`[EXPEDITION] ⚠️ 중복 보상 수령 시도 차단 (DB): ${username} (${userUuid}) - Room: ${room.id}`);
                 return res.status(400).json({ 
                     success: false, 
                     error: '이미 보상을 수령하였습니다.' 
@@ -656,17 +624,10 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
         }
 
         // 보상 수령 완료 표시 (메모리)
-        console.log(`[EXPEDITION] Before markRewardsClaimed - Room rewards count: ${room.rewards?.length}`);
         expeditionSystem.markRewardsClaimed(userUuid);
-        
-        // 보상 제거 후 상태 확인
-        const roomAfterClaim = expeditionSystem.getRoomInfo(userUuid);
-        console.log(`[EXPEDITION] After markRewardsClaimed - Room rewards count: ${roomAfterClaim?.rewards?.length}`);
-        console.log(`[EXPEDITION] Remaining rewards:`, roomAfterClaim?.rewards?.map(r => `${r.playerId}: ${r.fishName}`));
         
         // 🚀 소켓을 통해 해당 플레이어에게 인벤토리 업데이트 알림
         if (req.io) {
-            console.log(`🔄 Sending inventory update notification to ${username} (${userUuid})`);
             req.io.emit('inventoryUpdated', { 
                 userUuid: userUuid,
                 reason: 'expedition_rewards',
@@ -682,11 +643,8 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
                 updatedRoom.players.some(player => player.id === reward.playerId)
             ) : [];
             
-            console.log(`[EXPEDITION] Remaining rewards after ${username} claimed: ${remainingRewards.length}`);
-            
             // 모든 보상이 수령되었으면 방 정리
             if (remainingRewards.length === 0) {
-                console.log(`[EXPEDITION] All rewards claimed, cleaning up room for ${username}`);
                 const leaveResult = await expeditionSystem.leaveExpeditionRoom(userUuid);
                 
                 // 소켓을 통해 방 업데이트 또는 삭제 알림
@@ -728,15 +686,12 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
 router.get('/rooms/current', authenticateJWT, (req, res) => {
     try {
         const { userUuid } = req.user; // JWT에서 사용자 정보 추출
-        console.log(`[EXPEDITION] Getting current room for user: ${userUuid}`);
         
         const room = expeditionSystem.getRoomInfo(userUuid);
         
         if (room) {
-            console.log(`[EXPEDITION] Found room for user ${userUuid}: ${room.id}, status: ${room.status}`);
             res.json({ success: true, room: expeditionSystem.getRoomForSocket(room) });
         } else {
-            console.log(`[EXPEDITION] No room found for user: ${userUuid}`);
             res.json({ success: true, room: null });
         }
     } catch (error) {

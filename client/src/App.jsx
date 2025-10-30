@@ -219,7 +219,7 @@ function App() {
 
   // 🔄 버전 업데이트 시 캐시 초기화 (v1.405)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.406";
+    const CURRENT_VERSION = "v1.407";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -447,8 +447,19 @@ function App() {
   const addAmber = async (amount) => {
     try {
       console.log('Adding amber reward');
-      const response = await authenticatedRequest.post(`${serverUrl}/api/add-amber`, {
+      
+      // serverUrl 직접 계산 (TDZ 방지)
+      const hostname = window.location.hostname;
+      const origin = window.location.origin;
+      const calculatedServerUrl = (hostname !== 'localhost' && hostname !== '127.0.0.1') 
+        ? origin 
+        : (import.meta.env.VITE_SERVER_URL || `http://localhost:3001`);
+      
+      const token = jwtToken || localStorage.getItem("jwtToken");
+      const response = await axios.post(`${calculatedServerUrl}/api/add-amber`, {
         amount
+      }, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
       
       console.log('Add amber response:', response.data);
@@ -469,9 +480,16 @@ function App() {
   // 일일 퀘스트 데이터 로드 함수 (TDZ 문제 해결을 위해 상단에 선언)
   const loadDailyQuests = async () => {
     try {
+      // serverUrl 직접 계산 (TDZ 방지)
+      const hostname = window.location.hostname;
+      const origin = window.location.origin;
+      const calculatedServerUrl = (hostname !== 'localhost' && hostname !== '127.0.0.1') 
+        ? origin 
+        : (import.meta.env.VITE_SERVER_URL || `http://localhost:3001`);
+      
       const userId = idToken ? 'user' : 'null';
       const params = { username, userUuid };
-      const response = await axios.get(`${serverUrl}/api/daily-quests/${userId}`, { params });
+      const response = await axios.get(`${calculatedServerUrl}/api/daily-quests/${userId}`, { params });
       
       if (response.data) {
         setDailyQuests(response.data);
@@ -492,8 +510,15 @@ function App() {
     }
     
     try {
+      // serverUrl 직접 계산 (TDZ 방지)
+      const hostname = window.location.hostname;
+      const origin = window.location.origin;
+      const calculatedServerUrl = (hostname !== 'localhost' && hostname !== '127.0.0.1') 
+        ? origin 
+        : (import.meta.env.VITE_SERVER_URL || `http://localhost:3001`);
+      
       // 🚀 서버에 경험치 추가 요청
-      const response = await axios.post(`${serverUrl}/api/add-companion-exp`, {
+      const response = await axios.post(`${calculatedServerUrl}/api/add-companion-exp`, {
         companionName,
         expAmount
       }, {
@@ -543,7 +568,7 @@ function App() {
     }
   };
 
-  // 퀘스트 진행도 업데이트 함수 (TDZ 문제 해결을 위해 상단에 선언)
+  // 퀘스트 진행도 업데이트 함수 (TDZ 문제 해결 - serverUrl 직접 계산)
   const updateQuestProgress = async (questType, amount = 1) => {
     try {
       // 🚀 즉시 로컬 상태 업데이트 (낙관적 업데이트)
@@ -554,7 +579,8 @@ function App() {
           if (
             (questType === 'fish_caught' && quest.id === 'fish_caught') ||
             (questType === 'exploration_win' && quest.id === 'exploration_win') ||
-            (questType === 'fish_sold' && quest.id === 'fish_sold')
+            (questType === 'fish_sold' && quest.id === 'fish_sold') ||
+            (questType === 'voyage_win' && quest.id === 'voyage_win')
           ) {
             return {
               ...quest,
@@ -567,10 +593,20 @@ function App() {
         return { ...prev, quests: updatedQuests };
       });
       
-      // 서버에 업데이트 요청
-      await authenticatedRequest.post(`${serverUrl}/api/update-quest-progress`, {
+      // serverUrl 직접 계산 (TDZ 방지)
+      const hostname = window.location.hostname;
+      const origin = window.location.origin;
+      const calculatedServerUrl = (hostname !== 'localhost' && hostname !== '127.0.0.1') 
+        ? origin 
+        : (import.meta.env.VITE_SERVER_URL || `http://localhost:3001`);
+      
+      // 서버에 업데이트 요청 (axios 직접 사용으로 TDZ 방지)
+      const token = jwtToken || localStorage.getItem("jwtToken");
+      await axios.post(`${calculatedServerUrl}/api/update-quest-progress`, {
         questType,
         amount
+      }, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
       
       // 서버 데이터로 최종 동기화
@@ -581,6 +617,7 @@ function App() {
       await loadDailyQuests();
     }
   };
+
 
   // 컴포넌트 언마운트 시 interval 정리
   useEffect(() => {
@@ -2097,6 +2134,7 @@ function App() {
       }
     };
   }, [jwtToken]);
+
 
   // 🏆 업적 훅 사용 (필요한 변수들이 정의된 후에 호출)
   const {
@@ -8030,7 +8068,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.406
+                여우이야기 v1.407
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -9850,6 +9888,7 @@ function App() {
               userUuid={userUuid}
               userStats={userStats}
               updateQuestProgress={updateQuestProgress}
+              setUserMoney={setUserMoney}
             />
           )}
 

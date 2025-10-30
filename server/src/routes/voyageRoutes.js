@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 
 // 항해 보상 지급 API
-const setupVoyageRoutes = (app, UserMoneyModel, CatchModel) => {
+const setupVoyageRoutes = (app, UserMoneyModel, CatchModel, DailyQuestModel, getKSTDate) => {
   // 항해 보상 지급
   app.post('/api/voyage/reward', async (req, res) => {
     try {
@@ -45,7 +45,54 @@ const setupVoyageRoutes = (app, UserMoneyModel, CatchModel) => {
         { upsert: true, new: true }
       );
 
-      console.log(`[VOYAGE] ${username} - ${fishName} 전투 완료: +${gold}G, +1 ${fishName}`);
+      // 🎯 항해 승리 퀘스트 진행도 업데이트
+      if (DailyQuestModel && getKSTDate) {
+        try {
+          const today = getKSTDate();
+          let dailyQuest = await DailyQuestModel.findOne({ userUuid });
+
+          // 퀘스트가 없거나 날짜가 다르면 새로 생성/리셋
+          if (!dailyQuest || dailyQuest.lastResetDate !== today) {
+            dailyQuest = await DailyQuestModel.findOneAndUpdate(
+              { userUuid },
+              {
+                $set: {
+                  userUuid,
+                  username,
+                  fishCaught: 0,
+                  explorationWins: 0,
+                  fishSold: 0,
+                  voyageWins: 1, // 첫 승리
+                  questFishCaught: false,
+                  questExplorationWin: false,
+                  questFishSold: false,
+                  questVoyageWin: false,
+                  lastResetDate: today
+                }
+              },
+              { upsert: true, new: true }
+            );
+          } else {
+            // 기존 퀘스트 업데이트
+            const newVoyageWins = Math.min(dailyQuest.voyageWins + 1, 5);
+            const shouldCompleteQuest = newVoyageWins >= 5 && !dailyQuest.questVoyageWin;
+            
+            await DailyQuestModel.findOneAndUpdate(
+              { userUuid },
+              {
+                $set: {
+                  voyageWins: newVoyageWins,
+                  ...(shouldCompleteQuest && { questVoyageWin: true })
+                }
+              },
+              { new: true }
+            );
+          }
+        } catch (questError) {
+          console.error(`[VOYAGE] Failed to update quest progress for ${username}:`, questError);
+          // 퀘스트 업데이트 실패해도 보상은 지급
+        }
+      }
 
       res.json({
         success: true,

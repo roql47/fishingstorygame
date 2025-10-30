@@ -4,7 +4,6 @@ const { GoogleGenAI } = require("@google/genai");
 class FoxAiBot {
   constructor(apiKey) {
     if (!apiKey) {
-      console.warn("⚠️ Gemini API 키가 설정되지 않았습니다. 여우 AI 챗봇이 비활성화됩니다.");
       this.enabled = false;
       return;
     }
@@ -177,8 +176,6 @@ class FoxAiBot {
             • 다크모드: 우상단 버튼으로 다크/라이트 모드 전환 가능
             
             게임에 대해 궁금한 게 있으면 편하게 물어봐~ 최대한 귀엽고 친절하게 알려줄게! 🦊✨`;
-    
-    console.log("🦊 여우 AI 챗봇이 활성화되었습니다!");
   }
 
   /**
@@ -259,7 +256,6 @@ class FoxAiBot {
       }
 
       // Gemini API 호출 (사용자 닉네임 포함)
-      console.log(`🦊 Fox AI called by ${user.username}: ${userMessage}`);
       const foxReply = await this.generateResponse(userMessage, user.username);
 
       // 여우 AI의 응답을 채팅방에 전송
@@ -269,8 +265,6 @@ class FoxAiBot {
         timestamp: new Date().toISOString(),
         userUuid: "fox_bot"
       });
-
-      console.log(`🦊 Fox AI responded: ${foxReply}`);
     } catch (error) {
       console.error("🦊 Fox AI message handling error:", error);
       io.emit("chat:message", {

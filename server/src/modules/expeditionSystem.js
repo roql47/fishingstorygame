@@ -75,8 +75,6 @@ class ExpeditionSystem {
              // 에테르 열쇠 차감
              userEtherKeys.etherKeys -= requiredKeys;
              await userEtherKeys.save();
-             
-             console.log(`[EXPEDITION] ${hostPlayerName} used ${requiredKeys} ether keys to create room. Remaining: ${userEtherKeys.etherKeys}`);
          }
 
         // 🔒 타임스탬프를 추가하여 서버 재시작 후에도 roomId가 겹치지 않도록 함
@@ -120,12 +118,9 @@ class ExpeditionSystem {
 
     // 방 참가
     joinExpeditionRoom(roomId, playerId, playerName) {
-        console.log(`[EXPEDITION] Attempting to join room ${roomId}, available rooms:`, Array.from(this.expeditionRooms.keys()));
-        
         const room = this.expeditionRooms.get(roomId);
         
         if (!room) {
-            console.log(`[EXPEDITION] Room ${roomId} not found`);
             throw new Error('존재하지 않는 방입니다.');
         }
 
@@ -152,9 +147,6 @@ class ExpeditionSystem {
         });
 
         this.playerRooms.set(playerId, roomId);
-        
-        console.log(`[EXPEDITION] Player ${playerName} joined room ${roomId}. Total players: ${room.players.length}`);
-        console.log(`[EXPEDITION] Current players in room:`, room.players.map(p => p.name));
         
         return room;
     }
@@ -192,7 +184,6 @@ class ExpeditionSystem {
                  }
                  
                  await userEtherKeys.save();
-                 console.log(`[EXPEDITION] Refunded ${refundKeys} ether keys to ${playerId}. New balance: ${userEtherKeys.etherKeys}`);
              } catch (error) {
                  console.error(`[EXPEDITION] Failed to refund ether keys to ${playerId}:`, error);
              }
@@ -212,17 +203,12 @@ class ExpeditionSystem {
             // 남은 플레이어들을 방에서 제거
             room.players.forEach(p => this.playerRooms.delete(p.id));
             
-            const reason = room.players.length === 0 ? 'empty' : 
-                          (!room.players.some(p => p.isHost) && !hasRemainingRewards) ? 'no host and no rewards' : 
-                          'rewards claimed';
-            console.log(`[EXPEDITION] Room ${roomId} deleted. Reason: ${reason}`);
             return { roomDeleted: true };
         }
 
         // 방장이 나갔지만 보상이 남아있는 경우, 다른 플레이어를 새 방장으로 지정
         if (!room.players.some(p => p.isHost) && room.players.length > 0) {
             room.players[0].isHost = true;
-            console.log(`[EXPEDITION] New host assigned: ${room.players[0].name} in room ${roomId}`);
         }
 
         return { room, roomDeleted: false };
@@ -272,58 +258,44 @@ class ExpeditionSystem {
         // 플레이어를 방에서 제거
         room.players = room.players.filter(p => p.id !== targetPlayerId);
         this.playerRooms.delete(targetPlayerId);
-
-        console.log(`[EXPEDITION] Player ${targetPlayerId} kicked from room ${roomId} by host ${hostPlayerId}`);
         
         return { room };
     }
 
     // 원정 시작
     startExpedition(hostPlayerId, allPlayerData = {}) {
-        console.log(`[ExpeditionSystem] Starting expedition for host: ${hostPlayerId}`);
-        
         const roomId = this.playerRooms.get(hostPlayerId);
         if (!roomId) {
-            console.log(`[ExpeditionSystem] No room found for player: ${hostPlayerId}`);
             throw new Error('참가한 방이 없습니다.');
         }
 
         const room = this.expeditionRooms.get(roomId);
         if (!room) {
-            console.log(`[ExpeditionSystem] Room ${roomId} not found`);
             throw new Error('방을 찾을 수 없습니다.');
         }
 
-        console.log(`[ExpeditionSystem] Room found, current status: ${room.status}`);
-
         const host = room.players.find(p => p.id === hostPlayerId);
         if (!host || !host.isHost) {
-            console.log(`[ExpeditionSystem] Player ${hostPlayerId} is not host`);
             throw new Error('방장만 원정을 시작할 수 있습니다.');
         }
 
         // 모든 플레이어가 준비되었는지 확인
         const allReady = room.players.every(p => p.isReady || p.isHost);
         if (!allReady) {
-            console.log(`[ExpeditionSystem] Not all players ready:`, room.players.map(p => ({ id: p.id, name: p.name, isReady: p.isReady, isHost: p.isHost })));
             throw new Error('모든 플레이어가 준비되지 않았습니다.');
         }
 
         // 모든 플레이어 데이터 저장 (동료, 낚시 실력, 악세사리 레벨 등)
         room.playerData = allPlayerData;
 
-        console.log(`[ExpeditionSystem] All player data saved:`, Object.keys(room.playerData));
-        console.log(`[ExpeditionSystem] Generating monsters for area: ${room.area.name}`);
         // 몬스터 생성
         room.monsters = this.generateMonsters(room.area);
         
-        console.log(`[ExpeditionSystem] Initializing battle state`);
         // 자동 전투 초기화
         room.battleState = this.initializeBattleState(room);
         room.status = 'in_progress';
         room.startedAt = new Date();
 
-        console.log(`[ExpeditionSystem] Expedition started successfully`);
         return room;
     }
 
@@ -876,10 +848,7 @@ class ExpeditionSystem {
             }
             
             // 사기 15 증가 (공격 전에)
-            const moraleBeforeIncrease = room.battleState.companionMorale[companionKey] || 0;
             this.increaseMorale(room, playerId, 15, companionKey);
-            const moraleAfterIncrease = room.battleState.companionMorale[companionKey] || 0;
-            console.log(`[MORALE] ${companion.companionName}: ${moraleBeforeIncrease} → ${moraleAfterIncrease}`);
             
             // 동료 공격 실행
             this.executeCompanionAttack(room, playerId, companion, io);
@@ -998,12 +967,6 @@ class ExpeditionSystem {
         
         // 스킬 사용 가능 여부 확인
         const canUseSkill = companionStats.skill && currentMorale >= companionStats.skill.moraleRequired;
-        
-        // 디버깅 로그
-        if (companionStats.skill) {
-            console.log(`[COMPANION] ${companion.companionName}: 사기=${currentMorale}, 필요=${companionStats.skill.moraleRequired}, 스킬사용=${canUseSkill}`);
-        }
-        
         
         let finalDamage = 0;
         let isCritical = false;
@@ -2002,14 +1965,12 @@ class ExpeditionSystem {
 
     // 몬스터 자동 공격 (플레이어 + 동료 대상)
     autoMonsterAttack(room, io) {
-        console.log(`[EXPEDITION] Monster attack starting for room: ${room.id}`);
         const battleState = room.battleState;
         
         // 살아있는 몬스터들이 각각 공격
         const aliveMonsters = room.monsters.filter(m => m.isAlive);
         const alivePlayers = room.players.filter(p => battleState.playerHp[p.id] > 0);
         
-        console.log(`[EXPEDITION] Alive monsters: ${aliveMonsters.length}, Alive players: ${alivePlayers.length}`);
         if (aliveMonsters.length === 0 || alivePlayers.length === 0) return;
         
         aliveMonsters.forEach(monster => {
@@ -2121,7 +2082,7 @@ class ExpeditionSystem {
                 try {
                     await this.updateVoyageQuestProgress(player.userUuid);
                 } catch (error) {
-                    console.error(`[EXPEDITION] Failed to update quest for player ${player.username}:`, error);
+                    console.error(`Failed to update quest for player ${player.username}:`, error);
                 }
             }
         }
@@ -2162,7 +2123,6 @@ class ExpeditionSystem {
                     },
                     { upsert: true, new: true }
                 );
-                console.log(`[EXPEDITION] Quest progress updated for ${userUuid}: voyageWins = 1`);
             } else {
                 // 기존 퀘스트 업데이트
                 const newVoyageWins = Math.min(dailyQuest.voyageWins + 1, 5);
@@ -2177,25 +2137,21 @@ class ExpeditionSystem {
                         }
                     }
                 );
-                console.log(`[EXPEDITION] Quest progress updated for ${userUuid}: voyageWins = ${newVoyageWins}`);
             }
         } catch (error) {
-            console.error('[EXPEDITION] Failed to update voyage quest:', error);
+            console.error('Failed to update voyage quest:', error);
         }
     }
     
     // 동료 경험치 지급 함수
     async grantCompanionExperience(room) {
         if (!this.CompanionStatsModel) {
-            console.warn('[EXPEDITION] CompanionStatsModel이 없어 경험치를 지급할 수 없습니다.');
             return;
         }
         
         // 몬스터 총 체력 기반 경험치 계산
         const totalMonsterHp = room.monsters.reduce((sum, monster) => sum + monster.maxHp, 0);
         const baseExpReward = Math.floor(totalMonsterHp / 10) + 20; // 기본 경험치
-        
-        console.log(`[EXPEDITION] 승리! 동료들에게 경험치 ${baseExpReward} 지급`);
         
         // 각 플레이어의 동료들에게 경험치 지급
         for (const player of room.players) {
@@ -2208,10 +2164,9 @@ class ExpeditionSystem {
                     const companionStat = await this.CompanionStatsModel.findOne({
                         userUuid: player.id,
                         companionName: companion.companionName
-                    }).sort({ updatedAt: -1 });
+                    }                    ).sort({ updatedAt: -1 });
                     
                     if (!companionStat) {
-                        console.warn(`[EXPEDITION] ${player.name}의 ${companion.companionName} 능력치를 찾을 수 없습니다.`);
                         continue;
                     }
                     
@@ -2231,7 +2186,6 @@ class ExpeditionSystem {
                         newExp -= expToNextLevel;
                         newLevel++;
                         expToNextLevel = calculateExpToNextLevel(newLevel + 1);
-                        console.log(`[EXPEDITION] 🎉 ${companion.companionName} 레벨업! ${newLevel - 1} → ${newLevel}`);
                     }
                     
                     // DB 업데이트
@@ -2239,15 +2193,13 @@ class ExpeditionSystem {
                     companionStat.experience = newExp;
                     await companionStat.save();
                     
-                    console.log(`[EXPEDITION] ✅ ${player.name}의 ${companion.companionName}: 레벨 ${newLevel}, 경험치 ${newExp}/${expToNextLevel}`);
-                    
                     // 전투 로그에 추가
                     if (newLevel > oldLevel) {
                         room.battleState.battleLog.push(`🎉 ${companion.companionName}이(가) 레벨업! (Lv.${newLevel})`);
                     }
                     
                 } catch (error) {
-                    console.error(`[EXPEDITION] ${companion.companionName} 경험치 저장 실패:`, error);
+                    console.error(`${companion.companionName} 경험치 저장 실패:`, error);
                 }
             }
         }
@@ -2328,7 +2280,6 @@ class ExpeditionSystem {
                     // room.players와 비교하지 않음 (플레이어가 먼저 나갈 수 있음)
                     if (room.rewards.length === 0) {
                         room.status = 'reward_claimed';
-                        console.log(`[EXPEDITION] All rewards claimed for room ${roomId}`);
                     }
                 }
                 break;
