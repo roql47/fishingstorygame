@@ -7,6 +7,7 @@ const ClickerModal = ({
   isDarkMode,
   fishingSkill,
   userEquipment,
+  userStats,
   getAttackRange,
   calculateTotalEnhancementBonus,
   setInventory,
@@ -80,22 +81,35 @@ const ClickerModal = ({
     loadStage();
   }, [serverUrl, authenticatedRequest]);
 
-  // 플레이어 공격력 계산 (내정보와 완전히 동일)
+  // 플레이어 공격력 계산 (내정보와 완전히 동일) + 🌟 성장 스탯
   const getPlayerAttack = () => {
     // 강화 보너스 계산
     const fishingRodEnhancement = userEquipment?.fishingRodEnhancement || 0;
     const enhancementBonus = calculateTotalEnhancementBonus ? calculateTotalEnhancementBonus(fishingRodEnhancement) : 0;
     
-    // getAttackRange 함수 사용 (내정보와 완전히 동일)
+    // 기본 공격력 계산
+    let baseAttack;
     if (getAttackRange) {
       const attackRange = getAttackRange(fishingSkill, enhancementBonus);
-      return attackRange.base;
+      baseAttack = attackRange.base;
+    } else {
+      // fallback: 직접 계산
+      const rawAttack = 0.00225 * Math.pow(fishingSkill, 3) + 0.165 * Math.pow(fishingSkill, 2) + 2 * fishingSkill + 3;
+      baseAttack = Math.floor(rawAttack + (rawAttack * enhancementBonus / 100));
     }
     
-    // fallback: 직접 계산
-    const baseAttack = 0.00225 * Math.pow(fishingSkill, 3) + 0.165 * Math.pow(fishingSkill, 2) + 2 * fishingSkill + 3;
-    const totalAttack = baseAttack + (baseAttack * enhancementBonus / 100);
-    return Math.floor(totalAttack);
+    // 🌟 성장 공격력 스탯 적용 (낚시대 인덱스 × 공격력 레벨)
+    const fishingRods = [
+      '나무낚시대', '낡은낚시대', '기본낚시대', '단단한낚시대', '은낚시대', '금낚시대',
+      '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대', '레드다이아몬드낚시대',
+      '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산호등낚시대', '피크닉', '마녀빗자루',
+      '에테르낚시대', '별조각낚시대', '여우꼬리낚시대', '초콜릿롤낚시대', '호박유령낚시대',
+      '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
+    ];
+    const fishingRodIndex = fishingRods.indexOf(userEquipment?.fishingRod) >= 0 ? fishingRods.indexOf(userEquipment?.fishingRod) : 0;
+    const attackStatBonus = fishingRodIndex * (userStats?.attack || 0);
+    
+    return baseAttack + attackStatBonus;
   };
 
   // 난이도별 몬스터 체력 계산 (고정값, 공격력 무관, 20%로 감소)

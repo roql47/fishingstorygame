@@ -2,6 +2,7 @@ services:
   - type: web
     name: fising-master
     env: node
+    region: singapore  # 싱가포르 리전으로 설정
     plan: free
     buildCommand: npm run build
     startCommand: |

@@ -1,6 +1,17 @@
 // 공지사항 데이터 (ID 내림차순 정렬 - 최신이 가장 높은 ID)
 export const NOTICE_DATA = [
   {
+    id: 44,
+    date: "2025.10.30",
+    title: "[v1.406] 🚀 서버 레이턴시 개선",
+    content: [
+      "서버 리전 최적화:",
+      "- 서버 위치를 미국 오리건에서 싱가포르로 변경"
+    ],
+    isNew: true,
+    type: "major_update"
+  },
+  {
     id: 43,
     date: "2025.10.29",
     title: "[v1.405] ⚓ 항해 시스템 및 성장 시스템 추가",
@@ -32,7 +43,7 @@ export const NOTICE_DATA = [
       "일일퀘스트 추가",
       "성장 탭의 공격력/속도 스탯이 실제 전투에 적용되지 않던 문제 해결"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
@@ -755,5 +766,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.405"
+  version: "v1.406"
 };
