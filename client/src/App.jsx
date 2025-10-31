@@ -453,7 +453,7 @@ function App() {
       const origin = window.location.origin;
       const calculatedServerUrl = (hostname !== 'localhost' && hostname !== '127.0.0.1') 
         ? origin 
-        : (import.meta.env.VITE_SERVER_URL || `http://localhost:3001`);
+        : (import.meta.env.VITE_SERVER_URL || `http://localhost:4000`);
       
       const token = jwtToken || localStorage.getItem("jwtToken");
       const response = await axios.post(`${calculatedServerUrl}/api/add-amber`, {
@@ -477,6 +477,31 @@ function App() {
     }
   };
 
+  // 🐟 인벤토리 새로고침 함수 (항해 보상 등에서 사용)
+  const refreshInventory = async () => {
+    try {
+      // serverUrl 직접 계산
+      const hostname = window.location.hostname;
+      const origin = window.location.origin;
+      const calculatedServerUrl = (hostname !== 'localhost' && hostname !== '127.0.0.1') 
+        ? origin 
+        : (import.meta.env.VITE_SERVER_URL || `http://localhost:4000`);
+      
+      const userId = idToken ? 'user' : 'null';
+      const params = { username, userUuid };
+      const res = await axios.get(`${calculatedServerUrl}/api/inventory/${userId}`, { params });
+      const safeInventory = Array.isArray(res.data) ? res.data : [];
+      setInventory(safeInventory);
+      const totalCount = safeInventory.reduce((sum, item) => sum + item.count, 0);
+      setMyCatches(totalCount);
+      console.log('✅ 인벤토리 새로고침 완료:', safeInventory.length, '종류, 총', totalCount, '마리');
+      return true;
+    } catch (error) {
+      console.error('❌ 인벤토리 새로고침 실패:', error);
+      return false;
+    }
+  };
+
   // 일일 퀘스트 데이터 로드 함수 (TDZ 문제 해결을 위해 상단에 선언)
   const loadDailyQuests = async () => {
     try {
@@ -485,7 +510,7 @@ function App() {
       const origin = window.location.origin;
       const calculatedServerUrl = (hostname !== 'localhost' && hostname !== '127.0.0.1') 
         ? origin 
-        : (import.meta.env.VITE_SERVER_URL || `http://localhost:3001`);
+        : (import.meta.env.VITE_SERVER_URL || `http://localhost:4000`);
       
       const userId = idToken ? 'user' : 'null';
       const params = { username, userUuid };
@@ -515,7 +540,7 @@ function App() {
       const origin = window.location.origin;
       const calculatedServerUrl = (hostname !== 'localhost' && hostname !== '127.0.0.1') 
         ? origin 
-        : (import.meta.env.VITE_SERVER_URL || `http://localhost:3001`);
+        : (import.meta.env.VITE_SERVER_URL || `http://localhost:4000`);
       
       // 🚀 서버에 경험치 추가 요청
       const response = await axios.post(`${calculatedServerUrl}/api/add-companion-exp`, {
@@ -598,7 +623,7 @@ function App() {
       const origin = window.location.origin;
       const calculatedServerUrl = (hostname !== 'localhost' && hostname !== '127.0.0.1') 
         ? origin 
-        : (import.meta.env.VITE_SERVER_URL || `http://localhost:3001`);
+        : (import.meta.env.VITE_SERVER_URL || `http://localhost:4000`);
       
       // 서버에 업데이트 요청 (axios 직접 사용으로 TDZ 방지)
       const token = jwtToken || localStorage.getItem("jwtToken");
@@ -7450,16 +7475,7 @@ function App() {
         
         // 서버와 동기화
         setTimeout(async () => {
-          try {
-            const inventoryResponse = await authenticatedRequest.get(`${serverUrl}/api/inventory`);
-            if (inventoryResponse.data) {
-              setInventory(inventoryResponse.data);
-              const totalCount = inventoryResponse.data.reduce((sum, item) => sum + item.count, 0);
-              setMyCatches(totalCount);
-            }
-          } catch (error) {
-            console.error('Failed to sync inventory:', error);
-          }
+          await refreshInventory();
         }, 500);
       }
     } catch (error) {
@@ -9889,6 +9905,7 @@ function App() {
               userStats={userStats}
               updateQuestProgress={updateQuestProgress}
               setUserMoney={setUserMoney}
+              refreshInventory={refreshInventory}
             />
           )}
 

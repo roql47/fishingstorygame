@@ -203,7 +203,7 @@ export const useChat = ({
       // 인벤토리 가져오기 (지연 적용으로 안정성 향상)
       const fetchInventory = async () => {
         try {
-          const response = await fetch(`${process.env.REACT_APP_SERVER_URL || 'http://localhost:3001'}/api/inventory/${username}`);
+          const response = await fetch(`${process.env.REACT_APP_SERVER_URL || 'http://localhost:4000'}/api/inventory/${username}`);
           if (response.ok) {
             const data = await response.json();
             setInventory(data.inventory || []);

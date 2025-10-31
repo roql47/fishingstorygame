@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Anchor, Heart, Sword, Zap, Trophy, Coins, ArrowLeft, Users } from 'lucide-react';
 import { calculateCompanionStats } from '../data/companionData';
-import axios from 'axios';
 
 const VoyageTab = ({ 
   isDarkMode, 
@@ -18,7 +17,8 @@ const VoyageTab = ({
   userUuid,
   userStats,
   updateQuestProgress,
-  setUserMoney
+  setUserMoney,
+  refreshInventory
 }) => {
   const [currentView, setCurrentView] = useState('select'); // 'select', 'battle', 'result'
   const [selectedFish, setSelectedFish] = useState(null);
@@ -384,25 +384,13 @@ const VoyageTab = ({
           console.log(`✅ 항해 보상: 골드 ${data.gold}, 물고기 ${selectedFish.name}`);
         }
         
-        // 🐟 인벤토리 직접 새로고침
-        try {
-          const inventoryResponse = await axios.get(`${import.meta.env.VITE_SERVER_URL || window.location.origin}/api/inventory`, {
-            params: { username, userUuid }
-          });
-          
-          if (inventoryResponse.data && inventoryResponse.data.inventory) {
-            // App.jsx의 inventory 상태를 업데이트하기 위해 소켓 이벤트 발송
-            if (socket) {
-              socket.emit('inventoryUpdated', {
-                userUuid,
-                reason: 'voyage_reward',
-                inventory: inventoryResponse.data.inventory
-              });
-            }
-            console.log('✅ 인벤토리 동기화 완료:', inventoryResponse.data.inventory);
-          }
-        } catch (invError) {
-          console.error('❌ 인벤토리 새로고침 실패:', invError);
+        // 🐟 인벤토리 즉시 새로고침
+        console.log('🔄 [항해 보상] 인벤토리 새로고침 시작...');
+        if (refreshInventory) {
+          const refreshSuccess = await refreshInventory();
+          console.log('🔄 [항해 보상] 인벤토리 새로고침 결과:', refreshSuccess ? '✅ 성공' : '❌ 실패');
+        } else {
+          console.warn('⚠️ [항해 보상] refreshInventory 함수가 전달되지 않았습니다!');
         }
 
         alert(`보상 획득!\n골드: +${rewardGold.toLocaleString()}G\n물고기: ${selectedFish.name} +1마리`);

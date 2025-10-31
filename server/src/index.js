@@ -1684,7 +1684,7 @@ async function getUserQuery(userId, username, userUuid = null) {
   // 1순위: userUuid로 직접 조회 (가장 정확)
   if (userUuid) {
     const user = await UserUuidModel.findOne({ userUuid });
-    console.log(`🔍 getUserQuery - userUuid: ${userUuid}, found: ${!!user}`);
+    debugLog(`🔍 getUserQuery - userUuid: ${userUuid}, found: ${!!user}`);
     if (user) {
       return { userUuid: user.userUuid, user };
     } else {
@@ -2386,8 +2386,8 @@ io.on("connection", (socket) => {
         
         try {
           user = await UserUuidModel.findOne({ userUuid });
-          console.log("Database query successful");
-          console.log("Found user by UUID:", user ? { userUuid: user.userUuid, username: user.username, isGuest: user.isGuest } : "Not found");
+          debugLog("Database query successful");
+          debugLog("Found user by UUID:", user ? { userUuid: user.userUuid, username: user.username, isGuest: user.isGuest } : "Not found");
         } catch (dbError) {
           console.error("❌ Database query failed:", dbError);
           throw dbError;
@@ -3954,7 +3954,7 @@ io.on("connection", (socket) => {
 
   // 📸 프로필 이미지 업데이트 알림 (실시간 동기화)
   socket.on("profile:image:updated", (data) => {
-    console.log(`📸 [PROFILE-IMAGE] Update notification from ${data.username} (${data.userUuid})`);
+    debugLog(`📸 [PROFILE-IMAGE] Update notification from ${data.username} (${data.userUuid})`);
     // 다른 모든 사용자에게 브로드캐스트
     socket.broadcast.emit("profile:image:updated", {
       userUuid: data.userUuid,
@@ -4138,7 +4138,7 @@ io.on("connection", (socket) => {
           socket.emit('data:totalCatches', JSON.parse(JSON.stringify(allTotalCatches || { totalFishCaught: 0 })));
           socket.emit('data:companions', JSON.parse(JSON.stringify(allCompanions || { companions: [] })));
           
-          console.log(`🚀 Parallel data fetch completed for ${username} (${userUuid})`);
+          debugLog(`🚀 Parallel data fetch completed for ${username} (${userUuid})`);
           break;
       }
     } catch (error) {
@@ -4228,7 +4228,7 @@ async function sendUserDataUpdate(socket, userUuid, username) {
 
     const safeData = createSafeData();
     
-    console.log(`🔄 Sending data update to ${username}:`, {
+    debugLog(`🔄 Sending data update to ${username}:`, {
       inventoryCount: safeData.inventory?.length || 0,
       materialsCount: safeData.materials?.length || 0,
       inventoryFirstItem: safeData.inventory?.[0],
@@ -4278,11 +4278,11 @@ async function sendUserDataUpdate(socket, userUuid, username) {
 }
 
 async function getInventoryData(userUuid) {
-  console.log(`🔍 getInventoryData called with userUuid: ${userUuid}`);
+  debugLog(`🔍 getInventoryData called with userUuid: ${userUuid}`);
   
   // 먼저 간단한 find로 실제 데이터가 있는지 확인
   const totalCount = await CatchModel.countDocuments({ userUuid: userUuid });
-  console.log(`🔍 CatchModel.countDocuments({ userUuid: "${userUuid}" }): ${totalCount}`);
+  debugLog(`🔍 CatchModel.countDocuments({ userUuid: "${userUuid}" }): ${totalCount}`);
   
   const result = await measureDBQuery("인벤토리조회", async () => {
     // 간단한 find 사용 (count 필드가 이미 있으므로 aggregate 불필요)
@@ -4295,19 +4295,19 @@ async function getInventoryData(userUuid) {
     
     return catches;
   });
-  console.log(`🔍 getInventoryData for ${userUuid}: found ${result?.length || 0} items`);
+  debugLog(`🔍 getInventoryData for ${userUuid}: found ${result?.length || 0} items`);
   if (result && result.length > 0) {
-    console.log(`🔍 First inventory item:`, result[0]);
+    debugLog(`🔍 First inventory item:`, result[0]);
   }
   return result;
 }
 
 async function getMaterialsData(userUuid) {
-  console.log(`🔍 getMaterialsData called with userUuid: ${userUuid}`);
+  debugLog(`🔍 getMaterialsData called with userUuid: ${userUuid}`);
   
   // 먼저 간단한 find로 실제 데이터가 있는지 확인
   const totalCount = await MaterialModel.countDocuments({ userUuid: userUuid });
-  console.log(`🔍 MaterialModel.countDocuments({ userUuid: "${userUuid}" }): ${totalCount}`);
+  debugLog(`🔍 MaterialModel.countDocuments({ userUuid: "${userUuid}" }): ${totalCount}`);
   
   const result = await measureDBQuery("재료조회", async () => {
     // 간단한 find 사용 (count 필드가 이미 있으므로 aggregate 불필요)
@@ -4320,9 +4320,9 @@ async function getMaterialsData(userUuid) {
     
     return materials;
   });
-  console.log(`🔍 getMaterialsData for ${userUuid}: found ${result?.length || 0} items`);
+  debugLog(`🔍 getMaterialsData for ${userUuid}: found ${result?.length || 0} items`);
   if (result && result.length > 0) {
-    console.log(`🔍 First material item:`, result[0]);
+    debugLog(`🔍 First material item:`, result[0]);
   }
   return result;
 }
@@ -4387,7 +4387,7 @@ async function getCooldownData(userUuid) {
   const fishingCooldown = user?.fishingCooldownEnd && user.fishingCooldownEnd > now 
     ? Math.max(0, user.fishingCooldownEnd - now) : 0; // 밀리초 단위로 반환
   
-  console.log(`🕒 getCooldownData for ${userUuid}: ${fishingCooldown}ms (${Math.floor(fishingCooldown/1000)}s)`);
+  debugLog(`🕒 getCooldownData for ${userUuid}: ${fishingCooldown}ms (${Math.floor(fishingCooldown/1000)}s)`);
   
   return { fishingCooldown };
 }
@@ -4880,7 +4880,7 @@ app.get("/api/inventory/:userId", optionalJWT, async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for inventory:", query);
+      debugLog("Using UUID query for inventory:", query);
     } else {
       // 🔧 존재하지 않는 사용자에 대한 반복 요청 방지
       if (userUuid === '#0002' && username === '아딸') {
@@ -4888,13 +4888,13 @@ app.get("/api/inventory/:userId", optionalJWT, async (req, res) => {
         return res.status(404).json({ error: "User not found. Please refresh and login again." });
       }
       query = queryResult;
-      console.log("Using fallback query for inventory:", query);
+      debugLog("Using fallback query for inventory:", query);
     }
     
     // 🚀 보안 검증 생략 (성능 최적화)
     // const ownershipValidation = await validateUserOwnership(query, userUuid, username);
     
-    console.log("Database query for inventory:", query);
+    debugLog("Database query for inventory:", query);
     
     // 🚀 MongoDB Aggregation으로 성능 최적화 (count 필드 사용)
     const fishCountAggregation = await CatchModel.aggregate([
@@ -4921,8 +4921,8 @@ app.get("/api/inventory/:userId", optionalJWT, async (req, res) => {
       .update(JSON.stringify(inventory.sort((a, b) => a.fish.localeCompare(b.fish))))
       .digest('hex');
     
-    console.log("Final inventory:", inventory);
-    console.log("Inventory hash:", inventoryHash);
+    debugLog("Final inventory:", inventory);
+    debugLog("Inventory hash:", inventoryHash);
     
     // 안전장치: 배열이 아닌 경우 빈 배열로 처리
     const safeInventory = Array.isArray(inventory) ? inventory : [];
@@ -5109,10 +5109,10 @@ app.get("/api/user-money/:userId", authenticateJWT, async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for user money:", query);
+      debugLog("Using UUID query for user money:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for user money:", query);
+      debugLog("Using fallback query for user money:", query);
     }
     
     // 🔒 보안 검증: 본인 데이터만 조회 가능
@@ -5122,7 +5122,7 @@ app.get("/api/user-money/:userId", authenticateJWT, async (req, res) => {
       return res.status(403).json({ error: "Access denied: You can only view your own data" });
     }
     
-    console.log("Database query for user money:", query);
+    debugLog("Database query for user money:", query);
     
     let userMoney = await UserMoneyModel.findOne(query);
     
@@ -5163,10 +5163,10 @@ app.get("/api/user-amber/:userId", authenticateJWT, async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for user amber:", query);
+      debugLog("Using UUID query for user amber:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for user amber:", query);
+      debugLog("Using fallback query for user amber:", query);
     }
     
     // 🔒 보안 검증: 본인 데이터만 조회 가능
@@ -5176,7 +5176,7 @@ app.get("/api/user-amber/:userId", authenticateJWT, async (req, res) => {
       return res.status(403).json({ error: "Access denied: You can only view your own data" });
     }
     
-    console.log("Database query for user amber:", query);
+    debugLog("Database query for user amber:", query);
     
     let userAmber = await UserAmberModel.findOne(query);
     
@@ -5217,18 +5217,18 @@ app.get("/api/star-pieces/:userId", authenticateJWT, async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for star pieces:", query);
+      debugLog("Using UUID query for star pieces:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for star pieces:", query);
+      debugLog("Using fallback query for star pieces:", query);
     }
     
-    console.log("Database query for star pieces:", query);
+    debugLog("Database query for star pieces:", query);
     
     const userStarPieces = await StarPieceModel.findOne(query);
     const starPieces = userStarPieces ? userStarPieces.starPieces : 0;
     
-    console.log(`User star pieces: ${starPieces}`);
+    debugLog(`User star pieces: ${starPieces}`);
     res.json({ starPieces });
   } catch (error) {
     console.error("Failed to fetch star pieces:", error);
@@ -5251,10 +5251,10 @@ app.get("/api/ether-keys/:userId", authenticateJWT, async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for ether keys:", query);
+      debugLog("Using UUID query for ether keys:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for ether keys:", query);
+      debugLog("Using fallback query for ether keys:", query);
     }
     
     // 🔒 보안 검증: 본인 데이터만 조회 가능
@@ -5264,7 +5264,7 @@ app.get("/api/ether-keys/:userId", authenticateJWT, async (req, res) => {
       return res.status(403).json({ error: "Access denied: You can only view your own data" });
     }
     
-    console.log("Database query for ether keys:", query);
+    debugLog("Database query for ether keys:", query);
     
     let userEtherKeys = await EtherKeyModel.findOne(query);
     
@@ -5303,10 +5303,10 @@ app.get("/api/alchemy-potions/:userId", authenticateJWT, async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for alchemy potions:", query);
+      debugLog("Using UUID query for alchemy potions:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for alchemy potions:", query);
+      debugLog("Using fallback query for alchemy potions:", query);
     }
     
     // 🔒 보안 검증: 본인 데이터만 조회 가능
@@ -5353,10 +5353,10 @@ app.get("/api/auto-bait/:userId", authenticateJWT, async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for auto bait:", query);
+      debugLog("Using UUID query for auto bait:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for auto bait:", query);
+      debugLog("Using fallback query for auto bait:", query);
     }
     
     // 🔒 보안 검증: 본인 데이터만 조회 가능
@@ -5404,13 +5404,13 @@ app.post("/api/add-star-pieces", authenticateJWT, async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for add star pieces:", query);
+      debugLog("Using UUID query for add star pieces:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for add star pieces:", query);
+      debugLog("Using fallback query for add star pieces:", query);
     }
     
-    console.log("Database query for add star pieces:", query);
+    debugLog("Database query for add star pieces:", query);
     
     let userStarPieces = await StarPieceModel.findOne(query);
     
@@ -6129,10 +6129,10 @@ app.post("/api/recruit-companion", authenticateJWT, async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for recruit:", query);
+      debugLog("Using UUID query for recruit:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for recruit:", query);
+      debugLog("Using fallback query for recruit:", query);
     }
     
     // 🚀 별조각과 동료 정보를 병렬로 조회 (성능 최적화)
@@ -6239,10 +6239,10 @@ app.get("/api/companions/:userId", async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for companions:", query);
+      debugLog("Using UUID query for companions:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for companions:", query);
+      debugLog("Using fallback query for companions:", query);
     }
     
     const userCompanions = await CompanionModel.findOne(query);
@@ -6524,10 +6524,10 @@ app.get("/api/admin-status/:userId", async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for admin status:", query);
+      debugLog("Using UUID query for admin status:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for admin status:", query);
+      debugLog("Using fallback query for admin status:", query);
     }
     
     const adminRecord = await AdminModel.findOne(query);
@@ -6728,7 +6728,7 @@ app.get("/api/profile-image/:userUuid", async (req, res) => {
     
     // 🦊 여우 봇 프로필 이미지 특별 처리
     if (userUuid === "fox_bot") {
-      console.log(`📸 [PROFILE-IMAGE] Fox bot image requested`);
+      debugLog(`📸 [PROFILE-IMAGE] Fox bot image requested`);
       
       // 프로젝트 루트 assets 폴더의 이미지 URL 반환
       return res.json({
@@ -6745,7 +6745,7 @@ app.get("/api/profile-image/:userUuid", async (req, res) => {
       // #이 없으면 #을 추가해서 다시 조회
       const userUuidWithHash = '#' + userUuid;
       profileImage = await ProfileImageModel.findOne({ userUuid: userUuidWithHash });
-      console.log(`📸 [PROFILE-IMAGE] Tried with hash: ${userUuidWithHash}, found: ${!!profileImage}`);
+      debugLog(`📸 [PROFILE-IMAGE] Tried with hash: ${userUuidWithHash}, found: ${!!profileImage}`);
     }
     
     if (profileImage) {
@@ -6753,7 +6753,7 @@ app.get("/api/profile-image/:userUuid", async (req, res) => {
       const timestamp = new Date(profileImage.uploadedAt).getTime();
       const imageUrlWithTimestamp = `${profileImage.imageUrl}?t=${timestamp}`;
       
-      console.log(`📸 [PROFILE-IMAGE] Image found for ${userUuid}:`, imageUrlWithTimestamp);
+      debugLog(`📸 [PROFILE-IMAGE] Image found for ${userUuid}:`, imageUrlWithTimestamp);
       
       res.json({
         success: true,
@@ -6761,7 +6761,7 @@ app.get("/api/profile-image/:userUuid", async (req, res) => {
         uploadedAt: profileImage.uploadedAt
       });
     } else {
-      console.log(`📸 [PROFILE-IMAGE] No image found for ${userUuid}`);
+      debugLog(`📸 [PROFILE-IMAGE] No image found for ${userUuid}`);
       res.json({
         success: true,
         imageUrl: null
@@ -6854,10 +6854,10 @@ app.get("/api/cooldown/:userId", async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for cooldown:", query);
+      debugLog("Using UUID query for cooldown:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for cooldown:", query);
+      debugLog("Using fallback query for cooldown:", query);
     }
     
     const cooldownRecord = await CooldownModel.findOne(query);
@@ -6950,10 +6950,10 @@ app.post("/api/set-fishing-cooldown", authenticateOptionalJWT, async (req, res) 
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for fishing cooldown:", query);
+      debugLog("Using UUID query for fishing cooldown:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for fishing cooldown:", query);
+      debugLog("Using fallback query for fishing cooldown:", query);
     }
     
     // 서버에서 쿨타임 시간 계산 (클라이언트에서 받지 않음!)
@@ -7999,10 +7999,10 @@ app.get("/api/total-catches/:userId", async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for total catches:", query);
+      debugLog("Using UUID query for total catches:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for total catches:", query);
+      debugLog("Using fallback query for total catches:", query);
     }
     
     // CatchModel에서 해당 사용자의 모든 낚시 기록 수 조회
@@ -8095,7 +8095,7 @@ app.get("/api/ranking", async (req, res) => {
         totalFishCaught: user.totalFishCaught // 새로운 총 물고기 카운트
       }));
     
-    console.log(`Sending ranking data for ${rankings.length} users (with achievement bonuses)`);
+    debugLog(`Sending ranking data for ${rankings.length} users (with achievement bonuses)`);
     
     res.json({ 
       rankings,
@@ -8299,7 +8299,7 @@ app.post("/api/update-quest-progress", authenticateJWT, async (req, res) => {
     userQuests[questType] = (userQuests[questType] || 0) + amount;
     batchUpdates.questProgress.set(userUuid, userQuests);
     
-    console.log(`[Quest] Quest progress queued for batch: ${questType} +${amount} for ${username} (total pending: ${userQuests[questType]})`);
+    debugLog(`[Quest] Quest progress queued for batch: ${questType} +${amount} for ${username} (total pending: ${userQuests[questType]})`);
     
     // 🚀 Socket.IO로 실시간 퀘스트 진행도 전송
     const userSocket = Array.from(io.sockets.sockets.values()).find(
@@ -8462,13 +8462,13 @@ app.post("/api/add-amber", authenticateJWT, async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for add amber:", query);
+      debugLog("Using UUID query for add amber:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for add amber:", query);
+      debugLog("Using fallback query for add amber:", query);
     }
     
-    console.log("Database query for add amber:", query);
+    debugLog("Database query for add amber:", query);
     
     let userAmber = await UserAmberModel.findOne(query);
     
@@ -8804,10 +8804,10 @@ app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for sell fish:", query);
+      debugLog("Using UUID query for sell fish:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for sell fish:", query);
+      debugLog("Using fallback query for sell fish:", query);
     }
     
     // 서버에서 실제 물고기 가격 계산 (클라이언트 가격 무시)
@@ -9035,10 +9035,10 @@ app.post("/api/buy-item", authenticateJWT, async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for buy item:", query);
+      debugLog("Using UUID query for buy item:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for buy item:", query);
+      debugLog("Using fallback query for buy item:", query);
     }
     
     console.log("Final database query for buy item:", query);
@@ -9707,16 +9707,16 @@ app.get("/api/user-equipment/:userId", optionalJWT, async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for user equipment:", query);
+      debugLog("Using UUID query for user equipment:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for user equipment:", query);
+      debugLog("Using fallback query for user equipment:", query);
     }
     
-    console.log("Database query for user equipment:", query);
+    debugLog("Database query for user equipment:", query);
     
     let userEquipment = await UserEquipmentModel.findOne(query);
-    console.log("Found equipment in database:", userEquipment ? {
+    debugLog("Found equipment in database:", userEquipment ? {
       userUuid: userEquipment.userUuid,
       username: userEquipment.username,
       fishingRod: userEquipment.fishingRod,
@@ -9778,7 +9778,7 @@ app.get("/api/user-equipment/:userId", optionalJWT, async (req, res) => {
       accessoryFailCount: userEquipment.accessoryFailCount || 0
     };
     
-    console.log("Sending equipment response:", response);
+    debugLog("Sending equipment response:", response);
     res.json(response);
   } catch (error) {
     console.error("Failed to fetch user equipment:", error);
@@ -9874,13 +9874,13 @@ app.post("/api/decompose-fish", authenticateJWT, async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for decompose fish:", query);
+      debugLog("Using UUID query for decompose fish:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for decompose fish:", query);
+      debugLog("Using fallback query for decompose fish:", query);
     }
     
-    console.log("Database query for decompose fish:", query);
+    debugLog("Database query for decompose fish:", query);
     
     // 🎯 성능 최적화: count 필드로 물고기 개수 확인
     const userFish = await measureDBQuery(`물고기분해-조회-${fishName}`, () =>
@@ -10135,13 +10135,13 @@ app.post("/api/consume-material", authenticateJWT, async (req, res) => {
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
-      console.log("Using UUID query for consume material:", query);
+      debugLog("Using UUID query for consume material:", query);
     } else {
       query = queryResult;
-      console.log("Using fallback query for consume material:", query);
+      debugLog("Using fallback query for consume material:", query);
     }
     
-    console.log("Database query for consume material:", query);
+    debugLog("Database query for consume material:", query);
     
     // 🎯 성능 최적화: count 필드로 재료 개수 확인
     const userMaterial = await MaterialModel.findOne({ ...query, material: materialName });
@@ -10514,7 +10514,7 @@ app.get("/api/fishing-skill/:userId", optionalJWT, async (req, res) => {
       return res.status(403).json({ error: "Access denied: You can only view your own data" });
     }
     
-    console.log("Database query for fishing skill:", query);
+    debugLog("Database query for fishing skill:", query);
     
     let fishingSkill = await FishingSkillModel.findOne(query);
     
