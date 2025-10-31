@@ -1,6 +1,20 @@
 // 공지사항 데이터 (ID 내림차순 정렬 - 최신이 가장 높은 ID)
 export const NOTICE_DATA = [
   {
+    id: 46,
+    date: "2025.10.31",
+    title: "[v1.408] ⚓ 항해 난이도 하향 및 버그 수정",
+    content: [
+      "항해 시스템 버그 수정:",
+      "- 승리 보상 물고기 인벤토리 동기화 적용",
+      "- 보상 수령 후 인벤토리가 업데이트되지 않던 문제 해결",
+      "항해 전투 밸런스 조정:",
+      "- 물고기기 속도 하향"
+    ],
+    isNew: true,
+    type: "major_update"
+  },
+  {
     id: 45,
     date: "2025.10.30",
     title: "[v1.407] ⚓ 항해 난이도 확장 및 버그 수정",
@@ -11,9 +25,9 @@ export const NOTICE_DATA = [
       "항해 시스템 버그 수정:",
       "- 동료 한 명만 남았을 때 체력이 안 닳는 버그 수정",
       "- 일일퀘스트 '항해에서 물고기 포획하기' 카운트 안되던 버그 수정",
-      "- 승리 보상 골드/물고기 즉시 동기화 적용",
+      "- 승리 보상 골드/물고기 동기화 적용"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
@@ -781,5 +795,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.407"
+  version: "v1.408"
 };

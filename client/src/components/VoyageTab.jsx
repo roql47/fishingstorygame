@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Anchor, Heart, Sword, Zap, Trophy, Coins, ArrowLeft, Users } from 'lucide-react';
 import { calculateCompanionStats } from '../data/companionData';
+import axios from 'axios';
 
 const VoyageTab = ({ 
   isDarkMode, 
@@ -28,37 +29,38 @@ const VoyageTab = ({
   const [damageNumbers, setDamageNumbers] = useState([]); // 데미지 숫자 애니메이션
   const [currentPage, setCurrentPage] = useState(1); // 페이지네이션
   const [rewardGold, setRewardGold] = useState(0); // 실제 보상 골드 (5~10배 랜덤)
+  const [isClaiming, setIsClaiming] = useState(false); // 보상 수령 중복 방지
   
   const combatIntervalRef = useRef(null);
   const logRef = useRef(null);
 
-  // 물고기 데이터 (rank 1-25)
+  // 물고기 데이터 (rank 1-25) - speed: 50부터 5씩 증가
   const voyageFishes = [
     { rank: 1, name: '타코문어', image: '/assets/images/monster1.jpeg', hp: 50, attack: 5, speed: 50, gold: 500 },
-    { rank: 2, name: '풀고등어', image: '/assets/images/monster2.jpeg', hp: 90, attack: 8, speed: 60, gold: 800 },
-    { rank: 3, name: '경단붕어', image: '/assets/images/monster3.jpeg', hp: 140, attack: 11, speed: 70, gold: 1200, imagePosition: 'center 80%' },
-    { rank: 4, name: '버터오징어', image: '/assets/images/monster4.jpeg', hp: 200, attack: 15, speed: 80, gold: 1800 },
-    { rank: 5, name: '간장새우', image: '/assets/images/monster5.jpeg', hp: 275, attack: 20, speed: 90, gold: 2500 },
-    { rank: 6, name: '물수수', image: '/assets/images/monster6.jpeg', hp: 375, attack: 28, speed: 100, gold: 3500 },
-    { rank: 7, name: '정어리파이', image: '/assets/images/monster7.jpeg', hp: 500, attack: 35, speed: 110, gold: 4500 },
-    { rank: 8, name: '얼음상어', image: '/assets/images/monster8.jpeg', hp: 650, attack: 45, speed: 120, gold: 6000, imagePosition: 'center 35%' },
-    { rank: 9, name: '스퀄스퀴드', image: '/assets/images/monster9.jpeg', hp: 850, attack: 58, speed: 130, gold: 8000, imagePosition: 'center 60%' },
-    { rank: 10, name: '백년송거북', image: '/assets/images/monster10.jpeg', hp: 1100, attack: 73, speed: 140, gold: 10500, imagePosition: 'center 80%' },
-    { rank: 11, name: '고스피쉬', image: '/assets/images/monster11.jpeg', hp: 1450, attack: 95, speed: 150, gold: 13500, imagePosition: 'center 37%' },
-    { rank: 12, name: '유령치', image: '/assets/images/monster12.jpeg', hp: 1850, attack: 120, speed: 160, gold: 17000 },
-    { rank: 13, name: '바이트독', image: '/assets/images/monster13.jpeg', hp: 2350, attack: 155, speed: 170, gold: 21500 },
-    { rank: 14, name: '호박고래', image: '/assets/images/monster14.jpeg', hp: 3000, attack: 200, speed: 180, gold: 27000, imagePosition: 'center 40%' },
-    { rank: 15, name: '바이킹조개', image: '/assets/images/monster15-1.jpeg', hp: 3800, attack: 250, speed: 190, gold: 34000, imagePosition: 'center 50%' },
-    { rank: 16, name: '천사해파리', image: '/assets/images/monster16.jpeg', hp: 4800, attack: 320, speed: 200, gold: 43000, imagePosition: 'center 38%' },
-    { rank: 17, name: '악마복어', image: '/assets/images/monster17.jpeg', hp: 6100, attack: 410, speed: 210, gold: 54000, imagePosition: 'center 45%' },
-    { rank: 18, name: '칠성장어', image: '/assets/images/monster18.jpeg', hp: 7700, attack: 520, speed: 220, gold: 68000 },
-    { rank: 19, name: '닥터블랙', image: '/assets/images/monster19.jpeg', hp: 9700, attack: 660, speed: 230, gold: 86000, imagePosition: 'center 65%' },
-    { rank: 20, name: '해룡', image: '/assets/images/monster20.jpeg', hp: 12200, attack: 840, speed: 240, gold: 108000, imagePosition: 'center 12%' },
-    { rank: 21, name: '메카핫킹크랩', image: '/assets/images/monster21.jpeg', hp: 15400, attack: 1070, speed: 250, gold: 136000, imagePosition: 'center 55%' },
-    { rank: 22, name: '램프리', image: '/assets/images/monster22.jpeg', hp: 19400, attack: 1360, speed: 260, gold: 172000 },
-    { rank: 23, name: '마지막잎새', image: '/assets/images/monster23.jpeg', hp: 24500, attack: 1730, speed: 270, gold: 217000, imagePosition: 'center 48%' },
-    { rank: 24, name: '아이스브리더', image: '/assets/images/monster24.jpeg', hp: 30900, attack: 2200, speed: 280, gold: 274000, imagePosition: 'center 40%' },
-    { rank: 25, name: '해신', image: '/assets/images/monster25.jpeg', hp: 39000, attack: 2800, speed: 290, gold: 345000, imagePosition: 'center 35%'  }
+    { rank: 2, name: '풀고등어', image: '/assets/images/monster2.jpeg', hp: 90, attack: 8, speed: 55, gold: 800 },
+    { rank: 3, name: '경단붕어', image: '/assets/images/monster3.jpeg', hp: 140, attack: 11, speed: 60, gold: 1200, imagePosition: 'center 80%' },
+    { rank: 4, name: '버터오징어', image: '/assets/images/monster4.jpeg', hp: 200, attack: 15, speed: 65, gold: 1800 },
+    { rank: 5, name: '간장새우', image: '/assets/images/monster5.jpeg', hp: 275, attack: 20, speed: 70, gold: 2500 },
+    { rank: 6, name: '물수수', image: '/assets/images/monster6.jpeg', hp: 375, attack: 28, speed: 75, gold: 3500 },
+    { rank: 7, name: '정어리파이', image: '/assets/images/monster7.jpeg', hp: 500, attack: 35, speed: 80, gold: 4500 },
+    { rank: 8, name: '얼음상어', image: '/assets/images/monster8.jpeg', hp: 650, attack: 45, speed: 85, gold: 6000, imagePosition: 'center 35%' },
+    { rank: 9, name: '스퀄스퀴드', image: '/assets/images/monster9.jpeg', hp: 850, attack: 58, speed: 90, gold: 8000, imagePosition: 'center 60%' },
+    { rank: 10, name: '백년송거북', image: '/assets/images/monster10.jpeg', hp: 1100, attack: 73, speed: 95, gold: 10500, imagePosition: 'center 80%' },
+    { rank: 11, name: '고스피쉬', image: '/assets/images/monster11.jpeg', hp: 1450, attack: 95, speed: 100, gold: 13500, imagePosition: 'center 37%' },
+    { rank: 12, name: '유령치', image: '/assets/images/monster12.jpeg', hp: 1850, attack: 120, speed: 105, gold: 17000 },
+    { rank: 13, name: '바이트독', image: '/assets/images/monster13.jpeg', hp: 2350, attack: 155, speed: 110, gold: 21500 },
+    { rank: 14, name: '호박고래', image: '/assets/images/monster14.jpeg', hp: 3000, attack: 200, speed: 115, gold: 27000, imagePosition: 'center 40%' },
+    { rank: 15, name: '바이킹조개', image: '/assets/images/monster15-1.jpeg', hp: 3800, attack: 250, speed: 120, gold: 34000, imagePosition: 'center 50%' },
+    { rank: 16, name: '천사해파리', image: '/assets/images/monster16.jpeg', hp: 4800, attack: 320, speed: 125, gold: 43000, imagePosition: 'center 38%' },
+    { rank: 17, name: '악마복어', image: '/assets/images/monster17.jpeg', hp: 6100, attack: 410, speed: 130, gold: 54000, imagePosition: 'center 45%' },
+    { rank: 18, name: '칠성장어', image: '/assets/images/monster18.jpeg', hp: 7700, attack: 520, speed: 135, gold: 68000 },
+    { rank: 19, name: '닥터블랙', image: '/assets/images/monster19.jpeg', hp: 9700, attack: 660, speed: 140, gold: 86000, imagePosition: 'center 65%' },
+    { rank: 20, name: '해룡', image: '/assets/images/monster20.jpeg', hp: 12200, attack: 840, speed: 145, gold: 108000, imagePosition: 'center 12%' },
+    { rank: 21, name: '메카핫킹크랩', image: '/assets/images/monster21.jpeg', hp: 15400, attack: 1070, speed: 150, gold: 136000, imagePosition: 'center 55%' },
+    { rank: 22, name: '램프리', image: '/assets/images/monster22.jpeg', hp: 19400, attack: 1360, speed: 155, gold: 172000 },
+    { rank: 23, name: '마지막잎새', image: '/assets/images/monster23.jpeg', hp: 24500, attack: 1730, speed: 160, gold: 217000, imagePosition: 'center 48%' },
+    { rank: 24, name: '아이스브리더', image: '/assets/images/monster24.jpeg', hp: 30900, attack: 2200, speed: 165, gold: 274000, imagePosition: 'center 40%' },
+    { rank: 25, name: '해신', image: '/assets/images/monster25.jpeg', hp: 39000, attack: 2800, speed: 170, gold: 345000, imagePosition: 'center 35%'  }
   ];
   
   // 페이지네이션 설정
@@ -72,6 +74,7 @@ const VoyageTab = ({
   const startBattle = (fish) => {
     setSelectedFish(fish);
     setRewardGold(0); // 보상 골드 초기화
+    setIsClaiming(false); // 보상 수령 상태 초기화
     
     // 실제 플레이어 스탯 계산
     // 1. 체력: 악세사리 레벨 + 강화 보너스 + 🌟 유저 스탯
@@ -345,7 +348,14 @@ const VoyageTab = ({
 
   // 보상 수령
   const claimReward = async () => {
+    // 🔒 레이어 1: 중복 실행 방지 (UI 상태 체크)
     if (battleState?.status !== 'victory') return;
+    if (isClaiming) {
+      console.log('⏳ 보상 수령이 이미 처리 중입니다.');
+      return;
+    }
+
+    setIsClaiming(true); // 🔒 즉시 잠금
 
     try {
       const response = await fetch(`${import.meta.env.VITE_SERVER_URL || window.location.origin}/api/voyage/reward`, {
@@ -374,12 +384,25 @@ const VoyageTab = ({
           console.log(`✅ 항해 보상: 골드 ${data.gold}, 물고기 ${selectedFish.name}`);
         }
         
-        // 소켓으로 인벤토리 업데이트 알림
-        if (socket) {
-          socket.emit('inventoryUpdated', {
-            userUuid,
-            reason: 'voyage_reward'
+        // 🐟 인벤토리 직접 새로고침
+        try {
+          const inventoryResponse = await axios.get(`${import.meta.env.VITE_SERVER_URL || window.location.origin}/api/inventory`, {
+            params: { username, userUuid }
           });
+          
+          if (inventoryResponse.data && inventoryResponse.data.inventory) {
+            // App.jsx의 inventory 상태를 업데이트하기 위해 소켓 이벤트 발송
+            if (socket) {
+              socket.emit('inventoryUpdated', {
+                userUuid,
+                reason: 'voyage_reward',
+                inventory: inventoryResponse.data.inventory
+              });
+            }
+            console.log('✅ 인벤토리 동기화 완료:', inventoryResponse.data.inventory);
+          }
+        } catch (invError) {
+          console.error('❌ 인벤토리 새로고침 실패:', invError);
         }
 
         alert(`보상 획득!\n골드: +${rewardGold.toLocaleString()}G\n물고기: ${selectedFish.name} +1마리`);
@@ -389,11 +412,13 @@ const VoyageTab = ({
         setCombatLog([]);
         setRewardGold(0);
       } else {
-        alert('보상 수령에 실패했습니다: ' + data.error);
+        alert('보상 수령에 실패했습니다: ' + (data.error || '알 수 없는 오류'));
       }
     } catch (error) {
       console.error('보상 수령 오류:', error);
       alert('보상 수령 중 오류가 발생했습니다.');
+    } finally {
+      setIsClaiming(false); // 🔓 항상 잠금 해제
     }
   };
 
@@ -911,13 +936,16 @@ const VoyageTab = ({
               {battleState.status === 'victory' ? (
                 <button
                   onClick={claimReward}
+                  disabled={isClaiming}
                   className={`w-full py-3 rounded-xl font-bold transition-all ${
-                    isDarkMode
-                      ? "bg-green-600 hover:bg-green-700 text-white"
-                      : "bg-green-500 hover:bg-green-600 text-white"
+                    isClaiming
+                      ? "opacity-50 cursor-not-allowed bg-gray-500 text-gray-300"
+                      : isDarkMode
+                        ? "bg-green-600 hover:bg-green-700 text-white"
+                        : "bg-green-500 hover:bg-green-600 text-white"
                   }`}
                 >
-                  보상 받기
+                  {isClaiming ? "처리 중..." : "보상 받기"}
                 </button>
               ) : (
                 <button

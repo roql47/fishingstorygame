@@ -2,6 +2,9 @@
 const express = require('express');
 const router = express.Router();
 
+// 🔒 레이어 3: 서버 측 중복 요청 차단 (3초 이내)
+const recentClaims = new Map(); // userUuid -> timestamp
+
 // 항해 보상 지급 API
 const setupVoyageRoutes = (app, UserMoneyModel, CatchModel, DailyQuestModel, getKSTDate) => {
   // 항해 보상 지급
@@ -15,6 +18,24 @@ const setupVoyageRoutes = (app, UserMoneyModel, CatchModel, DailyQuestModel, get
           error: '필수 정보가 누락되었습니다.'
         });
       }
+
+      // 🔒 레이어 3: 서버 측 중복 요청 차단 (3초 이내 재요청 차단)
+      const now = Date.now();
+      const lastClaimTime = recentClaims.get(userUuid);
+      if (lastClaimTime && now - lastClaimTime < 3000) {
+        console.log(`[VOYAGE] 중복 요청 차단: ${username} (${now - lastClaimTime}ms 전 요청)`);
+        return res.status(429).json({
+          success: false,
+          error: '보상은 3초에 한 번만 받을 수 있습니다. 잠시 후 다시 시도해주세요.'
+        });
+      }
+      
+      recentClaims.set(userUuid, now);
+      
+      // 5분 후 자동 정리 (메모리 누수 방지)
+      setTimeout(() => {
+        recentClaims.delete(userUuid);
+      }, 300000);
 
       // 🎯 골드 지급 (원자적 연산으로 race condition 방지)
       const moneyDoc = await UserMoneyModel.findOneAndUpdate(
