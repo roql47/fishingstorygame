@@ -336,7 +336,13 @@ class ExpeditionSystem {
             // 동료 체력 초기화
             if (playerData?.companions && playerData.companions.length > 0) {
                 playerData.companions.forEach(companion => {
-                    const companionStats = this.calculateCompanionStats(companion.companionName, companion.level);
+                    const companionStats = this.calculateCompanionStats(
+                        companion.companionName, 
+                        companion.level,
+                        companion.tier || 0,
+                        companion.breakthrough || 0,
+                        companion.breakthroughStats || null
+                    );
                     if (companionStats) {
                         const companionKey = `${player.id}_${companion.companionName}`;
                         companionHp[companionKey] = companionStats.hp;
@@ -366,7 +372,13 @@ class ExpeditionSystem {
             const playerData = room.playerData?.[player.id];
             if (playerData?.companions) {
                 playerData.companions.forEach(companion => {
-                    const companionStats = this.calculateCompanionStats(companion.companionName, companion.level);
+                    const companionStats = this.calculateCompanionStats(
+                        companion.companionName, 
+                        companion.level,
+                        companion.tier || 0,
+                        companion.breakthrough || 0,
+                        companion.breakthroughStats || null
+                    );
                     if (companionStats) {
                         combatants.push({ 
                             type: 'companion', 
@@ -439,8 +451,8 @@ class ExpeditionSystem {
         return Math.floor(baseHp + (baseHp * enhancementBonusPercent / 100));
     }
 
-    // 동료 능력치 계산 (탐사전투와 동일)
-    calculateCompanionStats(companionName, level = 1) {
+    // 동료 능력치 계산 (tier와 breakthrough 반영)
+    calculateCompanionStats(companionName, level = 1, tier = 0, breakthrough = 0, breakthroughStats = null) {
         const COMPANION_DATA = {
             "실": {
                 name: "실",
@@ -561,9 +573,45 @@ class ExpeditionSystem {
         const baseData = COMPANION_DATA[companionName];
         if (!baseData) return null;
 
-        const hp = baseData.baseHp + (baseData.growthHp * (level - 1));
-        const attack = baseData.baseAttack + (baseData.growthAttack * (level - 1));
-        const speed = baseData.baseSpeed + (baseData.growthSpeed * (level - 1));
+        // 💎 돌파에 따른 성장률 증가 계산
+        let bonusGrowthHp = 0;
+        let bonusGrowthAttack = 0;
+        let bonusGrowthSpeed = 0;
+        
+        if (breakthroughStats) {
+            bonusGrowthHp = breakthroughStats.bonusGrowthHp || 0;
+            bonusGrowthAttack = breakthroughStats.bonusGrowthAttack || 0;
+            bonusGrowthSpeed = breakthroughStats.bonusGrowthSpeed || 0;
+        }
+
+        // 강화된 성장률 적용
+        const enhancedGrowthHp = baseData.growthHp + bonusGrowthHp;
+        const enhancedGrowthAttack = baseData.growthAttack + bonusGrowthAttack;
+        const enhancedGrowthSpeed = baseData.growthSpeed + bonusGrowthSpeed;
+
+        // 기본 능력치 계산 (강화된 성장률 적용)
+        let hp = baseData.baseHp + (enhancedGrowthHp * (level - 1));
+        let attack = baseData.baseAttack + (enhancedGrowthAttack * (level - 1));
+        let speed = baseData.baseSpeed + (enhancedGrowthSpeed * (level - 1));
+
+        // 🌟 성장 등급에 따른 배율 적용
+        const TIER_INFO = {
+            0: { statMultiplier: 1.0, skillMultiplier: 1.0 },
+            1: { statMultiplier: 1.3, skillMultiplier: 1.3 },
+            2: { statMultiplier: 1.6, skillMultiplier: 1.5 }
+        };
+        
+        const tierInfo = TIER_INFO[tier] || TIER_INFO[0];
+        hp = Math.floor(hp * tierInfo.statMultiplier);
+        attack = Math.floor(attack * tierInfo.statMultiplier);
+        speed = Math.floor(speed * tierInfo.statMultiplier);
+
+        // 스킬 데이터에 등급 배율 적용
+        const enhancedSkill = baseData.skill ? {
+            ...baseData.skill,
+            damageMultiplier: (baseData.skill.damageMultiplier || 1.0) * tierInfo.skillMultiplier,
+            moraleRequired: 100
+        } : null;
 
         return {
             ...baseData,
@@ -571,7 +619,10 @@ class ExpeditionSystem {
             hp,
             attack,
             speed,
-            maxHp: hp
+            maxHp: hp,
+            tier,
+            breakthrough,
+            skill: enhancedSkill
         };
     }
 
@@ -964,7 +1015,13 @@ class ExpeditionSystem {
         const targetMonster = aliveMonsters[Math.floor(Math.random() * aliveMonsters.length)];
         
         // 동료 스탯 계산
-        const companionStats = this.calculateCompanionStats(companion.companionName, companion.level);
+        const companionStats = this.calculateCompanionStats(
+            companion.companionName, 
+            companion.level,
+            companion.tier || 0,
+            companion.breakthrough || 0,
+            companion.breakthroughStats || null
+        );
         const currentMorale = battleState.companionMorale[companionKey] || 0;
         
         // 스킬 사용 가능 여부 확인
@@ -1010,7 +1067,13 @@ class ExpeditionSystem {
                     playerData.companions?.forEach(comp => {
                         const compKey = `${pId}_${comp.companionName}`;
                         const currentHp = battleState.companionHp[compKey] || 0;
-                        const compStats = this.calculateCompanionStats(comp.companionName, comp.level);
+                        const compStats = this.calculateCompanionStats(
+                            comp.companionName, 
+                            comp.level,
+                            comp.tier || 0,
+                            comp.breakthrough || 0,
+                            comp.breakthroughStats || null
+                        );
                         const maxHp = compStats.hp;
                         const hpRatio = currentHp / maxHp;
                         
@@ -1279,7 +1342,13 @@ class ExpeditionSystem {
                         const companionTarget = aliveMonsters[Math.floor(Math.random() * aliveMonsters.length)];
                         
                         // 동료 공격력 계산
-                        const companionStats = this.calculateCompanionStats(companion.companionName, companion.level);
+                        const companionStats = this.calculateCompanionStats(
+                            companion.companionName, 
+                            companion.level,
+                            companion.tier || 0,
+                            companion.breakthrough || 0,
+                            companion.breakthroughStats || null
+                        );
                         const companionDamage = companionStats ? Math.floor(companionStats.attack * (0.8 + Math.random() * 0.4)) : 10;
                         
                         // 몬스터에게 데미지 적용
@@ -1552,7 +1621,13 @@ class ExpeditionSystem {
         // 동료 능력치 가져오기
         const playerData = room.playerData?.[playerId];
         const companion = playerData?.companions?.find(c => c.companionName === companionName);
-        const companionStats = this.calculateCompanionStats(companionName, companion?.level || 1);
+        const companionStats = this.calculateCompanionStats(
+            companionName, 
+            companion?.level || 1,
+            companion?.tier || 0,
+            companion?.breakthrough || 0,
+            companion?.breakthroughStats || null
+        );
         
         if (!companionStats) {
             this.nextTurn(room, io);
@@ -1772,7 +1847,13 @@ class ExpeditionSystem {
         // 동료 능력치 가져오기
         const playerData = room.playerData?.[playerId];
         const companion = playerData?.companions?.find(c => c.companionName === companionName);
-        const companionStats = this.calculateCompanionStats(companionName, companion?.level || 1);
+        const companionStats = this.calculateCompanionStats(
+            companionName, 
+            companion?.level || 1,
+            companion?.tier || 0,
+            companion?.breakthrough || 0,
+            companion?.breakthroughStats || null
+        );
         
         if (!companionStats) {
             throw new Error('동료 정보를 찾을 수 없습니다.');

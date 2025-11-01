@@ -104,7 +104,10 @@ const VoyageTab = ({
     const companions = battleCompanions.map(companionName => {
       const stats = companionStats[companionName];
       const level = stats?.level || 1;
-      const companionData = calculateCompanionStats(companionName, level);
+      const tier = stats?.tier || 0;
+      const breakthrough = stats?.breakthrough || 0;
+      const breakthroughStats = stats?.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 };
+      const companionData = calculateCompanionStats(companionName, level, tier, breakthrough, breakthroughStats);
       
       const maxCooldown = Math.max(500, 5000 - companionData.speed * 20); // 속도가 높을수록 빠름
       return {

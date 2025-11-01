@@ -342,7 +342,10 @@ const CompanionTab = ({
                 // NaN 방지를 위한 안전한 값 처리
                 const safeExp = companionStat.exp || 0;
                 const safeExpToNext = companionStat.expToNext || 100;
-                const companionData = calculateCompanionStats(companion, companionStat.level);
+                const tier = companionStat.tier || 0;
+                const breakthrough = companionStat.breakthrough || 0;
+                const breakthroughStats = companionStat.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 };
+                const companionData = calculateCompanionStats(companion, companionStat.level, tier, breakthrough, breakthroughStats);
                 const baseData = COMPANION_DATA[companion];
                 
                 return (
@@ -1006,11 +1009,14 @@ const CompanionTab = ({
                 const level = companionStat?.level || 1;
                 const exp = companionStat?.exp || 0;
                 const expToNext = companionStat?.expToNext || 100;
+                const tier = companionStat?.tier || 0;
+                const breakthrough = companionStat?.breakthrough || 0;
+                const breakthroughStats = companionStat?.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 };
                 
                 // NaN 방지를 위한 추가 안전 처리
                 const safeExp = isNaN(exp) ? 0 : exp;
                 const safeExpToNext = isNaN(expToNext) ? 100 : expToNext;
-                const companionData = calculateCompanionStats(selectedCompanion, level);
+                const companionData = calculateCompanionStats(selectedCompanion, level, tier, breakthrough, breakthroughStats);
                 const isInBattle = battleCompanions.includes(selectedCompanion);
 
                 if (!baseData) return <div>동료 정보를 불러올 수 없습니다.</div>;
