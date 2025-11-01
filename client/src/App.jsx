@@ -10720,13 +10720,57 @@ function App() {
               <div className="p-4">
                 <div className="flex items-center gap-3 mb-4">
                   <Sword className={`w-6 h-6 ${isDarkMode ? "text-red-400" : "text-red-600"}`} />
-                  <div>
+                  <div className="flex-1">
                     <h2 className={`text-xl font-bold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
                       🏰 레이드 전투
                     </h2>
-                    <p className={`text-xs mt-1 ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>
-                      난이도별 독립적인 레이드 보스와 전투하세요!
-                    </p>
+                    <div className="flex flex-col gap-1.5 mt-1">
+                      <p className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>
+                        난이도별 독립적인 레이드 보스와 전투하세요!
+                      </p>
+                      <div className="flex flex-wrap gap-2 items-center">
+                        <p className={`text-xs px-3 py-1.5 rounded-lg ${
+                          isDarkMode ? "bg-blue-500/20 text-blue-300 border border-blue-400/30" : "bg-blue-100 text-blue-700 border border-blue-300"
+                        }`}>
+                          🕐 정규 소환시간간: 매일 오후 12시, 오후 6시 (하루 2회)
+                        </p>
+                        {(() => {
+                          // 한국시간 기준 다음 정규 레이드 시간 계산
+                          const now = new Date();
+                          const kstTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+                          
+                          const noon = new Date(kstTime);
+                          noon.setHours(12, 0, 0, 0);
+                          
+                          const sixPM = new Date(kstTime);
+                          sixPM.setHours(18, 0, 0, 0);
+                          
+                          const tomorrowNoon = new Date(kstTime);
+                          tomorrowNoon.setDate(tomorrowNoon.getDate() + 1);
+                          tomorrowNoon.setHours(12, 0, 0, 0);
+                          
+                          let nextRaidTimeKST;
+                          if (kstTime < noon) {
+                            nextRaidTimeKST = noon;
+                          } else if (kstTime < sixPM) {
+                            nextRaidTimeKST = sixPM;
+                          } else {
+                            nextRaidTimeKST = tomorrowNoon;
+                          }
+                          
+                          const hours = nextRaidTimeKST.getHours();
+                          const isToday = nextRaidTimeKST.getDate() === kstTime.getDate();
+                          
+                          return (
+                            <p className={`text-xs px-3 py-1.5 rounded-lg ${
+                              isDarkMode ? "bg-purple-500/20 text-purple-300 border border-purple-400/30" : "bg-purple-100 text-purple-700 border border-purple-300"
+                            }`}>
+                              ⏰ 다음 소환: {isToday ? '오늘' : '내일'} {hours === 12 ? '오후 12시' : '오후 6시'}
+                            </p>
+                          );
+                        })()}
+                      </div>
+                    </div>
                   </div>
                 </div>
                 

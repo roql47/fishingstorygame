@@ -26,7 +26,9 @@ export const NOTICE_DATA = [
       "- 돌파는 레벨 조건 달성 시 활성화",
       "- 보유한 동료 이미지 에셋 추가",
       "원정/탐사 난이도 상승:",
-      "- 새로운 접두어 물고기 2종추가 (파멸/종말)"
+      "- 새로운 접두어 물고기 2종추가 (파멸/종말)",
+      "레이드 시간 표기",
+      "신규 쿠폰 추가 '아이러브 여우이야기'"
     ],
     isNew: true,
     type: "major_update"
@@ -42,7 +44,7 @@ export const NOTICE_DATA = [
       "항해 전투 밸런스 조정:",
       "- 물고기기 속도 하향"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {

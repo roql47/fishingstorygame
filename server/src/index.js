@@ -3422,6 +3422,118 @@ io.on("connection", (socket) => {
         return;
       }
     }
+    // 🎁 아이러브 여우이야기 쿠폰 코드 처리
+    if (trimmed === "아이러브 여우이야기") {
+      try {
+        // 쿠폰 만료일 체크 (한국시간 기준 2025년 11월 15일 오후 12시)
+        const now = new Date();
+        const kstOffset = 9 * 60 * 60 * 1000; // 9시간을 밀리초로
+        const kstNow = new Date(now.getTime() + kstOffset);
+        const expiryDate = new Date('2025-11-15T12:00:00+09:00'); // 한국시간 기준
+        
+        if (kstNow > expiryDate) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 이 쿠폰은 만료되었습니다. (유효기간: 2025년 11월 15일 오후 12시까지)",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // Guest 사용자 체크 - DB에서 사용자 정보 조회
+        const dbUser = await UserUuidModel.findOne({ userUuid: user.userUuid });
+        
+        if (!dbUser || (!dbUser.originalGoogleId && !dbUser.originalKakaoId)) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 쿠폰은 구글 또는 카카오 소셜 로그인 후에만 사용할 수 있습니다.",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // 이미 사용한 쿠폰인지 확인
+        const existingUsage = await CouponUsageModel.findOne({
+          userUuid: user.userUuid,
+          couponCode: "아이러브 여우이야기"
+        });
+
+        if (existingUsage) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 이미 사용한 쿠폰입니다. 쿠폰은 계정당 한 번만 사용할 수 있습니다.",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        const queryResult = await getUserQuery('user', user.username, user.userUuid);
+        let query;
+        if (queryResult.userUuid) {
+          query = { userUuid: queryResult.userUuid };
+        } else {
+          query = queryResult;
+        }
+
+        // 먼저 쿠폰 사용 기록을 저장하여 중복 사용 방지
+        const couponUsage = new CouponUsageModel({
+          userUuid: user.userUuid,
+          username: user.username,
+          couponCode: "아이러브 여우이야기",
+          reward: "starPieces:10"
+        });
+        await couponUsage.save();
+
+        // 별조각 10개 지급
+        const starPiecesRewardAmount = 10;
+        let userStarPieces = await StarPieceModel.findOne(query);
+        
+        if (!userStarPieces) {
+          const createData = {
+            userId: query.userId || 'user',
+            username: query.username || user.username,
+            userUuid: query.userUuid || user.userUuid,
+            starPieces: starPiecesRewardAmount
+          };
+          userStarPieces = new StarPieceModel(createData);
+        } else {
+          userStarPieces.starPieces = (userStarPieces.starPieces || 0) + starPiecesRewardAmount;
+        }
+        await userStarPieces.save();
+
+        // 캐시 무효화
+        invalidateCache('starPieces', user.userUuid);
+
+        // 성공 메시지 전송
+        socket.emit("chat:message", {
+          system: true,
+          username: "system",
+          content: `🎉 축하합니다! 아이러브 여우이야기 쿠폰이 성공적으로 사용되었습니다!\n⭐ 별조각 ${starPiecesRewardAmount}개를 받았습니다! (총 ${userStarPieces.starPieces}개)`,
+          timestamp: new Date().toISOString()
+        });
+
+        // 사용자 데이터 업데이트 전송
+        console.log(`🔄 Calling sendUserDataUpdate with userUuid: ${user.userUuid}, username: ${user.username}`);
+        sendUserDataUpdate(socket, user.userUuid, user.username);
+
+        console.log(`🎁 아이러브 여우이야기 쿠폰 사용: ${user.username} (${user.userUuid}) - starPieces +${starPiecesRewardAmount}`);
+        return;
+
+      } catch (error) {
+        console.error("아이러브 여우이야기 쿠폰 처리 중 오류:", error);
+        socket.emit("chat:message", {
+          system: true,
+          username: "system",
+          content: "🚫 쿠폰 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+    }
+
     // 🎁 엔판 황구 홀덤 여우이야기 레츠고 쿠폰 코드 처리
     if (trimmed === "엔판 황구 홀덤 여우이야기 레츠고") {
       try {
