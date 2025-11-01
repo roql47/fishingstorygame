@@ -123,10 +123,12 @@ const PROBABILITY_DATA = [40, 24, 15, 8, 5, 3, 2, 1, 0.7, 0.3];
 
 // 접두어 데이터
 const PREFIX_DATA = [
-  { name: '거대한', probability: 70, hpMultiplier: 1.0, amberMultiplier: 1.0 },
-  { name: '변종', probability: 20, hpMultiplier: 1.5, amberMultiplier: 1.2 },
-  { name: '심연의', probability: 7, hpMultiplier: 2.4, amberMultiplier: 1.4 },
-  { name: '깊은어둠의', probability: 3, hpMultiplier: 3.9, amberMultiplier: 1.8 }
+  { name: '거대한', probability: 60, hpMultiplier: 1.0, amberMultiplier: 1.0, speedMultiplier: 1.0 },
+  { name: '변종', probability: 23, hpMultiplier: 1.45, amberMultiplier: 1.1, speedMultiplier: 1.1 },
+  { name: '심연의', probability: 11, hpMultiplier: 2.15, amberMultiplier: 1.25, speedMultiplier: 1.2 },
+  { name: '깊은어둠의', probability: 4, hpMultiplier: 3.25, amberMultiplier: 1.6, speedMultiplier: 1.3 },
+  { name: '파멸의', probability: 1.5, hpMultiplier: 4.45, amberMultiplier: 2.0, speedMultiplier: 1.5 },
+  { name: '종말의', probability: 0.5, hpMultiplier: 6.05, amberMultiplier: 2.5, speedMultiplier: 1.8 }
 ];
 
 // 상점 데이터 (재료 기반 구매 시스템 - 인덱스별 3n개)

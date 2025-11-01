@@ -195,6 +195,29 @@ export const useGameData = () => {
     }));
   }, [shopData]);
   
+  // 🚀 재료 이모지 반환 함수
+  const getMaterialEmoji = useCallback((materialName) => {
+    // 정수 아이템 목록
+    const essenceItems = [
+      '물의정수',
+      '자연의정수',
+      '바람의정수',
+      '땅의정수',
+      '불의정수',
+      '빛의정수',
+      '어둠의정수',
+      '영혼의정수'
+    ];
+    
+    // 정수 아이템이면 수정구 이모지 반환
+    if (essenceItems.includes(materialName)) {
+      return '🔮';
+    }
+    
+    // 기타 재료는 기본 이모지 반환
+    return '💎';
+  }, []);
+  
   // 🚀 현재 구매 가능한 아이템 함수 (단일 아이템 반환)
   const getAvailableShopItem = useCallback((category, fishingSkill = 0, userEquipment = {}) => {
     const allItems = getAllShopItems()[category] || [];
@@ -262,6 +285,7 @@ export const useGameData = () => {
     getFishPrice,
     getFishMaterial,
     getMaterialToFish,
+    getMaterialEmoji,
     selectFishPrefix,
     getPrefixSpeedMultiplier,
     getAllShopItems,

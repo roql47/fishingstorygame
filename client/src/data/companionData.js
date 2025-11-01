@@ -116,14 +116,44 @@ export const COMPANION_DATA = {
   }
 };
 
-// 동료 능력치 계산 함수
-export const calculateCompanionStats = (companionName, level = 1) => {
+// 동료 능력치 계산 함수 (tier와 breakthrough 반영)
+export const calculateCompanionStats = (companionName, level = 1, tier = 0, breakthrough = 0, breakthroughStats = null) => {
   const baseData = COMPANION_DATA[companionName];
   if (!baseData) return null;
 
-  const hp = baseData.baseHp + (baseData.growthHp * (level - 1));
-  const attack = baseData.baseAttack + (baseData.growthAttack * (level - 1));
-  const speed = baseData.baseSpeed + (baseData.growthSpeed * (level - 1));
+  // 💎 돌파에 따른 성장률 증가 계산
+  let bonusGrowthHp = 0;
+  let bonusGrowthAttack = 0;
+  let bonusGrowthSpeed = 0;
+  
+  if (breakthroughStats) {
+    bonusGrowthHp = breakthroughStats.bonusGrowthHp || 0;
+    bonusGrowthAttack = breakthroughStats.bonusGrowthAttack || 0;
+    bonusGrowthSpeed = breakthroughStats.bonusGrowthSpeed || 0;
+  }
+
+  // 강화된 성장률 적용
+  const enhancedGrowthHp = baseData.growthHp + bonusGrowthHp;
+  const enhancedGrowthAttack = baseData.growthAttack + bonusGrowthAttack;
+  const enhancedGrowthSpeed = baseData.growthSpeed + bonusGrowthSpeed;
+
+  // 기본 능력치 계산 (강화된 성장률 적용)
+  let hp = baseData.baseHp + (enhancedGrowthHp * (level - 1));
+  let attack = baseData.baseAttack + (enhancedGrowthAttack * (level - 1));
+  let speed = baseData.baseSpeed + (enhancedGrowthSpeed * (level - 1));
+
+  // 🌟 성장 등급에 따른 배율 적용
+  const tierInfo = TIER_INFO[tier] || TIER_INFO[0];
+  hp = Math.floor(hp * tierInfo.statMultiplier);
+  attack = Math.floor(attack * tierInfo.statMultiplier);
+  speed = Math.floor(speed * tierInfo.statMultiplier);
+
+  // 스킬 데이터에 등급 배율 적용
+  const enhancedSkill = baseData.skill ? {
+    ...baseData.skill,
+    damageMultiplier: (baseData.skill.damageMultiplier || 1.0) * tierInfo.skillMultiplier,
+    moraleRequired: tierInfo.moraleRequired
+  } : null;
 
   return {
     ...baseData,
@@ -131,7 +161,13 @@ export const calculateCompanionStats = (companionName, level = 1) => {
     hp,
     attack,
     speed,
-    maxHp: hp
+    maxHp: hp,
+    tier,
+    breakthrough,
+    growthHp: enhancedGrowthHp,
+    growthAttack: enhancedGrowthAttack,
+    growthSpeed: enhancedGrowthSpeed,
+    skill: enhancedSkill
   };
 };
 
@@ -146,6 +182,95 @@ export const getRarityColor = (rarity, isDark = true) => {
       return isDark ? "text-purple-400" : "text-purple-600";
     default:
       return isDark ? "text-gray-400" : "text-gray-600";
+  }
+};
+
+// 🌟 성장 등급별 정보
+export const TIER_INFO = {
+  0: { name: "일반", color: "gray", statMultiplier: 1.0, skillMultiplier: 1.0, moraleRequired: 100 },
+  1: { name: "희귀", color: "blue", statMultiplier: 1.3, skillMultiplier: 1.3, moraleRequired: 100 },
+  2: { name: "전설", color: "purple", statMultiplier: 1.6, skillMultiplier: 1.5, moraleRequired: 100 }
+};
+
+// 성장 비용 (등급별)
+export const GROWTH_COSTS = {
+  0: { starPieces: 10, gold: 500000 }, // 일반 → 희귀
+  1: { starPieces: 25, gold: 2000000 } // 희귀 → 전설
+};
+
+// 동료별 전용 정수 아이템
+export const COMPANION_ESSENCE = {
+  "실": "물의정수",
+  "피에나": "불의정수",
+  "애비게일": "바람의정수",
+  "림스&베리": "어둠의정수",
+  "클로에": "빛의정수",
+  "나하트라": "자연의정수"
+};
+
+// 정수별 이모지
+export const ESSENCE_EMOJI = {
+  "물의정수": "💧",
+  "불의정수": "🔥",
+  "바람의정수": "💨",
+  "어둠의정수": "🌑",
+  "빛의정수": "✨",
+  "자연의정수": "🌿",
+  "땅의정수": "🪨",
+  "영혼의정수": "👻"
+};
+
+// 돌파 비용 (단계별)
+export const BREAKTHROUGH_COSTS = {
+  0: { essence: 0, gold: 5000000 }, // 1차 돌파 (500만 골드)
+  1: { essence: 1, gold: 0 }, // 2차 돌파 (정수 1개)
+  2: { essence: 3, gold: 0 }, // 3차 돌파 (정수 3개)
+  3: { essence: 5, gold: 0 }, // 4차 돌파 (정수 5개)
+  4: { essence: 7, gold: 0 }, // 5차 돌파 (정수 7개)
+  5: { essence: 10, gold: 0 } // 6차 돌파 (정수 10개)
+};
+
+// 돌파 보너스 성장률 (레벨당 증가량)
+export const BREAKTHROUGH_BONUS = {
+  0: { growthHp: 2, growthAttack: 0.5, growthSpeed: 0.1 }, // 1차 돌파
+  1: { growthHp: 3, growthAttack: 0.7, growthSpeed: 0.15 }, // 2차 돌파
+  2: { growthHp: 4, growthAttack: 1, growthSpeed: 0.2 }, // 3차 돌파
+  3: { growthHp: 5, growthAttack: 1.5, growthSpeed: 0.25 }, // 4차 돌파
+  4: { growthHp: 7, growthAttack: 2, growthSpeed: 0.3 }, // 5차 돌파
+  5: { growthHp: 10, growthAttack: 3, growthSpeed: 0.5 } // 6차 돌파
+};
+
+// 등급별 색상 가져오기 (tier 기반)
+export const getTierColor = (tier, isDark = true) => {
+  const tierInfo = TIER_INFO[tier] || TIER_INFO[0];
+  const color = tierInfo.color;
+  
+  switch (color) {
+    case "gray":
+      return isDark ? "text-gray-400" : "text-gray-600";
+    case "blue":
+      return isDark ? "text-blue-400" : "text-blue-600";
+    case "purple":
+      return isDark ? "text-purple-400" : "text-purple-600";
+    default:
+      return isDark ? "text-gray-400" : "text-gray-600";
+  }
+};
+
+// 등급별 배경 색상
+export const getTierBgColor = (tier, isDark = true) => {
+  const tierInfo = TIER_INFO[tier] || TIER_INFO[0];
+  const color = tierInfo.color;
+  
+  switch (color) {
+    case "gray":
+      return isDark ? "bg-gray-500/20" : "bg-gray-100";
+    case "blue":
+      return isDark ? "bg-blue-500/20" : "bg-blue-100";
+    case "purple":
+      return isDark ? "bg-purple-500/20" : "bg-purple-100";
+    default:
+      return isDark ? "bg-gray-500/20" : "bg-gray-100";
   }
 };
 

@@ -40,6 +40,18 @@ const MarketModal = ({
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
+  // 정수 아이템 목록 (상수)
+  const ESSENCE_ITEMS = [
+    '물의정수',
+    '자연의정수',
+    '바람의정수',
+    '땅의정수',
+    '불의정수',
+    '빛의정수',
+    '어둠의정수',
+    '영혼의정수'
+  ];
+
   // 거래소 목록 불러오기 및 소켓 이벤트 설정
   useEffect(() => {
     if (!showMarketModal) return;
@@ -190,11 +202,19 @@ const MarketModal = ({
     return listings.slice(startIndex, endIndex);
   };
 
+  // 아이템 아이콘 가져오기
+  const getItemIcon = (itemName, itemType) => {
+    if (itemType === 'amber') return '💎';
+    if (itemType === 'starPiece') return '⭐';
+    if (ESSENCE_ITEMS.includes(itemName)) return '✨';
+    return '📦';
+  };
+
   // 거래 가능한 아이템 목록 가져오기
   const getTradableItems = () => {
     const items = [];
     
-    // 1. 분해 재료
+    // 1. 분해 재료 및 정수 아이템
     if (materials) {
       const allMaterials = new Set();
       CRAFTING_RECIPES.forEach(recipe => {
@@ -202,13 +222,13 @@ const MarketModal = ({
         allMaterials.add(recipe.outputMaterial);
       });
       
-      materials.filter(item => item.material && allMaterials.has(item.material))
+      materials.filter(item => item.material && (allMaterials.has(item.material) || ESSENCE_ITEMS.includes(item.material)))
         .forEach(item => {
           items.push({ 
             type: 'material', 
             name: item.material, 
             count: item.count,
-            icon: '📦'
+            icon: getItemIcon(item.material, 'material')
           });
         });
     }
@@ -709,7 +729,7 @@ const MarketModal = ({
                           <h3 className={`text-lg font-bold mb-1 ${
                             isDarkMode ? "text-white" : "text-gray-800"
                           }`}>
-                            {listing.itemType === 'amber' ? '💎' : listing.itemType === 'starPiece' ? '⭐' : '📦'} {listing.itemName}
+                            {getItemIcon(listing.itemName, listing.itemType)} {listing.itemName}
                           </h3>
                           <div className={`flex items-center gap-2 text-sm mb-2 ${
                             isDarkMode ? "text-gray-400" : "text-gray-600"
@@ -882,7 +902,7 @@ const MarketModal = ({
                           <h3 className={`text-lg font-bold mb-1 ${
                             isDarkMode ? "text-white" : "text-gray-800"
                           }`}>
-                            {listing.itemType === 'amber' ? '💎' : listing.itemType === 'starPiece' ? '⭐' : '📦'} {listing.itemName}
+                            {getItemIcon(listing.itemName, listing.itemType)} {listing.itemName}
                           </h3>
                           <div className={`flex items-center gap-2 text-sm mb-2 ${
                             isDarkMode ? "text-gray-400" : "text-gray-600"
@@ -1131,7 +1151,7 @@ const MarketModal = ({
                             <h3 className={`text-lg font-bold ${
                               isDarkMode ? "text-white" : "text-gray-800"
                             }`}>
-                              {trade.itemType === 'amber' ? '💎' : trade.itemType === 'starPiece' ? '⭐' : '📦'} {trade.itemName}
+                              {getItemIcon(trade.itemName, trade.itemType)} {trade.itemName}
                             </h3>
                             <span className={`text-xs px-2 py-1 rounded ${
                               trade.type === 'purchase'
@@ -1207,7 +1227,7 @@ const MarketModal = ({
                             <h3 className={`text-lg font-bold ${
                               isDarkMode ? "text-white" : "text-gray-800"
                             }`}>
-                              {trade.itemType === 'amber' ? '💎' : trade.itemType === 'starPiece' ? '⭐' : '📦'} {trade.itemName}
+                              {getItemIcon(trade.itemName, trade.itemType)} {trade.itemName}
                             </h3>
                           </div>
                           <div className={`text-sm space-y-1 ${
@@ -1254,7 +1274,7 @@ const MarketModal = ({
             <div className={`text-sm ${
               isDarkMode ? "text-gray-400" : "text-gray-600"
             }`}>
-              💡 분해 아이템, 호박석, 별조각 거래 가능 • 등록 시 보증금 5% 필요
+              💡 분해 아이템, 정수 아이템, 호박석, 별조각 거래 가능 • 등록 시 보증금 5% 필요
             </div>
             <div className={`text-lg font-bold ${
               isDarkMode ? "text-yellow-400" : "text-yellow-600"

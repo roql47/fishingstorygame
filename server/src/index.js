@@ -1016,6 +1016,14 @@ const companionStatsSchema = new mongoose.Schema({
   level: { type: Number, default: 1 }, // 레벨
   experience: { type: Number, default: 0 }, // 경험치
   isInBattle: { type: Boolean, default: false }, // 전투 참여 여부
+  // 🌟 성장/돌파 시스템
+  tier: { type: Number, default: 0, min: 0, max: 2 }, // 성장 등급 (0=일반, 1=희귀, 2=전설)
+  breakthrough: { type: Number, default: 0, min: 0, max: 6 }, // 돌파 횟수 (0~6차)
+  breakthroughStats: { // 돌파 보너스 성장률 (레벨당 증가량)
+    bonusGrowthHp: { type: Number, default: 0 },
+    bonusGrowthAttack: { type: Number, default: 0 },
+    bonusGrowthSpeed: { type: Number, default: 0 }
+  }
 }, { timestamps: true });
 
 // 🔧 복합 유니크 인덱스: 같은 사용자의 같은 동료는 하나만 존재
@@ -1840,41 +1848,41 @@ async function validateUserOwnership(requestedUserQuery, requestingUserUuid, req
 const probabilityTemplate = [40, 24, 15, 8, 5, 3, 2, 1, 0.7, 0.3]; // 고정 확률 배열
 
 const allFishData = [
-  { name: "타코문어", price: 300, material: "문어다리", rank: 1 },
-  { name: "풀고등어", price: 700, material: "고등어비늘", rank: 2 },
-  { name: "경단붕어", price: 1200, material: "당고", rank: 3 },
-  { name: "버터오징어", price: 1800, material: "버터조각", rank: 4 },
-  { name: "간장새우", price: 3000, material: "간장종지", rank: 5 },
-  { name: "물수수", price: 5000, material: "옥수수콘", rank: 6 },
-  { name: "정어리파이", price: 8000, material: "버터", rank: 7 },
-  { name: "얼음상어", price: 12000, material: "얼음조각", rank: 8 },
-  { name: "스퀄스퀴드", price: 18000, material: "오징어먹물", rank: 9 },
-  { name: "백년송거북", price: 30000, material: "백년송", rank: 10 },
-  { name: "고스피쉬", price: 47000, material: "후춧가루", rank: 11 },
-  { name: "유령치", price: 72000, material: "석화", rank: 12 },
-  { name: "바이트독", price: 98000, material: "핫소스", rank: 13 },
-  { name: "호박고래", price: 133000, material: "펌킨조각", rank: 14 },
-  { name: "바이킹조개", price: 176000, material: "꽃술", rank: 15 },
-  { name: "천사해파리", price: 239000, material: "프레첼", rank: 16 },
-  { name: "악마복어", price: 290000, material: "베놈", rank: 17 },
-  { name: "칠성장어", price: 355000, material: "장어꼬리", rank: 18 },
-  { name: "닥터블랙", price: 432000, material: "아인스바인", rank: 19 },
-  { name: "해룡", price: 521000, material: "헤븐즈서펀트", rank: 20 },
-  { name: "메카핫킹크랩", price: 735000, material: "집게다리", rank: 21 },
-  { name: "램프리", price: 860000, material: "이즈니버터", rank: 22 },
-  { name: "마지막잎새", price: 997000, material: "라벤더오일", rank: 23 },
-  { name: "아이스브리더", price: 1146000, material: "샤베트", rank: 24 },
-  { name: "해신", price: 1307000, material: "마법의정수", rank: 25 },
-  { name: "핑키피쉬", price: 1480000, material: "휘핑크림", rank: 26 },
-  { name: "콘토퍼스", price: 1665000, material: "와플리머신", rank: 27 },
-  { name: "딥원", price: 1862000, material: "베르쥬스", rank: 28 },
-  { name: "큐틀루", price: 2071000, material: "안쵸비", rank: 29 },
-  { name: "꽃술나리", price: 2283000, material: "핑크멜로우", rank: 30 },
-  { name: "다무스", price: 2507000, material: "와일드갈릭", rank: 31 },
-  { name: "수호자", price: 2743000, material: "그루누아", rank: 32 },
-  { name: "태양가사리", price: 2991000, material: "시더플랭크", rank: 33 },
-  { name: "빅파더펭귄", price: 3251000, material: "세비체", rank: 34 },
-  { name: "크레인터틀", price: 3523000, material: "타파스", rank: 35 },
+  { name: "타코문어", price: 300, material: "문어다리", rank: 1, extraMaterial: "물의정수", extraMaterialChance: 0.001 },
+  { name: "풀고등어", price: 700, material: "고등어비늘", rank: 2, extraMaterial: "자연의정수", extraMaterialChance: 0.001 },
+  { name: "경단붕어", price: 1200, material: "당고", rank: 3, extraMaterial: "바람의정수", extraMaterialChance: 0.001 },
+  { name: "버터오징어", price: 1800, material: "버터조각", rank: 4, extraMaterial: "땅의정수", extraMaterialChance: 0.001 },
+  { name: "간장새우", price: 3000, material: "간장종지", rank: 5, extraMaterial: "불의정수", extraMaterialChance: 0.001 },
+  { name: "물수수", price: 5000, material: "옥수수콘", rank: 6, extraMaterial: "빛의정수", extraMaterialChance: 0.001 },
+  { name: "정어리파이", price: 8000, material: "버터", rank: 7, extraMaterial: "물의정수", extraMaterialChance: 0.002 },
+  { name: "얼음상어", price: 12000, material: "얼음조각", rank: 8, extraMaterial: "물의정수", extraMaterialChance: 0.003 },
+  { name: "스퀄스퀴드", price: 18000, material: "오징어먹물", rank: 9, extraMaterial: "어둠의정수", extraMaterialChance: 0.001 },
+  { name: "백년송거북", price: 30000, material: "백년송", rank: 10, extraMaterial: "자연의정수", extraMaterialChance: 0.002 },
+  { name: "고스피쉬", price: 47000, material: "후춧가루", rank: 11, extraMaterial: "어둠의정수", extraMaterialChance: 0.002 },
+  { name: "유령치", price: 72000, material: "석화", rank: 12, extraMaterial: "영혼의정수", extraMaterialChance: 0.001 },
+  { name: "바이트독", price: 98000, material: "핫소스", rank: 13, extraMaterial: "불의정수", extraMaterialChance: 0.002 },
+  { name: "호박고래", price: 133000, material: "펌킨조각", rank: 14, extraMaterial: "자연의정수", extraMaterialChance: 0.003 },
+  { name: "바이킹조개", price: 176000, material: "꽃술", rank: 15, extraMaterial: "땅의정수", extraMaterialChance: 0.002 },
+  { name: "천사해파리", price: 239000, material: "프레첼", rank: 16, extraMaterial: "빛의정수", extraMaterialChance: 0.002 },
+  { name: "악마복어", price: 290000, material: "베놈", rank: 17, extraMaterial: "어둠의정수", extraMaterialChance: 0.003 },
+  { name: "칠성장어", price: 355000, material: "장어꼬리", rank: 18, extraMaterial: "바람의정수", extraMaterialChance: 0.002 },
+  { name: "닥터블랙", price: 432000, material: "아인스바인", rank: 19, extraMaterial: "영혼의정수", extraMaterialChance: 0.002 },
+  { name: "해룡", price: 521000, material: "헤븐즈서펀트", rank: 20, extraMaterial: "자연의정수", extraMaterialChance: 0.004 },
+  { name: "메카핫킹크랩", price: 735000, material: "집게다리", rank: 21, extraMaterial: "땅의정수", extraMaterialChance: 0.003 },
+  { name: "램프리", price: 860000, material: "이즈니버터", rank: 22, extraMaterial: "불의정수", extraMaterialChance: 0.003 },
+  { name: "마지막잎새", price: 997000, material: "라벤더오일", rank: 23, extraMaterial: "빛의정수", extraMaterialChance: 0.003 },
+  { name: "아이스브리더", price: 1146000, material: "샤베트", rank: 24, extraMaterial: "물의정수", extraMaterialChance: 0.004 },
+  { name: "해신", price: 1307000, material: "마법의정수", rank: 25, extraMaterial: "바람의정수", extraMaterialChance: 0.003 },
+  { name: "핑키피쉬", price: 1480000, material: "휘핑크림", rank: 26, extraMaterial: "자연의정수", extraMaterialChance: 0.005 },
+  { name: "콘토퍼스", price: 1665000, material: "와플리머신", rank: 27, extraMaterial: "빛의정수", extraMaterialChance: 0.004 },
+  { name: "딥원", price: 1862000, material: "베르쥬스", rank: 28, extraMaterial: "어둠의정수", extraMaterialChance: 0.004 },
+  { name: "큐틀루", price: 2071000, material: "안쵸비", rank: 29, extraMaterial: "영혼의정수", extraMaterialChance: 0.003 },
+  { name: "꽃술나리", price: 2283000, material: "핑크멜로우", rank: 30, extraMaterial: "물의정수", extraMaterialChance: 0.005 },
+  { name: "다무스", price: 2507000, material: "와일드갈릭", rank: 31, extraMaterial: "땅의정수", extraMaterialChance: 0.004 },
+  { name: "수호자", price: 2743000, material: "그루누아", rank: 32, extraMaterial: "바람의정수", extraMaterialChance: 0.004 },
+  { name: "태양가사리", price: 2991000, material: "시더플랭크", rank: 33, extraMaterial: "불의정수", extraMaterialChance: 0.004 },
+  { name: "빅파더펭귄", price: 3251000, material: "세비체", rank: 34, extraMaterial: "물의정수", extraMaterialChance: 0.006 },
+  { name: "크레인터틀", price: 3523000, material: "타파스", rank: 35, extraMaterial: "땅의정수", extraMaterialChance: 0.005 },
   { name: "스타피쉬", price: 100, material: "별조각", rank: 0 } // 항상 포함되는 특별한 물고기
 ];
 
@@ -5539,7 +5547,10 @@ app.get("/api/companion-stats/:userId", async (req, res) => {
         statsMap[stat.companionName] = {
           level: stat.level,
           experience: stat.experience,
-          isInBattle: stat.isInBattle
+          isInBattle: stat.isInBattle,
+          tier: stat.tier || 0,
+          breakthrough: stat.breakthrough || 0,
+          breakthroughStats: stat.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 }
         };
       }
     });
@@ -5704,7 +5715,10 @@ app.get("/api/companion-stats/user", async (req, res) => {
         statsMap[stat.companionName] = {
           level: stat.level,
           experience: stat.experience,
-          isInBattle: shouldBeInBattle
+          isInBattle: shouldBeInBattle,
+          tier: stat.tier || 0,
+          breakthrough: stat.breakthrough || 0,
+          breakthroughStats: stat.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 }
         };
         
         if (shouldBeInBattle) {
@@ -6074,11 +6088,11 @@ app.post("/api/add-companion-exp", authenticateJWT, async (req, res) => {
     let newExp = companionStat.experience + expAmount;
     let newLevel = companionStat.level;
     
-    // 레벨업 체크
+    // 레벨업 체크 (제한 없음)
     let expToNextLevel = calculateExpToNextLevel(newLevel + 1);
     const levelUps = [];
     
-    while (newExp >= expToNextLevel && newLevel < 100) {
+    while (newExp >= expToNextLevel) {
       newExp -= expToNextLevel;
       newLevel++;
       levelUps.push(newLevel);
@@ -6224,6 +6238,403 @@ app.post("/api/recruit-companion", authenticateJWT, async (req, res) => {
   } catch (error) {
     console.error("Failed to recruit companion:", error);
     res.status(500).json({ error: "동료 모집에 실패했습니다." });
+  }
+});
+
+// 🌟 동료 성장 API (등급 상승: 일반→희귀→전설)
+app.post("/api/companion/growth", authenticateJWT, async (req, res) => {
+  try {
+    const { companionName } = req.body;
+    const { userUuid, username } = req.user;
+    
+    console.log(`🌟 동료 성장 요청: ${companionName}`);
+    
+    if (!companionName || typeof companionName !== 'string') {
+      return res.status(400).json({ error: "유효한 동료 이름이 필요합니다." });
+    }
+    
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    // 동료 능력치 조회
+    let companionStat = await CompanionStatsModel.findOne({
+      ...query,
+      companionName: companionName
+    });
+    
+    if (!companionStat) {
+      return res.status(404).json({ error: "동료를 찾을 수 없습니다." });
+    }
+    
+    // 현재 등급 확인
+    const currentTier = companionStat.tier || 0;
+    
+    if (currentTier >= 2) {
+      return res.status(400).json({ error: "이미 최고 등급입니다." });
+    }
+    
+    // 성장 비용 계산
+    const GROWTH_COSTS = {
+      0: { starPieces: 10, gold: 500000 }, // 일반 → 희귀
+      1: { starPieces: 25, gold: 2000000 } // 희귀 → 전설
+    };
+    
+    const cost = GROWTH_COSTS[currentTier];
+    if (!cost) {
+      return res.status(400).json({ error: "성장 비용을 찾을 수 없습니다." });
+    }
+    
+    // 별조각과 골드 확인
+    const [userStarPieces, userMoney] = await Promise.all([
+      StarPieceModel.findOne(query),
+      UserMoneyModel.findOne(query)
+    ]);
+    
+    if (!userStarPieces || userStarPieces.starPieces < cost.starPieces) {
+      return res.status(400).json({ 
+        error: `별조각이 부족합니다. (필요: ${cost.starPieces}, 보유: ${userStarPieces?.starPieces || 0})` 
+      });
+    }
+    
+    if (!userMoney || userMoney.money < cost.gold) {
+      return res.status(400).json({ 
+        error: `골드가 부족합니다. (필요: ${cost.gold.toLocaleString()}, 보유: ${userMoney?.money.toLocaleString() || 0})` 
+      });
+    }
+    
+    // 재화 차감
+    userStarPieces.starPieces -= cost.starPieces;
+    userMoney.money -= cost.gold;
+    
+    await Promise.all([
+      userStarPieces.save(),
+      userMoney.save()
+    ]);
+    
+    // 등급 상승
+    companionStat.tier = currentTier + 1;
+    await companionStat.save();
+    
+    console.log(`✅ ${companionName} 성장 완료: ${currentTier} → ${companionStat.tier}`);
+    
+    // 실시간 데이터 브로드캐스트
+    broadcastUserDataUpdate(userUuid, username, 'starPieces', { 
+      starPieces: userStarPieces.starPieces 
+    });
+    broadcastUserDataUpdate(userUuid, username, 'money', { 
+      money: userMoney.money 
+    });
+    
+    const tierNames = ['일반', '희귀', '전설'];
+    
+    res.json({
+      success: true,
+      companionName,
+      newTier: companionStat.tier,
+      tierName: tierNames[companionStat.tier],
+      remainingStarPieces: userStarPieces.starPieces,
+      remainingGold: userMoney.money
+    });
+    
+  } catch (error) {
+    console.error("동료 성장 실패:", error);
+    res.status(500).json({ error: "동료 성장에 실패했습니다." });
+  }
+});
+
+// 💎 동료 돌파 API (최대 레벨 증가)
+app.post("/api/companion/breakthrough", authenticateJWT, async (req, res) => {
+  try {
+    const { companionName } = req.body;
+    const { userUuid, username } = req.user;
+    
+    console.log(`💎 동료 돌파 요청: ${companionName}`);
+    
+    if (!companionName || typeof companionName !== 'string') {
+      return res.status(400).json({ error: "유효한 동료 이름이 필요합니다." });
+    }
+    
+    // 동료별 전용 정수 매핑
+    const COMPANION_ESSENCE = {
+      "실": "물의정수",
+      "피에나": "불의정수",
+      "애비게일": "바람의정수",
+      "림스&베리": "어둠의정수",
+      "클로에": "빛의정수",
+      "나하트라": "자연의정수"
+    };
+    
+    const essenceName = COMPANION_ESSENCE[companionName];
+    if (!essenceName) {
+      return res.status(400).json({ error: "알 수 없는 동료입니다." });
+    }
+    
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    // 동료 능력치 조회
+    let companionStat = await CompanionStatsModel.findOne({
+      ...query,
+      companionName: companionName
+    });
+    
+    if (!companionStat) {
+      return res.status(404).json({ error: "동료를 찾을 수 없습니다." });
+    }
+    
+    // 현재 돌파 횟수 확인
+    const currentBreakthrough = companionStat.breakthrough || 0;
+    const currentLevel = companionStat.level || 1;
+    
+    if (currentBreakthrough >= 6) {
+      return res.status(400).json({ error: "이미 최대 돌파 단계입니다." });
+    }
+    
+    // 레벨 조건 확인 (각 돌파마다 10레벨씩 필요)
+    const requiredLevel = (currentBreakthrough + 1) * 10;
+    if (currentLevel < requiredLevel) {
+      return res.status(400).json({ 
+        error: `레벨이 부족합니다. ${currentBreakthrough + 1}차 돌파는 레벨 ${requiredLevel} 이상이어야 합니다. (현재: ${currentLevel})` 
+      });
+    }
+    
+    // 돌파 비용 계산
+    const BREAKTHROUGH_COSTS = {
+      0: { essence: 0, gold: 5000000 }, // 1차 돌파: 500만 골드
+      1: { essence: 1, gold: 0 }, // 2차 돌파: 정수 1개
+      2: { essence: 3, gold: 0 }, // 3차 돌파: 정수 3개
+      3: { essence: 5, gold: 0 }, // 4차 돌파: 정수 5개
+      4: { essence: 7, gold: 0 }, // 5차 돌파: 정수 7개
+      5: { essence: 10, gold: 0 } // 6차 돌파: 정수 10개
+    };
+    
+    const BREAKTHROUGH_BONUS = {
+      0: { growthHp: 2, growthAttack: 0.5, growthSpeed: 0.1 },
+      1: { growthHp: 3, growthAttack: 0.7, growthSpeed: 0.15 },
+      2: { growthHp: 4, growthAttack: 1, growthSpeed: 0.2 },
+      3: { growthHp: 5, growthAttack: 1.5, growthSpeed: 0.25 },
+      4: { growthHp: 7, growthAttack: 2, growthSpeed: 0.3 },
+      5: { growthHp: 10, growthAttack: 3, growthSpeed: 0.5 }
+    };
+    
+    const cost = BREAKTHROUGH_COSTS[currentBreakthrough];
+    const bonus = BREAKTHROUGH_BONUS[currentBreakthrough];
+    
+    if (!cost || !bonus) {
+      return res.status(400).json({ error: "돌파 비용을 찾을 수 없습니다." });
+    }
+    
+    // 정수와 골드 확인
+    const [userEssence, userMoney] = await Promise.all([
+      cost.essence > 0 ? MaterialModel.findOne({ ...query, material: essenceName }) : null,
+      cost.gold > 0 ? UserMoneyModel.findOne(query) : null
+    ]);
+    
+    // 정수 개수 확인
+    if (cost.essence > 0) {
+      const currentEssenceCount = userEssence?.count || 0;
+      if (currentEssenceCount < cost.essence) {
+        return res.status(400).json({ 
+          error: `${essenceName}이(가) 부족합니다. (필요: ${cost.essence}, 보유: ${currentEssenceCount})` 
+        });
+      }
+    }
+    
+    // 골드 확인
+    if (cost.gold > 0) {
+      if (!userMoney || userMoney.money < cost.gold) {
+        return res.status(400).json({ 
+          error: `골드가 부족합니다. (필요: ${cost.gold.toLocaleString()}, 보유: ${userMoney?.money.toLocaleString() || 0})` 
+        });
+      }
+    }
+    
+    // 정수 차감
+    if (cost.essence > 0 && userEssence) {
+      const newEssenceCount = userEssence.count - cost.essence;
+      if (newEssenceCount <= 0) {
+        await MaterialModel.deleteOne({ ...query, material: essenceName });
+      } else {
+        userEssence.count = newEssenceCount;
+        await userEssence.save();
+      }
+    }
+    
+    // 골드 차감
+    if (cost.gold > 0 && userMoney) {
+      userMoney.money -= cost.gold;
+      await userMoney.save();
+    }
+    
+    // 돌파 적용
+    companionStat.breakthrough = currentBreakthrough + 1;
+    
+    // 돌파 보너스 성장률 누적
+    if (!companionStat.breakthroughStats) {
+      companionStat.breakthroughStats = { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 };
+    }
+    companionStat.breakthroughStats.bonusGrowthHp = (companionStat.breakthroughStats.bonusGrowthHp || 0) + bonus.growthHp;
+    companionStat.breakthroughStats.bonusGrowthAttack = (companionStat.breakthroughStats.bonusGrowthAttack || 0) + bonus.growthAttack;
+    companionStat.breakthroughStats.bonusGrowthSpeed = (companionStat.breakthroughStats.bonusGrowthSpeed || 0) + bonus.growthSpeed;
+    
+    await companionStat.save();
+    
+    console.log(`✅ ${companionName} 돌파 완료: ${currentBreakthrough}차 → ${companionStat.breakthrough}차`);
+    
+    // 실시간 데이터 브로드캐스트
+    if (cost.gold > 0 && userMoney) {
+      broadcastUserDataUpdate(userUuid, username, 'money', { 
+        money: userMoney.money 
+      });
+    }
+    
+    const newEssenceCount = cost.essence > 0 ? (userEssence?.count || 0) - cost.essence : 0;
+    
+    res.json({
+      success: true,
+      companionName,
+      newBreakthrough: companionStat.breakthrough,
+      breakthroughStats: companionStat.breakthroughStats,
+      essenceName: essenceName,
+      remainingEssence: cost.essence > 0 ? Math.max(0, (userEssence?.count || 0) - cost.essence) : 0,
+      remainingGold: userMoney?.money || 0
+    });
+    
+  } catch (error) {
+    console.error("동료 돌파 실패:", error);
+    res.status(500).json({ error: "동료 돌파에 실패했습니다." });
+  }
+});
+
+// 📊 동료 성장 비용 조회 API
+app.get("/api/companion/growth-cost/:companionName", authenticateJWT, async (req, res) => {
+  try {
+    const { companionName } = req.params;
+    const { userUuid, username } = req.user;
+    
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    // 동료 능력치 조회
+    const companionStat = await CompanionStatsModel.findOne({
+      ...query,
+      companionName: companionName
+    });
+    
+    const currentTier = companionStat?.tier || 0;
+    
+    const GROWTH_COSTS = {
+      0: { starPieces: 10, gold: 500000 },
+      1: { starPieces: 25, gold: 2000000 }
+    };
+    
+    const cost = GROWTH_COSTS[currentTier];
+    const tierNames = ['일반', '희귀', '전설'];
+    
+    res.json({
+      success: true,
+      currentTier,
+      currentTierName: tierNames[currentTier],
+      nextTierName: currentTier < 2 ? tierNames[currentTier + 1] : null,
+      cost: cost || null,
+      canGrow: currentTier < 2
+    });
+    
+  } catch (error) {
+    console.error("성장 비용 조회 실패:", error);
+    res.status(500).json({ error: "성장 비용 조회에 실패했습니다." });
+  }
+});
+
+// 📊 동료 돌파 비용 조회 API
+app.get("/api/companion/breakthrough-cost/:companionName", authenticateJWT, async (req, res) => {
+  try {
+    const { companionName } = req.params;
+    const { userUuid, username } = req.user;
+    
+    // 동료별 전용 정수 매핑
+    const COMPANION_ESSENCE = {
+      "실": "물의정수",
+      "피에나": "불의정수",
+      "애비게일": "바람의정수",
+      "림스&베리": "어둠의정수",
+      "클로에": "빛의정수",
+      "나하트라": "자연의정수"
+    };
+    
+    const essenceName = COMPANION_ESSENCE[companionName];
+    if (!essenceName) {
+      return res.status(400).json({ error: "알 수 없는 동료입니다." });
+    }
+    
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    // 동료 능력치 조회
+    const companionStat = await CompanionStatsModel.findOne({
+      ...query,
+      companionName: companionName
+    });
+    
+    const currentBreakthrough = companionStat?.breakthrough || 0;
+    const currentLevel = companionStat?.level || 1;
+    
+    const BREAKTHROUGH_COSTS = {
+      0: { essence: 0, gold: 5000000 },
+      1: { essence: 1, gold: 0 },
+      2: { essence: 3, gold: 0 },
+      3: { essence: 5, gold: 0 },
+      4: { essence: 7, gold: 0 },
+      5: { essence: 10, gold: 0 }
+    };
+    
+    const BREAKTHROUGH_BONUS = {
+      0: { growthHp: 2, growthAttack: 0.5, growthSpeed: 0.1 },
+      1: { growthHp: 3, growthAttack: 0.7, growthSpeed: 0.15 },
+      2: { growthHp: 4, growthAttack: 1, growthSpeed: 0.2 },
+      3: { growthHp: 5, growthAttack: 1.5, growthSpeed: 0.25 },
+      4: { growthHp: 7, growthAttack: 2, growthSpeed: 0.3 },
+      5: { growthHp: 10, growthAttack: 3, growthSpeed: 0.5 }
+    };
+    
+    const cost = BREAKTHROUGH_COSTS[currentBreakthrough];
+    const bonus = BREAKTHROUGH_BONUS[currentBreakthrough];
+    const requiredLevel = (currentBreakthrough + 1) * 10;
+    
+    res.json({
+      success: true,
+      currentBreakthrough,
+      currentLevel,
+      requiredLevel: currentBreakthrough < 6 ? requiredLevel : null,
+      essenceName: essenceName,
+      cost: cost || null,
+      bonus: bonus || null,
+      canBreakthrough: currentBreakthrough < 6 && currentLevel >= requiredLevel
+    });
+    
+  } catch (error) {
+    console.error("돌파 비용 조회 실패:", error);
+    res.status(500).json({ error: "돌파 비용 조회에 실패했습니다." });
   }
 });
 
@@ -6841,6 +7252,68 @@ app.delete("/api/profile-image", authenticateJWT, async (req, res) => {
   }
 });
 
+// 🧹 레거시 프로필 이미지 레코드 정리 API (관리자 전용)
+app.post("/api/profile-image/cleanup-legacy", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid: jwtUserUuid, username: jwtUsername, isAdmin } = req.user;
+    
+    // 관리자 권한 확인
+    if (!isAdmin) {
+      return res.status(403).json({ 
+        success: false, 
+        error: '관리자 권한이 필요합니다.' 
+      });
+    }
+    
+    const clientIP = getClientIP(req);
+    console.log(`🧹 [PROFILE-IMAGE] Legacy cleanup request from ${jwtUsername} (${clientIP})`);
+    
+    // 레거시 레코드 조회 (/uploads/로 시작하는 imageUrl)
+    const legacyRecords = await ProfileImageModel.find({ 
+      imageUrl: { $regex: '^/uploads/' } 
+    });
+    
+    console.log(`📊 [PROFILE-IMAGE] Found ${legacyRecords.length} legacy records`);
+    
+    if (legacyRecords.length === 0) {
+      return res.json({
+        success: true,
+        message: '정리할 레거시 레코드가 없습니다.',
+        deletedCount: 0
+      });
+    }
+    
+    // 삭제 대상 정보 기록
+    const deletedRecords = legacyRecords.map(record => ({
+      userUuid: record.userUuid,
+      username: record.username,
+      imageUrl: record.imageUrl
+    }));
+    
+    // 레거시 레코드 삭제
+    const deleteResult = await ProfileImageModel.deleteMany({ 
+      imageUrl: { $regex: '^/uploads/' } 
+    });
+    
+    console.log(`✅ [PROFILE-IMAGE] Deleted ${deleteResult.deletedCount} legacy records`);
+    console.log('   Deleted records:', deletedRecords);
+    
+    res.json({
+      success: true,
+      message: `${deleteResult.deletedCount}개의 레거시 프로필 이미지 레코드가 삭제되었습니다.`,
+      deletedCount: deleteResult.deletedCount,
+      deletedRecords: deletedRecords
+    });
+    
+  } catch (error) {
+    console.error('❌ [PROFILE-IMAGE] Legacy cleanup error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: '레거시 레코드 정리 중 오류가 발생했습니다.' 
+    });
+  }
+});
+
 // Cooldown APIs (쿨타임 관리)
 // 쿨타임 상태 조회 API
 app.get("/api/cooldown/:userId", async (req, res) => {
@@ -7322,10 +7795,12 @@ const getServerAccessoryLevel = (accessoryName) => {
 // 서버 측 접두어 데이터
 const getServerPrefixData = () => {
   return [
-    { name: '거대한', hpMultiplier: 1.0, amberMultiplier: 1.0, probability: 75 },
-    { name: '변종', hpMultiplier: 1.45, amberMultiplier: 1.2, probability: 17 },
-    { name: '심연의', hpMultiplier: 2.15, amberMultiplier: 1.4, probability: 6 },
-    { name: '깊은어둠의', hpMultiplier: 3.25, amberMultiplier: 1.8, probability: 2 }
+    { name: '거대한', hpMultiplier: 1.0, amberMultiplier: 1.0, speedMultiplier: 1.0, probability: 60 },
+    { name: '변종', hpMultiplier: 1.45, amberMultiplier: 1.1, speedMultiplier: 1.1, probability: 23 },
+    { name: '심연의', hpMultiplier: 2.15, amberMultiplier: 1.25, speedMultiplier: 1.2, probability: 11 },
+    { name: '깊은어둠의', hpMultiplier: 3.25, amberMultiplier: 1.6, speedMultiplier: 1.3, probability: 4 },
+    { name: '파멸의', hpMultiplier: 4.45, amberMultiplier: 2.0, speedMultiplier: 1.5, probability: 1.5 },
+    { name: '종말의', hpMultiplier: 6.05, amberMultiplier: 2.5, speedMultiplier: 1.8, probability: 0.5 }
   ];
 };
 // 전투 시작 API (JWT 인증 필수)
@@ -7340,6 +7815,12 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
     // 재료 수량 검증 (1~5개)
     if (materialQuantity < 1 || materialQuantity > 5) {
       return res.status(400).json({ error: "재료 수량은 1~5개 사이여야 합니다." });
+    }
+    
+    // 정수 아이템 사용 금지 (동료 돌파 전용)
+    const essenceItems = ['물의정수', '자연의정수', '바람의정수', '땅의정수', '불의정수', '빛의정수', '어둠의정수', '영혼의정수'];
+    if (essenceItems.includes(material)) {
+      return res.status(400).json({ error: "정수 아이템은 탐사전투에 사용할 수 없습니다. (동료 돌파 전용)" });
     }
     
     // 사용자 조회
@@ -7416,10 +7897,7 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
       // 속도 계산 (물고기 rank 기반)
       const fishRank = getServerFishData().find(f => f.name === baseFish)?.rank || 1;
       const baseSpeed = 25 + (fishRank * 0.5);
-      const prefixSpeedMultiplier = randomPrefix.name === '변종' ? 1.1 
-        : randomPrefix.name === '심연의' ? 1.2 
-        : randomPrefix.name === '깊은어둠의' ? 1.3 
-        : 1.0;
+      const prefixSpeedMultiplier = randomPrefix.speedMultiplier || 1.0;
       const speed = baseSpeed * prefixSpeedMultiplier;
       
       enemies.push({
@@ -9863,9 +10341,18 @@ app.get("/api/materials/:userId", optionalJWT, async (req, res) => {
 // Fish Decomposition API
 app.post("/api/decompose-fish", authenticateJWT, async (req, res) => {
   try {
-    const { fishName, quantity, material } = req.body;
+    let { fishName, quantity, material } = req.body;
     // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
     const { userUuid, username } = req.user;
+    
+    // material이 비어있으면 자동으로 찾기
+    if (!material) {
+      material = getFishMaterial(fishName);
+      if (!material) {
+        return res.status(400).json({ error: "분해할 수 없는 물고기입니다." });
+      }
+    }
+    
     console.log("Decompose fish request:", { fishName, quantity, material, username, userUuid });
     
     // UUID 기반 사용자 조회
@@ -9897,8 +10384,10 @@ app.post("/api/decompose-fish", authenticateJWT, async (req, res) => {
     // 📦 인벤토리 제한 확인 (물고기 분해 시)
     // 스타피쉬는 별조각으로 전환되므로 재료가 증가하지 않음
     if (fishName !== "스타피쉬") {
-      // 물고기 quantity개를 분해하면 재료가 quantity개 증가 (순수 증가는 0, 물고기 -quantity + 재료 +quantity)
-      const netChange = 0; // 물고기 줄고 재료 늘어나서 총합은 동일
+      // 물고기 quantity개를 분해하면 기본 재료 + 추가 재료(정수) 드롭 가능
+      // 최악의 경우: 기본 재료와 정수 모두 새로운 슬롯으로 생성될 수 있음
+      // 하지만 물고기 슬롯은 제거되므로, 최대 순증가는 +1 (물고기 -1, 재료 +1, 정수 +1)
+      const netChange = 1; // 최악의 경우를 대비한 여유 공간
       const inventoryCheck = await checkInventoryLimit(query, netChange);
       
       if (!inventoryCheck.allowed) {
@@ -9987,7 +10476,56 @@ app.post("/api/decompose-fish", authenticateJWT, async (req, res) => {
     
     console.log(`⚡ Updated material count: ${material} +${quantity} (total: ${updateResult.count})`);
     
-    res.json({ success: true, materialCount: updateResult.count });
+    // 🎁 추가 재료 드롭 시스템 (정수 아이템)
+    let extraMaterialGained = 0;
+    let extraMaterialName = null;
+    const fishData = allFishData.find(f => f.name === fishName);
+    
+    if (fishData?.extraMaterial && fishData?.extraMaterialChance) {
+      // 각 물고기마다 확률적으로 추가 재료 드롭
+      for (let i = 0; i < quantity; i++) {
+        const randomValue = Math.random();
+        if (randomValue < fishData.extraMaterialChance) {
+          extraMaterialGained++;
+        }
+      }
+      
+      // 추가 재료가 드롭되었다면 인벤토리에 추가
+      if (extraMaterialGained > 0) {
+        extraMaterialName = fishData.extraMaterial;
+        const extraMaterialData = {
+          ...query,
+          material: extraMaterialName,
+          displayName: query.username || username || 'User'
+        };
+        
+        if (username) {
+          extraMaterialData.username = username;
+        }
+        
+        await MaterialModel.findOneAndUpdate(
+          { ...query, material: extraMaterialName },
+          {
+            $inc: { count: extraMaterialGained },
+            $setOnInsert: extraMaterialData
+          },
+          { upsert: true, new: true }
+        );
+        
+        console.log(`🎁 Extra material drop: ${extraMaterialName} +${extraMaterialGained} (${(fishData.extraMaterialChance * 100).toFixed(0)}% chance)`);
+      }
+    }
+    
+    const responseData = { 
+      success: true,
+      material: material,
+      materialCount: updateResult.count,
+      extraMaterialGained: extraMaterialGained,
+      extraMaterialName: extraMaterialName
+    };
+    
+    console.log('✅ [Server] Sending decompose fish response:', responseData);
+    res.json(responseData);
   } catch (error) {
     console.error("Failed to decompose fish:", error);
     res.status(500).json({ error: "Failed to decompose fish" });
@@ -10020,6 +10558,7 @@ app.post("/api/decompose-all-fish", authenticateJWT, async (req, res) => {
     let decomposeCount = 0;
     let totalStarPieces = 0;
     const materialsGained = {}; // 재료별 획득량 추적
+    const extraMaterialsGained = {}; // 추가 재료(정수) 획득량 추적
     
     // 모든 물고기 분해 처리
     for (const fishItem of allUserFish) {
@@ -10043,6 +10582,25 @@ app.post("/api/decompose-all-fish", authenticateJWT, async (req, res) => {
         materialsGained[material] += quantity;
         totalMaterials += quantity;
         decomposeCount += quantity;
+      }
+      
+      // 🎁 추가 재료 드롭 계산 (정수 아이템)
+      const fishData = allFishData.find(f => f.name === fishName);
+      if (fishData?.extraMaterial && fishData?.extraMaterialChance) {
+        let extraDropped = 0;
+        for (let i = 0; i < quantity; i++) {
+          const randomValue = Math.random();
+          if (randomValue < fishData.extraMaterialChance) {
+            extraDropped++;
+          }
+        }
+        
+        if (extraDropped > 0) {
+          if (!extraMaterialsGained[fishData.extraMaterial]) {
+            extraMaterialsGained[fishData.extraMaterial] = 0;
+          }
+          extraMaterialsGained[fishData.extraMaterial] += extraDropped;
+        }
       }
     }
     
@@ -10098,12 +10656,48 @@ app.post("/api/decompose-all-fish", authenticateJWT, async (req, res) => {
     // 모든 재료 업데이트를 병렬로 처리
     await Promise.all(materialUpdates);
     
+    // 🎁 추가 재료(정수) 업데이트 (일괄 처리)
+    const extraMaterialUpdates = [];
+    let totalExtraMaterials = 0;
+    for (const [extraMaterial, count] of Object.entries(extraMaterialsGained)) {
+      const extraMaterialData = {
+        ...query,
+        material: extraMaterial,
+        displayName: query.username || username || 'User'
+      };
+      
+      if (username) {
+        extraMaterialData.username = username;
+      }
+      
+      extraMaterialUpdates.push(
+        MaterialModel.findOneAndUpdate(
+          { ...query, material: extraMaterial },
+          {
+            $inc: { count },
+            $setOnInsert: extraMaterialData
+          },
+          { upsert: true, new: true }
+        )
+      );
+      
+      totalExtraMaterials += count;
+    }
+    
+    // 모든 추가 재료 업데이트를 병렬로 처리
+    if (extraMaterialUpdates.length > 0) {
+      await Promise.all(extraMaterialUpdates);
+      console.log(`🎁 Extra materials dropped: ${JSON.stringify(extraMaterialsGained)}`);
+    }
+    
     res.json({ 
       success: true, 
       totalMaterials,
       totalStarPieces,
       decomposeCount,
-      materialsGained
+      materialsGained,
+      extraMaterialsGained,
+      totalExtraMaterials
     });
   } catch (error) {
     console.error("Failed to decompose all fish:", error);
@@ -11040,14 +11634,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.408"
+    version: "v1.410"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.408",
+    version: "v1.410",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [

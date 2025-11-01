@@ -691,6 +691,8 @@ class ExpeditionSystem {
             case '변종': return 1.1;
             case '심연의': return 1.2;
             case '깊은어둠의': return 1.3;
+            case '파멸의': return 1.5;
+            case '종말의': return 1.8;
             default: return 1.0;
         }
     }
@@ -2245,6 +2247,12 @@ class ExpeditionSystem {
                         break;
                     case '깊은어둠의':
                         quantity = Math.floor(Math.random() * 4) + 4; // 4~7개
+                        break;
+                    case '파멸의':
+                        quantity = Math.floor(Math.random() * 5) + 5; // 5~9개
+                        break;
+                    case '종말의':
+                        quantity = Math.floor(Math.random() * 6) + 7; // 7~12개
                         break;
                     default:
                         quantity = Math.floor(Math.random() * 3) + 2; // 2~4개 (기본)

@@ -1,6 +1,25 @@
 import React, { useState } from 'react';
-import { Users, Sword, Shield, Heart, Star, Zap, X, Info, Plus } from 'lucide-react';
-import { COMPANION_DATA, calculateCompanionStats, getRarityColor } from '../../data/companionData';
+import { Users, Sword, Shield, Heart, Star, Zap, X, Info, Plus, Sparkles, TrendingUp } from 'lucide-react';
+import { 
+  COMPANION_DATA, 
+  calculateCompanionStats, 
+  getRarityColor,
+  TIER_INFO,
+  GROWTH_COSTS,
+  BREAKTHROUGH_COSTS,
+  BREAKTHROUGH_BONUS,
+  COMPANION_ESSENCE,
+  ESSENCE_EMOJI,
+  getTierColor,
+  getTierBgColor
+} from '../../data/companionData';
+// 동료 이미지 import
+import character1 from '../../assets/character1.jpg';
+import character2 from '../../assets/character2.jpeg';
+import character3 from '../../assets/character3.jpg';
+import character4 from '../../assets/character4.jpeg';
+import character5 from '../../assets/character5.jpg';
+import character6 from '../../assets/character6.jpg';
 
 const CompanionTab = ({
   // 상태
@@ -9,15 +28,27 @@ const CompanionTab = ({
   companions,
   battleCompanions,
   companionStats,
+  userGold,
+  materials,
   
   // 함수
   recruitCompanion,
   toggleBattleCompanion,
-  refreshAllData
+  refreshAllData,
+  onGrowth,
+  onBreakthrough
 }) => {
+  // 탭 상태 추가 (recruit / enhance)
+  const [activeTab, setActiveTab] = useState('recruit');
+  
   // 동료 상세 모달 상태
   const [selectedCompanion, setSelectedCompanion] = useState(null);
   const [showCompanionModal, setShowCompanionModal] = useState(false);
+  
+  // 강화 탭 상태
+  const [selectedEnhanceCompanion, setSelectedEnhanceCompanion] = useState(null);
+  const [enhanceSubTab, setEnhanceSubTab] = useState('growth'); // 'growth' or 'breakthrough'
+  const [loading, setLoading] = useState(false);
   
   // 동료 클릭 핸들러
   const handleCompanionClick = (companionName) => {
@@ -34,15 +65,150 @@ const CompanionTab = ({
   const allCompanions = ["실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라"];
   const maxBattleCompanions = 3;
 
+  // 동료 이미지 매핑
+  const companionImages = {
+    "실": character6,
+    "피에나": character1,
+    "애비게일": character5,
+    "림스&베리": character3,
+    "클로에": character2,
+    "나하트라": character4
+  };
+
+  // 강화 헬퍼 함수들
+  const getCompanionInfo = (companionName) => {
+    const stats = companionStats[companionName] || {};
+    const level = stats.level || 1;
+    const tier = stats.tier || 0;
+    const breakthrough = stats.breakthrough || 0;
+    const breakthroughStats = stats.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 };
+    
+    return calculateCompanionStats(companionName, level, tier, breakthrough, breakthroughStats);
+  };
+
+  const canGrow = (companionName) => {
+    const stats = companionStats[companionName] || {};
+    const currentTier = stats.tier || 0;
+    
+    if (currentTier >= 2) return { possible: false, reason: '이미 최고 등급입니다' };
+    
+    const cost = GROWTH_COSTS[currentTier];
+    if (!cost) return { possible: false, reason: '비용 정보 없음' };
+    
+    if (userStarPieces < cost.starPieces) {
+      return { possible: false, reason: `별조각 부족 (${cost.starPieces}개 필요)` };
+    }
+    
+    if (userGold < cost.gold) {
+      return { possible: false, reason: `골드 부족 (${cost.gold.toLocaleString()} 필요)` };
+    }
+    
+    return { possible: true, reason: '' };
+  };
+
+  const canBreakthrough = (companionName) => {
+    const stats = companionStats[companionName] || {};
+    const currentBreakthrough = stats.breakthrough || 0;
+    const currentLevel = stats.level || 1;
+    
+    if (currentBreakthrough >= 6) return { possible: false, reason: '이미 최대 돌파 단계입니다' };
+    
+    // 레벨 조건 확인 (각 돌파마다 10레벨씩 필요)
+    const requiredLevel = (currentBreakthrough + 1) * 10;
+    if (currentLevel < requiredLevel) {
+      return { possible: false, reason: `레벨 ${requiredLevel} 필요 (현재: ${currentLevel})` };
+    }
+    
+    const cost = BREAKTHROUGH_COSTS[currentBreakthrough];
+    if (!cost) return { possible: false, reason: '비용 정보 없음' };
+    
+    // 동료별 정수 확인
+    const essenceName = COMPANION_ESSENCE[companionName];
+    const essenceCount = materials.find(m => m.material === essenceName)?.count || 0;
+    
+    // 1차 돌파는 골드만 필요
+    if (currentBreakthrough === 0) {
+      if (userGold < cost.gold) {
+        return { possible: false, reason: `골드 부족 (${(cost.gold / 1000000).toFixed(0)}백만 필요)` };
+      }
+    } else {
+      // 2차 이상은 정수 필요
+      if (essenceCount < cost.essence) {
+        return { possible: false, reason: `${essenceName} 부족 (${cost.essence}개 필요)` };
+      }
+    }
+    
+    return { possible: true, reason: '' };
+  };
+
+  const handleGrowth = async () => {
+    if (!selectedEnhanceCompanion) return;
+    
+    const check = canGrow(selectedEnhanceCompanion);
+    if (!check.possible) {
+      alert(check.reason);
+      return;
+    }
+    
+    const stats = companionStats[selectedEnhanceCompanion] || {};
+    const currentTier = stats.tier || 0;
+    const tierNames = ['일반', '희귀', '전설'];
+    
+    if (!window.confirm(`${selectedEnhanceCompanion}을(를) ${tierNames[currentTier]}에서 ${tierNames[currentTier + 1]}로 성장시키시겠습니까?`)) {
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      await onGrowth(selectedEnhanceCompanion);
+      alert(`🌟 ${selectedEnhanceCompanion}이(가) ${tierNames[currentTier + 1]} 등급으로 성장했습니다!`);
+    } catch (error) {
+      console.error('성장 실패:', error);
+      alert(error.response?.data?.error || '성장에 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBreakthrough = async () => {
+    if (!selectedEnhanceCompanion) return;
+    
+    const check = canBreakthrough(selectedEnhanceCompanion);
+    if (!check.possible) {
+      alert(check.reason);
+      return;
+    }
+    
+    const stats = companionStats[selectedEnhanceCompanion] || {};
+    const currentBreakthrough = stats.breakthrough || 0;
+    const essenceName = COMPANION_ESSENCE[selectedEnhanceCompanion];
+    const bonus = BREAKTHROUGH_BONUS[currentBreakthrough];
+    
+    if (!window.confirm(`${selectedEnhanceCompanion}을(를) ${currentBreakthrough + 1}차 돌파하시겠습니까?\n레벨당 성장률이 증가합니다!`)) {
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      await onBreakthrough(selectedEnhanceCompanion);
+      alert(`💎 ${selectedEnhanceCompanion}이(가) ${currentBreakthrough + 1}차 돌파했습니다!\n레벨당 HP +${bonus.growthHp}, 공격력 +${bonus.growthAttack}, 속도 +${bonus.growthSpeed}`);
+    } catch (error) {
+      console.error('돌파 실패:', error);
+      alert(error.response?.data?.error || '돌파에 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className={`rounded-2xl board-shadow min-h-full flex flex-col ${
       isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
     }`}>
-      {/* 동료모집 헤더 */}
+      {/* 헤더 */}
       <div className={`border-b p-4 ${
         isDarkMode ? "border-white/10" : "border-gray-300/20"
       }`}>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 border ${
               isDarkMode ? "border-white/10" : "border-purple-300/30"
@@ -54,10 +220,10 @@ const CompanionTab = ({
             <div>
               <h2 className={`text-lg font-semibold ${
                 isDarkMode ? "text-white" : "text-gray-800"
-              }`}>동료모집</h2>
+              }`}>동료</h2>
               <p className={`text-xs ${
                 isDarkMode ? "text-gray-400" : "text-gray-600"
-              }`}>별조각 1개로 15% 확률 가챠</p>
+              }`}>모집 및 강화</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -87,9 +253,47 @@ const CompanionTab = ({
             </button>
           </div>
         </div>
+        
+        {/* 탭 네비게이션 */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setActiveTab('recruit')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
+              activeTab === 'recruit'
+                ? isDarkMode
+                  ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
+                  : "bg-purple-500/10 text-purple-600 border border-purple-500/30"
+                : isDarkMode
+                  ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                  : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            동료 모집
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('enhance');
+              setSelectedEnhanceCompanion(null);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
+              activeTab === 'enhance'
+                ? isDarkMode
+                  ? "bg-orange-500/20 text-orange-400 border border-orange-400/30"
+                  : "bg-orange-500/10 text-orange-600 border border-orange-500/30"
+                : isDarkMode
+                  ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                  : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            동료 강화
+          </button>
+        </div>
       </div>
       
-      {/* 동료 모집 버튼 */}
+      {/* 동료 모집 탭 컨텐츠 */}
+      {activeTab === 'recruit' && (
       <div className="p-6">
         <div className="text-center mb-6">
           <button
@@ -301,11 +505,466 @@ const CompanionTab = ({
           </div>
         </div>
       </div>
+      )}
+
+      {/* 동료 강화 탭 컨텐츠 */}
+      {activeTab === 'enhance' && (
+        <div className="p-6 flex flex-col md:flex-row gap-4">
+          {/* 왼쪽: 동료 목록 */}
+          <div className="w-full md:w-1/3">
+            <h3 className={`text-lg font-bold mb-3 ${
+              isDarkMode ? "text-white" : "text-gray-800"
+            }`}>
+              보유 동료
+            </h3>
+            {companions && companions.length > 0 ? (
+              <div className="space-y-2">
+                {companions.map((companionName) => {
+                  const companionInfo = getCompanionInfo(companionName);
+                  const stats = companionStats[companionName] || {};
+                  const tier = stats.tier || 0;
+                  const breakthrough = stats.breakthrough || 0;
+                  
+                  return (
+                    <button
+                      key={companionName}
+                      onClick={() => setSelectedEnhanceCompanion(companionName)}
+                      className={`w-full p-3 rounded-lg border transition-all duration-300 text-left ${
+                        selectedEnhanceCompanion === companionName
+                          ? isDarkMode
+                            ? "bg-orange-500/30 border-orange-400/50"
+                            : "bg-orange-100 border-orange-400"
+                          : isDarkMode
+                            ? "bg-gray-800/50 border-gray-600/30 hover:bg-gray-700/50"
+                            : "bg-gray-100 border-gray-300 hover:bg-gray-200"
+                      }`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className={`font-medium ${
+                            isDarkMode ? "text-white" : "text-gray-800"
+                          }`}>
+                            {companionName}
+                          </p>
+                          <p className={`text-xs ${getTierColor(tier, isDarkMode)}`}>
+                            {TIER_INFO[tier].name} • Lv.{companionInfo.level}
+                          </p>
+                        </div>
+                        {breakthrough > 0 && (
+                          <span className={`text-xs px-2 py-1 rounded ${
+                            isDarkMode 
+                              ? "bg-purple-500/20 text-purple-400" 
+                              : "bg-purple-100 text-purple-700"
+                          }`}>
+                            {breakthrough}차 돌파
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className={`text-center py-12 ${
+                isDarkMode ? "text-gray-400" : "text-gray-600"
+              }`}>
+                <p className="text-sm">보유한 동료가 없습니다</p>
+              </div>
+            )}
+          </div>
+
+          {/* 오른쪽: 강화 정보 */}
+          <div className="w-full md:w-2/3">
+            {selectedEnhanceCompanion ? (
+              <>
+                {/* 하위 탭 */}
+                <div className="flex gap-2 mb-4">
+                  <button
+                    onClick={() => setEnhanceSubTab('growth')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                      enhanceSubTab === 'growth'
+                        ? isDarkMode
+                          ? "bg-yellow-500/20 text-yellow-400 border border-yellow-400/30"
+                          : "bg-yellow-100 text-yellow-700 border border-yellow-400"
+                        : isDarkMode
+                          ? "text-gray-400 hover:bg-white/5"
+                          : "text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    성장
+                  </button>
+                  <button
+                    onClick={() => setEnhanceSubTab('breakthrough')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                      enhanceSubTab === 'breakthrough'
+                        ? isDarkMode
+                          ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
+                          : "bg-purple-100 text-purple-700 border border-purple-400"
+                        : isDarkMode
+                          ? "text-gray-400 hover:bg-white/5"
+                          : "text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    <TrendingUp className="w-4 h-4" />
+                    돌파
+                  </button>
+                </div>
+
+                {/* 동료 정보 */}
+                {(() => {
+                  const companionInfo = getCompanionInfo(selectedEnhanceCompanion);
+                  const stats = companionStats[selectedEnhanceCompanion] || {};
+                  const tier = stats.tier || 0;
+                  const breakthrough = stats.breakthrough || 0;
+                  const companionImage = companionImages[selectedEnhanceCompanion];
+                  
+                  return (
+                    <>
+                      {/* 동료 이미지 (큰 사이즈) */}
+                      {companionImage && (
+                        <div className="flex justify-center mb-4">
+                          <div className={`overflow-hidden border-2 ${
+                            isDarkMode ? "border-white/20" : "border-gray-300/50"
+                          } shadow-2xl`}>
+                            <img 
+                              src={companionImage} 
+                              alt={selectedEnhanceCompanion}
+                              className="max-w-full h-auto"
+                              style={{ maxHeight: '500px', objectFit: 'contain' }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className={`p-4 rounded-lg mb-4 ${getTierBgColor(tier, isDarkMode)} border ${
+                        isDarkMode ? "border-white/10" : "border-gray-300/30"
+                      }`}>
+                        <div className="mb-3">
+                          <h3 className={`text-xl font-bold ${getTierColor(tier, isDarkMode)}`}>
+                            {selectedEnhanceCompanion}
+                          </h3>
+                        </div>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>레벨:</span>{' '}
+                          <span className={isDarkMode ? "text-white" : "text-gray-800"}>
+                            Lv.{companionInfo.level}
+                          </span>
+                        </div>
+                        <div>
+                          <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>등급:</span>{' '}
+                          <span className={getTierColor(tier, isDarkMode)}>{TIER_INFO[tier].name}</span>
+                        </div>
+                        <div>
+                          <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>HP:</span>{' '}
+                          <span className={isDarkMode ? "text-white" : "text-gray-800"}>{companionInfo.hp}</span>
+                        </div>
+                        <div>
+                          <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>공격력:</span>{' '}
+                          <span className={isDarkMode ? "text-white" : "text-gray-800"}>{companionInfo.attack}</span>
+                        </div>
+                        <div>
+                          <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>속도:</span>{' '}
+                          <span className={isDarkMode ? "text-white" : "text-gray-800"}>{companionInfo.speed}</span>
+                        </div>
+                        <div>
+                          <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>돌파:</span>{' '}
+                          <span className={isDarkMode ? "text-white" : "text-gray-800"}>{breakthrough}차</span>
+                        </div>
+                      </div>
+                    </div>
+                    </>
+                  );
+                })()}
+
+                {/* 성장 탭 */}
+                {enhanceSubTab === 'growth' && (() => {
+                  const stats = companionStats[selectedEnhanceCompanion] || {};
+                  const currentTier = stats.tier || 0;
+                  const tierNames = ['일반', '희귀', '전설'];
+                  const check = canGrow(selectedEnhanceCompanion);
+                  
+                  if (currentTier >= 2) {
+                    return (
+                      <div className={`p-6 rounded-lg text-center ${
+                        isDarkMode ? "bg-gray-800/50" : "bg-gray-100"
+                      }`}>
+                        <p className={`text-lg ${
+                          isDarkMode ? "text-gray-400" : "text-gray-600"
+                        }`}>
+                          이미 최고 등급입니다!
+                        </p>
+                      </div>
+                    );
+                  }
+                  
+                  const cost = GROWTH_COSTS[currentTier];
+                  const nextTier = currentTier + 1;
+                  const nextTierInfo = TIER_INFO[nextTier];
+                  
+                  return (
+                    <div>
+                      <div className={`p-4 rounded-lg mb-4 ${
+                        isDarkMode ? "bg-gray-800/50" : "bg-gray-100"
+                      }`}>
+                        <h4 className={`font-bold mb-3 ${
+                          isDarkMode ? "text-white" : "text-gray-800"
+                        }`}>
+                          성장 효과
+                        </h4>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
+                              등급
+                            </span>
+                            <span className={isDarkMode ? "text-white" : "text-gray-800"}>
+                              {tierNames[currentTier]} → {tierNames[nextTier]}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
+                              능력치 배율
+                            </span>
+                            <span className={isDarkMode ? "text-green-400" : "text-green-600"}>
+                              ×{TIER_INFO[currentTier].statMultiplier} → ×{nextTierInfo.statMultiplier}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className={`p-4 rounded-lg mb-4 ${
+                        isDarkMode ? "bg-gray-800/50" : "bg-gray-100"
+                      }`}>
+                        <h4 className={`font-bold mb-3 ${
+                          isDarkMode ? "text-white" : "text-gray-800"
+                        }`}>
+                          필요 재화
+                        </h4>
+                        <div className="space-y-2">
+                          <div className={`flex justify-between p-2 rounded ${
+                            userStarPieces >= cost.starPieces
+                              ? isDarkMode ? "bg-blue-500/10" : "bg-blue-50"
+                              : isDarkMode ? "bg-red-500/10" : "bg-red-50"
+                          }`}>
+                            <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
+                              ⭐ 별조각
+                            </span>
+                            <span className={
+                              userStarPieces >= cost.starPieces
+                                ? isDarkMode ? "text-blue-400" : "text-blue-600"
+                                : isDarkMode ? "text-red-400" : "text-red-600"
+                            }>
+                              {cost.starPieces} ({userStarPieces} 보유)
+                            </span>
+                          </div>
+                          <div className={`flex justify-between p-2 rounded ${
+                            userGold >= cost.gold
+                              ? isDarkMode ? "bg-yellow-500/10" : "bg-yellow-50"
+                              : isDarkMode ? "bg-red-500/10" : "bg-red-50"
+                          }`}>
+                            <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
+                              💰 골드
+                            </span>
+                            <span className={
+                              userGold >= cost.gold
+                                ? isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                                : isDarkMode ? "text-red-400" : "text-red-600"
+                            }>
+                              {cost.gold.toLocaleString()} ({userGold.toLocaleString()} 보유)
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={handleGrowth}
+                        disabled={!check.possible || loading}
+                        className={`w-full py-3 rounded-lg font-bold transition-all ${
+                          check.possible && !loading
+                            ? isDarkMode
+                              ? "bg-yellow-500 hover:bg-yellow-600 text-black"
+                              : "bg-yellow-400 hover:bg-yellow-500 text-black"
+                            : isDarkMode
+                              ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                              : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                        }`}
+                      >
+                        {loading ? '처리중...' : check.possible ? '🌟 성장하기' : check.reason}
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                {/* 돌파 탭 */}
+                {enhanceSubTab === 'breakthrough' && (() => {
+                  const stats = companionStats[selectedEnhanceCompanion] || {};
+                  const currentBreakthrough = stats.breakthrough || 0;
+                  const check = canBreakthrough(selectedEnhanceCompanion);
+                  const essenceName = COMPANION_ESSENCE[selectedEnhanceCompanion];
+                  const essenceCount = materials.find(m => m.material === essenceName)?.count || 0;
+                  
+                  if (currentBreakthrough >= 6) {
+                    return (
+                      <div className={`p-6 rounded-lg text-center ${
+                        isDarkMode ? "bg-gray-800/50" : "bg-gray-100"
+                      }`}>
+                        <p className={`text-lg ${
+                          isDarkMode ? "text-gray-400" : "text-gray-600"
+                        }`}>
+                          이미 최대 돌파 단계입니다!
+                        </p>
+                      </div>
+                    );
+                  }
+                  
+                  const cost = BREAKTHROUGH_COSTS[currentBreakthrough];
+                  const bonus = BREAKTHROUGH_BONUS[currentBreakthrough];
+                  const essenceEmoji = ESSENCE_EMOJI[essenceName] || "🔮";
+                  
+                  return (
+                    <div>
+                      <div className={`p-4 rounded-lg mb-4 ${
+                        isDarkMode ? "bg-gray-800/50" : "bg-gray-100"
+                      }`}>
+                        <h4 className={`font-bold mb-3 ${
+                          isDarkMode ? "text-white" : "text-gray-800"
+                        }`}>
+                          돌파 효과 및 조건
+                        </h4>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
+                              필요 레벨
+                            </span>
+                            <span className={
+                              (() => {
+                                const stats = companionStats[selectedEnhanceCompanion] || {};
+                                const currentLevel = stats.level || 1;
+                                const currentBreakthrough = stats.breakthrough || 0;
+                                const requiredLevel = (currentBreakthrough + 1) * 10;
+                                return currentLevel >= requiredLevel
+                                  ? isDarkMode ? "text-green-400" : "text-green-600"
+                                  : isDarkMode ? "text-red-400" : "text-red-600";
+                              })()
+                            }>
+                              Lv.{(() => {
+                                const stats = companionStats[selectedEnhanceCompanion] || {};
+                                const currentBreakthrough = stats.breakthrough || 0;
+                                return (currentBreakthrough + 1) * 10;
+                              })()} 이상
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
+                              HP 성장률
+                            </span>
+                            <span className={isDarkMode ? "text-green-400" : "text-green-600"}>
+                              +{bonus.growthHp}/Lv
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
+                              공격력 성장률
+                            </span>
+                            <span className={isDarkMode ? "text-green-400" : "text-green-600"}>
+                              +{bonus.growthAttack}/Lv
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
+                              속도 성장률
+                            </span>
+                            <span className={isDarkMode ? "text-green-400" : "text-green-600"}>
+                              +{bonus.growthSpeed}/Lv
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className={`p-4 rounded-lg mb-4 ${
+                        isDarkMode ? "bg-gray-800/50" : "bg-gray-100"
+                      }`}>
+                        <h4 className={`font-bold mb-3 ${
+                          isDarkMode ? "text-white" : "text-gray-800"
+                        }`}>
+                          필요 재화
+                        </h4>
+                        <div className="space-y-2">
+                          {currentBreakthrough === 0 ? (
+                            // 1차 돌파는 골드만
+                            <div className={`flex justify-between p-2 rounded ${
+                              userGold >= cost.gold
+                                ? isDarkMode ? "bg-yellow-500/10" : "bg-yellow-50"
+                                : isDarkMode ? "bg-red-500/10" : "bg-red-50"
+                            }`}>
+                              <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
+                                💰 골드
+                              </span>
+                              <span className={
+                                userGold >= cost.gold
+                                  ? isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                                  : isDarkMode ? "text-red-400" : "text-red-600"
+                              }>
+                                {cost.gold.toLocaleString()} ({userGold.toLocaleString()} 보유)
+                              </span>
+                            </div>
+                          ) : (
+                            // 2차 이상은 정수만
+                            <div className={`flex justify-between p-2 rounded ${
+                              essenceCount >= cost.essence
+                                ? isDarkMode ? "bg-cyan-500/10" : "bg-cyan-50"
+                                : isDarkMode ? "bg-red-500/10" : "bg-red-50"
+                            }`}>
+                              <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
+                                {essenceEmoji} {essenceName}
+                              </span>
+                              <span className={
+                                essenceCount >= cost.essence
+                                  ? isDarkMode ? "text-cyan-400" : "text-cyan-600"
+                                  : isDarkMode ? "text-red-400" : "text-red-600"
+                              }>
+                                {cost.essence}개 ({essenceCount}개 보유)
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={handleBreakthrough}
+                        disabled={!check.possible || loading}
+                        className={`w-full py-3 rounded-lg font-bold transition-all ${
+                          check.possible && !loading
+                            ? isDarkMode
+                              ? "bg-purple-500 hover:bg-purple-600 text-white"
+                              : "bg-purple-400 hover:bg-purple-500 text-white"
+                            : isDarkMode
+                              ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                              : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                        }`}
+                      >
+                        {loading ? '처리중...' : check.possible ? '돌파하기' : check.reason}
+                      </button>
+                    </div>
+                  );
+                })()}
+              </>
+            ) : (
+              <div className={`flex items-center justify-center h-full ${
+                isDarkMode ? "text-gray-400" : "text-gray-600"
+              }`}>
+                <p className="text-lg">동료를 선택해주세요</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 동료 상세 모달 */}
       {showCompanionModal && selectedCompanion && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className={`relative w-full max-w-md mx-4 rounded-2xl border shadow-2xl ${
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border shadow-2xl ${
             isDarkMode 
               ? "bg-gray-800/95 border-gray-700/50 backdrop-blur-md" 
               : "bg-white/95 border-gray-300/50 backdrop-blur-md"
@@ -340,7 +999,7 @@ const CompanionTab = ({
             </div>
 
             {/* 모달 내용 */}
-            <div className="p-6 max-h-96 overflow-y-auto">
+            <div className="p-6">
               {(() => {
                 const baseData = COMPANION_DATA[selectedCompanion];
                 const companionStat = companionStats[selectedCompanion];
@@ -358,6 +1017,20 @@ const CompanionTab = ({
 
                 return (
                   <div className="space-y-6">
+                    {/* 동료 이미지 */}
+                    <div className="flex justify-center">
+                      <div className={`overflow-hidden border-2 ${
+                        isDarkMode ? "border-white/20" : "border-gray-300/50"
+                      } shadow-2xl`}>
+                        <img 
+                          src={companionImages[selectedCompanion]} 
+                          alt={selectedCompanion}
+                          className="max-w-full h-auto"
+                          style={{ maxHeight: '500px', objectFit: 'contain' }}
+                        />
+                      </div>
+                    </div>
+
                     {/* 기본 정보 */}
                     <div className={`p-4 rounded-lg ${
                       isDarkMode ? "bg-gray-700/30" : "bg-gray-100/50"

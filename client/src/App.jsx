@@ -62,7 +62,8 @@ import {
   Zap,
   Hammer,
   Mail,
-  Anchor
+  Anchor,
+  Sparkles
 } from "lucide-react";
 import "./App.css";
 // 🚀 Web Worker import for background cooldown management
@@ -219,7 +220,7 @@ function App() {
 
   // 🔄 버전 업데이트 시 캐시 초기화 (v1.405)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.408";
+    const CURRENT_VERSION = "v1.410";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -257,6 +258,7 @@ function App() {
     getFishPrice,
     getFishMaterial,
     getMaterialToFish,
+    getMaterialEmoji,
     selectFishPrefix,
     getAllShopItems,
     getAvailableShopItem
@@ -1633,14 +1635,20 @@ function App() {
           const level = stats.level || 1;
           const exp = stats.experience || 0; // 서버에서는 experience 필드 사용
           const expToNext = calculateExpToNextLevel(level + 1); // 새로운 경험치 공식 사용
+          const tier = stats.tier || 0;
+          const breakthrough = stats.breakthrough || 0;
+          const breakthroughStats = stats.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 };
           
           processedStats[companionName] = {
             level: level,
             exp: exp,
             expToNext: expToNext,
-            hp: calculateCompanionStats(companionName, level)?.hp || 100,
-            maxHp: calculateCompanionStats(companionName, level)?.hp || 100,
-            isInBattle: stats.isInBattle || false
+            hp: calculateCompanionStats(companionName, level, tier, breakthrough, breakthroughStats)?.hp || 100,
+            maxHp: calculateCompanionStats(companionName, level, tier, breakthrough, breakthroughStats)?.hp || 100,
+            isInBattle: stats.isInBattle || false,
+            tier: tier,
+            breakthrough: breakthrough,
+            breakthroughStats: breakthroughStats
           };
         });
         
@@ -3965,14 +3973,21 @@ function App() {
             const level = stats.level || 1;
             const exp = stats.experience || 0; // 서버에서는 experience 필드 사용
             const expToNext = calculateExpToNextLevel(level + 1); // 새로운 경험치 공식 사용
+            const tier = stats.tier || 0;
+            const breakthrough = stats.breakthrough || 0;
+            const breakthroughStats = stats.breakthroughStats || { bonusHp: 0, bonusAttack: 0, bonusSpeed: 0 };
             
             processedStats[companionName] = {
               level: level,
               exp: exp,
               expToNext: expToNext,
-              hp: calculateCompanionStats(companionName, level)?.hp || 100,
-              maxHp: calculateCompanionStats(companionName, level)?.hp || 100,
-              isInBattle: stats.isInBattle || false
+              hp: calculateCompanionStats(companionName, level, tier, breakthrough, breakthroughStats)?.hp || 100,
+              maxHp: calculateCompanionStats(companionName, level, tier, breakthrough, breakthroughStats)?.hp || 100,
+              isInBattle: stats.isInBattle || false,
+              tier: tier,
+              breakthrough: breakthrough,
+              maxLevel: stats.maxLevel || 50,
+              breakthroughStats: breakthroughStats
             };
           });
           
@@ -5333,6 +5348,116 @@ function App() {
     }
   };
 
+  // 🌟 동료 성장 함수 (등급 상승)
+  const growthCompanion = async (companionName) => {
+    try {
+      console.log('Growing companion:', companionName);
+      
+      const response = await authenticatedRequest.post(`${serverUrl}/api/companion/growth`, {
+        companionName
+      });
+      
+      console.log('Growth response:', response.data);
+      
+      if (response.data.success) {
+        // 재화 업데이트
+        setUserStarPieces(response.data.remainingStarPieces);
+        setUserMoney(response.data.remainingGold);
+        
+        // 동료 능력치 직접 업데이트 (즉시 반영)
+        setCompanionStats(prev => ({
+          ...prev,
+          [companionName]: {
+            ...prev[companionName],
+            tier: response.data.newTier
+          }
+        }));
+        
+        // 동료 능력치 새로고침 (서버와 동기화)
+        try {
+          await refreshCompanionStats();
+        } catch (refreshError) {
+          console.error('동료 능력치 새로고침 실패:', refreshError);
+          // 새로고침 실패해도 이미 로컬에서 업데이트했으므로 계속 진행
+        }
+        
+        setMessages(prev => [...prev, {
+          system: true,
+          username: "system",
+          content: `🌟 ${companionName}이(가) ${response.data.tierName} 등급으로 성장했습니다!`,
+          timestamp: new Date().toISOString()
+        }]);
+        
+        // 성공 반환
+        return response.data;
+      } else {
+        throw new Error('성장 응답에 success 필드가 없습니다.');
+      }
+    } catch (error) {
+      console.error('Failed to growth companion:', error);
+      throw error;
+    }
+  };
+
+  // 💎 동료 돌파 함수 (최대 레벨 증가)
+  const breakthroughCompanion = async (companionName) => {
+    try {
+      console.log('Breakthrough companion:', companionName);
+      
+      const response = await authenticatedRequest.post(`${serverUrl}/api/companion/breakthrough`, {
+        companionName
+      });
+      
+      console.log('Breakthrough response:', response.data);
+      
+      if (response.data.success) {
+        // 골드 업데이트
+        setUserMoney(response.data.remainingGold);
+        
+        // 동료 능력치 직접 업데이트 (즉시 반영)
+        setCompanionStats(prev => ({
+          ...prev,
+          [companionName]: {
+            ...prev[companionName],
+            breakthrough: response.data.newBreakthrough,
+            breakthroughStats: response.data.breakthroughStats
+          }
+        }));
+        
+        // 재료 새로고침 (에러가 나도 계속 진행)
+        try {
+          const materialsRes = await authenticatedRequest.get(`${serverUrl}/api/materials/user`);
+          setMaterials(materialsRes.data || []);
+        } catch (materialError) {
+          console.error('재료 새로고침 실패:', materialError);
+        }
+        
+        // 동료 능력치 새로고침 (서버와 동기화)
+        try {
+          await refreshCompanionStats();
+        } catch (refreshError) {
+          console.error('동료 능력치 새로고침 실패:', refreshError);
+          // 새로고침 실패해도 이미 로컬에서 업데이트했으므로 계속 진행
+        }
+        
+        setMessages(prev => [...prev, {
+          system: true,
+          username: "system",
+          content: `💎 ${companionName}이(가) ${response.data.newBreakthrough}차 돌파했습니다! (레벨당 성장률 증가)`,
+          timestamp: new Date().toISOString()
+        }]);
+        
+        // 성공 반환
+        return response.data;
+      } else {
+        throw new Error('돌파 응답에 success 필드가 없습니다.');
+      }
+    } catch (error) {
+      console.error('Failed to breakthrough companion:', error);
+      throw error;
+    }
+  };
+
   // 에테르 열쇠 교환 함수
   const exchangeEtherKeys = async (exchangeCount = 1) => {
     const starPieceCost = 1 * exchangeCount; // 별조각 비용 (1개 * 교환 횟수)
@@ -5392,13 +5517,21 @@ function App() {
             console.log(`✅ ${companionName} 서버에서 기존 능력치 발견:`, serverStats[companionName]);
             
             const serverData = serverStats[companionName];
+            const tier = serverData.tier || 0;
+            const breakthrough = serverData.breakthrough || 0;
+            const breakthroughStats = serverData.breakthroughStats || { bonusHp: 0, bonusAttack: 0, bonusSpeed: 0 };
+            
             const newStats = {
               level: serverData.level || 1,
               exp: serverData.experience || 0,
               expToNext: calculateExpToNextLevel((serverData.level || 1) + 1),
-              hp: calculateCompanionStats(companionName, serverData.level || 1)?.hp || 100,
-              maxHp: calculateCompanionStats(companionName, serverData.level || 1)?.hp || 100,
-              isInBattle: serverData.isInBattle || false
+              hp: calculateCompanionStats(companionName, serverData.level || 1, tier, breakthrough, breakthroughStats)?.hp || 100,
+              maxHp: calculateCompanionStats(companionName, serverData.level || 1, tier, breakthrough, breakthroughStats)?.hp || 100,
+              isInBattle: serverData.isInBattle || false,
+              tier: tier,
+              breakthrough: breakthrough,
+              maxLevel: serverData.maxLevel || 50,
+              breakthroughStats: breakthroughStats
             };
             
             setCompanionStats(prev => {
@@ -6494,6 +6627,49 @@ function App() {
     fetchBlockedAccounts();
   };
 
+  // 🧹 레거시 프로필 이미지 레코드 정리
+  const cleanupLegacyProfileImages = async () => {
+    if (!isAdmin) {
+      alert('⚠️ 관리자 권한이 필요합니다.');
+      return;
+    }
+
+    const adminKey = prompt('🔑 관리자 비밀 키를 입력하세요:');
+    if (!adminKey) return;
+
+    const confirmMessage = `🧹 레거시 프로필 이미지 레코드 정리\n\n로컬 경로(/uploads/)로 저장된 오래된 프로필 이미지 레코드들을 삭제합니다.\n\n⚠️ 이 작업은 되돌릴 수 없습니다!\n\n정말로 실행하시겠습니까?`;
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      const response = await authenticatedRequest.post(
+        `${serverUrl}/api/profile-image/cleanup-legacy`,
+        {},
+        {
+          params: { username, userUuid },
+          headers: {
+            Authorization: `Bearer ${jwtToken || localStorage.getItem("jwtToken")}`
+          }
+        }
+      );
+
+      if (response.data.success) {
+        const deletedCount = response.data.deletedCount || 0;
+        if (deletedCount > 0) {
+          alert(`✅ ${deletedCount}개의 레거시 프로필 이미지 레코드가 삭제되었습니다.\n\n삭제된 레코드:\n${response.data.deletedRecords?.map((r, i) => `${i + 1}. ${r.username} (${r.userUuid})`).join('\n') || '없음'}`);
+        } else {
+          alert('✅ 정리할 레거시 레코드가 없습니다.');
+        }
+      } else {
+        alert(`❌ 레거시 레코드 정리 실패: ${response.data.error || '알 수 없는 오류'}`);
+      }
+    } catch (error) {
+      console.error('레거시 레코드 정리 오류:', error);
+      alert(`❌ 레거시 레코드 정리 실패: ${error.response?.data?.error || error.message}`);
+    }
+  };
+
   // 🔑 관리자 권한: 다른 사용자 계정 삭제
   const adminDeleteUserAccount = async (targetUsername) => {
     if (!isAdmin) {
@@ -6588,6 +6764,8 @@ function App() {
       case '변종': return 1.1;
       case '심연의': return 1.2;
       case '깊은어둠의': return 1.3;
+      case '파멸의': return 1.5;
+      case '종말의': return 1.8;
       default: return 1.0;
     }
   };
@@ -7293,14 +7471,23 @@ function App() {
 
   // 수량 모달에서 확인 버튼
   const handleQuantityConfirm = async () => {
-    if (!quantityModalData) return;
+    console.log('🔧 [Client] handleQuantityConfirm called');
+    
+    if (!quantityModalData) {
+      console.log('❌ [Client] No quantityModalData');
+      return;
+    }
     
     const { type, fishName, materialName, recipe, useChain, targetMaterial, targetAmount } = quantityModalData;
     const quantity = Math.min(inputQuantity, quantityModalData.maxQuantity);
     
+    console.log('🔧 [Client] Modal data:', { type, fishName, quantity, materialName });
+    
     if (type === 'sell') {
+      console.log('🔧 [Client] Calling sellFish');
       sellFish(fishName, quantity);
     } else if (type === 'decompose') {
+      console.log('🔧 [Client] Calling decomposeFish');
       decomposeFish(fishName, quantity);
     } else if (type === 'material_decompose' && useChain && targetMaterial) {
       // 체인 분해 실행
@@ -7490,18 +7677,19 @@ function App() {
 
   // 물고기 분해 함수
   const decomposeFish = async (fishName, quantity) => {
-    const material = getFishMaterial(fishName);
-    if (!material) {
-      alert('분해할 수 없는 물고기입니다.');
-      return;
-    }
-
+    console.log('🔧 [Client] decomposeFish called:', { fishName, quantity });
+    
     try {
+      // 재료는 서버에서 자동으로 찾도록 함
       const response = await authenticatedRequest.post(`${serverUrl}/api/decompose-fish`, {
         fishName,
         quantity,
-        material
+        material: '' // 서버에서 자동으로 찾음
       });
+
+      console.log('🔍 [Client] Decompose fish response:', response);
+      console.log('🔍 [Client] Response data:', response.data);
+      console.log('🔍 [Client] Success value:', response.data?.success);
 
       if (response.data.success) {
         // 스타피쉬 분해 시 별조각 획득 처리
@@ -7520,10 +7708,23 @@ function App() {
           alert(`✨ 별조각 ${response.data.starPiecesGained}개를 획득했습니다!\n총 보유 별조각: ${response.data.totalStarPieces}개`);
         } else {
           // 일반 물고기 분해 메시지
+          const material = response.data.material;
+          let decomposeMessage = `${fishName} ${quantity}마리를 분해하여 ${material} ${quantity}개를 획득했습니다!`;
+          
+          // 🎁 추가 재료 드롭 알림
+          if (response.data.extraMaterialGained && response.data.extraMaterialGained > 0) {
+            const extraName = response.data.extraMaterialName;
+            const extraCount = response.data.extraMaterialGained;
+            decomposeMessage += ` (보너스: ${extraName} ${extraCount}개 🎁)`;
+            
+            // 🔮 정수 드롭 팝업 알림
+            alert(`🎉 희귀 드롭!\n🔮 ${extraName} ${extraCount}개를 획득했습니다!`);
+          }
+          
           setMessages(prev => [...prev, {
             system: true,
             username: "system",
-            content: `${fishName} ${quantity}마리를 분해하여 ${material} ${quantity}개를 획득했습니다!`,
+            content: decomposeMessage,
             timestamp: new Date().toISOString()
           }]);
         }
@@ -7541,8 +7742,8 @@ function App() {
           return updated;
         });
         
-        // 재료 로컬 업데이트
-        const material = getFishMaterial(fishName);
+        // 재료 로컬 업데이트 - 서버에서 받은 material 사용
+        const material = response.data.material;
         if (material && fishName !== "스타피쉬") {
           setMaterials(prev => {
             const existingMaterial = prev.find(m => m.material === material);
@@ -7554,6 +7755,25 @@ function App() {
               );
             } else {
               return [...prev, { material, count: quantity }];
+            }
+          });
+        }
+        
+        // 🎁 추가 재료(정수) 로컬 업데이트
+        if (response.data.extraMaterialGained && response.data.extraMaterialGained > 0) {
+          const extraMaterial = response.data.extraMaterialName;
+          const extraCount = response.data.extraMaterialGained;
+          
+          setMaterials(prev => {
+            const existingMaterial = prev.find(m => m.material === extraMaterial);
+            if (existingMaterial) {
+              return prev.map(m => 
+                m.material === extraMaterial 
+                  ? { ...m, count: m.count + extraCount }
+                  : m
+              );
+            } else {
+              return [...prev, { material: extraMaterial, count: extraCount }];
             }
           });
         }
@@ -7576,10 +7796,20 @@ function App() {
             console.error('Background sync failed:', error);
           }
         }, 1000);
+      } else {
+        // success가 false인 경우 에러 메시지 표시
+        console.error('Decompose fish failed:', response.data);
+        alert(response.data.error || '물고기 분해에 실패했습니다.');
       }
     } catch (error) {
-      console.error('Failed to decompose fish:', error);
-      alert('물고기 분해에 실패했습니다.');
+      console.error('❌ [Client] Failed to decompose fish:', error);
+      console.error('❌ [Client] Error message:', error.message);
+      console.error('❌ [Client] Error response:', error.response);
+      console.error('❌ [Client] Error response data:', error.response?.data);
+      console.error('❌ [Client] Error response status:', error.response?.status);
+      
+      const errorMsg = error.response?.data?.error || error.message || '물고기 분해에 실패했습니다.';
+      alert(`에러: ${errorMsg}`);
     }
   };
 
@@ -7606,7 +7836,7 @@ function App() {
       const response = await authenticatedRequest.post(`${serverUrl}/api/decompose-all-fish`);
       
       if (response.data.success) {
-        const { totalMaterials, totalStarPieces, decomposeCount, materialsGained } = response.data;
+        const { totalMaterials, totalStarPieces, decomposeCount, materialsGained, extraMaterialsGained, totalExtraMaterials } = response.data;
         
         // 로컬 상태 업데이트
         setInventory([]);
@@ -7638,6 +7868,27 @@ function App() {
           });
         }
         
+        // 🎁 추가 재료(정수) 업데이트
+        if (extraMaterialsGained && Object.keys(extraMaterialsGained).length > 0) {
+          setMaterials(prev => {
+            const updated = [...prev];
+            
+            for (const [material, count] of Object.entries(extraMaterialsGained)) {
+              const existingIndex = updated.findIndex(m => m.material === material);
+              if (existingIndex >= 0) {
+                updated[existingIndex] = {
+                  ...updated[existingIndex],
+                  count: updated[existingIndex].count + count
+                };
+              } else {
+                updated.push({ material, count });
+              }
+            }
+            
+            return updated;
+          });
+        }
+        
         // 메시지 생성
         let message = `모든 물고기를 분해하여 `;
         if (totalMaterials > 0) {
@@ -7648,6 +7899,15 @@ function App() {
           message += `별조각 ${totalStarPieces}개`;
         }
         message += `를 획득했습니다! (${decomposeCount}마리)`;
+        
+        // 🎁 추가 재료 드롭 정보 추가
+        if (totalExtraMaterials && totalExtraMaterials > 0) {
+          message += `\n🎁 보너스: `;
+          const extraItems = Object.entries(extraMaterialsGained || {})
+            .map(([material, count]) => `${material} ${count}개`)
+            .join(', ');
+          message += extraItems;
+        }
         
         setMessages(prev => [...prev, {
           system: true,
@@ -8084,7 +8344,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.408
+                여우이야기 v1.410
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -9157,21 +9417,35 @@ function App() {
                           const rankB = fishB ? fishB.rank : 999;
                           return rankA - rankB;
                         })
-                        .map((item, index) => (
+                        .map((item, index) => {
+                          const isEssence = ['물의정수', '자연의정수', '바람의정수', '땅의정수', '불의정수', '빛의정수', '어둠의정수', '영혼의정수'].includes(item.material);
+                          return (
                           <div key={index} className={`p-4 rounded-xl hover:glow-effect transition-all duration-300 group ${
                             isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
                           }`}>
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3">
-                                <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20">
-                                  <Gem className={`w-6 h-6 group-hover:scale-110 transition-transform ${
-                                    isDarkMode ? "text-purple-400" : "text-purple-600"
-                                  }`} />
+                                <div className={`flex items-center justify-center w-12 h-12 rounded-full ${
+                                  isEssence 
+                                    ? "bg-gradient-to-br from-cyan-500/20 to-blue-500/20" 
+                                    : "bg-gradient-to-br from-purple-500/20 to-pink-500/20"
+                                }`}>
+                                  {isEssence ? (
+                                    <Sparkles className={`w-6 h-6 group-hover:scale-110 transition-transform ${
+                                      isDarkMode ? "text-cyan-400" : "text-cyan-600"
+                                    }`} />
+                                  ) : (
+                                    <Gem className={`w-6 h-6 group-hover:scale-110 transition-transform ${
+                                      isDarkMode ? "text-purple-400" : "text-purple-600"
+                                    }`} />
+                                  )}
                                 </div>
                                 <div>
                                   <div className="flex items-center gap-2">
                                     <div className={`font-medium text-base ${
-                                      isDarkMode ? "text-white" : "text-gray-800"
+                                      isEssence 
+                                        ? isDarkMode ? "text-cyan-300" : "text-cyan-700"
+                                        : isDarkMode ? "text-white" : "text-gray-800"
                                     }`}>{item.material}</div>
                                     {(() => {
                                       const fishData = allFishTypes.find(f => f.material === item.material);
@@ -9197,7 +9471,8 @@ function App() {
                               </div>
                             </div>
                           </div>
-                        ))}
+                        );
+                        })}
                       </div>
                     </div>
                   )}
@@ -9536,20 +9811,34 @@ function App() {
                           const hasEnoughGoldForDecompose = userMoney >= decomposeCost;
                           const canDecompose = hasEnoughMaterialsForDecompose && hasEnoughGoldForDecompose;
                           
+                          const isEssence = ['물의정수', '자연의정수', '바람의정수', '땅의정수', '불의정수', '빛의정수', '어둠의정수', '영혼의정수'].includes(item.material);
+                          
                           return (
                             <div key={index} className={`p-4 rounded-xl hover:glow-effect transition-all duration-300 group ${
                               isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
                             }`}>
                               <div className="flex items-center justify-between mb-3">
                                 <div className="flex items-center gap-3">
-                                  <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20">
-                                    <Gem className={`w-6 h-6 group-hover:scale-110 transition-transform ${
-                                      isDarkMode ? "text-purple-400" : "text-purple-600"
-                                    }`} />
+                                  <div className={`flex items-center justify-center w-12 h-12 rounded-full ${
+                                    isEssence 
+                                      ? "bg-gradient-to-br from-cyan-500/20 to-blue-500/20" 
+                                      : "bg-gradient-to-br from-purple-500/20 to-pink-500/20"
+                                  }`}>
+                                    {isEssence ? (
+                                      <Sparkles className={`w-6 h-6 group-hover:scale-110 transition-transform ${
+                                        isDarkMode ? "text-cyan-400" : "text-cyan-600"
+                                      }`} />
+                                    ) : (
+                                      <Gem className={`w-6 h-6 group-hover:scale-110 transition-transform ${
+                                        isDarkMode ? "text-purple-400" : "text-purple-600"
+                                      }`} />
+                                    )}
                                   </div>
                                   <div>
                                     <div className={`font-medium text-base ${
-                                      isDarkMode ? "text-white" : "text-gray-800"
+                                      isEssence 
+                                        ? isDarkMode ? "text-cyan-300" : "text-cyan-700"
+                                        : isDarkMode ? "text-white" : "text-gray-800"
                                     }`}>{item.material}</div>
                                     <div className={`text-xs ${
                                       isDarkMode ? "text-gray-400" : "text-gray-600"
@@ -10309,11 +10598,15 @@ function App() {
               companions={companions}
               battleCompanions={battleCompanions}
               companionStats={companionStats}
+              userGold={userMoney}
+              materials={materials}
               
               // 함수
               recruitCompanion={recruitCompanion}
               toggleBattleCompanion={toggleBattleCompanion}
               refreshAllData={refreshAllData}
+              onGrowth={growthCompanion}
+              onBreakthrough={breakthroughCompanion}
             />
           )}
 
@@ -13181,6 +13474,33 @@ function App() {
                 </button>
               </div>
 
+              {/* 레거시 프로필 이미지 정리 */}
+              <div className={`p-4 rounded-lg mb-6 ${
+                isDarkMode ? "bg-yellow-900/20" : "bg-yellow-50"
+              }`}>
+                <h3 className={`text-lg font-semibold mb-4 ${
+                  isDarkMode ? "text-yellow-300" : "text-yellow-800"
+                }`}>🧹 레거시 프로필 이미지 정리</h3>
+                
+                <p className={`text-sm mb-4 ${
+                  isDarkMode ? "text-yellow-200" : "text-yellow-700"
+                }`}>
+                  로컬 경로(/uploads/)로 저장된 오래된 프로필 이미지 레코드를 삭제합니다.<br />
+                  AWS S3로 마이그레이션 이전에 업로드된 레거시 데이터를 정리합니다.
+                </p>
+                
+                <button
+                  onClick={cleanupLegacyProfileImages}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 hover:scale-105 ${
+                    isDarkMode
+                      ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 border border-yellow-400/30"
+                      : "bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 border border-yellow-500/30"
+                  }`}
+                >
+                  🧹 레거시 레코드 정리
+                </button>
+              </div>
+
               {/* 현재 접속자 IP 목록 */}
               <div className={`p-4 rounded-lg mb-6 ${
                 isDarkMode ? "bg-blue-900/20" : "bg-blue-50"
@@ -13540,6 +13860,11 @@ function App() {
               {!selectedExplorationMaterial ? (
               <div className="space-y-3">
                 {materials
+                  .filter(material => {
+                    // 정수 아이템 필터링 (탐사전투에 사용 불가)
+                    const essenceItems = ['물의정수', '자연의정수', '바람의정수', '땅의정수', '불의정수', '빛의정수', '어둠의정수', '영혼의정수'];
+                    return !essenceItems.includes(material.material);
+                  })
                   .sort((a, b) => {
                     // 재료를 희귀도 낮은 순으로 정렬 (rank 기준)
                     const fishA = allFishTypes.find(fish => fish.material === a.material);

@@ -195,7 +195,7 @@ const CollectionModal = ({
           </div>
 
           {/* 탭 네비게이션 */}
-          <div className="flex gap-2 mt-4">
+          <div className="flex gap-2 mt-4 flex-wrap">
             <button
               onClick={() => setActiveCollectionTab('fish')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
