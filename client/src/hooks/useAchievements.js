@@ -37,6 +37,12 @@ export const ACHIEVEMENT_DEFINITIONS = {
     name: "마음을 불태워라",
     description: "레이드 누적데미지 1000000달성",
     autoCheck: true
+  },
+  apocalypse_encounter: {
+    id: "apocalypse_encounter",
+    name: "그날 인류는 떠올렸다",
+    description: "탐사전투에서 한 번의 전투에 파멸의/종말의 접두어가 붙은 물고기 3마리 이상 만나기",
+    autoCheck: true
   }
 };
 

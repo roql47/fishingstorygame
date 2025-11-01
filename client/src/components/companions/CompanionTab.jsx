@@ -347,6 +347,8 @@ const CompanionTab = ({
                 const breakthroughStats = companionStat.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 };
                 const companionData = calculateCompanionStats(companion, companionStat.level, tier, breakthrough, breakthroughStats);
                 const baseData = COMPANION_DATA[companion];
+                const tierNames = ['일반', '희귀', '전설'];
+                const currentTierName = tierNames[tier];
                 
                 return (
                   <div key={index} className={`p-4 rounded-lg transition-all duration-200 cursor-pointer hover:scale-105 ${
@@ -381,10 +383,10 @@ const CompanionTab = ({
                             }`}>
                               Lv.{companionStat.level}
                             </div>
-                            <div className={`text-xs px-1.5 py-0.5 rounded font-medium ${getRarityColor(baseData?.rarity, isDarkMode)} ${
+                            <div className={`text-xs px-1.5 py-0.5 rounded font-medium ${getTierColor(tier, isDarkMode)} ${
                               isDarkMode ? "bg-gray-700/30" : "bg-gray-200/50"
                             }`}>
-                              {baseData?.rarity}
+                              {currentTierName}
                             </div>
                           </div>
                           <div className="flex items-center gap-4 text-xs">
@@ -1012,6 +1014,8 @@ const CompanionTab = ({
                 const tier = companionStat?.tier || 0;
                 const breakthrough = companionStat?.breakthrough || 0;
                 const breakthroughStats = companionStat?.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 };
+                const tierNames = ['일반', '희귀', '전설'];
+                const currentTierName = tierNames[tier];
                 
                 // NaN 방지를 위한 추가 안전 처리
                 const safeExp = isNaN(exp) ? 0 : exp;
@@ -1050,9 +1054,9 @@ const CompanionTab = ({
                           <span className={isDarkMode ? "text-white" : "text-gray-800"}>Lv.{level}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>희귀도</span>
-                          <span className={"font-medium " + getRarityColor(baseData.rarity, isDarkMode)}>
-                            {baseData.rarity}
+                          <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>등급</span>
+                          <span className={"font-medium " + getTierColor(tier, isDarkMode)}>
+                            {currentTierName}
                           </span>
                         </div>
                         <div className="flex justify-between">
@@ -1087,7 +1091,7 @@ const CompanionTab = ({
                               {companionData?.hp || baseData.baseHp}
                             </div>
                             <div className="text-xs text-gray-500">
-                              기본 {baseData.baseHp} (+{baseData.growthHp}/Lv)
+                              기본 {baseData.baseHp} (+{companionData?.growthHp || baseData.growthHp}/Lv)
                             </div>
                           </div>
                         </div>
@@ -1103,7 +1107,7 @@ const CompanionTab = ({
                               {companionData?.attack || baseData.baseAttack}
                             </div>
                             <div className="text-xs text-gray-500">
-                              기본 {baseData.baseAttack} (+{baseData.growthAttack}/Lv)
+                              기본 {baseData.baseAttack} (+{companionData?.growthAttack || baseData.growthAttack}/Lv)
                             </div>
                           </div>
                         </div>
@@ -1119,7 +1123,7 @@ const CompanionTab = ({
                               {companionData?.speed || baseData.baseSpeed}
                             </div>
                             <div className="text-xs text-gray-500">
-                              기본 {baseData.baseSpeed} (+{baseData.growthSpeed}/Lv)
+                              기본 {baseData.baseSpeed} (+{companionData?.growthSpeed || baseData.growthSpeed}/Lv)
                             </div>
                           </div>
                         </div>
@@ -1185,8 +1189,9 @@ const CompanionTab = ({
                                   <span className={isDarkMode ? "font-semibold text-green-400" : "font-semibold text-green-600"}>
                                     {(() => {
                                       const currentAttack = companionData?.attack || baseData.baseAttack;
-                                      const healAmount = Math.floor(currentAttack * (baseData.skill?.healMultiplier || 1));
-                                      const percentage = Math.floor((baseData.skill?.healMultiplier || 1) * 100);
+                                      const healMultiplier = companionData?.skill?.healMultiplier || baseData.skill?.healMultiplier || 1;
+                                      const healAmount = Math.floor(currentAttack * healMultiplier);
+                                      const percentage = Math.floor(healMultiplier * 100);
                                       return `${healAmount} (${percentage}%)`;
                                     })()}
                                   </span>
@@ -1233,8 +1238,9 @@ const CompanionTab = ({
                                   <span className={isDarkMode ? "font-semibold text-orange-400" : "font-semibold text-orange-600"}>
                                     {(() => {
                                       const currentAttack = companionData?.attack || baseData.baseAttack;
-                                      const skillDamage = Math.floor(currentAttack * (baseData.skill?.damageMultiplier || 1));
-                                      const percentage = Math.floor((baseData.skill?.damageMultiplier || 1) * 100);
+                                      const damageMultiplier = companionData?.skill?.damageMultiplier || baseData.skill?.damageMultiplier || 1;
+                                      const skillDamage = Math.floor(currentAttack * damageMultiplier);
+                                      const percentage = Math.floor(damageMultiplier * 100);
                                       return `${skillDamage} (${percentage}%)`;
                                     })()}
                                   </span>

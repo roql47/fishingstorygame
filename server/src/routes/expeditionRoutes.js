@@ -626,6 +626,64 @@ router.post('/claim-rewards', authenticateJWT, async (req, res) => {
         // 보상 수령 완료 표시 (메모리)
         expeditionSystem.markRewardsClaimed(userUuid);
         
+        // 🎯 4인 이상 원정 전투 승리 퀘스트 진행도 업데이트
+        if (room.players && room.players.length >= 4) {
+            try {
+                const DailyQuestModel = mongoose.model('DailyQuest');
+                
+                // 한국 시간 기준 오늘 날짜 계산
+                const now = new Date();
+                const kstTime = new Date(now.getTime() + (9 * 60 * 60 * 1000));
+                const today = kstTime.toISOString().split('T')[0];
+                
+                let dailyQuest = await DailyQuestModel.findOne({ userUuid });
+                
+                // 퀘스트가 없거나 날짜가 다르면 새로 생성/리셋
+                if (!dailyQuest || dailyQuest.lastResetDate !== today) {
+                    dailyQuest = await DailyQuestModel.findOneAndUpdate(
+                        { userUuid },
+                        {
+                            $set: {
+                                userUuid,
+                                username,
+                                fishCaught: 0,
+                                explorationWins: 0,
+                                fishSold: 0,
+                                voyageWins: 0,
+                                expeditionWins: 1, // 첫 승리
+                                questFishCaught: false,
+                                questExplorationWin: false,
+                                questFishSold: false,
+                                questVoyageWin: false,
+                                questExpeditionWin: false,
+                                lastResetDate: today
+                            }
+                        },
+                        { upsert: true, new: true }
+                    );
+                } else {
+                    // 기존 퀘스트 업데이트 (카운트만 증가, 완료 플래그는 보상 수령 시에만 설정)
+                    const newExpeditionWins = Math.min(dailyQuest.expeditionWins + 1, 1);
+                    
+                    await DailyQuestModel.findOneAndUpdate(
+                        { userUuid },
+                        {
+                            $set: {
+                                expeditionWins: newExpeditionWins
+                                // questExpeditionWin은 보상 수령 시에만 true로 설정
+                            }
+                        },
+                        { new: true }
+                    );
+                }
+                
+                console.log(`[EXPEDITION] 4인 이상 원정 전투 승리 퀘스트 진행도 업데이트: ${username}`);
+            } catch (questError) {
+                console.error(`[EXPEDITION] Failed to update quest progress for ${username}:`, questError);
+                // 퀘스트 업데이트 실패해도 보상은 정상 지급
+            }
+        }
+        
         // 🚀 소켓을 통해 해당 플레이어에게 인벤토리 업데이트 알림
         if (req.io) {
             req.io.emit('inventoryUpdated', { 

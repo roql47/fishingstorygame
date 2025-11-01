@@ -94,16 +94,15 @@ const setupVoyageRoutes = (app, UserMoneyModel, CatchModel, DailyQuestModel, get
               { upsert: true, new: true }
             );
           } else {
-            // 기존 퀘스트 업데이트
+            // 기존 퀘스트 업데이트 (카운트만 증가, 완료 플래그는 보상 수령 시에만 설정)
             const newVoyageWins = Math.min(dailyQuest.voyageWins + 1, 5);
-            const shouldCompleteQuest = newVoyageWins >= 5 && !dailyQuest.questVoyageWin;
             
             await DailyQuestModel.findOneAndUpdate(
               { userUuid },
               {
                 $set: {
-                  voyageWins: newVoyageWins,
-                  ...(shouldCompleteQuest && { questVoyageWin: true })
+                  voyageWins: newVoyageWins
+                  // questVoyageWin은 보상 수령 시에만 true로 설정
                 }
               },
               { new: true }

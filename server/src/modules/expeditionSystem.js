@@ -2207,16 +2207,15 @@ class ExpeditionSystem {
                     { upsert: true, new: true }
                 );
             } else {
-                // 기존 퀘스트 업데이트
+                // 기존 퀘스트 업데이트 (카운트만 증가, 완료 플래그는 보상 수령 시에만 설정)
                 const newVoyageWins = Math.min(dailyQuest.voyageWins + 1, 5);
-                const questCompleted = newVoyageWins >= 5;
                 
                 await this.DailyQuestModel.findOneAndUpdate(
                     { userUuid },
                     {
                         $set: {
-                            voyageWins: newVoyageWins,
-                            questVoyageWin: questCompleted || dailyQuest.questVoyageWin
+                            voyageWins: newVoyageWins
+                            // questVoyageWin은 보상 수령 시에만 true로 설정
                         }
                     }
                 );

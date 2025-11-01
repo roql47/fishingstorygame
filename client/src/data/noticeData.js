@@ -1,6 +1,24 @@
 // 공지사항 데이터 (ID 내림차순 정렬 - 최신이 가장 높은 ID)
 export const NOTICE_DATA = [
   {
+    id: 48,
+    date: "2025.11.01",
+    title: "[v1.411] 🔧 일일퀘스트 시스템 개선 및 신규 퀘스트/업적 추가",
+    content: [
+      "신규 일일퀘스트 추가:",
+      "- '원정 전투에서 승리하기' 퀘스트 추가",
+      "일일퀘스트 보상 로직 버그 수정:",
+      "- 퀘스트 목표 달성 시 보상받기 전에 자동 완료되던 문제 해결",
+      "신규 업적 추가:",
+      "- '그날 인류는 떠올렸다' 업적 추가",
+      "버그 fix:",
+      "탐사전투시 동료 성장/돌파 적용 안되던 문제 수정",
+      "탐사전투시 동료 성장/돌파 동기화가 안되던 문제 수정"
+    ],
+    isNew: true,
+    type: "major_update"
+  },
+  {
     id: 47,
     date: "2025.10.31",
     title: "[v1.410] 🌟 동료 성장/돌파 시스템 및 정수 아이템 추가 & 원정/탐사 난이도 상승",
@@ -30,7 +48,7 @@ export const NOTICE_DATA = [
       "레이드 시간 표기",
       "신규 쿠폰 추가 '아이러브 여우이야기'"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
@@ -828,5 +846,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.410"
+  version: "v1.411"
 };

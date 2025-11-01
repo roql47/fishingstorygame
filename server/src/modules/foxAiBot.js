@@ -11,6 +11,8 @@ class FoxAiBot {
     this.enabled = true;
     this.ai = new GoogleGenAI({ apiKey });
     this.modelName = "gemini-2.5-flash";
+    this.cache = null; // 캐시 저장용
+    this.cacheExpiresAt = null; // 캐시 만료 시간
             this.systemInstruction = `너는 깊은 산속에 살고 있는 여우야. 장난기 많고 귀여운 여우처럼 행동해. 말끝에 ~를 자주 사용하고, 이모지도 조금만 사용해줘. 짧고 귀엽게 대답해줘. 대답은 최대 50글자를 넘지 않아아
             
             중요: 사용자가 질문할 때 [질문한 사람: 닉네임] 형식으로 정보가 제공되면, 대답할 때 가끔씩 그 사람의 닉네임을 불러주면 더 친근해!
@@ -107,6 +109,32 @@ class FoxAiBot {
             • 전투 참여: 최대 3명까지 전투에 참여 설정 가능
             • 레벨업: 탐사/원정/항해 참여 시 경험치 획득 (체력, 공격력, 속도 증가)
             • 동료 스킬: 각 동료마다 고유한 전투 스킬 보유
+            • 위치: 동료 탭에서 "동료 모집"과 "동료 강화" 선택 가능
+            
+            【동료 강화 시스템】
+            🌟 동료 성장 (등급 상승):
+            • 3단계 등급: 일반 → 희귀 → 전설
+            • 성장 효과: 능력치 배율 증가 (일반 1.0x → 희귀 1.3x → 전설 1.6x)
+            • 스킬 데미지 증가 (일반 1.0x → 희귀 1.3x → 전설 1.5x)
+            • 비용: 일반→희귀 (별조각 10개 + 골드 50만), 희귀→전설 (별조각 25개 + 골드 200만)
+            
+            💎 동료 돌파 (성장률 증가):
+            • 최대 6차 돌파까지 가능
+            • 돌파 효과: 레벨당 성장률이 영구적으로 증가 (레벨업 효율 향상)
+            • 레벨 조건: 1차 돌파는 Lv.10, 2차는 Lv.20, 3차는 Lv.30... (10레벨씩)
+            • 돌파 보너스 예시: HP +2/Lv, 공격 +0.5/Lv (매 돌파마다 누적 증가)
+            • 전용 정수: 각 동료마다 필요한 정수가 다름
+              - 실: 💧물의정수
+              - 피에나: 🔥불의정수
+              - 애비게일: 💨바람의정수
+              - 림스&베리: 🌑어둠의정수
+              - 클로에: ✨빛의정수
+              - 나하트라: 🌿자연의정수
+            
+            🔮 정수 아이템 획득:
+            • 물고기 분해 시 낮은 확률로 정수 추가 드롭 (0.1~0.6%)
+            • 8가지 정수: 물/자연/바람/땅/불/빛/어둠/영혼의정수
+            • 드롭 시 팝업 알림으로 알려줌
             
             【성장 시스템】
             • 위치: 인벤토리 탭 옆에 있는 "성장" 탭
@@ -179,6 +207,55 @@ class FoxAiBot {
   }
 
   /**
+   * 캐시가 유효한지 확인
+   * @returns {boolean}
+   */
+  isCacheValid() {
+    if (!this.cache || !this.cacheExpiresAt) {
+      return false;
+    }
+    return new Date() < this.cacheExpiresAt;
+  }
+
+  /**
+   * 캐시 생성 또는 갱신
+   * @returns {Promise<void>}
+   */
+  async ensureCache() {
+    // 캐시가 유효하면 그대로 사용
+    if (this.isCacheValid()) {
+      return;
+    }
+
+    try {
+      console.log("🦊 Creating new cache for Fox AI system instruction...");
+      
+      // Gemini Context Caching 생성
+      this.cache = await this.ai.caches.create({
+        model: this.modelName,
+        contents: [{
+          role: "user",
+          parts: [{ text: this.systemInstruction }]
+        }],
+        ttl: "3600s", // 1시간 동안 유지
+        config: {
+          temperature: 0.9
+        }
+      });
+
+      // 만료 시간 설정 (현재 시간 + 55분, 여유 5분)
+      this.cacheExpiresAt = new Date(Date.now() + 55 * 60 * 1000);
+      
+      console.log(`🦊 Cache created successfully! Expires at: ${this.cacheExpiresAt.toLocaleString()}`);
+    } catch (error) {
+      console.error("🦊 Cache creation failed:", error);
+      // 캐시 생성 실패 시 null로 설정 (일반 모드로 폴백)
+      this.cache = null;
+      this.cacheExpiresAt = null;
+    }
+  }
+
+  /**
    * 사용자 메시지에 대한 여우 AI 응답 생성
    * @param {string} userMessage - 사용자의 메시지
    * @param {string} username - 사용자 닉네임
@@ -190,17 +267,35 @@ class FoxAiBot {
     }
 
     try {
+      // 캐시 확인 및 생성
+      await this.ensureCache();
+
       // 사용자 닉네임을 포함한 메시지 구성
       const messageWithContext = `[질문한 사람: ${username}]\n${userMessage}`;
       
-      const response = await this.ai.models.generateContent({
-        model: this.modelName,
-        contents: messageWithContext,
-        config: {
-          systemInstruction: this.systemInstruction,
-          temperature: 0.9, // 더 창의적이고 귀여운 응답
-        }
-      });
+      let response;
+      
+      // 캐시가 있으면 캐시 사용 (토큰 90% 절약!)
+      if (this.cache) {
+        console.log("🦊 Using cached context (saving tokens!)");
+        response = await this.ai.models.generateContent({
+          model: this.modelName,
+          cachedContent: this.cache.name, // 캐시 참조!
+          contents: messageWithContext,
+        });
+      } else {
+        // 캐시 생성 실패 시 폴백: 기존 방식
+        console.log("🦊 Cache not available, using fallback mode");
+        response = await this.ai.models.generateContent({
+          model: this.modelName,
+          contents: messageWithContext,
+          config: {
+            systemInstruction: this.systemInstruction,
+            temperature: 0.9,
+          }
+        });
+      }
+      
       return response.text;
     } catch (error) {
       console.error("🦊 Fox AI error:", error);

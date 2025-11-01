@@ -220,7 +220,7 @@ function App() {
 
   // 🔄 버전 업데이트 시 캐시 초기화 (v1.405)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.410";
+    const CURRENT_VERSION = "v1.411";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -560,7 +560,13 @@ function App() {
         
         // 서버에서 받은 데이터로 상태 업데이트
         setCompanionStats(prev => {
-          const newStats = calculateCompanionStats(companionName, serverStats.level);
+          // 기존 tier, breakthrough 정보 유지
+          const prevStats = prev[companionName] || {};
+          const tier = prevStats.tier || 0;
+          const breakthrough = prevStats.breakthrough || 0;
+          const breakthroughStats = prevStats.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 };
+          
+          const newStats = calculateCompanionStats(companionName, serverStats.level, tier, breakthrough, breakthroughStats);
           
           const updated = {
             ...prev,
@@ -570,7 +576,10 @@ function App() {
               expToNext: serverStats.expToNextLevel,
               hp: newStats?.hp || prev[companionName]?.hp || 100,
               maxHp: newStats?.hp || prev[companionName]?.maxHp || 100,
-              isInBattle: serverStats.isInBattle
+              isInBattle: serverStats.isInBattle,
+              tier: tier,
+              breakthrough: breakthrough,
+              breakthroughStats: breakthroughStats
             }
           };
           
@@ -607,7 +616,8 @@ function App() {
             (questType === 'fish_caught' && quest.id === 'fish_caught') ||
             (questType === 'exploration_win' && quest.id === 'exploration_win') ||
             (questType === 'fish_sold' && quest.id === 'fish_sold') ||
-            (questType === 'voyage_win' && quest.id === 'voyage_win')
+            (questType === 'voyage_win' && quest.id === 'voyage_win') ||
+            (questType === 'expedition_4player_win' && quest.id === 'expedition_4player_win')
           ) {
             return {
               ...quest,
@@ -2225,10 +2235,19 @@ function App() {
     setCooldownLoaded(true);
     localStorage.removeItem('fishingCooldownEnd');
     
-    // 🔒 게스트 계정용 이용약관만 표시 (닉네임 설정 없음)
-    setIsFirstLogin(true);
-    setIsGuestTermsOnly(true);
-    setShowTermsModal(true);
+    // 🔒 게스트 계정의 약관 동의 여부 확인
+    const guestTermsKey = `guestTerms_${accountId}`;
+    const hasAcceptedTerms = localStorage.getItem(guestTermsKey) === "true";
+    
+    if (!hasAcceptedTerms) {
+      // 약관에 동의하지 않은 경우에만 이용약관 모달 표시
+      console.log("📋 게스트 계정 최초 로그인 - 이용약관 표시");
+      setIsFirstLogin(true);
+      setIsGuestTermsOnly(true);
+      setShowTermsModal(true);
+    } else {
+      console.log("✅ 게스트 계정 재로그인 - 이용약관 건너뛰기");
+    }
     
     // 서버에 chat:join을 보내서 socket.data에 정보 저장
     const socket = getSocket();
@@ -3891,7 +3910,9 @@ function App() {
             if (
               (data.questType === 'fish_caught' && quest.id === 'fish_caught') ||
               (data.questType === 'exploration_win' && quest.id === 'exploration_win') ||
-              (data.questType === 'fish_sold' && quest.id === 'fish_sold')
+              (data.questType === 'fish_sold' && quest.id === 'fish_sold') ||
+              (data.questType === 'voyage_win' && quest.id === 'voyage_win') ||
+              (data.questType === 'expedition_4player_win' && quest.id === 'expedition_4player_win')
             ) {
               return {
                 ...quest,
@@ -5241,6 +5262,8 @@ function App() {
         // 보상 타입에 따라 상태 업데이트
         if (response.data.rewardType === 'starPieces') {
           setUserStarPieces(response.data.newStarPieces);
+        } else if (response.data.rewardType === 'etherKeys') {
+          setUserEtherKeys(response.data.newEtherKeys);
         } else {
           setUserAmber(response.data.newAmber);
         }
@@ -6829,13 +6852,19 @@ function App() {
     battleCompanions.forEach(companion => {
       const companionStat = companionStats[companion];
       const companionLevel = companionStat?.level || 1;
-      const companionData = calculateCompanionStats(companion, companionLevel);
+      const tier = companionStat?.tier || 0;
+      const breakthrough = companionStat?.breakthrough || 0;
+      const breakthroughStats = companionStat?.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 };
+      const companionData = calculateCompanionStats(companion, companionLevel, tier, breakthrough, breakthroughStats);
       const maxHp = companionData?.hp || 100;
       
       companionHpData[companion] = {
         hp: maxHp,
         maxHp: maxHp,
-        level: companionLevel
+        level: companionLevel,
+        tier: tier,
+        breakthrough: breakthrough,
+        breakthroughStats: breakthroughStats
       };
       
       // 사기 초기화 (기본 50)
@@ -6894,9 +6923,12 @@ function App() {
           battleCompanions.forEach(companion => {
             const companionStat = companionStats[companion];
             const companionLevel = companionStat?.level || 1;
-            const companionData = calculateCompanionStats(companion, companionLevel);
+            const tier = companionStat?.tier || 0;
+            const breakthrough = companionStat?.breakthrough || 0;
+            const breakthroughStats = companionStat?.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 };
+            const companionData = calculateCompanionStats(companion, companionLevel, tier, breakthrough, breakthroughStats);
             const speed = companionData?.speed || 50;
-            console.log(`[SPEED] 동료 ${companion} 속도바 시작: speed ${speed}`);
+            console.log(`[SPEED] 동료 ${companion} 속도바 시작: speed ${speed} (Lv.${companionLevel}, tier ${tier}, breakthrough ${breakthrough})`);
             startSpeedBar(`companion_${companion}`, speed, 'companion');
           });
         }, 100);
@@ -8344,7 +8376,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.410
+                여우이야기 v1.411
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -14616,6 +14648,14 @@ function App() {
                 // 🎯 게스트 계정용 버튼 (약관 동의만 필요)
                 <button
                   onClick={() => {
+                    // 게스트 계정의 약관 동의 상태를 localStorage에 저장
+                    const guestAccountId = localStorage.getItem("guestAccountId");
+                    if (guestAccountId) {
+                      const guestTermsKey = `guestTerms_${guestAccountId}`;
+                      localStorage.setItem(guestTermsKey, "true");
+                      console.log("✅ 게스트 계정 약관 동의 저장:", guestTermsKey);
+                    }
+                    
                     setShowTermsModal(false);
                     setIsGuestTermsOnly(false);
                     setTermsTab("terms");

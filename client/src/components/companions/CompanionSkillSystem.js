@@ -295,7 +295,10 @@ export const processCompanionSkill = ({
 }) => {
   const companionStat = companionStats[companionName];
   const companionLevel = companionStat?.level || 1;
-  const companionData = calculateCompanionStats(companionName, companionLevel);
+  const tier = companionStat?.tier || 0;
+  const breakthrough = companionStat?.breakthrough || 0;
+  const breakthroughStats = companionStat?.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 };
+  const companionData = calculateCompanionStats(companionName, companionLevel, tier, breakthrough, breakthroughStats);
   const companionBaseData = COMPANION_DATA[companionName];
   
   if (!companionBaseData?.skill) {
@@ -303,7 +306,7 @@ export const processCompanionSkill = ({
   }
   
   const baseAttack = companionData?.attack || 25;
-  const skill = companionBaseData.skill;
+  const skill = companionData?.skill || companionBaseData.skill; // 강화된 스킬 사용
   
   // 스킬 타입에 따른 처리
   if (skill.skillType === 'heal') {

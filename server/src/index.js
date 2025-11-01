@@ -1296,13 +1296,15 @@ const dailyQuestSchema = new mongoose.Schema(
     fishCaught: { type: Number, default: 0 }, // 물고기 잡은 수
     explorationWins: { type: Number, default: 0 }, // 탐사 승리 수
     fishSold: { type: Number, default: 0 }, // 물고기 판매 수
-    voyageWins: { type: Number, default: 0 }, // 항해 승리 수 (NEW)
+    voyageWins: { type: Number, default: 0 }, // 항해 승리 수
+    expeditionWins: { type: Number, default: 0 }, // 4인 이상 원정 전투 승리 수 (NEW)
     
     // 퀴스트 완료 여부
     questFishCaught: { type: Boolean, default: false }, // 물고기 10마리 잡기 완료
     questExplorationWin: { type: Boolean, default: false }, // 탐사 승리 완료
     questFishSold: { type: Boolean, default: false }, // 물고기 10회 판매 완료
-    questVoyageWin: { type: Boolean, default: false }, // 항해 승리 5회 완료 (NEW)
+    questVoyageWin: { type: Boolean, default: false }, // 항해 승리 5회 완료
+    questExpeditionWin: { type: Boolean, default: false }, // 4인 이상 원정 전투 승리 완료 (NEW)
     
     // 리셋 날짜 (자정 리셋용)
     lastResetDate: { type: String, required: true } // YYYY-MM-DD 형식 (KST 기준)
@@ -7939,11 +7941,12 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
     const queryResult = await getUserQuery('user', username, userUuid);
     let query = queryResult.userUuid ? { userUuid: queryResult.userUuid } : queryResult;
     
-    // 🚀 사용자 장비, 스킬, 스탯 정보 병렬로 가져오기 (성능 최적화)
-    const [userEquipment, fishingSkillData, userStats] = await Promise.all([
+    // 🚀 사용자 장비, 스킬, 스탯, 동료 정보 병렬로 가져오기 (성능 최적화)
+    const [userEquipment, fishingSkillData, userStats, companionStatsData] = await Promise.all([
       UserEquipmentModel.findOne(query),
       FishingSkillModel.findOne(query),
-      UserStatsModel.findOne(query)
+      UserStatsModel.findOne(query),
+      CompanionStatsModel.find({ ...query, isInBattle: true }).lean()
     ]);
     const baseSkill = fishingSkillData ? fishingSkillData.skill : 0;
     
@@ -8024,6 +8027,13 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
       });
     }
     
+    // 🏆 종말의 접두어 3마리 이상 조우 업적 체크
+    try {
+      await achievementSystem.checkApocalypseEncounterAchievement(userUuid, username, enemies);
+    } catch (error) {
+      console.error("Failed to check apocalypse encounter achievement:", error);
+    }
+    
     // 낚시대 강화 보너스도 저장 (공격 시 사용)
     const fishingRodEnhancement = userEquipment?.fishingRodEnhancement || 0;
     const fishingRodEnhancementBonus = calculateServerTotalEnhancementBonus(fishingRodEnhancement);
@@ -8056,7 +8066,8 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
       accessoryEnhancementBonus: accessoryEnhancementBonus, // 악세사리 강화 보너스 (%)
       attackStat: userStats?.attack || 0, // 🌟 공격력 스탯
       speedStat: userStats?.speed || 0, // 🌟 속도 스탯
-      fishingRodIndex: fishingRodIndex // 🌟 낚시대 인덱스
+      fishingRodIndex: fishingRodIndex, // 🌟 낚시대 인덱스
+      companions: companionStatsData || [] // 🌟 동료 정보 (tier, breakthrough 포함)
     };
     
     const enemyNames = enemies.map(e => e.name).join(', ');
@@ -8736,10 +8747,12 @@ app.get("/api/daily-quests/:userId", async (req, res) => {
         explorationWins: 0,
         fishSold: 0,
         voyageWins: 0,
+        expeditionWins: 0,
         questFishCaught: false,
         questExplorationWin: false,
         questFishSold: false,
         questVoyageWin: false,
+        questExpeditionWin: false,
         lastResetDate: today
       };
       
@@ -8793,6 +8806,15 @@ app.get("/api/daily-quests/:userId", async (req, res) => {
           target: 5,
           completed: dailyQuest.questVoyageWin,
           reward: '별조각 1개'
+        },
+        {
+          id: 'expedition_4player_win',
+          name: '원정 전투에서 승리하기',
+          description: '4인 이상 원정전투에서 승리하세요',
+          progress: dailyQuest.expeditionWins,
+          target: 1,
+          completed: dailyQuest.questExpeditionWin,
+          reward: '에테르열쇠 5개'
         }
       ],
       lastResetDate: dailyQuest.lastResetDate
@@ -8842,43 +8864,41 @@ app.post("/api/update-quest-progress", authenticateJWT, async (req, res) => {
         explorationWins: 0,
         fishSold: 0,
         voyageWins: 0,
+        expeditionWins: 0,
         questFishCaught: false,
         questExplorationWin: false,
         questFishSold: false,
         questVoyageWin: false,
+        questExpeditionWin: false,
         lastResetDate: today
       };
       
       dailyQuest = await DailyQuestModel.findOneAndUpdate(query, createData, { upsert: true, new: true });
     }
     
-    // 퀴스트 진행도 업데이트
+    // 퀴스트 진행도 업데이트 (카운트만 증가, 완료 플래그는 보상 수령 시에만 설정)
     const updateData = {};
     
     switch (questType) {
       case 'fish_caught':
         updateData.fishCaught = Math.min(dailyQuest.fishCaught + amount, 10);
-        if (updateData.fishCaught >= 10 && !dailyQuest.questFishCaught) {
-          updateData.questFishCaught = true;
-        }
+        // 완료 플래그는 보상 수령 시에만 설정
         break;
       case 'exploration_win':
         updateData.explorationWins = Math.min(dailyQuest.explorationWins + amount, 1);
-        if (updateData.explorationWins >= 1 && !dailyQuest.questExplorationWin) {
-          updateData.questExplorationWin = true;
-        }
+        // 완료 플래그는 보상 수령 시에만 설정
         break;
       case 'fish_sold':
         updateData.fishSold = Math.min(dailyQuest.fishSold + amount, 10);
-        if (updateData.fishSold >= 10 && !dailyQuest.questFishSold) {
-          updateData.questFishSold = true;
-        }
+        // 완료 플래그는 보상 수령 시에만 설정
         break;
       case 'voyage_win':
         updateData.voyageWins = Math.min(dailyQuest.voyageWins + amount, 5);
-        if (updateData.voyageWins >= 5 && !dailyQuest.questVoyageWin) {
-          updateData.questVoyageWin = true;
-        }
+        // 완료 플래그는 보상 수령 시에만 설정
+        break;
+      case 'expedition_4player_win':
+        updateData.expeditionWins = Math.min(dailyQuest.expeditionWins + amount, 1);
+        // 완료 플래그는 보상 수령 시에만 설정
         break;
       default:
         return res.status(400).json({ error: "Invalid quest type" });
@@ -8899,8 +8919,8 @@ app.post("/api/update-quest-progress", authenticateJWT, async (req, res) => {
       // 업데이트된 퀘스트 데이터 계산
       const updatedQuest = {
         questType,
-        progress: updateData.fishCaught || updateData.explorationWins || updateData.fishSold,
-        completed: updateData.questFishCaught || updateData.questExplorationWin || updateData.questFishSold
+        progress: updateData.fishCaught || updateData.explorationWins || updateData.fishSold || updateData.voyageWins || updateData.expeditionWins,
+        completed: false // 카운트 업데이트에서는 완료 플래그 설정 안 함 (보상 수령 시에만 완료)
       };
       userSocket.emit('questProgressUpdate', updatedQuest);
       console.log(`📤 Socket.IO: Quest progress sent to ${username}`, updatedQuest);
@@ -8973,6 +8993,14 @@ app.post("/api/claim-quest-reward", authenticateJWT, async (req, res) => {
           await DailyQuestModel.findOneAndUpdate(query, { questVoyageWin: true });
         }
         break;
+      case 'expedition_4player_win':
+        canClaim = dailyQuest.expeditionWins >= 1 && !dailyQuest.questExpeditionWin;
+        rewardType = 'etherKeys'; // 에테르열쇠
+        rewardAmount = 5; // 5개
+        if (canClaim) {
+          await DailyQuestModel.findOneAndUpdate(query, { questExpeditionWin: true });
+        }
+        break;
       default:
         return res.status(400).json({ error: "Invalid quest ID" });
     }
@@ -9005,6 +9033,31 @@ app.post("/api/claim-quest-reward", authenticateJWT, async (req, res) => {
         message: `퀴스트 완료! 별조각 ${rewardAmount}개를 획득했습니다!`,
         newStarPieces: userStarPieces.starPieces,
         rewardType: 'starPieces'
+      });
+      
+    } else if (rewardType === 'etherKeys') {
+      // 에테르열쇠 보상 지급
+      let userEtherKeys = await EtherKeyModel.findOne(query);
+      if (!userEtherKeys) {
+        const createData = {
+          userId: query.userId || 'user',
+          username: query.username || username,
+          userUuid: query.userUuid || userUuid,
+          etherKeys: rewardAmount
+        };
+        userEtherKeys = new EtherKeyModel(createData);
+      } else {
+        userEtherKeys.etherKeys = (userEtherKeys.etherKeys || 0) + rewardAmount;
+      }
+      
+      await userEtherKeys.save();
+      
+      console.log(`[Quest] Quest reward claimed: ${questId} - ${rewardAmount} ether keys for ${username}`);
+      res.json({ 
+        success: true, 
+        message: `퀴스트 완료! 에테르열쇠 ${rewardAmount}개를 획득했습니다!`,
+        newEtherKeys: userEtherKeys.etherKeys,
+        rewardType: 'etherKeys'
       });
       
     } else {
@@ -11746,14 +11799,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.410"
+    version: "v1.411"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.410",
+    version: "v1.411",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [

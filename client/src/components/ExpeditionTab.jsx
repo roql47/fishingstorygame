@@ -18,6 +18,7 @@ import {
   Plus,
   MessageCircle
 } from 'lucide-react';
+import { calculateCompanionStats } from '../data/companionData';
 
 const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, refreshCompanions, syncBattleCompanionsToServer, battleCompanions, companionStats, userEquipment, fishingSkill, calculateTotalEnhancementBonus, sendExpeditionInviteToChat, pendingExpeditionInvite, setPendingExpeditionInvite }) => {
   // 접두어에 따른 색상 반환 (탐사와 동일)
@@ -877,19 +878,13 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
           playerData.companions?.forEach(companion => {
             const companionKey = `${playerId}_${companion.companionName}`;
             if (updateData.room.battleState?.companionHp?.[companionKey] > 0) {
-              // 동료 속도 계산
-              const companionData = {
-                "실": { baseSpeed: 45, growthSpeed: 0.5 },
-                "피에나": { baseSpeed: 25, growthSpeed: 0.5 },
-                "애비게일": { baseSpeed: 40, growthSpeed: 0.5 },
-                "림스&베리": { baseSpeed: 50, growthSpeed: 0.5 },
-                "클로에": { baseSpeed: 65, growthSpeed: 0.5 },
-                "나하트라": { baseSpeed: 30, growthSpeed: 0.5 }
-              };
-              const baseData = companionData[companion.companionName];
+              // 동료 속도 계산 (tier, breakthrough 반영)
               const level = companion.level || 1;
-              const speed = baseData ? 
-                baseData.baseSpeed + (baseData.growthSpeed * (level - 1)) : 150;
+              const tier = companion.tier || 0;
+              const breakthrough = companion.breakthrough || 0;
+              const breakthroughStats = companion.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 };
+              const companionData = calculateCompanionStats(companion.companionName, level, tier, breakthrough, breakthroughStats);
+              const speed = companionData?.speed || 150;
               
               startSpeedBar(`companion_${companionKey}`, speed);
             }

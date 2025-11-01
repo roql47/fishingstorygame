@@ -57,6 +57,12 @@ const ACHIEVEMENT_DEFINITIONS = {
     name: "마음을 불태워라",
     description: "레이드 누적데미지 1000000달성",
     autoCheck: true // 자동으로 체크 가능
+  },
+  apocalypse_encounter: {
+    id: "apocalypse_encounter",
+    name: "그날 인류는 떠올렸다",
+    description: "탐사전투에서 한 번의 전투에 파멸의/종말의 접두어가 붙은 물고기 3마리 이상 만나기",
+    autoCheck: true // 자동으로 체크 가능
   }
 };
 
@@ -227,6 +233,42 @@ class AchievementSystem {
       return false;
     } catch (error) {
       console.error("Failed to check raid finisher achievement:", error);
+      return false;
+    }
+  }
+
+  // 파멸의/종말의 접두어 3마리 이상 조우 업적 체크 및 부여
+  async checkApocalypseEncounterAchievement(userUuid, username, enemies) {
+    try {
+      console.log(`🏆 Checking apocalypse encounter achievement for ${username} (${userUuid})`);
+      
+      // 이미 업적을 가지고 있는지 확인
+      const existingAchievement = await AchievementModel.findOne({
+        userUuid,
+        achievementId: "apocalypse_encounter"
+      });
+      
+      if (existingAchievement) {
+        return false; // 이미 획득함
+      }
+      
+      // "파멸의" 또는 "종말의" 접두어를 가진 물고기 수 세기
+      const apocalypseFishCount = enemies.filter(enemy => 
+        enemy.prefix && (enemy.prefix.name === '파멸의' || enemy.prefix.name === '종말의')
+      ).length;
+      
+      console.log(`🌟 ${username}의 탐사전투에서 파멸의/종말의 접두어 물고기: ${apocalypseFishCount}마리`);
+      
+      // 3마리 이상이면 업적 부여
+      if (apocalypseFishCount >= 3) {
+        await this.grantSingleAchievement(userUuid, username, "apocalypse_encounter");
+        console.log(`🏆 Apocalypse encounter achievement granted to ${username}!`);
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error("Failed to check apocalypse encounter achievement:", error);
       return false;
     }
   }
