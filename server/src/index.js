@@ -11736,16 +11736,20 @@ async function getUserProfileHandler(req, res) {
         const arenaSystem = getArenaSystem();
         if (arenaSystem) {
           const arenaData = await arenaSystem.getOrCreateEloData(user.userUuid, user.username);
-          const rankings = await arenaSystem.getEloRankings(user.userUuid, user.username);
           
-          // myData에서 순위 확인
-          if (rankings.myData && rankings.myData.rank) {
-            arenaRank = rankings.myData.rank;
-            if (arenaRank === 1) {
-              arenaBonus = 2; // 1위: +2
-            } else if (arenaRank >= 2 && arenaRank <= 10) {
-              arenaBonus = 1; // 2~10위: +1
-            }
+          // 전체 유저 중 이 유저보다 ELO가 높은 사람 수를 세어서 순위 계산
+          const ArenaEloModel = arenaSystem.ArenaEloModel;
+          const higherRanked = await ArenaEloModel.countDocuments({ 
+            elo: { $gt: arenaData.elo } 
+          });
+          arenaRank = higherRanked + 1;
+          
+          console.log(`[Profile] ${user.username} Arena Rank: ${arenaRank} (ELO: ${arenaData.elo})`);
+          
+          if (arenaRank === 1) {
+            arenaBonus = 2; // 1위: +2
+          } else if (arenaRank >= 2 && arenaRank <= 10) {
+            arenaBonus = 1; // 2~10위: +1
           }
         }
       } catch (error) {

@@ -360,9 +360,9 @@ const ArenaTab = ({
         const newLog = [];
 
         // 플레이어 공격
-        if (newState.player.hp > 0) {
+        if (newState.player.hp > 0 && newState.opponent.hp > 0) {
           newState.player.cooldown -= 25;
-          if (newState.player.cooldown <= 0 && newState.opponent.hp > 0) {
+          if (newState.player.cooldown <= 0) {
             const damage = Math.floor(newState.player.attack * (0.9 + Math.random() * 0.2));
             newState.opponent.hp = Math.max(0, newState.opponent.hp - damage);
             newState.player.cooldown = newState.player.maxCooldown;
@@ -372,12 +372,12 @@ const ArenaTab = ({
 
         // 플레이어 동료 공격
         newState.player.companions = newState.player.companions.map(companion => {
-          if (companion.hp <= 0) return companion;
+          if (companion.hp <= 0 || newState.opponent.hp <= 0) return companion;
           
           const updated = { ...companion };
           updated.cooldown -= 25;
           
-          if (updated.cooldown <= 0 && newState.opponent.hp > 0) {
+          if (updated.cooldown <= 0) {
             updated.morale = Math.min(updated.maxMorale, updated.morale + 15);
             
             const canUseSkill = updated.skill && updated.morale >= 100;
@@ -419,46 +419,39 @@ const ArenaTab = ({
           return updated;
         });
 
-        // 상대 플레이어 공격
-        if (newState.opponent.hp > 0) {
+        // 상대 플레이어 공격 (공격할 타겟이 있을 때만 쿨다운 감소)
+        const playerTargets = [
+          newState.player.hp > 0 ? { type: 'player', data: newState.player } : null,
+          ...newState.player.companions.map((c, idx) => c.hp > 0 ? { type: 'companion', data: c, index: idx } : null).filter(t => t !== null)
+        ].filter(t => t !== null);
+        
+        if (newState.opponent.hp > 0 && playerTargets.length > 0) {
           newState.opponent.cooldown -= 25;
           if (newState.opponent.cooldown <= 0) {
-            const targets = [
-              { type: 'player', data: newState.player },
-              ...newState.player.companions.map((c, idx) => ({ type: 'companion', data: c, index: idx })).filter(t => t.data.hp > 0)
-            ].filter(t => t.data.hp > 0);
-
-            if (targets.length > 0) {
-              const target = targets[Math.floor(Math.random() * targets.length)];
-              const damage = Math.floor(newState.opponent.attack * (0.8 + Math.random() * 0.4));
-              
-              if (target.type === 'player') {
-                newState.player.hp = Math.max(0, newState.player.hp - damage);
-                newLog.push(`⚔️ ${newState.opponent.username}의 공격! ${damage} 데미지`);
-              } else {
-                newState.player.companions[target.index].hp = Math.max(0, newState.player.companions[target.index].hp - damage);
-                newLog.push(`⚔️ ${newState.opponent.username}이(가) ${target.data.name}에게 ${damage} 데미지`);
-              }
-              
-              newState.opponent.cooldown = newState.opponent.maxCooldown;
+            const target = playerTargets[Math.floor(Math.random() * playerTargets.length)];
+            const damage = Math.floor(newState.opponent.attack * (0.8 + Math.random() * 0.4));
+            
+            if (target.type === 'player') {
+              newState.player.hp = Math.max(0, newState.player.hp - damage);
+              newLog.push(`⚔️ ${newState.opponent.username}의 공격! ${damage} 데미지`);
+            } else {
+              newState.player.companions[target.index].hp = Math.max(0, newState.player.companions[target.index].hp - damage);
+              newLog.push(`⚔️ ${newState.opponent.username}이(가) ${target.data.name}에게 ${damage} 데미지`);
             }
+            
+            newState.opponent.cooldown = newState.opponent.maxCooldown;
           }
         }
 
-        // 상대 동료 공격
+        // 상대 동료 공격 (공격할 타겟이 있을 때만 쿨다운 감소)
         newState.opponent.companions = newState.opponent.companions.map(companion => {
-          if (companion.hp <= 0) return companion;
+          if (companion.hp <= 0 || playerTargets.length === 0) return companion;
           
           const updated = { ...companion };
           updated.cooldown -= 25;
           
           if (updated.cooldown <= 0) {
-            const targets = [
-              { type: 'player', data: newState.player },
-              ...newState.player.companions.map((c, idx) => ({ type: 'companion', data: c, index: idx })).filter(t => t.data.hp > 0)
-            ].filter(t => t.data.hp > 0);
-
-            if (targets.length > 0) {
+            if (playerTargets.length > 0) {
               updated.morale = Math.min(updated.maxMorale, updated.morale + 15);
               
               const canUseSkill = updated.skill && updated.morale >= 100;
