@@ -196,11 +196,12 @@ const ArenaTab = ({
         try {
           const token = localStorage.getItem('jwtToken');
           await axios.post(
-            `${serverUrl}/api/arena/battle-result`,
+            `${serverUrl}/api/arena/finish-battle`,
             {
               battleId: battleState.battleId,
               isWin: false, // 자동 패배
               opponentUuid: selectedOpponent?.userUuid,
+              opponentUsername: battleState.opponent?.username || '상대방',
               opponentRank: battleState.opponentRank
             },
             { headers: { Authorization: `Bearer ${token}` } }
@@ -216,7 +217,7 @@ const ArenaTab = ({
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [currentView, battleState?.status, battleState?.battleId, selectedOpponent, serverUrl]);
+  }, [currentView, battleState?.status, battleState?.battleId, battleState?.opponent?.username, battleState?.opponentRank, selectedOpponent, serverUrl]);
 
   // 다른 탭으로 이동 시 자동 패배 처리
   useEffect(() => {
@@ -228,17 +229,18 @@ const ArenaTab = ({
         try {
           const token = localStorage.getItem('jwtToken');
           const response = await axios.post(
-            `${serverUrl}/api/arena/battle-result`,
+            `${serverUrl}/api/arena/finish-battle`,
             {
               battleId: battleState.battleId,
               isWin: false, // 자동 패배
               opponentUuid: selectedOpponent?.userUuid,
+              opponentUsername: battleState.opponent?.username || '상대방',
               opponentRank: battleState.opponentRank
             },
             { headers: { Authorization: `Bearer ${token}` } }
           );
           
-          console.log('[Arena] 자동 패배 처리 완료');
+          console.log('[Arena] 자동 패배 처리 완료:', response.data);
         } catch (error) {
           console.error('[Arena] 자동 패배 처리 실패:', error);
         }
@@ -256,7 +258,7 @@ const ArenaTab = ({
       setBattleResult(null);
       setSelectedOpponent(null);
     }
-  }, [activeTab, currentView, battleState?.status, battleState?.battleId, selectedOpponent, serverUrl]);
+  }, [activeTab, currentView, battleState?.status, battleState?.battleId, battleState?.opponent?.username, battleState?.opponentRank, selectedOpponent, serverUrl]);
 
   // 전투 시작
   const startBattle = async (opponent) => {
