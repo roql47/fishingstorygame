@@ -49,36 +49,6 @@ const ArenaTab = ({
   const battleLogRef = useRef(null);
   const battleIntervalRef = useRef(null);
 
-  // 초기 데이터 로드
-  useEffect(() => {
-    if (userData?.userUuid && userData?.username) {
-      loadArenaData();
-    }
-  }, [userData?.userUuid, userData?.username, loadArenaData]);
-
-  // 결투장 탭 클릭 시 자동 새로고침
-  useEffect(() => {
-    if (activeTab === 'arena' && userData?.userUuid && currentView === 'lobby') {
-      loadArenaData();
-    }
-  }, [activeTab, currentView, userData?.userUuid, loadArenaData]);
-
-  // 전투 로그 자동 스크롤
-  useEffect(() => {
-    if (battleLogRef.current) {
-      battleLogRef.current.scrollTop = battleLogRef.current.scrollHeight;
-    }
-  }, [battleLog]);
-
-  // 컴포넌트 언마운트 시 타이머 정리
-  useEffect(() => {
-    return () => {
-      if (battleIntervalRef.current) {
-        clearInterval(battleIntervalRef.current);
-      }
-    };
-  }, []);
-
   // 결투장 데이터 로드
   const loadArenaData = useCallback(async () => {
     try {
@@ -146,6 +116,36 @@ const ArenaTab = ({
       setLoading(false);
     }
   }, [serverUrl]);
+
+  // 초기 데이터 로드
+  useEffect(() => {
+    if (userData?.userUuid && userData?.username) {
+      loadArenaData();
+    }
+  }, [userData?.userUuid, userData?.username, loadArenaData]);
+
+  // 결투장 탭 클릭 시 자동 새로고침
+  useEffect(() => {
+    if (activeTab === 'arena' && userData?.userUuid && currentView === 'lobby') {
+      loadArenaData();
+    }
+  }, [activeTab, currentView, userData?.userUuid, loadArenaData]);
+
+  // 전투 로그 자동 스크롤
+  useEffect(() => {
+    if (battleLogRef.current) {
+      battleLogRef.current.scrollTop = battleLogRef.current.scrollHeight;
+    }
+  }, [battleLog]);
+
+  // 컴포넌트 언마운트 시 타이머 정리
+  useEffect(() => {
+    return () => {
+      if (battleIntervalRef.current) {
+        clearInterval(battleIntervalRef.current);
+      }
+    };
+  }, []);
 
   // 전투 시작
   const startBattle = async (opponent) => {
