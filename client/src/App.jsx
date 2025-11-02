@@ -2116,6 +2116,12 @@ function App() {
     console.log('import.meta.env.PROD:', import.meta.env.PROD);
     console.log('VITE_SERVER_URL:', import.meta.env.VITE_SERVER_URL);
     
+    // foxstory.kr 도메인이면 무조건 origin 사용
+    if (hostname === 'foxstory.kr' || hostname === 'www.foxstory.kr') {
+      console.log('✅ foxstory.kr 도메인 감지, serverUrl:', origin);
+      return origin;
+    }
+    
     // 배포 환경 감지: hostname이 localhost가 아니면 배포 환경
     if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
       console.log('✅ 배포 환경 감지, serverUrl:', origin);
