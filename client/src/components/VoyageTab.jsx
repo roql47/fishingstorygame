@@ -390,11 +390,22 @@ const VoyageTab = ({
     setIsClaiming(true); // 🔒 즉시 잠금
 
     try {
+      // 🔐 JWT 토큰 가져오기 (localStorage에서 직접)
+      const token = localStorage.getItem('jwtToken') || idToken;
+      
+      if (!token) {
+        alert('로그인이 필요합니다. 새로고침 후 다시 시도해주세요.');
+        setIsClaiming(false);
+        return;
+      }
+
+      console.log('[VOYAGE] 보상 요청 시작 - 토큰:', token ? '있음' : '없음');
+
       const response = await fetch(`${import.meta.env.VITE_SERVER_URL || window.location.origin}/api/voyage/reward`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           username,
@@ -405,7 +416,19 @@ const VoyageTab = ({
         })
       });
 
+      console.log('[VOYAGE] 응답 상태:', response.status);
+
+      // 🔐 401 Unauthorized 에러 처리
+      if (response.status === 401) {
+        const errorData = await response.json();
+        console.error('[VOYAGE] 인증 실패:', errorData);
+        alert('로그인 세션이 만료되었습니다. 새로고침 후 다시 로그인해주세요.');
+        setIsClaiming(false);
+        return;
+      }
+
       const data = await response.json();
+      console.log('[VOYAGE] 응답 데이터:', data);
       
       if (data.success) {
         // 🎯 항해 승리 퀘스트 진행도 업데이트
@@ -438,8 +461,8 @@ const VoyageTab = ({
         alert('보상 수령에 실패했습니다: ' + (data.error || '알 수 없는 오류'));
       }
     } catch (error) {
-      console.error('보상 수령 오류:', error);
-      alert('보상 수령 중 오류가 발생했습니다.');
+      console.error('[VOYAGE] 보상 수령 오류:', error);
+      alert('보상 수령 중 오류가 발생했습니다. 네트워크를 확인하고 다시 시도해주세요.');
     } finally {
       setIsClaiming(false); // 🔓 항상 잠금 해제
     }

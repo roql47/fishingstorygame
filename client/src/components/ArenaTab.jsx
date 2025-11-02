@@ -87,6 +87,10 @@ const ArenaTab = ({
       const token = localStorage.getItem('jwtToken');
       if (!token) {
         console.log('[Arena] JWT 토큰 없음');
+        // 🔧 토큰이 없어도 빈 데이터로 초기화
+        setMyStats({ elo: 1000, wins: 0, losses: 0, winStreak: 0, highestWinStreak: 0, rank: null });
+        setRankings({ higher: [], lower: [], myRank: null });
+        setDailyLimit({ used: 0, max: 10, remaining: 10, canBattle: true });
         return;
       }
 
@@ -108,21 +112,35 @@ const ArenaTab = ({
         setMyStats(statsRes.data.stats);
         setDailyLimit(statsRes.data.dailyLimit);
         console.log('[Arena] 스탯 설정 완료');
+      } else {
+        // 🔧 실패 시에도 기본값 설정
+        setMyStats({ elo: 1000, wins: 0, losses: 0, winStreak: 0, highestWinStreak: 0, rank: null });
+        setDailyLimit({ used: 0, max: 10, remaining: 10, canBattle: true });
       }
 
       if (rankingsRes.data.success) {
         setRankings(rankingsRes.data.rankings);
         console.log('[Arena] 랭킹 설정 완료:', rankingsRes.data.rankings);
+      } else {
+        // 🔧 실패 시에도 빈 랭킹으로 설정
+        setRankings({ higher: [], lower: [], myRank: null });
       }
     } catch (error) {
       console.error('[Arena] 결투장 데이터 로드 실패:', error);
       console.error('[Arena] 에러 상세:', error.response?.data);
       
+      // 🔧 에러 발생 시에도 기본값 설정 (무한 로딩 방지)
+      setMyStats({ elo: 1000, wins: 0, losses: 0, winStreak: 0, highestWinStreak: 0, rank: null });
+      setRankings({ higher: [], lower: [], myRank: null });
+      setDailyLimit({ used: 0, max: 10, remaining: 10, canBattle: true });
+      
       // 사용자에게 에러 알림
       if (error.response?.status === 401) {
-        alert('로그인이 필요합니다.');
+        alert('로그인이 필요합니다. 새로고침 후 다시 시도해주세요.');
       } else if (error.response?.status === 500) {
         alert('서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+      } else {
+        alert('결투장 데이터를 불러오는데 실패했습니다. 새로고침 후 다시 시도해주세요.');
       }
     } finally {
       setLoading(false);
