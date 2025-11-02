@@ -171,17 +171,30 @@ class ArenaSystem {
     }
     
     // ELO 변화량 계산
-    calculateEloChange(myElo, opponentElo, opponentRank, isWin) {
-        if (isWin) {
-            // 승리 시: 순위가 높을수록 큰 보상
-            const baseReward = 60;
-            const rankPenalty = (opponentRank - 1) * 3;
-            return Math.max(30, baseReward - rankPenalty);
+    calculateEloChange(myElo, opponentElo, myRank, opponentRank, isWin) {
+        const rankDiff = Math.abs(myRank - opponentRank);
+        
+        if (opponentRank > myRank) {
+            // 하위 유저와 전투
+            if (isWin) {
+                // 승리: 30 - (rankDiff - 1) * 3
+                return 30 - (rankDiff - 1) * 3;
+            } else {
+                // 패배: -(30 + (rankDiff - 1) * 3)
+                return -(30 + (rankDiff - 1) * 3);
+            }
+        } else if (opponentRank < myRank) {
+            // 상위 유저와 전투
+            if (isWin) {
+                // 승리: 30 + rankDiff * 3
+                return 30 + rankDiff * 3;
+            } else {
+                // 패배: -(30 - rankDiff * 3)
+                return -(30 - rankDiff * 3);
+            }
         } else {
-            // 패배 시: 순위가 낮을수록 큰 감점
-            const basePenalty = -3;
-            const rankPenalty = (opponentRank - 1) * 3;
-            return Math.min(-3, basePenalty - rankPenalty);
+            // 동일 랭크 (거의 없겠지만)
+            return isWin ? 30 : -30;
         }
     }
     

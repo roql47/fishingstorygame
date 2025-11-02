@@ -216,17 +216,25 @@ function setupArenaRoutes(
                 const myData = await arenaSystem.getOrCreateEloData(userUuid, username);
                 const opponentData = await arenaSystem.getOrCreateEloData(opponentUuid, opponentUsername);
                 
+                // 내 랭크 계산
+                const higherThanMe = await ArenaEloModel.countDocuments({ 
+                    elo: { $gt: myData.elo } 
+                });
+                const myRank = higherThanMe + 1;
+                
                 console.log('[Arena] ELO 데이터 조회 완료:', {
                     myElo: myData.elo,
-                    opponentElo: opponentData.elo
+                    myRank: myRank,
+                    opponentElo: opponentData.elo,
+                    opponentRank: opponentRank
                 });
                 
                 if (isWin) {
                     // 승리 시
-                    const eloChange = arenaSystem.calculateEloChange(battle.player.elo, battle.opponent.elo, opponentRank, true);
+                    const eloChange = arenaSystem.calculateEloChange(battle.player.elo, battle.opponent.elo, myRank, opponentRank, true);
                     const victorPoints = 10;
                     
-                    console.log('[Arena] 승리 처리:', { eloChange, victorPoints });
+                    console.log('[Arena] 승리 처리:', { myRank, opponentRank, eloChange, victorPoints });
                     
                     myData.elo += eloChange;
                     myData.victorPoints += victorPoints;
@@ -243,7 +251,7 @@ function setupArenaRoutes(
                     await myData.save();
                     
                     // 패자 업데이트
-                    const loserEloChange = arenaSystem.calculateEloChange(battle.opponent.elo, battle.player.elo, opponentRank, false);
+                    const loserEloChange = arenaSystem.calculateEloChange(battle.opponent.elo, battle.player.elo, opponentRank, myRank, false);
                     opponentData.elo = Math.max(0, opponentData.elo + loserEloChange);
                     opponentData.totalLosses += 1;
                     opponentData.winStreak = 0;
@@ -258,9 +266,9 @@ function setupArenaRoutes(
                     };
                 } else {
                     // 패배 시
-                    const loserEloChange = arenaSystem.calculateEloChange(battle.player.elo, battle.opponent.elo, opponentRank, false);
+                    const loserEloChange = arenaSystem.calculateEloChange(battle.player.elo, battle.opponent.elo, myRank, opponentRank, false);
                     
-                    console.log('[Arena] 패배 처리:', { loserEloChange });
+                    console.log('[Arena] 패배 처리:', { myRank, opponentRank, loserEloChange });
                     
                     myData.elo = Math.max(0, myData.elo + loserEloChange);
                     myData.dailyBattles += 1;
@@ -271,7 +279,7 @@ function setupArenaRoutes(
                     await myData.save();
                     
                     // 승자 업데이트
-                    const winnerEloChange = arenaSystem.calculateEloChange(battle.opponent.elo, battle.player.elo, opponentRank, true);
+                    const winnerEloChange = arenaSystem.calculateEloChange(battle.opponent.elo, battle.player.elo, opponentRank, myRank, true);
                     opponentData.elo += winnerEloChange;
                     opponentData.victorPoints += 10;
                     opponentData.totalWins += 1;

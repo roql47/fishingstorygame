@@ -1356,6 +1356,7 @@ const ArenaTab = ({
                     canBattle={dailyLimit?.canBattle}
                     myElo={myStats?.elo}
                     isHigher={true}
+                    totalHigher={rankings.higher.length}
                   />
                 ))}
               </div>
@@ -1553,9 +1554,22 @@ const CharacterPanel = ({ character, companions, isDarkMode, isPlayer }) => {
 };
 
 // 플레이어 카드 컴포넌트
-const PlayerCard = ({ player, rank, isDarkMode, onBattle, canBattle, myElo, isHigher }) => {
-  const expectedEloChange = 60 - (rank - 1) * 3;
-  const expectedLoseChange = -3 - (rank - 1) * 3;
+const PlayerCard = ({ player, rank, isDarkMode, onBattle, canBattle, myElo, isHigher, totalHigher }) => {
+  // 승점 계산: 하위 유저 vs 상위 유저
+  let expectedEloChange, expectedLoseChange;
+  
+  if (isHigher) {
+    // 상위 유저: #가 높을수록 나와 가까운 약한 개체 → 보상 감소
+    // #1 (가장 멀리, 가장 강함): 가장 높은 보상
+    // #가 높을수록: +33/-27에 가까워짐
+    const rankDiff = totalHigher - rank + 1;
+    expectedEloChange = 30 + rankDiff * 3;  // #1(총2명): +36, #2: +33
+    expectedLoseChange = -(30 - rankDiff * 3);  // #1: -24, #2: -27
+  } else {
+    // 하위 유저: #1은 바로 아래 (rankDiff = 1)
+    expectedEloChange = 30 - (rank - 1) * 3;  // +30, +27, +24, ...
+    expectedLoseChange = -(30 + (rank - 1) * 3);  // -30, -33, -36, ...
+  }
 
   return (
     <div className={`p-4 rounded-xl flex items-center justify-between ${
