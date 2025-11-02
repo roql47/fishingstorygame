@@ -12389,8 +12389,27 @@ function App() {
                         <div className="space-y-1">
                           <div>낚시대: {selectedUserProfile ? (otherUserData?.fishingSkillDetails?.baseSkill || 0) : fishingSkillDetails.baseSkill}</div>
                           <div>업적 보너스: +{selectedUserProfile ? (otherUserData?.fishingSkillDetails?.achievementBonus || 0) : fishingSkillDetails.achievementBonus}</div>
-                          {!selectedUserProfile && fishingSkillDetails.arenaBonus > 0 && (
-                            <div className="text-purple-400">결투장 보너스: +{fishingSkillDetails.arenaBonus} {arenaRank === 1 ? '(1위🏆)' : `(${arenaRank}위)`}</div>
+                          {/* 🏟️ Arena 보너스 표시 (내 프로필 또는 다른 사용자) */}
+                          {selectedUserProfile ? (
+                            // 다른 사용자 프로필
+                            otherUserData?.fishingSkillDetails?.arenaBonus > 0 && (
+                              <div className="text-purple-400">
+                                결투장 보너스: +{otherUserData.fishingSkillDetails.arenaBonus} {
+                                  otherUserData.fishingSkillDetails.arenaRank === 1 
+                                    ? '(1위🏆)' 
+                                    : `(${otherUserData.fishingSkillDetails.arenaRank}위)`
+                                }
+                              </div>
+                            )
+                          ) : (
+                            // 내 프로필
+                            fishingSkillDetails.arenaBonus > 0 && (
+                              <div className="text-purple-400">
+                                결투장 보너스: +{fishingSkillDetails.arenaBonus} {
+                                  arenaRank === 1 ? '(1위🏆)' : `(${arenaRank}위)`
+                                }
+                              </div>
+                            )
                           )}
                           <div className="border-t border-gray-500 pt-1">
                             <div className="font-semibold">총합: {selectedUserProfile ? (otherUserData?.fishingSkillDetails?.totalSkill || 0) : fishingSkillDetails.totalSkill}</div>

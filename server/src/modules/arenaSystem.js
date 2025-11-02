@@ -117,6 +117,37 @@ class ArenaSystem {
         };
     }
     
+    // 전체 랭킹 조회 (페이지네이션)
+    async getAllRankings(page = 1, limit = 20) {
+        const skip = (page - 1) * limit;
+        
+        // 전체 유저 수
+        const totalUsers = await this.ArenaEloModel.countDocuments();
+        const totalPages = Math.ceil(totalUsers / limit);
+        
+        // 페이지에 해당하는 랭킹 조회
+        const rankings = await this.ArenaEloModel.find()
+            .sort({ elo: -1, username: 1 })
+            .skip(skip)
+            .limit(limit)
+            .lean();
+        
+        // 각 유저에게 순위 부여
+        const rankedList = rankings.map((user, index) => ({
+            ...user,
+            rank: skip + index + 1
+        }));
+        
+        return {
+            rankings: rankedList,
+            currentPage: page,
+            totalPages,
+            totalUsers,
+            hasNextPage: page < totalPages,
+            hasPrevPage: page > 1
+        };
+    }
+    
     // 상대방의 순위 계산 (예상 ELO 변화량 계산용)
     calculateOpponentRank(myElo, opponentElo, higherList, lowerList, opponentUuid) {
         // 상위 리스트에서 찾기

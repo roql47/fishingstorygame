@@ -68,6 +68,26 @@ function setupArenaRoutes(
             });
         } catch (error) {
             console.error('[Arena] 랭킹 조회 실패:', error);
+            res.status(500).json({ error: '랭킹 조회에 실패했습니다.' });
+        }
+    });
+    
+    // 전체 랭킹 조회 (페이지네이션)
+    router.get('/all-rankings', authenticateJWT, async (req, res) => {
+        try {
+            const page = parseInt(req.query.page) || 1;
+            const limit = 20; // 페이지당 20명
+            
+            console.log(`[Arena] 전체 랭킹 조회: 페이지 ${page}`);
+            
+            const result = await arenaSystem.getAllRankings(page, limit);
+            
+            res.json({
+                success: true,
+                ...result
+            });
+        } catch (error) {
+            console.error('[Arena] 전체 랭킹 조회 실패:', error);
             console.error('[Arena] 에러 스택:', error.stack);
             res.status(500).json({ 
                 success: false,

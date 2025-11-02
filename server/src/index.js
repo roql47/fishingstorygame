@@ -31,7 +31,7 @@ const setupExpeditionRoutes = require('./routes/expeditionRoutes');
 const setupVoyageRoutes = require('./routes/voyageRoutes');
 
 // 결투장 시스템 모듈 import
-const { setupArenaRoutes } = require('./routes/arenaRoutes');
+const { setupArenaRoutes, getArenaSystem } = require('./routes/arenaRoutes');
 
 // 🦊 여우 AI 챗봇 모듈 import
 const FoxAiBot = require('./modules/foxAiBot');
@@ -11729,6 +11729,29 @@ async function getUserProfileHandler(req, res) {
         UserStatsModel.findOne({ userUuid: user.userUuid })
       ]);
       
+      // 🏟️ Arena 순위 및 보너스 계산
+      let arenaBonus = 0;
+      let arenaRank = null;
+      try {
+        const arenaSystem = getArenaSystem();
+        if (arenaSystem) {
+          const arenaData = await arenaSystem.getOrCreateEloData(user.userUuid, user.username);
+          const rankings = await arenaSystem.getEloRankings(user.userUuid, user.username);
+          
+          // myData에서 순위 확인
+          if (rankings.myData && rankings.myData.rank) {
+            arenaRank = rankings.myData.rank;
+            if (arenaRank === 1) {
+              arenaBonus = 2; // 1위: +2
+            } else if (arenaRank >= 2 && arenaRank <= 10) {
+              arenaBonus = 1; // 2~10위: +1
+            }
+          }
+        }
+      } catch (error) {
+        console.log(`Arena 순위 조회 실패 for ${username}:`, error.message);
+      }
+      
       return res.json({
         username: user.username,
         displayName: user.displayName,
@@ -11742,11 +11765,13 @@ async function getUserProfileHandler(req, res) {
           fishingRodEnhancement: userEquipment?.fishingRodEnhancement || 0,
           accessoryEnhancement: userEquipment?.accessoryEnhancement || 0
         },
-        fishingSkill: (fishingSkillData?.skill || 0) + (achievementBonus || 0), // 낚시실력 공개 (업적 보너스 포함)
+        fishingSkill: (fishingSkillData?.skill || 0) + (achievementBonus || 0) + arenaBonus, // 낚시실력 공개 (업적 + Arena 보너스 포함)
         fishingSkillDetails: { // 낚시실력 상세 정보
           baseSkill: fishingSkillData?.skill || 0,
           achievementBonus: achievementBonus || 0,
-          totalSkill: (fishingSkillData?.skill || 0) + (achievementBonus || 0)
+          arenaBonus: arenaBonus, // 🏟️ Arena 보너스 추가
+          arenaRank: arenaRank, // 🏟️ Arena 순위 추가
+          totalSkill: (fishingSkillData?.skill || 0) + (achievementBonus || 0) + arenaBonus
         },
         userStats: { // 🌟 유저 성장 스탯 공개
           health: userStats?.health || 0,
