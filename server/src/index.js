@@ -11734,26 +11734,29 @@ async function getUserProfileHandler(req, res) {
       let arenaRank = null;
       try {
         const arenaSystem = getArenaSystem();
-        if (arenaSystem) {
+        
+        if (arenaSystem && arenaSystem.ArenaEloModel) {
           const arenaData = await arenaSystem.getOrCreateEloData(user.userUuid, user.username);
           
-          // 전체 유저 중 이 유저보다 ELO가 높은 사람 수를 세어서 순위 계산
-          const ArenaEloModel = arenaSystem.ArenaEloModel;
-          const higherRanked = await ArenaEloModel.countDocuments({ 
-            elo: { $gt: arenaData.elo } 
-          });
-          arenaRank = higherRanked + 1;
-          
-          console.log(`[Profile] ${user.username} Arena Rank: ${arenaRank} (ELO: ${arenaData.elo})`);
-          
-          if (arenaRank === 1) {
-            arenaBonus = 2; // 1위: +2
-          } else if (arenaRank >= 2 && arenaRank <= 10) {
-            arenaBonus = 1; // 2~10위: +1
+          if (arenaData && arenaData.elo !== undefined) {
+            // 전체 유저 중 이 유저보다 ELO가 높은 사람 수를 세어서 순위 계산
+            const higherRanked = await arenaSystem.ArenaEloModel.countDocuments({ 
+              elo: { $gt: arenaData.elo } 
+            });
+            arenaRank = higherRanked + 1;
+            
+            if (arenaRank === 1) {
+              arenaBonus = 2; // 1위: +2
+            } else if (arenaRank >= 2 && arenaRank <= 10) {
+              arenaBonus = 1; // 2~10위: +1
+            }
+            
+            console.log(`✅ [Profile] ${user.username} - Rank: ${arenaRank}, ELO: ${arenaData.elo}, Bonus: +${arenaBonus}`);
           }
         }
       } catch (error) {
-        console.log(`Arena 순위 조회 실패 for ${username}:`, error.message);
+        console.error(`❌ [Profile] Arena 순위 조회 실패 for ${username}:`, error);
+        // 에러가 나도 계속 진행 (arenaBonus=0, arenaRank=null)
       }
       
       return res.json({
@@ -11801,6 +11804,36 @@ async function getUserProfileHandler(req, res) {
       UserStatsModel.findOne({ userUuid: user.userUuid })
     ]);
     
+    // 🏟️ Arena 순위 및 보너스 계산 (관리자/본인 프로필)
+    let arenaBonus = 0;
+    let arenaRank = null;
+    try {
+      const arenaSystem = getArenaSystem();
+      
+      if (arenaSystem && arenaSystem.ArenaEloModel) {
+        const arenaData = await arenaSystem.getOrCreateEloData(user.userUuid, user.username);
+        
+        if (arenaData && arenaData.elo !== undefined) {
+          // 전체 유저 중 이 유저보다 ELO가 높은 사람 수를 세어서 순위 계산
+          const higherRanked = await arenaSystem.ArenaEloModel.countDocuments({ 
+            elo: { $gt: arenaData.elo } 
+          });
+          arenaRank = higherRanked + 1;
+          
+          if (arenaRank === 1) {
+            arenaBonus = 2; // 1위: +2
+          } else if (arenaRank >= 2 && arenaRank <= 10) {
+            arenaBonus = 1; // 2~10위: +1
+          }
+          
+          console.log(`✅ [Profile-Detail] ${user.username} - Rank: ${arenaRank}, ELO: ${arenaData.elo}, Bonus: +${arenaBonus}`);
+        }
+      }
+    } catch (error) {
+      console.error(`❌ [Profile-Detail] Arena 순위 조회 실패 for ${username}:`, error);
+      // 에러가 나도 계속 진행 (arenaBonus=0, arenaRank=null)
+    }
+    
     const profileData = {
       // userUuid는 관리자에게만 제공
       ...(isAdmin && { userUuid: user.userUuid }),
@@ -11815,11 +11848,13 @@ async function getUserProfileHandler(req, res) {
         fishingRodEnhancement: userEquipment?.fishingRodEnhancement || 0,
         accessoryEnhancement: userEquipment?.accessoryEnhancement || 0
       },
-      fishingSkill: (fishingSkillData?.skill || 0) + (achievementBonus || 0),
+      fishingSkill: (fishingSkillData?.skill || 0) + (achievementBonus || 0) + arenaBonus,
       fishingSkillDetails: { // 낚시실력 상세 정보
         baseSkill: fishingSkillData?.skill || 0,
         achievementBonus: achievementBonus || 0,
-        totalSkill: (fishingSkillData?.skill || 0) + (achievementBonus || 0)
+        arenaBonus: arenaBonus, // 🏟️ Arena 보너스 추가
+        arenaRank: arenaRank, // 🏟️ Arena 순위 추가
+        totalSkill: (fishingSkillData?.skill || 0) + (achievementBonus || 0) + arenaBonus
       },
       userStats: { // 🌟 유저 성장 스탯
         health: userStats?.health || 0,

@@ -128,7 +128,9 @@ const VoyageTab = ({
     // 플레이어 속도 계산: 100 + 낚시실력 * 10 + 🌟 속도 스탯 (레벨 × 2)
     const speedStatBonus = (userStats?.speed || 0) * 2;
     const playerSpeed = 100 + fishingSkill * 10 + speedStatBonus;
-    const playerMaxCooldown = 3000;
+    const playerMaxCooldown = Math.max(500, 5000 - playerSpeed * 5);
+    
+    console.log(`[Voyage] Player Speed: ${playerSpeed} → maxCooldown: ${playerMaxCooldown}`);
     
     // 적 속도에 따른 쿨다운 계산
     const enemyMaxCooldown = Math.max(500, 5000 - fish.speed * 20);
@@ -178,7 +180,7 @@ const VoyageTab = ({
         const newState = { ...prev };
         const newLog = [];
 
-        // 플레이어 공격 (2배 느린 속도)
+        // 플레이어 공격
         if (newState.player.hp > 0) {
           newState.player.cooldown -= 25;
           if (newState.player.cooldown <= 0 && newState.enemy.hp > 0) {
@@ -210,7 +212,7 @@ const VoyageTab = ({
           }
         }
 
-        // 동료 공격 (2배 느린 속도)
+        // 동료 공격
         newState.companions = newState.companions.map(companion => {
           if (companion.hp <= 0) return companion;
           

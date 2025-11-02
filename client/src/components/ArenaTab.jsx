@@ -270,13 +270,18 @@ const ArenaTab = ({
 
     // 상대 동료들 (서버 데이터 기반)
     const opponentCompanions = (opponentData.companions || []).map(c => {
-      const maxCooldown = Math.max(500, 5000 - (c.speed || 50) * 20);
+      // 스탯 우선순위: c.stats > c 직접 값
+      const health = c.stats?.health || c.health || 100;
+      const attack = c.stats?.attack || c.attack || 10;
+      const speed = c.stats?.speed || c.speed || 50;
+      const maxCooldown = Math.max(500, 5000 - speed * 20);
+      
       return {
         name: c.name || c.companionName,
-        hp: c.stats?.health || c.health || 100,
-        maxHp: c.stats?.health || c.health || 100,
-        attack: c.stats?.attack || c.attack || 10,
-        speed: c.stats?.speed || c.speed || 50,
+        hp: health,
+        maxHp: health,
+        attack: attack,
+        speed: speed,
         cooldown: maxCooldown,
         maxCooldown: maxCooldown,
         morale: 50,
@@ -286,10 +291,12 @@ const ArenaTab = ({
       };
     });
 
-    // 플레이어 속도
+    // 플레이어 속도 (항해 전투와 동일)
     const speedStatBonus = (userStats?.speed || 0) * 2;
     const playerSpeed = 100 + fishingSkill * 10 + speedStatBonus;
-    const playerMaxCooldown = 3000;
+    const playerMaxCooldown = Math.max(500, 5000 - playerSpeed * 6);
+    
+    console.log(`[Arena] Player Speed: ${playerSpeed} → maxCooldown: ${playerMaxCooldown}`);
 
     // 상대 능력치 계산 (서버에서 받은 장비 정보 사용)
     const opponentAccessoryLevel = getAccessoryLevel(opponentData.userStats?.accessory);
@@ -305,9 +312,10 @@ const ArenaTab = ({
     const opponentAttackBonus = opponentRodIndex * (opponentData.userStats?.attack || 0);
     const opponentAttack = opponentBaseAttack + opponentAttackBonus;
 
-    // 상대 속도
-    const opponentSpeed = 100 + (opponentData.fishingSkill || 1) * 10;
-    const opponentMaxCooldown = 3000;
+    // 상대 속도 (항해 전투와 동일)
+    const opponentSpeedStatBonus = (opponentData.userStats?.speed || 0) * 2;
+    const opponentSpeed = 100 + (opponentData.fishingSkill || 1) * 10 + opponentSpeedStatBonus;
+    const opponentMaxCooldown = Math.max(500, 5000 - opponentSpeed * 6);
 
     const initialState = {
       battleId,
@@ -359,20 +367,34 @@ const ArenaTab = ({
         const newState = { ...prev };
         const newLog = [];
 
-        // 플레이어 공격
-        if (newState.player.hp > 0 && newState.opponent.hp > 0) {
+        // 공격 가능한 상대 타겟 계산 (상대 플레이어 + 상대 동료)
+        const opponentTargets = [
+          newState.opponent.hp > 0 ? { type: 'player', data: newState.opponent } : null,
+          ...newState.opponent.companions.map((c, idx) => c.hp > 0 ? { type: 'companion', data: c, index: idx } : null).filter(t => t !== null)
+        ].filter(t => t !== null);
+
+        // 플레이어 공격 (상대 타겟이 있을 때만)
+        if (newState.player.hp > 0 && opponentTargets.length > 0) {
           newState.player.cooldown -= 25;
           if (newState.player.cooldown <= 0) {
+            const target = opponentTargets[Math.floor(Math.random() * opponentTargets.length)];
             const damage = Math.floor(newState.player.attack * (0.9 + Math.random() * 0.2));
-            newState.opponent.hp = Math.max(0, newState.opponent.hp - damage);
+            
+            if (target.type === 'player') {
+              newState.opponent.hp = Math.max(0, newState.opponent.hp - damage);
+              newLog.push(`⚔️ ${newState.player.username}의 공격! ${damage} 데미지`);
+            } else {
+              newState.opponent.companions[target.index].hp = Math.max(0, newState.opponent.companions[target.index].hp - damage);
+              newLog.push(`⚔️ ${newState.player.username}이(가) ${target.data.name}에게 ${damage} 데미지`);
+            }
+            
             newState.player.cooldown = newState.player.maxCooldown;
-            newLog.push(`⚔️ ${newState.player.username}의 공격! ${damage} 데미지`);
           }
         }
 
-        // 플레이어 동료 공격
+        // 플레이어 동료 공격 (상대 타겟이 있을 때만)
         newState.player.companions = newState.player.companions.map(companion => {
-          if (companion.hp <= 0 || newState.opponent.hp <= 0) return companion;
+          if (companion.hp <= 0 || opponentTargets.length === 0) return companion;
           
           const updated = { ...companion };
           updated.cooldown -= 25;
@@ -409,8 +431,15 @@ const ArenaTab = ({
               newLog.push(`${updated.name}의 공격! ${damage} 데미지`);
             }
             
-            if (damage > 0) {
-              newState.opponent.hp = Math.max(0, newState.opponent.hp - damage);
+            // 상대 타겟 공격
+            if (damage > 0 && opponentTargets.length > 0) {
+              const target = opponentTargets[Math.floor(Math.random() * opponentTargets.length)];
+              
+              if (target.type === 'player') {
+                newState.opponent.hp = Math.max(0, newState.opponent.hp - damage);
+              } else {
+                newState.opponent.companions[target.index].hp = Math.max(0, newState.opponent.companions[target.index].hp - damage);
+              }
             }
             
             updated.cooldown = updated.maxCooldown;
@@ -450,50 +479,48 @@ const ArenaTab = ({
           const updated = { ...companion };
           updated.cooldown -= 25;
           
-          if (updated.cooldown <= 0) {
-            if (playerTargets.length > 0) {
-              updated.morale = Math.min(updated.maxMorale, updated.morale + 15);
+          if (updated.cooldown <= 0 && playerTargets.length > 0) {
+            updated.morale = Math.min(updated.maxMorale, updated.morale + 15);
+            
+            const canUseSkill = updated.skill && updated.morale >= 100;
+            let damage;
+            let isSkill = false;
+            
+            if (canUseSkill) {
+              isSkill = true;
+              updated.morale = 0;
               
-              const canUseSkill = updated.skill && updated.morale >= 100;
-              let damage;
-              let isSkill = false;
-              
-              if (canUseSkill) {
-                isSkill = true;
-                updated.morale = 0;
-                
-                if (updated.skill.skillType === 'heal') {
-                  // 상대 힐 스킬
-                  const healTargets = newState.opponent.companions.filter(c => c.hp > 0 && c.hp < c.maxHp);
-                  if (healTargets.length > 0) {
-                    const target = healTargets.reduce((min, c) => c.hp < min.hp ? c : min);
-                    const healAmount = Math.floor(updated.attack * (updated.skill.healMultiplier || 1.5));
-                    const actualHeal = Math.min(healAmount, target.maxHp - target.hp);
-                    target.hp = Math.min(target.maxHp, target.hp + healAmount);
-                    newLog.push(`✨ ${updated.name}의 ${updated.skill.name}! ${target.name} +${actualHeal} HP`);
-                  }
-                  damage = 0;
-                } else {
-                  damage = Math.floor(updated.attack * updated.skill.damageMultiplier * (0.9 + Math.random() * 0.2));
-                  newLog.push(`✨ ${updated.name}의 ${updated.skill.name}! ${damage} 데미지!`);
+              if (updated.skill.skillType === 'heal') {
+                // 상대 힐 스킬
+                const healTargets = newState.opponent.companions.filter(c => c.hp > 0 && c.hp < c.maxHp);
+                if (healTargets.length > 0) {
+                  const target = healTargets.reduce((min, c) => c.hp < min.hp ? c : min);
+                  const healAmount = Math.floor(updated.attack * (updated.skill.healMultiplier || 1.5));
+                  const actualHeal = Math.min(healAmount, target.maxHp - target.hp);
+                  target.hp = Math.min(target.maxHp, target.hp + healAmount);
+                  newLog.push(`✨ ${updated.name}의 ${updated.skill.name}! ${target.name} +${actualHeal} HP`);
                 }
+                damage = 0;
               } else {
-                damage = Math.floor(updated.attack * (0.9 + Math.random() * 0.2));
-                newLog.push(`${updated.name}의 공격! ${damage} 데미지`);
+                damage = Math.floor(updated.attack * updated.skill.damageMultiplier * (0.9 + Math.random() * 0.2));
+                newLog.push(`✨ ${updated.name}의 ${updated.skill.name}! ${damage} 데미지!`);
               }
-              
-              if (damage > 0) {
-                const target = playerTargets[Math.floor(Math.random() * playerTargets.length)];
-                
-                if (target.type === 'player') {
-                  newState.player.hp = Math.max(0, newState.player.hp - damage);
-                } else {
-                  newState.player.companions[target.index].hp = Math.max(0, newState.player.companions[target.index].hp - damage);
-                }
-              }
-              
-              updated.cooldown = updated.maxCooldown;
+            } else {
+              damage = Math.floor(updated.attack * (0.9 + Math.random() * 0.2));
+              newLog.push(`${updated.name}의 공격! ${damage} 데미지`);
             }
+            
+            if (damage > 0) {
+              const target = playerTargets[Math.floor(Math.random() * playerTargets.length)];
+              
+              if (target.type === 'player') {
+                newState.player.hp = Math.max(0, newState.player.hp - damage);
+              } else {
+                newState.player.companions[target.index].hp = Math.max(0, newState.player.companions[target.index].hp - damage);
+              }
+            }
+            
+            updated.cooldown = updated.maxCooldown;
           }
           
           return updated;
@@ -1364,24 +1391,29 @@ const CharacterPanel = ({ character, companions, isDarkMode, isPlayer }) => {
         </div>
       </div>
 
-      {/* 속도바 */}
-      <div className="mb-3">
-        <div className="w-full bg-gray-700 rounded-full h-2">
-          <div
-            className={`h-2 rounded-full transition-all ${
-              isPlayer ? 'bg-blue-400' : 'bg-red-400'
-            }`}
-            style={{ 
-              width: `${100 - (character.cooldown / character.maxCooldown) * 100}%`,
-              transition: 'width 0.05s linear'
-            }}
-          />
+      {/* 속도바 (살아있을 때만 표시) */}
+      {character.hp > 0 && (
+        <div className="mb-3">
+          <div className="w-full bg-gray-700 rounded-full h-2">
+            <div
+              className={`h-2 rounded-full transition-all ${
+                isPlayer ? 'bg-blue-400' : 'bg-red-400'
+              }`}
+              style={{ 
+                width: `${100 - (character.cooldown / character.maxCooldown) * 100}%`,
+                transition: 'width 0.05s linear'
+              }}
+            />
+          </div>
         </div>
-      </div>
+      )}
       
       <div className="text-xs text-gray-400 mb-3">
         <div>⚔️ 공격력: {character.attack}</div>
         <div>⚡ 속도: {character.speed}</div>
+        {character.hp <= 0 && (
+          <div className="text-gray-600 font-bold mt-1">💀 전투불능</div>
+        )}
       </div>
       
       {/* 동료 목록 */}
@@ -1414,27 +1446,26 @@ const CharacterPanel = ({ character, companions, isDarkMode, isPlayer }) => {
                       }}
                     />
                   </div>
-                  {/* 속도바 */}
+                  {/* 속도바 (통일된 색상) */}
                   <div className="w-full bg-gray-700 rounded-full h-1">
                     <div
-                      className={`h-1 rounded-full ${
-                        isPlayer ? 'bg-blue-300' : 'bg-red-300'
-                      }`}
+                      className="h-1 rounded-full bg-cyan-400"
                       style={{ 
                         width: `${100 - (companion.cooldown / companion.maxCooldown) * 100}%`,
                         transition: 'width 0.05s linear'
                       }}
                     />
                   </div>
-                  {/* Morale 바 */}
-                  {companion.skill && (
-                    <div className="w-full bg-gray-700 rounded-full h-1">
-                      <div
-                        className="h-1 rounded-full bg-yellow-400"
-                        style={{ width: `${(companion.morale / companion.maxMorale) * 100}%` }}
-                      />
-                    </div>
-                  )}
+                  {/* Morale 바 (모든 동료에게 노란색으로 표시) */}
+                  <div className="w-full bg-gray-700 rounded-full h-1">
+                    <div
+                      className="h-1 rounded-full bg-yellow-400"
+                      style={{ 
+                        width: `${(companion.morale / companion.maxMorale) * 100}%`,
+                        transition: 'width 0.1s ease-out'
+                      }}
+                    />
+                  </div>
                 </>
               )}
             </div>

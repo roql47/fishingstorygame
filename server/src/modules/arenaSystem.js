@@ -200,6 +200,55 @@ class ArenaSystem {
         
         const fishingSkill = fishingSkillData?.skill || 1;
         
+        // 동료 기본 스킬 정보 (companionData.js 기반)
+        const companionSkills = {
+            '실': { 
+                name: '폭격', 
+                damageMultiplier: 1.5, 
+                skillType: 'attack',
+                moraleRequired: 100 
+            },
+            '피에나': { 
+                name: '무의태세', 
+                damageMultiplier: 1.0, 
+                skillType: 'attack',
+                buffType: 'attack',
+                buffMultiplier: 1.25,
+                buffDuration: 3,
+                moraleRequired: 100
+            },
+            '애비게일': { 
+                name: '집중포화', 
+                damageMultiplier: 1.0, 
+                skillType: 'attack',
+                buffType: 'critical',
+                buffMultiplier: 0.20,
+                buffDuration: 3,
+                moraleRequired: 100
+            },
+            '림스&베리': { 
+                name: '마탄 발사', 
+                damageMultiplier: 1.0, 
+                skillType: 'multi_target',
+                targetCount: 2,
+                moraleRequired: 100
+            },
+            '클로에': { 
+                name: '에테르축복', 
+                damageMultiplier: 0,
+                healMultiplier: 1.85, 
+                skillType: 'heal',
+                moraleRequired: 100
+            },
+            '나하트라': { 
+                name: '악몽의 정원', 
+                damageMultiplier: 0.7, 
+                skillType: 'aoe',
+                targetCount: 5,
+                moraleRequired: 100
+            }
+        };
+        
         // 동료 데이터 구조화 (프론트엔드가 기대하는 형식)
         const companionsData = companions.map(c => {
             // 동료 스탯 계산
@@ -226,6 +275,9 @@ class ArenaSystem {
                 baseSpeed += (breakthroughStats.bonusGrowthSpeed || 0) * breakthrough;
             }
             
+            // 동료 기본 스킬 정보 가져오기
+            const companionSkill = companionSkills[c.companionName] || c.skill || null;
+            
             return {
                 name: c.companionName,
                 companionName: c.companionName,
@@ -240,7 +292,7 @@ class ArenaSystem {
                 health: baseHp,
                 attack: baseAttack,
                 speed: baseSpeed,
-                skill: c.skill || null
+                skill: companionSkill
             };
         });
         
