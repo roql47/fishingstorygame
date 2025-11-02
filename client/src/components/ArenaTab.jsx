@@ -483,7 +483,7 @@ const ArenaTab = ({
               }
               
               if (damage > 0) {
-                const target = targets[Math.floor(Math.random() * targets.length)];
+                const target = playerTargets[Math.floor(Math.random() * playerTargets.length)];
                 
                 if (target.type === 'player') {
                   newState.player.hp = Math.max(0, newState.player.hp - damage);
