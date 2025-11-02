@@ -219,14 +219,95 @@ const CRAFTING_RECIPES = [
     outputCount: 1,
     tier: 24
   },
-  // rank 25 이상은 모두 마법의돌로 변환
+  // rank 25 → rank 26
   { 
     id: 25,
     inputMaterial: "마법의정수", 
     inputCount: 3, 
-    outputMaterial: "마법의돌", 
+    outputMaterial: "휘핑크림", 
     outputCount: 1,
     tier: 25
+  },
+  // rank 26 → rank 27
+  { 
+    id: 26,
+    inputMaterial: "휘핑크림", 
+    inputCount: 3, 
+    outputMaterial: "와플리머신", 
+    outputCount: 1,
+    tier: 26
+  },
+  // rank 27 → rank 28
+  { 
+    id: 27,
+    inputMaterial: "와플리머신", 
+    inputCount: 3, 
+    outputMaterial: "베르쥬스", 
+    outputCount: 1,
+    tier: 27
+  },
+  // rank 28 → rank 29
+  { 
+    id: 28,
+    inputMaterial: "베르쥬스", 
+    inputCount: 3, 
+    outputMaterial: "안쵸비", 
+    outputCount: 1,
+    tier: 28
+  },
+  // rank 29 → rank 30
+  { 
+    id: 29,
+    inputMaterial: "안쵸비", 
+    inputCount: 3, 
+    outputMaterial: "핑크멜로우", 
+    outputCount: 1,
+    tier: 29
+  },
+  // rank 30 → rank 31
+  { 
+    id: 30,
+    inputMaterial: "핑크멜로우", 
+    inputCount: 3, 
+    outputMaterial: "와일드갈릭", 
+    outputCount: 1,
+    tier: 30
+  },
+  // rank 31 → rank 32
+  { 
+    id: 31,
+    inputMaterial: "와일드갈릭", 
+    inputCount: 3, 
+    outputMaterial: "그루누아", 
+    outputCount: 1,
+    tier: 31
+  },
+  // rank 32 → rank 33
+  { 
+    id: 32,
+    inputMaterial: "그루누아", 
+    inputCount: 3, 
+    outputMaterial: "시더플랭크", 
+    outputCount: 1,
+    tier: 32
+  },
+  // rank 33 → rank 34
+  { 
+    id: 33,
+    inputMaterial: "시더플랭크", 
+    inputCount: 3, 
+    outputMaterial: "세비체", 
+    outputCount: 1,
+    tier: 33
+  },
+  // rank 34 → rank 35
+  { 
+    id: 34,
+    inputMaterial: "세비체", 
+    inputCount: 3, 
+    outputMaterial: "타파스", 
+    outputCount: 1,
+    tier: 34
   }
 ];
 

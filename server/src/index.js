@@ -3773,8 +3773,35 @@ io.on("connection", (socket) => {
           console.error("Failed to calculate achievement bonus in fishing:", error);
         }
         
-        const finalSkill = baseSkill + achievementBonus;
-        console.log(`🎣 낚시 실력 정보 - 기본: ${baseSkill}, 업적보너스: ${achievementBonus}, 최종: ${finalSkill}`);
+        // 🏟️ Arena 보너스 계산
+        let arenaBonus = 0;
+        try {
+          const targetUserUuid = socket.data.userUuid;
+          if (targetUserUuid) {
+            const arenaSystem = getArenaSystem();
+            if (arenaSystem && arenaSystem.ArenaEloModel) {
+              const arenaData = await arenaSystem.getOrCreateEloData(targetUserUuid, socket.data.username);
+              if (arenaData && arenaData.elo !== undefined) {
+                // 전체 유저 중 이 유저보다 ELO가 높은 사람 수를 세어서 순위 계산
+                const higherRanked = await arenaSystem.ArenaEloModel.countDocuments({ 
+                  elo: { $gt: arenaData.elo } 
+                });
+                const arenaRank = higherRanked + 1;
+                
+                if (arenaRank === 1) {
+                  arenaBonus = 2; // 1위: +2
+                } else if (arenaRank >= 2 && arenaRank <= 10) {
+                  arenaBonus = 1; // 2~10위: +1
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Failed to calculate arena bonus in fishing:", error);
+        }
+        
+        const finalSkill = baseSkill + achievementBonus + arenaBonus;
+        console.log(`🎣 낚시 실력 정보 - 기본: ${baseSkill}, 업적보너스: ${achievementBonus}, 아레나보너스: ${arenaBonus}, 최종: ${finalSkill}`);
         
         // 물고기 선택 (업적 보너스가 반영된 최종 실력 사용)
         const fishingResult = randomFish(finalSkill);
@@ -6575,10 +6602,10 @@ app.post("/api/companion/breakthrough", authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: "돌파 비용을 찾을 수 없습니다." });
     }
     
-    // 정수와 골드 확인
+    // 정수와 골드 확인 (골드는 항상 조회하여 정확한 잔액 반환)
     const [userEssence, userMoney] = await Promise.all([
       cost.essence > 0 ? MaterialModel.findOne({ ...query, material: essenceName }) : null,
-      cost.gold > 0 ? UserMoneyModel.findOne(query) : null
+      UserMoneyModel.findOne(query) // 항상 조회하여 정확한 골드 반환
     ]);
     
     // 정수 개수 확인
@@ -9193,7 +9220,7 @@ app.get("/api/clicker/stage", authenticateJWT, async (req, res) => {
       await clickerStage.save();
     }
     
-    // 낚시실력 조회 (업적 보너스 포함)
+    // 낚시실력 조회 (업적 보너스 + 아레나 보너스 포함)
     const fishingSkillData = await FishingSkillModel.findOne(query);
     const baseSkill = fishingSkillData?.skill || 0;
     
@@ -9208,7 +9235,33 @@ app.get("/api/clicker/stage", authenticateJWT, async (req, res) => {
       console.error("Failed to calculate achievement bonus for clicker:", error);
     }
     
-    const userFishingSkill = baseSkill + achievementBonus;
+    // 🏟️ Arena 보너스 계산
+    let arenaBonus = 0;
+    try {
+      const targetUserUuid = queryResult.userUuid || userUuid;
+      if (targetUserUuid) {
+        const arenaSystem = getArenaSystem();
+        if (arenaSystem && arenaSystem.ArenaEloModel) {
+          const arenaData = await arenaSystem.getOrCreateEloData(targetUserUuid, username);
+          if (arenaData && arenaData.elo !== undefined) {
+            const higherRanked = await arenaSystem.ArenaEloModel.countDocuments({ 
+              elo: { $gt: arenaData.elo } 
+            });
+            const arenaRank = higherRanked + 1;
+            
+            if (arenaRank === 1) {
+              arenaBonus = 2; // 1위: +2
+            } else if (arenaRank >= 2 && arenaRank <= 10) {
+              arenaBonus = 1; // 2~10위: +1
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Failed to calculate arena bonus for clicker:", error);
+    }
+    
+    const userFishingSkill = baseSkill + achievementBonus + arenaBonus;
     
     // 자동 다운그레이드: 현재 스테이지가 낚시실력을 초과하면 조정
     if (clickerStage.currentStage - 1 > userFishingSkill) {
@@ -9216,7 +9269,7 @@ app.get("/api/clicker/stage", authenticateJWT, async (req, res) => {
       clickerStage.currentStage = Math.max(1, userFishingSkill + 1); // 최소 1 스테이지
       await clickerStage.save();
       
-      console.log(`[Auto Downgrade] ${username}: Stage ${originalStage} → ${clickerStage.currentStage} (Fishing Skill: ${baseSkill} + ${achievementBonus} = ${userFishingSkill})`);
+      console.log(`[Auto Downgrade] ${username}: Stage ${originalStage} → ${clickerStage.currentStage} (Fishing Skill: ${baseSkill} + ${achievementBonus} + ${arenaBonus} = ${userFishingSkill})`);
     }
     
     res.json({
@@ -9252,7 +9305,7 @@ app.post("/api/clicker/upgrade-stage", authenticateJWT, async (req, res) => {
     
     const currentStage = clickerStage.currentStage;
     
-    // 낚시실력 조회 (업적 보너스 포함)
+    // 낚시실력 조회 (업적 보너스 + 아레나 보너스 포함)
     const fishingSkillData = await FishingSkillModel.findOne(query);
     const baseSkill = fishingSkillData?.skill || 0;
     
@@ -9267,13 +9320,39 @@ app.post("/api/clicker/upgrade-stage", authenticateJWT, async (req, res) => {
       console.error("Failed to calculate achievement bonus for upgrade:", error);
     }
     
-    const userFishingSkill = baseSkill + achievementBonus;
+    // 🏟️ Arena 보너스 계산
+    let arenaBonus = 0;
+    try {
+      const targetUserUuid = queryResult.userUuid || userUuid;
+      if (targetUserUuid) {
+        const arenaSystem = getArenaSystem();
+        if (arenaSystem && arenaSystem.ArenaEloModel) {
+          const arenaData = await arenaSystem.getOrCreateEloData(targetUserUuid, username);
+          if (arenaData && arenaData.elo !== undefined) {
+            const higherRanked = await arenaSystem.ArenaEloModel.countDocuments({ 
+              elo: { $gt: arenaData.elo } 
+            });
+            const arenaRank = higherRanked + 1;
+            
+            if (arenaRank === 1) {
+              arenaBonus = 2; // 1위: +2
+            } else if (arenaRank >= 2 && arenaRank <= 10) {
+              arenaBonus = 1; // 2~10위: +1
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Failed to calculate arena bonus for upgrade:", error);
+    }
+    
+    const userFishingSkill = baseSkill + achievementBonus + arenaBonus;
     
     // 낚시실력 제한 확인 (다음 스테이지가 낚시실력을 초과하는지 체크)
     const nextStage = currentStage + 1;
     if (nextStage - 1 > userFishingSkill) {
       return res.status(400).json({ 
-        error: `낚시실력이 부족합니다. 스테이지 ${nextStage}는 낚시실력 ${nextStage - 1} 이상이 필요합니다. (현재: ${userFishingSkill} = 기본 ${baseSkill} + 업적 ${achievementBonus})`,
+        error: `낚시실력이 부족합니다. 스테이지 ${nextStage}는 낚시실력 ${nextStage - 1} 이상이 필요합니다. (현재: ${userFishingSkill} = 기본 ${baseSkill} + 업적 ${achievementBonus} + 아레나 ${arenaBonus})`,
         requiredSkill: nextStage - 1,
         currentSkill: userFishingSkill
       });
@@ -13191,8 +13270,34 @@ async function performFishing(user) {
       console.error("Failed to calculate achievement bonus in fishing:", error);
     }
     
-    const finalSkill = baseSkill + achievementBonus;
-    console.log(`🎣 낚시 실력 정보 - 기본: ${baseSkill}, 업적보너스: ${achievementBonus}, 최종: ${finalSkill}`);
+    // 🏟️ Arena 보너스 계산
+    let arenaBonus = 0;
+    try {
+      if (userUuid) {
+        const arenaSystem = getArenaSystem();
+        if (arenaSystem && arenaSystem.ArenaEloModel) {
+          const arenaData = await arenaSystem.getOrCreateEloData(userUuid, username);
+          if (arenaData && arenaData.elo !== undefined) {
+            // 전체 유저 중 이 유저보다 ELO가 높은 사람 수를 세어서 순위 계산
+            const higherRanked = await arenaSystem.ArenaEloModel.countDocuments({ 
+              elo: { $gt: arenaData.elo } 
+            });
+            const arenaRank = higherRanked + 1;
+            
+            if (arenaRank === 1) {
+              arenaBonus = 2; // 1위: +2
+            } else if (arenaRank >= 2 && arenaRank <= 10) {
+              arenaBonus = 1; // 2~10위: +1
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Failed to calculate arena bonus in fishing:", error);
+    }
+    
+    const finalSkill = baseSkill + achievementBonus + arenaBonus;
+    console.log(`🎣 낚시 실력 정보 - 기본: ${baseSkill}, 업적보너스: ${achievementBonus}, 아레나보너스: ${arenaBonus}, 최종: ${finalSkill}`);
     
     // 물고기 선택 (업적 보너스가 반영된 최종 실력 사용)
     const fishingResult = randomFish(finalSkill);
@@ -14142,10 +14247,12 @@ async function bootstrap() {
             explorationWins: 0,
             fishSold: 0,
             voyageWins: 0,
+            expeditionWins: 0,
             questFishCaught: false,
             questExplorationWin: false,
             questFishSold: false,
             questVoyageWin: false,
+            questExpeditionWin: false,
             lastResetDate: today
           }
         );
