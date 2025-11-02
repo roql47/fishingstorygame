@@ -184,6 +184,80 @@ const ArenaTab = ({
     };
   }, []);
 
+  // 전투 중 새로고침/탭 이동 시 자동 패배 처리
+  useEffect(() => {
+    const handleBeforeUnload = async (e) => {
+      // 전투 중일 때만
+      if (currentView === 'battle' && battleState?.status === 'fighting') {
+        e.preventDefault();
+        e.returnValue = ''; // Chrome에서 확인 창 표시
+        
+        // 패배 처리
+        try {
+          const token = localStorage.getItem('jwtToken');
+          await axios.post(
+            `${serverUrl}/api/arena/battle-result`,
+            {
+              battleId: battleState.battleId,
+              isWin: false, // 자동 패배
+              opponentUuid: selectedOpponent?.userUuid,
+              opponentRank: battleState.opponentRank
+            },
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+        } catch (error) {
+          console.error('[Arena] 자동 패배 처리 실패:', error);
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [currentView, battleState?.status, battleState?.battleId, selectedOpponent, serverUrl]);
+
+  // 다른 탭으로 이동 시 자동 패배 처리
+  useEffect(() => {
+    if (activeTab !== 'arena' && currentView === 'battle' && battleState?.status === 'fighting') {
+      console.log('[Arena] 다른 탭으로 이동 - 자동 패배 처리');
+      
+      // 즉시 패배 처리
+      const performAutoDefeat = async () => {
+        try {
+          const token = localStorage.getItem('jwtToken');
+          const response = await axios.post(
+            `${serverUrl}/api/arena/battle-result`,
+            {
+              battleId: battleState.battleId,
+              isWin: false, // 자동 패배
+              opponentUuid: selectedOpponent?.userUuid,
+              opponentRank: battleState.opponentRank
+            },
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          
+          console.log('[Arena] 자동 패배 처리 완료');
+        } catch (error) {
+          console.error('[Arena] 자동 패배 처리 실패:', error);
+        }
+      };
+      
+      performAutoDefeat();
+      
+      // UI 초기화
+      if (battleIntervalRef.current) {
+        clearInterval(battleIntervalRef.current);
+      }
+      setCurrentView('lobby');
+      setBattleState(null);
+      setBattleLog([]);
+      setBattleResult(null);
+      setSelectedOpponent(null);
+    }
+  }, [activeTab, currentView, battleState?.status, battleState?.battleId, selectedOpponent, serverUrl]);
+
   // 전투 시작
   const startBattle = async (opponent) => {
     if (!dailyLimit?.canBattle) {
