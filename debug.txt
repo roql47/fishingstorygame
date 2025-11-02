@@ -1,0 +1,865 @@
+=== ASSETS REQUEST ===
+Requested path: /images/monster16.jpeg
+Full URL: /images/monster16.jpeg
+Request headers: {
+  host: 'foxstory.kr',
+  'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Mobile/15E148 Safari/604.1',
+  accept: 'image/webp,image/avif,image/jxl,image/heic,image/heic-sequence,video/*;q=0.8,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5',
+  'accept-encoding': 'gzip, br',
+  'accept-language': 'ko-KR,ko;q=0.9',
+  'cdn-loop': 'cloudflare; loops=1',
+  'cf-connecting-ip': '118.235.25.56',
+  'cf-ipcountry': 'KR',
+  'cf-ray': '998199643db2ea2d-SIN',
+  'cf-visitor': '{"scheme":"https"}',
+  'if-modified-since': 'Fri, 31 Oct 2025 05:44:27 GMT',
+  'if-none-match': 'W/"3c8c6-19a38cbba78"',
+  priority: 'u=5, i',
+  referer: 'https://foxstory.kr/',
+  'render-proxy-ttl': '4',
+  'rndr-id': '89676850-7387-4b85',
+  'sec-fetch-dest': 'image',
+  'sec-fetch-mode': 'no-cors',
+  'sec-fetch-site': 'same-origin',
+  'true-client-ip': '118.235.25.56',
+  'x-forwarded-for': '118.235.25.56, 162.158.163.173',
+  'x-forwarded-proto': 'https',
+  'x-request-start': '1762065193701230'
+}
+Looking for file: /opt/render/project/src/server/dist/static/assets/images/monster16.jpeg
+File exists: true
+=== ASSETS REQUEST ===
+Requested path: /images/monster20.jpeg
+Full URL: /images/monster20.jpeg
+Request headers: {
+  host: 'foxstory.kr',
+  'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Mobile/15E148 Safari/604.1',
+  accept: 'image/webp,image/avif,image/jxl,image/heic,image/heic-sequence,video/*;q=0.8,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5',
+  'accept-encoding': 'gzip, br',
+  'accept-language': 'ko-KR,ko;q=0.9',
+  'cdn-loop': 'cloudflare; loops=1',
+  'cf-connecting-ip': '118.235.25.56',
+  'cf-ipcountry': 'KR',
+  'cf-ray': '998199643dbcea2d-SIN',
+  'cf-visitor': '{"scheme":"https"}',
+  'if-modified-since': 'Fri, 31 Oct 2025 05:44:27 GMT',
+  'if-none-match': 'W/"4edb8-19a38cbba78"',
+  priority: 'u=5, i',
+  referer: 'https://foxstory.kr/',
+  'render-proxy-ttl': '4',
+  'rndr-id': 'abedee30-6d6a-46e0',
+  'sec-fetch-dest': 'image',
+  'sec-fetch-mode': 'no-cors',
+  'sec-fetch-site': 'same-origin',
+  'true-client-ip': '118.235.25.56',
+  'x-forwarded-for': '118.235.25.56, 172.71.124.128',
+  'x-forwarded-proto': 'https',
+  'x-request-start': '1762065193701014'
+}
+Looking for file: /opt/render/project/src/server/dist/static/assets/images/monster20.jpeg
+File exists: true
+=== SERVING ASSET ===
+File path: /opt/render/project/src/server/dist/static/assets/images/monster16.jpeg
+File exists check: true
+Response headers set: [Object: null prototype] {
+  'x-powered-by': 'Express',
+  'access-control-allow-origin': '*',
+  vary: 'Origin',
+  'access-control-allow-credentials': 'true',
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'strict-transport-security': 'max-age=31536000',
+  connection: 'keep-alive',
+  'cache-control': 'public, max-age=86400',
+  'content-type': 'image/jpeg'
+}
+=== SERVING ASSET ===
+File path: /opt/render/project/src/server/dist/static/assets/images/monster20.jpeg
+File exists check: true
+Response headers set: [Object: null prototype] {
+  'x-powered-by': 'Express',
+  'access-control-allow-origin': '*',
+  vary: 'Origin',
+  'access-control-allow-credentials': 'true',
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'strict-transport-security': 'max-age=31536000',
+  connection: 'keep-alive',
+  'cache-control': 'public, max-age=86400',
+  'content-type': 'image/jpeg'
+}
+=== ASSETS REQUEST ===
+Requested path: /images/monster11.jpeg
+Full URL: /images/monster11.jpeg
+Request headers: {
+  host: 'foxstory.kr',
+  'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Mobile/15E148 Safari/604.1',
+  accept: 'image/webp,image/avif,image/jxl,image/heic,image/heic-sequence,video/*;q=0.8,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5',
+  'accept-encoding': 'gzip, br',
+  'accept-language': 'ko-KR,ko;q=0.9',
+  'cdn-loop': 'cloudflare; loops=1',
+  'cf-connecting-ip': '118.235.25.56',
+  'cf-ipcountry': 'KR',
+  'cf-ray': '998199643d9bea2d-SIN',
+  'cf-visitor': '{"scheme":"https"}',
+  'if-modified-since': 'Fri, 31 Oct 2025 05:44:27 GMT',
+  'if-none-match': 'W/"32ae3-19a38cbba78"',
+  priority: 'u=5, i',
+  referer: 'https://foxstory.kr/',
+  'render-proxy-ttl': '4',
+  'rndr-id': '859ca3cd-08d5-459c',
+  'sec-fetch-dest': 'image',
+  'sec-fetch-mode': 'no-cors',
+  'sec-fetch-site': 'same-origin',
+  'true-client-ip': '118.235.25.56',
+  'x-forwarded-for': '118.235.25.56, 162.158.162.87',
+  'x-forwarded-proto': 'https',
+  'x-request-start': '1762065193703198'
+}
+Looking for file: /opt/render/project/src/server/dist/static/assets/images/monster11.jpeg
+File exists: true
+=== SERVING ASSET ===
+File path: /opt/render/project/src/server/dist/static/assets/images/monster11.jpeg
+File exists check: true
+Response headers set: [Object: null prototype] {
+  'x-powered-by': 'Express',
+  'access-control-allow-origin': '*',
+  vary: 'Origin',
+  'access-control-allow-credentials': 'true',
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'strict-transport-security': 'max-age=31536000',
+  connection: 'keep-alive',
+  'cache-control': 'public, max-age=86400',
+  'content-type': 'image/jpeg'
+}
+=== ASSETS REQUEST ===
+Requested path: /images/monster17.jpeg
+Full URL: /images/monster17.jpeg
+Request headers: {
+  host: 'foxstory.kr',
+  'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Mobile/15E148 Safari/604.1',
+  accept: 'image/webp,image/avif,image/jxl,image/heic,image/heic-sequence,video/*;q=0.8,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5',
+  'accept-encoding': 'gzip, br',
+  'accept-language': 'ko-KR,ko;q=0.9',
+  'cdn-loop': 'cloudflare; loops=1',
+  'cf-connecting-ip': '118.235.25.56',
+  'cf-ipcountry': 'KR',
+  'cf-ray': '998199643db5ea2d-SIN',
+  'cf-visitor': '{"scheme":"https"}',
+  'if-modified-since': 'Fri, 31 Oct 2025 05:44:27 GMT',
+  'if-none-match': 'W/"2de8e-19a38cbba78"',
+  priority: 'u=5, i',
+  referer: 'https://foxstory.kr/',
+  'render-proxy-ttl': '4',
+  'rndr-id': 'f9e04904-212a-48a9',
+  'sec-fetch-dest': 'image',
+  'sec-fetch-mode': 'no-cors',
+  'sec-fetch-site': 'same-origin',
+  'true-client-ip': '118.235.25.56',
+  'x-forwarded-for': '118.235.25.56, 172.71.124.217',
+  'x-forwarded-proto': 'https',
+  'x-request-start': '1762065193703212'
+}
+Looking for file: /opt/render/project/src/server/dist/static/assets/images/monster17.jpeg
+File exists: true
+=== ASSETS REQUEST ===
+Requested path: /images/monster14.jpeg
+Full URL: /images/monster14.jpeg
+Request headers: {
+  host: 'foxstory.kr',
+  'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Mobile/15E148 Safari/604.1',
+  accept: 'image/webp,image/avif,image/jxl,image/heic,image/heic-sequence,video/*;q=0.8,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5',
+  'accept-encoding': 'gzip, br',
+  'accept-language': 'ko-KR,ko;q=0.9',
+  'cdn-loop': 'cloudflare; loops=1',
+  'cf-connecting-ip': '118.235.25.56',
+  'cf-ipcountry': 'KR',
+  'cf-ray': '998199643dafea2d-SIN',
+  'cf-visitor': '{"scheme":"https"}',
+  'if-modified-since': 'Fri, 31 Oct 2025 05:44:27 GMT',
+  'if-none-match': 'W/"3e3bf-19a38cbba78"',
+  priority: 'u=5, i',
+  referer: 'https://foxstory.kr/',
+  'render-proxy-ttl': '4',
+  'rndr-id': 'f56f7711-356f-4d2e',
+  'sec-fetch-dest': 'image',
+  'sec-fetch-mode': 'no-cors',
+  'sec-fetch-site': 'same-origin',
+  'true-client-ip': '118.235.25.56',
+  'x-forwarded-for': '118.235.25.56, 172.69.165.13',
+  'x-forwarded-proto': 'https',
+  'x-request-start': '1762065193702953'
+}
+Looking for file: /opt/render/project/src/server/dist/static/assets/images/monster14.jpeg
+File exists: true
+=== SERVING ASSET ===
+File path: /opt/render/project/src/server/dist/static/assets/images/monster17.jpeg
+File exists check: true
+Response headers set: [Object: null prototype] {
+  'x-powered-by': 'Express',
+  'access-control-allow-origin': '*',
+  vary: 'Origin',
+  'access-control-allow-credentials': 'true',
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'strict-transport-security': 'max-age=31536000',
+  connection: 'keep-alive',
+  'cache-control': 'public, max-age=86400',
+  'content-type': 'image/jpeg'
+}
+=== SERVING ASSET ===
+File path: /opt/render/project/src/server/dist/static/assets/images/monster14.jpeg
+File exists check: true
+Response headers set: [Object: null prototype] {
+  'x-powered-by': 'Express',
+  'access-control-allow-origin': '*',
+  vary: 'Origin',
+  'access-control-allow-credentials': 'true',
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'strict-transport-security': 'max-age=31536000',
+  connection: 'keep-alive',
+  'cache-control': 'public, max-age=86400',
+  'content-type': 'image/jpeg'
+}
+=== ASSETS REQUEST ===
+Requested path: /images/monster12.jpeg
+Full URL: /images/monster12.jpeg
+Request headers: {
+  host: 'foxstory.kr',
+  'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Mobile/15E148 Safari/604.1',
+  accept: 'image/webp,image/avif,image/jxl,image/heic,image/heic-sequence,video/*;q=0.8,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5',
+  'accept-encoding': 'gzip, br',
+  'accept-language': 'ko-KR,ko;q=0.9',
+  'cdn-loop': 'cloudflare; loops=1',
+  'cf-connecting-ip': '118.235.25.56',
+  'cf-ipcountry': 'KR',
+  'cf-ray': '998199643d9fea2d-SIN',
+  'cf-visitor': '{"scheme":"https"}',
+  'if-modified-since': 'Fri, 31 Oct 2025 05:44:27 GMT',
+  'if-none-match': 'W/"2b0a6-19a38cbba78"',
+  priority: 'u=5, i',
+  referer: 'https://foxstory.kr/',
+  'render-proxy-ttl': '4',
+  'rndr-id': 'cd5108fb-87dd-4cc2',
+  'sec-fetch-dest': 'image',
+  'sec-fetch-mode': 'no-cors',
+  'sec-fetch-site': 'same-origin',
+  'true-client-ip': '118.235.25.56',
+  'x-forwarded-for': '118.235.25.56, 162.158.162.135',
+  'x-forwarded-proto': 'https',
+  'x-request-start': '1762065193704219'
+}
+Looking for file: /opt/render/project/src/server/dist/static/assets/images/monster12.jpeg
+File exists: true
+=== SERVING ASSET ===
+File path: /opt/render/project/src/server/dist/static/assets/images/monster12.jpeg
+File exists check: true
+Response headers set: [Object: null prototype] {
+  'x-powered-by': 'Express',
+  'access-control-allow-origin': '*',
+  vary: 'Origin',
+  'access-control-allow-credentials': 'true',
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'strict-transport-security': 'max-age=31536000',
+  connection: 'keep-alive',
+  'cache-control': 'public, max-age=86400',
+  'content-type': 'image/jpeg'
+}
+=== ASSETS REQUEST ===
+Requested path: /images/monster18.jpeg
+Full URL: /images/monster18.jpeg
+Request headers: {
+  host: 'foxstory.kr',
+  'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Mobile/15E148 Safari/604.1',
+  accept: 'image/webp,image/avif,image/jxl,image/heic,image/heic-sequence,video/*;q=0.8,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5',
+  'accept-encoding': 'gzip, br',
+  'accept-language': 'ko-KR,ko;q=0.9',
+  'cdn-loop': 'cloudflare; loops=1',
+  'cf-connecting-ip': '118.235.25.56',
+  'cf-ipcountry': 'KR',
+  'cf-ray': '998199643db6ea2d-SIN',
+  'cf-visitor': '{"scheme":"https"}',
+  'if-modified-since': 'Fri, 31 Oct 2025 05:44:27 GMT',
+  'if-none-match': 'W/"3dde0-19a38cbba78"',
+  priority: 'u=5, i',
+  referer: 'https://foxstory.kr/',
+  'render-proxy-ttl': '4',
+  'rndr-id': 'b4484934-d307-48f0',
+  'sec-fetch-dest': 'image',
+  'sec-fetch-mode': 'no-cors',
+  'sec-fetch-site': 'same-origin',
+  'true-client-ip': '118.235.25.56',
+  'x-forwarded-for': '118.235.25.56, 172.69.165.65',
+  'x-forwarded-proto': 'https',
+  'x-request-start': '1762065193709498'
+}
+Looking for file: /opt/render/project/src/server/dist/static/assets/images/monster18.jpeg
+File exists: true
+=== SERVING ASSET ===
+File path: /opt/render/project/src/server/dist/static/assets/images/monster18.jpeg
+File exists check: true
+Response headers set: [Object: null prototype] {
+  'x-powered-by': 'Express',
+  'access-control-allow-origin': '*',
+  vary: 'Origin',
+  'access-control-allow-credentials': 'true',
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'strict-transport-security': 'max-age=31536000',
+  connection: 'keep-alive',
+  'cache-control': 'public, max-age=86400',
+  'content-type': 'image/jpeg'
+}
+=== ASSETS REQUEST ===
+Requested path: /images/monster15-1.jpeg
+Full URL: /images/monster15-1.jpeg
+Request headers: {
+  host: 'foxstory.kr',
+  'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Mobile/15E148 Safari/604.1',
+  accept: 'image/webp,image/avif,image/jxl,image/heic,image/heic-sequence,video/*;q=0.8,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5',
+  'accept-encoding': 'gzip, br',
+  'accept-language': 'ko-KR,ko;q=0.9',
+  'cdn-loop': 'cloudflare; loops=1',
+  'cf-connecting-ip': '118.235.25.56',
+  'cf-ipcountry': 'KR',
+  'cf-ray': '998199643db4ea2d-ICN',
+  'cf-visitor': '{"scheme":"https"}',
+  'if-modified-since': 'Fri, 31 Oct 2025 05:44:27 GMT',
+  'if-none-match': 'W/"53c97-19a38cbba78"',
+  priority: 'u=5, i',
+  referer: 'https://foxstory.kr/',
+  'render-proxy-ttl': '4',
+  'rndr-id': '93f565c8-d6ea-416a',
+  'sec-fetch-dest': 'image',
+  'sec-fetch-mode': 'no-cors',
+  'sec-fetch-site': 'same-origin',
+  'true-client-ip': '118.235.25.56',
+  'x-forwarded-for': '118.235.25.56, 172.71.110.189',
+  'x-forwarded-proto': 'https',
+  'x-request-start': '1762065193890807'
+}
+Looking for file: /opt/render/project/src/server/dist/static/assets/images/monster15-1.jpeg
+File exists: true
+=== SERVING ASSET ===
+File path: /opt/render/project/src/server/dist/static/assets/images/monster15-1.jpeg
+File exists check: true
+Response headers set: [Object: null prototype] {
+  'x-powered-by': 'Express',
+  'access-control-allow-origin': '*',
+  vary: 'Origin',
+  'access-control-allow-credentials': 'true',
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'strict-transport-security': 'max-age=31536000',
+  connection: 'keep-alive',
+  'cache-control': 'public, max-age=86400',
+  'content-type': 'image/jpeg'
+}
+=== ASSETS REQUEST ===
+Requested path: /images/monster19.jpeg
+Full URL: /images/monster19.jpeg
+Request headers: {
+  host: 'foxstory.kr',
+  'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Mobile/15E148 Safari/604.1',
+  accept: 'image/webp,image/avif,image/jxl,image/heic,image/heic-sequence,video/*;q=0.8,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5',
+  'accept-encoding': 'gzip, br',
+  'accept-language': 'ko-KR,ko;q=0.9',
+  'cdn-loop': 'cloudflare; loops=1',
+  'cf-connecting-ip': '118.235.25.56',
+  'cf-ipcountry': 'KR',
+  'cf-ray': '998199643dbbea2d-ICN',
+  'cf-visitor': '{"scheme":"https"}',
+  'if-modified-since': 'Fri, 31 Oct 2025 05:44:27 GMT',
+  'if-none-match': 'W/"2a796-19a38cbba78"',
+  priority: 'u=5, i',
+  referer: 'https://foxstory.kr/',
+  'render-proxy-ttl': '4',
+  'rndr-id': 'c4806b66-7c90-4a89',
+  'sec-fetch-dest': 'image',
+  'sec-fetch-mode': 'no-cors',
+  'sec-fetch-site': 'same-origin',
+  'true-client-ip': '118.235.25.56',
+  'x-forwarded-for': '118.235.25.56, 172.71.110.189',
+  'x-forwarded-proto': 'https',
+  'x-request-start': '1762065193912377'
+}
+Looking for file: /opt/render/project/src/server/dist/static/assets/images/monster19.jpeg
+File exists: true
+=== SERVING ASSET ===
+File path: /opt/render/project/src/server/dist/static/assets/images/monster19.jpeg
+File exists check: true
+Response headers set: [Object: null prototype] {
+  'x-powered-by': 'Express',
+  'access-control-allow-origin': '*',
+  vary: 'Origin',
+  'access-control-allow-credentials': 'true',
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'strict-transport-security': 'max-age=31536000',
+  connection: 'keep-alive',
+  'cache-control': 'public, max-age=86400',
+  'content-type': 'image/jpeg'
+}
+=== ASSETS REQUEST ===
+Requested path: /images/monster13.jpeg
+Full URL: /images/monster13.jpeg
+Request headers: {
+  host: 'foxstory.kr',
+  'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Mobile/15E148 Safari/604.1',
+  accept: 'image/webp,image/avif,image/jxl,image/heic,image/heic-sequence,video/*;q=0.8,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5',
+  'accept-encoding': 'gzip, br',
+  'accept-language': 'ko-KR,ko;q=0.9',
+  'cdn-loop': 'cloudflare; loops=1',
+  'cf-connecting-ip': '118.235.25.56',
+  'cf-ipcountry': 'KR',
+  'cf-ray': '998199643da7ea2d-ICN',
+  'cf-visitor': '{"scheme":"https"}',
+  'if-modified-since': 'Fri, 31 Oct 2025 05:44:27 GMT',
+  'if-none-match': 'W/"44ed5-19a38cbba78"',
+  priority: 'u=5, i',
+  referer: 'https://foxstory.kr/',
+  'render-proxy-ttl': '4',
+  'rndr-id': '04c17206-28bf-4492',
+  'sec-fetch-dest': 'image',
+  'sec-fetch-mode': 'no-cors',
+  'sec-fetch-site': 'same-origin',
+  'true-client-ip': '118.235.25.56',
+  'x-forwarded-for': '118.235.25.56, 172.71.110.188',
+  'x-forwarded-proto': 'https',
+  'x-request-start': '1762065193914015'
+}
+Looking for file: /opt/render/project/src/server/dist/static/assets/images/monster13.jpeg
+File exists: true
+=== SERVING ASSET ===
+File path: /opt/render/project/src/server/dist/static/assets/images/monster13.jpeg
+File exists check: true
+Response headers set: [Object: null prototype] {
+  'x-powered-by': 'Express',
+  'access-control-allow-origin': '*',
+  vary: 'Origin',
+  'access-control-allow-credentials': 'true',
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'strict-transport-security': 'max-age=31536000',
+  connection: 'keep-alive',
+  'cache-control': 'public, max-age=86400',
+  'content-type': 'image/jpeg'
+}
+Generated new UUID: #2447 (last was: #2446)
+✅ 게스트 계정 생성 성공: aaaaaa (#2447)
+Chat join request received
+Is reconnection: undefined
+Existing guest user - using client username: aaaaaa
+Final effective name: aaaaaa
+Google ID: null
+[PRIORITY 1] Looking for existing user with userUuid: #2447
+MongoDB connection state: 1
+🚨 [SECURITY] Unauthenticated data subscribe attempt: UucHl2uA9TEmfV1HAAHK
+Companions request: { userId: 'null', username: 'aaaaaa', userUuid: '#2447' }
+Admin status request: { userId: 'null', username: 'aaaaaa', userUuid: '#2447' }
+User equipment request: { userId: 'null', username: 'aaaaaa', userUuid: '#2447' }
+Daily quest request: { userId: 'null', username: 'aaaaaa', userUuid: '#2447' }
+[PRIORITY 1] Nickname already matches: aaaaaa
+Final user: { userUuid: '#2447', username: 'aaaaaa', isGuest: true }
+User joined: {
+  userUuid: '#2447',
+  username: 'aaaaaa',
+  userId: null,
+  hasIdToken: false,
+  isNicknameChange: false,
+  isAlreadyConnected: false
+}
+🔄 Connection cleanup: 7 active, 7 unique users
+=== SENDING USERS UPDATE ===
+Connected users count: 7
+Users list: [
+  { userUuid: 'fox_bot', username: '채팅읽는여우', displayName: '채팅읽는여우' },
+  { userUuid: '#0039', username: '아딸', displayName: '아딸' },
+  { userUuid: '#2445', username: 'test123', displayName: 'test123' },
+  { userUuid: '#2109', username: '레디오스', displayName: '레디오스' },
+  { userUuid: '#0001', username: 'Admin', displayName: 'Admin' },
+  { userUuid: '#0005', username: '천악신', displayName: '천악신' },
+  { userUuid: '#2447', username: 'aaaaaa', displayName: 'aaaaaa' }
+]
+[USER:UUID EVENT] Sending to client: { userUuid: #2447, username: aaaaaa, displayName: aaaaaa }
+🔑 Admin status check for aaaaaa: false
+🔐 JWT generated for user: aaaaaa (#2447)
+🔐 JWT token sent to client: aaaaaa
+[JOIN MESSAGE] Sent join message for new user: aaaaaa
+User has 0 companions: []
+Admin status for aaaaaa: false
+User stats request: { userId: 'null', username: 'aaaaaa', userUuid: '#2447' }
+🦊 Serving root asset: /opt/render/project/src/assets/images/KakaoTalk_20251016_214040037.jpg
+🏆 [#2447] 업적 조회 완료: 0/7 달성
+Creating new fishing skill: { skill: 0, userUuid: '#2447', username: 'aaaaaa' }
+[Quest] Created new daily quest for user: aaaaaa
+Created new user stats for aaaaaa
+User stats for aaaaaa: {
+  userId: 'null',
+  username: 'aaaaaa',
+  userUuid: '#2447',
+  health: 0,
+  attack: 0,
+  speed: 0,
+  _id: new ObjectId('6906fb30ebef1d7ed7555539'),
+  createdAt: 2025-11-02T06:33:20.536Z,
+  updatedAt: 2025-11-02T06:33:20.536Z,
+  __v: 0
+}
+Companion stats request: { userId: 'null', username: 'aaaaaa', userUuid: '#2447' }
+Creating new amber record with data: { userId: 'user', username: 'aaaaaa', userUuid: '#2447', amber: 0 }
+Companion stats for aaaaaa: {}
+Created new user amber record: {
+  userUuid: '#2447',
+  username: 'aaaaaa',
+  userId: 'user',
+  amber: 0,
+  _id: new ObjectId('6906fb31ebef1d7ed755555b'),
+  createdAt: 2025-11-02T06:33:21.062Z,
+  updatedAt: 2025-11-02T06:33:21.062Z,
+  __v: 0
+}
+⚠️ 느린 DB 쿼리 감지: 별조각조회 - 557ms
+🔐 JWT User money request: aaaaaa (#2447)
+Creating new user money: { money: 100, userUuid: '#2447', username: 'aaaaaa' }
+Creating new alchemy potions record with data: {
+  userId: 'user',
+  username: 'aaaaaa',
+  userUuid: '#2447',
+  alchemyPotions: 0
+}
+Created new user alchemy potions record: {
+  userId: 'user',
+  username: 'aaaaaa',
+  userUuid: '#2447',
+  alchemyPotions: 0,
+  _id: new ObjectId('6906fb32ebef1d7ed7555578'),
+  createdAt: 2025-11-02T06:33:22.814Z,
+  updatedAt: 2025-11-02T06:33:22.814Z,
+  __v: 0
+}
+Creating new auto bait record with data: {
+  userId: 'user',
+  username: 'aaaaaa',
+  userUuid: '#2447',
+  autoBaitCount: 0
+}
+Quest progress update: {
+  questType: 'voyage_win',
+  amount: 1,
+  username: '뱅관',
+  userUuid: '#2324'
+}
+Created new user auto bait record: {
+  userId: 'user',
+  username: 'aaaaaa',
+  userUuid: '#2447',
+  autoBaitCount: 0,
+  _id: new ObjectId('6906fb33ebef1d7ed7555582'),
+  createdAt: 2025-11-02T06:33:23.454Z,
+  updatedAt: 2025-11-02T06:33:23.454Z,
+  __v: 0
+}
+Daily quest request: { userId: 'user', username: '뱅관', userUuid: '#2324' }
+Quest progress update: {
+  questType: 'voyage_win',
+  amount: 1,
+  username: '레디오스',
+  userUuid: '#2109'
+}
+Daily quest request: { userId: 'user', username: '레디오스', userUuid: '#2109' }
+Ranking request
+Ranking request
+Ranking request
+Ranking request
+Ranking request
+🔌 새 Socket 연결: 211.234.198.67 (1/5)
+🔐 Socket JWT 인증 성공: 세르페디스 (#0071)
+🔌 Socket connected: 7uWIDbD0umqMSegQAAHQ
+🔌 새 Socket 연결 승인: 211.234.198.67 (7uWIDbD0umqMSegQAAHQ)
+[Raid] 사용자가 레이드 자동 소환 알림을 구독했습니다: 7uWIDbD0umqMSegQAAHQ
+Chat join request received
+Is reconnection: undefined
+Verifying Google ID token...
+Google token verification failed - possibly expired
+Google token verification failed: Token used too late, 1762065232.336 > 1762065228: {"iss":"https://accounts.google.com","azp":"29134467617-5tpp0ivftiqci9bkfighpgfm8i3cgpa4.apps.googleusercontent.com","aud":"29134467617-5tpp0ivftiqci9bkfighpgfm8i3cgpa4.apps.googleusercontent.com","sub":"106938326775830374097","email":"jinnywind@gmail.com","email_verified":true,"nonce":"jrqbabu7dvi","nbf":1762061028,"name":"YoungJin Jung","picture":"https://lh3.googleusercontent.com/a/ACg8ocKgUsMZZoxpe8NdzqDoMSGOOVBNzt4aauDSIQib_4_f3fmdzA=s96-c","given_name":"YoungJin","family_name":"Jung","iat":1762061328,"exp":1762064928,"jti":"0f4d9f1aaa797a308d2a1c8956f90a82634aa28c"}
+🔍 [DEBUG] Blocked accounts request: { adminUsername: 'Admin', adminUserUuid: '#0001' }
+🔍 [DEBUG] Blocked IPs request: { adminUsername: 'Admin', adminUserUuid: '#0001' }
+🔄 [SYNC] Syncing admin rights for blocked accounts list
+📋 [ADMIN] Blocked accounts list requested by Admin: 0 accounts
+🔍 [DEBUG] Admin check for blocked-ips: {
+  adminUsername: 'Admin',
+  adminUserUuid: '#0001',
+  userFound: true,
+  userIsAdmin: undefined,
+  adminRecordFound: true,
+  adminRecordIsAdmin: true
+}
+🔄 [SYNC] Syncing admin rights from AdminModel to UserUuidModel for blocked-ips
+🔍 [DEBUG] Admin check for user-ips: {
+  adminUsername: 'Admin',
+  adminUserUuid: '#0001',
+  userFound: true,
+  userIsAdmin: undefined,
+  adminRecordFound: true,
+  adminRecordIsAdmin: true
+}
+🔄 [SYNC] Syncing admin rights from AdminModel to UserUuidModel
+🔌 Socket 연결 해제: 211.234.198.67 (0/5)
+🔌 Anonymous socket disconnected: 7uWIDbD0umqMSegQAAHQ (client namespace disconnect)
+🔌 Socket 연결 해제: 211.234.198.67 (7uWIDbD0umqMSegQAAHQ) - client namespace disconnect
+📋 [ADMIN] Blocked IPs list requested by Admin: 0 IPs
+⚠️ [IP-DEBUG] Inactive Socket 아딸: Skipping (LastActivity: 2025. 11. 2. 오전 5:05:46)
+🔍 [IP-DEBUG] Active Socket test123: IP=218.50.80.140, Connected=true, LastActivity=2025. 11. 2. 오전 6:33:51
+🔍 [IP-DEBUG] Active Socket 레디오스: IP=112.145.244.201, Connected=true, LastActivity=2025. 11. 2. 오전 6:33:44
+🔍 [IP-DEBUG] Active Socket Admin: IP=218.50.80.140, Connected=true, LastActivity=2025. 11. 2. 오전 6:33:33
+🔍 [IP-DEBUG] Active Socket 천악신: IP=118.235.25.56, Connected=true, LastActivity=2025. 11. 2. 오전 6:33:44
+Ranking request
+🔌 새 Socket 연결: 211.234.198.67 (1/5)
+⚠️ Socket JWT 토큰 없음: 재연결을 위해 연결 허용
+🔌 Socket connected: 3SEupPsE9SSDPbxvAAHS
+🔌 새 Socket 연결 승인: 211.234.198.67 (3SEupPsE9SSDPbxvAAHS)
+[Raid] 사용자가 레이드 자동 소환 알림을 구독했습니다: 3SEupPsE9SSDPbxvAAHS
+🔌 Socket 연결 해제: 211.234.198.67 (0/5)
+🔌 Anonymous socket disconnected: 3SEupPsE9SSDPbxvAAHS (transport close)
+🔌 Socket 연결 해제: 211.234.198.67 (3SEupPsE9SSDPbxvAAHS) - transport close
+=== GET USER SETTINGS API ===
+Request params: {
+  userId: 'user',
+  username: 'YoungJin Jung',
+  userUuid: '',
+  googleId: '106938326775830374097',
+  kakaoId: ''
+}
+Looking for Google user with originalGoogleId: 106938326775830374097
+Ranking request
+Ranking request
+User settings retrieved: {
+  userUuid: '#0071',
+  username: '세르페디스',
+  displayName: '세르페디스',
+  termsAccepted: true,
+  darkMode: true,
+  fishingCooldown: 0,
+  originalGoogleId: '106938326775830374097',
+  originalKakaoId: undefined
+}
+User equipment request: { userId: 'user', username: '세르페디스', userUuid: '#0071' }
+Daily quest request: { userId: 'user', username: '세르페디스', userUuid: '#0071' }
+Companions request: { userId: 'user', username: '세르페디스', userUuid: '#0071' }
+Admin status request: { userId: 'user', username: '세르페디스', userUuid: '#0071' }
+Cooldown status request received
+🔌 새 Socket 연결: 211.234.198.67 (1/5)
+⚠️ Socket JWT 토큰 없음: 재연결을 위해 연결 허용
+🔌 Socket connected: PPPOhQlVDPRJqDtMAAHU
+🔌 새 Socket 연결 승인: 211.234.198.67 (PPPOhQlVDPRJqDtMAAHU)
+User has 6 companions: [ '피에나', '실', '나하트라', '애비게일', '림스&베리', '클로에' ]
+Admin status for 세르페디스: false
+[Raid] 사용자가 레이드 자동 소환 알림을 구독했습니다: PPPOhQlVDPRJqDtMAAHU
+Chat join request received
+Is reconnection: undefined
+Verifying Google ID token...
+👤 User logged in via socket: 세르페디스 (#0071) from IP: 211.234.198.67
+🔍 [IP-COLLECT] Headers for 세르페디스: {
+  'x-forwarded-for': '211.234.198.67',
+  'x-real-ip': undefined,
+  'cf-connecting-ip': '211.234.198.67',
+  address: '::ffff:10.17.238.71',
+  remoteAddress: '::ffff:10.17.238.71'
+}
+Chat join request received
+Is reconnection: undefined
+Verifying Google ID token...
+Google token verified successfully
+Google token verified successfully
+Google login detected: { socialId: '106938326775830374097', provider: 'google' }
+google login detected, checking for existing user with google ID: 106938326775830374097
+Google login detected: { socialId: '106938326775830374097', provider: 'google' }
+google login detected, checking for existing user with google ID: 106938326775830374097
+User 세르페디스 subscribed to data updates
+Found existing google user: {
+  userUuid: '#0071',
+  storedDisplayName: '세르페디스',
+  clientUsername: '',
+  socialDisplayName: 'YoungJin Jung'
+}
+Using stored displayName (preserving user's custom nickname): 세르페디스
+Final effective name: 세르페디스
+Google ID: 106938326775830374097
+[PRIORITY 2] Looking for google user with ID: 106938326775830374097
+Found existing google user: {
+  userUuid: '#0071',
+  storedDisplayName: '세르페디스',
+  clientUsername: '세르페디스',
+  socialDisplayName: 'YoungJin Jung'
+}
+Using stored displayName (preserving user's custom nickname): 세르페디스
+Final effective name: 세르페디스
+Google ID: 106938326775830374097
+[PRIORITY 1] Looking for existing user with userUuid: #0071
+MongoDB connection state: 1
+User stats request: { userId: 'user', username: '세르페디스', userUuid: '#0071' }
+[PRIORITY 2] Found existing google user: 세르페디스
+[PRIORITY 2] Keeping existing nickname: 세르페디스 (matches effectiveName: 세르페디스)
+Final user: { userUuid: '#0071', username: '세르페디스', isGuest: false }
+User joined: {
+  userUuid: '#0071',
+  username: '세르페디스',
+  userId: 'user',
+  hasIdToken: true,
+  isNicknameChange: false,
+  isAlreadyConnected: false
+}
+🔄 Connection cleanup: 8 active, 8 unique users
+=== SENDING USERS UPDATE ===
+Connected users count: 8
+Users list: [
+  { userUuid: 'fox_bot', username: '채팅읽는여우', displayName: '채팅읽는여우' },
+  { userUuid: '#0039', username: '아딸', displayName: '아딸' },
+  { userUuid: '#2445', username: 'test123', displayName: 'test123' },
+  { userUuid: '#2109', username: '레디오스', displayName: '레디오스' },
+  { userUuid: '#0001', username: 'Admin', displayName: 'Admin' },
+  { userUuid: '#0005', username: '천악신', displayName: '천악신' },
+  { userUuid: '#2447', username: 'aaaaaa', displayName: 'aaaaaa' },
+  { userUuid: '#0071', username: '세르페디스', displayName: '세르페디스' }
+]
+[USER:UUID EVENT] Sending to client: { userUuid: #0071, username: 세르페디스, displayName: 세르페디스 }
+[PRIORITY 1] Nickname already matches: 세르페디스
+Final user: { userUuid: '#0071', username: '세르페디스', isGuest: false }
+User joined: {
+  userUuid: '#0071',
+  username: '세르페디스',
+  userId: 'user',
+  hasIdToken: true,
+  isNicknameChange: false,
+  isAlreadyConnected: false
+}
+🔄 Connection cleanup: 8 active, 8 unique users
+=== SENDING USERS UPDATE ===
+Connected users count: 8
+Users list: [
+  { userUuid: 'fox_bot', username: '채팅읽는여우', displayName: '채팅읽는여우' },
+  { userUuid: '#0039', username: '아딸', displayName: '아딸' },
+  { userUuid: '#2445', username: 'test123', displayName: 'test123' },
+  { userUuid: '#2109', username: '레디오스', displayName: '레디오스' },
+  { userUuid: '#0001', username: 'Admin', displayName: 'Admin' },
+  { userUuid: '#0005', username: '천악신', displayName: '천악신' },
+  { userUuid: '#2447', username: 'aaaaaa', displayName: 'aaaaaa' },
+  { userUuid: '#0071', username: '세르페디스', displayName: '세르페디스' }
+]
+[USER:UUID EVENT] Sending to client: { userUuid: #0071, username: 세르페디스, displayName: 세르페디스 }
+🔑 Admin status check for 세르페디스: false
+🔐 JWT generated for user: 세르페디스 (#0071)
+🔐 JWT token sent to client: 세르페디스
+[JOIN MESSAGE] Sent join message for new user: 세르페디스
+🔑 Admin status check for 세르페디스: false
+🔐 JWT generated for user: 세르페디스 (#0071)
+🔐 JWT token sent to client: 세르페디스
+[JOIN MESSAGE] Skipped duplicate join message for 세르페디스 (within 2 seconds)
+User stats for 세르페디스: {
+  _id: new ObjectId('6902053e86ff0cde3f502f4c'),
+  userId: 'user',
+  username: '세르페디스',
+  userUuid: '#0071',
+  health: 25,
+  attack: 25,
+  speed: 27,
+  createdAt: 2025-10-29T12:14:54.226Z,
+  updatedAt: 2025-11-01T17:05:30.676Z,
+  __v: 0
+}
+Get companion stats: { username: '세르페디스', userUuid: '#0071' }
+Companion stats request: { userId: 'user', username: '세르페디스', userUuid: '#0071' }
+Companion stats for 세르페디스: {
+  '클로에': {
+    level: 30,
+    experience: 24783,
+    isInBattle: true,
+    tier: 1,
+    breakthrough: 1,
+    breakthroughStats: { bonusGrowthAttack: 0.5, bonusGrowthHp: 2, bonusGrowthSpeed: 0.1 }
+  },
+  '림스&베리': {
+    level: 31,
+    experience: 3316,
+    isInBattle: true,
+    tier: 1,
+    breakthrough: 1,
+    breakthroughStats: { bonusGrowthAttack: 0.5, bonusGrowthHp: 2, bonusGrowthSpeed: 0.1 }
+  },
+  '실': {
+    level: 25,
+    experience: 16455,
+    isInBattle: true,
+    tier: 0,
+    breakthrough: 1,
+    breakthroughStats: { bonusGrowthAttack: 0.5, bonusGrowthHp: 2, bonusGrowthSpeed: 0.1 }
+  },
+  '피에나': {
+    level: 10,
+    experience: 146,
+    isInBattle: false,
+    tier: 0,
+    breakthrough: 1,
+    breakthroughStats: { bonusGrowthAttack: 0.5, bonusGrowthHp: 2, bonusGrowthSpeed: 0.1 }
+  },
+  '애비게일': {
+    level: 10,
+    experience: 21,
+    isInBattle: false,
+    tier: 0,
+    breakthrough: 1,
+    breakthroughStats: { bonusGrowthAttack: 0.5, bonusGrowthHp: 2, bonusGrowthSpeed: 0.1 }
+  },
+  '나하트라': {
+    level: 25,
+    experience: 475,
+    isInBattle: false,
+    tier: 0,
+    breakthrough: 1,
+    breakthroughStats: { bonusGrowthAttack: 0.5, bonusGrowthHp: 2, bonusGrowthSpeed: 0.1 }
+  }
+}
+⚠️ 느린 DB 쿼리 감지: 재료조회 - 226ms
+🏆 [#0071] 업적 조회 완료: 4/7 달성
+Get companion stats: { username: '세르페디스', userUuid: '#0071' }
+Get companion stats: { username: '세르페디스', userUuid: '#0071' }
+🔐 JWT User money request: 세르페디스 (#0071)
+🔍 [DEBUG] Blocked accounts request: { adminUsername: 'Admin', adminUserUuid: '#0001' }
+🔍 [DEBUG] Blocked IPs request: { adminUsername: 'Admin', adminUserUuid: '#0001' }
+🔄 [SYNC] Syncing admin rights for blocked accounts list
+Quest progress update: {
+  questType: 'voyage_win',
+  amount: 1,
+  username: '레디오스',
+  userUuid: '#2109'
+}
+🔍 [DEBUG] Admin check for blocked-ips: {
+  adminUsername: 'Admin',
+  adminUserUuid: '#0001',
+  userFound: true,
+  userIsAdmin: undefined,
+  adminRecordFound: true,
+  adminRecordIsAdmin: true
+}
+🔄 [SYNC] Syncing admin rights from AdminModel to UserUuidModel for blocked-ips
+🔍 [DEBUG] Admin check for user-ips: {
+  adminUsername: 'Admin',
+  adminUserUuid: '#0001',
+  userFound: true,
+  userIsAdmin: undefined,
+  adminRecordFound: true,
+  adminRecordIsAdmin: true
+}
+🔄 [SYNC] Syncing admin rights from AdminModel to UserUuidModel
+📋 [ADMIN] Blocked accounts list requested by Admin: 0 accounts
+📋 [ADMIN] Blocked IPs list requested by Admin: 0 IPs
+⚠️ [IP-DEBUG] Inactive Socket 아딸: Skipping (LastActivity: 2025. 11. 2. 오전 5:05:46)
+🔍 [IP-DEBUG] Active Socket test123: IP=218.50.80.140, Connected=true, LastActivity=2025. 11. 2. 오전 6:33:55
+🔍 [IP-DEBUG] Active Socket 레디오스: IP=112.145.244.201, Connected=true, LastActivity=2025. 11. 2. 오전 6:33:44
+🔍 [IP-DEBUG] Active Socket Admin: IP=218.50.80.140, Connected=true, LastActivity=2025. 11. 2. 오전 6:33:33
+🔍 [IP-DEBUG] Active Socket 천악신: IP=118.235.25.56, Connected=true, LastActivity=2025. 11. 2. 오전 6:33:44
+🔍 [IP-DEBUG] Active Socket 세르페디스: IP=211.234.198.67, Connected=true, LastActivity=2025. 11. 2. 오전 6:33:56

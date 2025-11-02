@@ -19,6 +19,7 @@ import MailModal from './components/MailModal';
 import GuestLoginModal from './components/GuestLoginModal';
 import { CompanionTab, processCompanionSkill, canUseCompanionSkill } from './components/companions';
 import ExpeditionTab from './components/ExpeditionTab';
+import ArenaTab from './components/ArenaTab';
 import ShopTab from './components/ShopTab';
 import { COMPANION_DATA, calculateCompanionStats } from './data/companionData';
 import { useAchievements, ACHIEVEMENT_DEFINITIONS } from './hooks/useAchievements';
@@ -40,6 +41,7 @@ import {
   Trophy,
   Medal,
   Sword,
+  Shield,
   Moon,
   Sun,
   ShoppingCart,
@@ -63,7 +65,8 @@ import {
   Hammer,
   Mail,
   Anchor,
-  Sparkles
+  Sparkles,
+  Scroll
 } from "lucide-react";
 import "./App.css";
 // 🚀 Web Worker import for background cooldown management
@@ -220,7 +223,7 @@ function App() {
 
   // 🔄 버전 업데이트 시 캐시 초기화 (v1.405)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.411";
+    const CURRENT_VERSION = "v1.412";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -338,8 +341,10 @@ function App() {
   const [fishingSkillDetails, setFishingSkillDetails] = useState({
     baseSkill: 0,
     achievementBonus: 0,
+    arenaBonus: 0,
     totalSkill: 0
   });
+  const [arenaRank, setArenaRank] = useState(null); // 결투장 순위
   const [userUuid, setUserUuid] = useState(null);
   const [isDarkMode, setIsDarkMode] = useState(true); // 기본값: 다크모드
   const [showQuantityModal, setShowQuantityModal] = useState(false);
@@ -3261,13 +3266,49 @@ function App() {
       // JWT 토큰은 유지하고 소켓만 재연결
     };
     
+    // 🚨 세션 대체 처리 (강제 로그아웃)
+    const onSessionReplaced = (data) => {
+      console.log("🚨 [SECURITY] Session replaced:", data);
+      alert(data.message || "다른 위치에서 로그인하여 세션이 종료되었습니다.");
+      
+      // 모든 로컬 데이터 제거
+      localStorage.removeItem("idToken");
+      localStorage.removeItem("nickname");
+      localStorage.removeItem("userUuid");
+      localStorage.removeItem("jwtToken");
+      localStorage.removeItem("jwtExpiresIn");
+      
+      // 페이지 리로드하여 로그인 화면으로 이동
+      window.location.reload();
+    };
+    
     socket.on("duplicate_login", onDuplicateLogin);
     socket.on("session:transition", onSessionTransition);
+    socket.on("auth:session-replaced", onSessionReplaced);
     
     // 레이드 이벤트 리스너 등록
     socket.on("raid:boss:update", onRaidBossUpdate);
     socket.on("raid:log:update", onRaidLogUpdate);
     socket.on("raid:boss:defeated", onRaidBossDefeated);
+    
+    // 🏟️ Arena 랭킹 업데이트 이벤트 리스너
+    socket.on("arena:ranking:update", async () => {
+      console.log('🏟️ Arena 랭킹이 업데이트되었습니다. 낚시실력 재계산...');
+      
+      // Arena 보너스 재계산
+      const arenaBonus = await getArenaBonus();
+      
+      // 낚시실력 업데이트
+      setFishingSkillDetails(prev => {
+        const newTotal = prev.baseSkill + prev.achievementBonus + arenaBonus;
+        setFishingSkill(newTotal);
+        return {
+          ...prev,
+          arenaBonus,
+          totalSkill: newTotal
+        };
+      });
+    });
     
     // 🎮 로그라이크 게임 이벤트 리스너
     socket.on("roguelike:start", (data) => {
@@ -3439,6 +3480,8 @@ function App() {
       socket.off("user:uuid", onUserUuid);
       socket.off("message:reaction:update", onReactionUpdate);
       socket.off("duplicate_login", onDuplicateLogin);
+      socket.off("session:transition", onSessionTransition);
+      socket.off("auth:session-replaced", onSessionReplaced);
       socket.off("join:error", onJoinError);
       socket.off("chat:error", onChatError);
       socket.off("connect_error", onConnectError);
@@ -3451,6 +3494,10 @@ function App() {
       socket.off("raid:boss:update", onRaidBossUpdate);
       socket.off("raid:log:update", onRaidLogUpdate);
       socket.off("raid:boss:defeated", onRaidBossDefeated);
+      
+      // 🏟️ Arena 이벤트 정리
+      socket.off("arena:ranking:update");
+      
       socket.off("roguelike:start");
       socket.off("roguelike:event");
       socket.off("roguelike:end");
@@ -4271,14 +4318,18 @@ function App() {
           accessoryFailCount: 0
         });
         const skillData = skillRes.data;
-        const totalSkill = skillData.skill || 0;
         const baseSkill = skillData.baseSkill || 0;
         const achievementBonus = skillData.achievementBonus || 0;
         
+        // 🏟️ Arena 순위 조회 및 보너스 계산
+        const arenaBonus = await getArenaBonus();
+        
+        const totalSkill = baseSkill + achievementBonus + arenaBonus;
         setFishingSkill(totalSkill);
         setFishingSkillDetails({
           baseSkill,
           achievementBonus,
+          arenaBonus,
           totalSkill
         });
       } catch (e) {
@@ -4965,12 +5016,42 @@ function App() {
         return isDark ? 'text-purple-400' : 'text-purple-600'; // 심연 (보라)
       case '깊은어둠의':
         return isDark ? 'text-red-400' : 'text-red-600'; // 깊은어둠 (빨강)
+      case '파멸의':
+        return isDark ? 'text-orange-400' : 'text-orange-600'; // 파멸 (주황)
+      case '종말의':
+        return isDark ? 'text-yellow-400' : 'text-yellow-600'; // 종말 (금색)
       default:
         return isDark ? 'text-gray-300' : 'text-gray-700';
     }
   };
 
   // 🔧 getMaterialToFish는 useGameData 훅에서 제공됨
+
+  // 🏟️ Arena 보너스 계산 함수
+  const getArenaBonus = async () => {
+    try {
+      const token = localStorage.getItem('jwtToken');
+      if (!token) return 0;
+      
+      const arenaRankRes = await axios.get(`${serverUrl}/api/arena/rankings`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (arenaRankRes.data.success) {
+        const myRank = arenaRankRes.data.rankings.myData.rank;
+        setArenaRank(myRank);
+        if (myRank === 1) {
+          return 2; // 1위: +2
+        } else if (myRank >= 2 && myRank <= 10) {
+          return 1; // 2~10위: +1
+        }
+      }
+      return 0;
+    } catch (error) {
+      console.log('Arena 순위 조회 실패:', error.message);
+      return 0;
+    }
+  };
 
   // 공격력 범위 계산 (최소/최대) - 3차방정식 기반 + 강화 보너스 (퍼센트)
   const getAttackRange = (skill, enhancementBonusPercent = 0) => {
@@ -8267,14 +8348,18 @@ function App() {
             // 낚시실력도 새로고침
             const skillRes = await axios.get(`${serverUrl}/api/fishing-skill/${userId}`, { params });
             const skillData = skillRes.data;
-            const totalSkill = skillData.skill || 0;
             const baseSkill = skillData.baseSkill || 0;
             const achievementBonus = skillData.achievementBonus || 0;
             
+            // 🏟️ Arena 보너스
+            const arenaBonus = await getArenaBonus();
+            
+            const totalSkill = baseSkill + achievementBonus + arenaBonus;
             setFishingSkill(totalSkill);
             setFishingSkillDetails({
               baseSkill,
               achievementBonus,
+              arenaBonus,
               totalSkill
             });
             
@@ -8376,7 +8461,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.411
+                여우이야기 v1.412
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -8672,6 +8757,23 @@ function App() {
                 <User className="w-4 h-4" />
               </button>
 
+              {/* 퀘스트 버튼 */}
+              <button
+                onClick={() => setActiveTab("quests")}
+                className={`p-2 rounded-full hover:glow-effect transition-all duration-300 ${
+                  activeTab === "quests"
+                    ? isDarkMode
+                      ? "bg-green-500/20 text-green-400 border border-green-400/30"
+                      : "bg-green-500/10 text-green-600 border border-green-500/30"
+                    : isDarkMode
+                      ? "glass-input text-green-400 hover:text-green-300"
+                      : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-green-600 hover:text-green-500"
+                }`}
+                title="퀘스트"
+              >
+                <Scroll className="w-4 h-4" />
+              </button>
+
               {/* 랭킹 버튼 */}
               <button
                 onClick={() => {
@@ -8709,14 +8811,14 @@ function App() {
         </div>
       </div>
 
-      {/* 탭 네비게이션 - 📱 모바일 최적화 (2단 레이아웃) */}
+      {/* 탭 네비게이션 - 📱 모바일 최적화 (1줄 레이아웃) */}
       <div className="relative z-10 max-w-7xl mx-auto px-2 sm:px-6 pt-4">
-        <div className={`grid grid-cols-5 sm:grid-cols-10 gap-1 sm:gap-2 p-1 sm:p-2 rounded-2xl ${
+        <div className={`flex flex-nowrap gap-1 sm:gap-2 p-1 sm:p-2 rounded-2xl overflow-x-auto ${
           isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
         }`}>
           <button
             onClick={() => setActiveTab("chat")}
-            className={`flex flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
               mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
             } font-medium ${
               activeTab === "chat"
@@ -8734,7 +8836,7 @@ function App() {
           </button>
           <button
             onClick={() => setActiveTab("inventory")}
-            className={`flex flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
               mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
             } font-medium ${
               activeTab === "inventory"
@@ -8752,7 +8854,7 @@ function App() {
           </button>
           <button
             onClick={() => setActiveTab("growth")}
-            className={`flex flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
               mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
             } font-medium ${
               activeTab === "growth"
@@ -8770,7 +8872,7 @@ function App() {
           </button>
           <button
             onClick={() => setActiveTab("voyage")}
-            className={`flex flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
               mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
             } font-medium ${
               activeTab === "voyage"
@@ -8788,7 +8890,7 @@ function App() {
           </button>
           <button
             onClick={() => setActiveTab("shop")}
-            className={`flex flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
               mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
             } font-medium ${
               activeTab === "shop"
@@ -8806,7 +8908,7 @@ function App() {
           </button>
           <button
             onClick={() => setActiveTab("exploration")}
-            className={`flex flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
               mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
             } font-medium ${
               activeTab === "exploration"
@@ -8824,7 +8926,7 @@ function App() {
           </button>
           <button
             onClick={() => setActiveTab("expedition")}
-            className={`flex flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
               mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
             } font-medium ${
               activeTab === "expedition"
@@ -8845,7 +8947,7 @@ function App() {
           </button>
           <button
             onClick={() => setActiveTab("companions")}
-            className={`flex flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
               mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
             } font-medium ${
               activeTab === "companions"
@@ -8863,7 +8965,7 @@ function App() {
           </button>
           <button
             onClick={() => setActiveTab("raid")}
-            className={`flex flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
               mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
             } font-medium ${
               activeTab === "raid"
@@ -8880,22 +8982,22 @@ function App() {
             <span className="text-[10px] sm:text-xs md:text-sm lg:text-base whitespace-nowrap">레이드</span>
           </button>
           <button
-            onClick={() => setActiveTab("quests")}
-            className={`flex flex-row items-center justify-center gap-1 px-2 sm:px-4 py-2 sm:py-3 rounded-xl transition-all ${
+            onClick={() => setActiveTab("arena")}
+            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
               mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
             } font-medium ${
-              activeTab === "quests"
+              activeTab === "arena"
                 ? isDarkMode
-                  ? "bg-yellow-500/20 text-yellow-400 border border-yellow-400/30"
-                  : "bg-yellow-500/10 text-yellow-600 border border-yellow-500/30"
+                  ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
+                  : "bg-purple-500/10 text-purple-600 border border-purple-500/30"
                 : isDarkMode
                   ? "text-gray-400 hover:text-gray-300"
                   : "text-gray-600 hover:text-gray-800"
             }`}
-            title="퀘스트"
+            title="결투장"
           >
-            <Target className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-[10px] sm:text-xs md:text-sm lg:text-base whitespace-nowrap">퀘스트</span>
+            <Shield className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-[10px] sm:text-xs md:text-sm lg:text-base whitespace-nowrap">결투장</span>
           </button>
         </div>
       </div>
@@ -10621,6 +10723,40 @@ function App() {
             </div>
           )}
 
+          {/* 결투장 탭 */}
+          {activeTab === "arena" && (
+            <div className={`rounded-2xl board-shadow min-h-full flex flex-col ${
+              isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
+            }`}>
+              <ArenaTab 
+                userData={{ username, userUuid }}
+                isDarkMode={isDarkMode}
+                battleCompanions={battleCompanions}
+                companionStats={companionStats}
+                fishingSkill={fishingSkill}
+                userStats={userStats}
+                serverUrl={import.meta.env.VITE_SERVER_URL || "http://localhost:4000"}
+                userEquipment={userEquipment}
+                calculateTotalEnhancementBonus={calculateTotalEnhancementBonus}
+                calculatePlayerAttack={getAttackRange}
+                calculatePlayerMaxHp={calculatePlayerMaxHp}
+                getAccessoryLevel={getAccessoryLevel}
+                activeTab={activeTab}
+                onBattleEnd={async () => {
+                  // 전투 종료 후 낚시실력 새로고침 (Arena 보너스 적용)
+                  const arenaBonus = await getArenaBonus();
+                  const totalSkill = fishingSkillDetails.baseSkill + fishingSkillDetails.achievementBonus + arenaBonus;
+                  setFishingSkill(totalSkill);
+                  setFishingSkillDetails(prev => ({
+                    ...prev,
+                    arenaBonus,
+                    totalSkill
+                  }));
+                }}
+              />
+            </div>
+          )}
+
           {/* 동료모집 탭 */}
           {activeTab === "companions" && (
             <CompanionTab
@@ -11270,6 +11406,9 @@ function App() {
                         <div className="space-y-1">
                           <div>낚시대: {fishingSkillDetails.baseSkill}</div>
                           <div>업적 보너스: +{fishingSkillDetails.achievementBonus}</div>
+                          {fishingSkillDetails.arenaBonus > 0 && (
+                            <div className="text-purple-400">결투장 보너스: +{fishingSkillDetails.arenaBonus} {arenaRank === 1 ? '(1위🏆)' : `(${arenaRank}위)`}</div>
+                          )}
                           <div className="border-t border-gray-500 pt-1">
                             <div className="font-semibold">총합: {fishingSkillDetails.totalSkill}</div>
                           </div>
@@ -12266,6 +12405,9 @@ function App() {
                         <div className="space-y-1">
                           <div>낚시대: {selectedUserProfile ? (otherUserData?.fishingSkillDetails?.baseSkill || 0) : fishingSkillDetails.baseSkill}</div>
                           <div>업적 보너스: +{selectedUserProfile ? (otherUserData?.fishingSkillDetails?.achievementBonus || 0) : fishingSkillDetails.achievementBonus}</div>
+                          {!selectedUserProfile && fishingSkillDetails.arenaBonus > 0 && (
+                            <div className="text-purple-400">결투장 보너스: +{fishingSkillDetails.arenaBonus} {arenaRank === 1 ? '(1위🏆)' : `(${arenaRank}위)`}</div>
+                          )}
                           <div className="border-t border-gray-500 pt-1">
                             <div className="font-semibold">총합: {selectedUserProfile ? (otherUserData?.fishingSkillDetails?.totalSkill || 0) : fishingSkillDetails.totalSkill}</div>
                           </div>

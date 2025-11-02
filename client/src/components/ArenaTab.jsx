@@ -1,0 +1,1554 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Trophy, 
+  Sword, 
+  Shield, 
+  Crown, 
+  TrendingUp,
+  TrendingDown,
+  Zap,
+  Heart,
+  Target,
+  ArrowLeft,
+  Users,
+  Star,
+  ShoppingCart,
+  Coins,
+  Gift,
+  ChevronLeft,
+  ChevronRight
+} from 'lucide-react';
+import axios from 'axios';
+import { calculateCompanionStats } from '../data/companionData';
+
+const ArenaTab = ({ 
+  userData, 
+  isDarkMode = true, 
+  battleCompanions,
+  companionStats,
+  fishingSkill,
+  userStats,
+  serverUrl,
+  userEquipment,
+  calculateTotalEnhancementBonus,
+  calculatePlayerAttack,
+  calculatePlayerMaxHp,
+  getAccessoryLevel,
+  activeTab,
+  onBattleEnd
+}) => {
+  const [subTab, setSubTab] = useState('battle'); // 'battle', 'rankings', or 'shop'
+  const [currentView, setCurrentView] = useState('lobby'); // lobby, battle, result
+  const [myStats, setMyStats] = useState(null);
+  const [rankings, setRankings] = useState(null);
+  const [allRankings, setAllRankings] = useState([]); // 전체 랭킹 데이터
+  const [currentPage, setCurrentPage] = useState(1); // 현재 페이지
+  const [loading, setLoading] = useState(false);
+  const [selectedOpponent, setSelectedOpponent] = useState(null);
+  const [battleState, setBattleState] = useState(null);
+  const [battleLog, setBattleLog] = useState([]);
+  const [battleResult, setBattleResult] = useState(null);
+  const [dailyLimit, setDailyLimit] = useState(null);
+  
+  const battleLogRef = useRef(null);
+  const battleIntervalRef = useRef(null);
+
+  const ITEMS_PER_PAGE = 20; // 페이지당 표시할 항목 수
+
+  // 초기 데이터 로드
+  useEffect(() => {
+    if (userData?.userUuid && userData?.username) {
+      loadArenaData();
+    }
+  }, [userData]);
+
+  // 결투장 탭 클릭 시 자동 새로고침
+  useEffect(() => {
+    if (activeTab === 'arena' && userData?.userUuid && currentView === 'lobby') {
+      loadArenaData();
+    }
+  }, [activeTab]);
+
+  // 전투 로그 자동 스크롤
+  useEffect(() => {
+    if (battleLogRef.current) {
+      battleLogRef.current.scrollTop = battleLogRef.current.scrollHeight;
+    }
+  }, [battleLog]);
+
+  // 컴포넌트 언마운트 시 타이머 정리
+  useEffect(() => {
+    return () => {
+      if (battleIntervalRef.current) {
+        clearInterval(battleIntervalRef.current);
+      }
+    };
+  }, []);
+
+  // 결투장 데이터 로드
+  const loadArenaData = async () => {
+    try {
+      setLoading(true);
+      
+      const token = localStorage.getItem('jwtToken');
+      if (!token) return;
+
+      const config = {
+        headers: { Authorization: `Bearer ${token}` }
+      };
+
+      const [statsRes, rankingsRes] = await Promise.all([
+        axios.get(`${serverUrl}/api/arena/my-stats`, config),
+        axios.get(`${serverUrl}/api/arena/rankings`, config)
+      ]);
+
+      if (statsRes.data.success) {
+        setMyStats(statsRes.data.stats);
+        setDailyLimit(statsRes.data.dailyLimit);
+      }
+
+      if (rankingsRes.data.success) {
+        setRankings(rankingsRes.data.rankings);
+      }
+    } catch (error) {
+      console.error('결투장 데이터 로드 실패:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 전체 랭킹 데이터 로드
+  const loadAllRankings = async () => {
+    try {
+      setLoading(true);
+      
+      const token = localStorage.getItem('jwtToken');
+      if (!token) return;
+
+      const config = {
+        headers: { Authorization: `Bearer ${token}` }
+      };
+
+      const response = await axios.get(`${serverUrl}/api/arena/all-rankings`, config);
+
+      if (response.data.success) {
+        setAllRankings(response.data.rankings || []);
+      }
+    } catch (error) {
+      console.error('전체 랭킹 로드 실패:', error);
+      setAllRankings([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 랭킹 탭으로 전환 시 전체 랭킹 로드
+  useEffect(() => {
+    if (subTab === 'rankings' && userData?.userUuid) {
+      loadAllRankings();
+    }
+  }, [subTab, userData]);
+
+  // 전투 시작
+  const startBattle = async (opponent) => {
+    if (!dailyLimit?.canBattle) {
+      alert('오늘의 전투 횟수를 모두 소진했습니다!');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setSelectedOpponent(opponent);
+
+      const token = localStorage.getItem('jwtToken');
+      const response = await axios.post(
+        `${serverUrl}/api/arena/start-battle`,
+        { opponentUuid: opponent.userUuid },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.data.success) {
+        const { battle, battleId, opponentRank } = response.data;
+        initBattle(battle.player, battle.opponent, battleId, opponentRank);
+        setCurrentView('battle');
+      }
+    } catch (error) {
+      console.error('전투 시작 실패:', error);
+      alert(error.response?.data?.error || '전투 시작에 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 낚시대 레벨 계산
+  const getFishingRodIndex = (fishingRodName) => {
+    const fishingRods = [
+      '나무낚시대', '낡은낚시대', '기본낚시대', '단단한낚시대', '은낚시대', '금낚시대',
+      '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대', '레드다이아몬드낚시대',
+      '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산호등낚시대', '피크닉', '마녀빗자루',
+      '에테르낚시대', '별조각낚시대', '여우꼬리낚시대', '초콜릿롤낚시대', '호박유령낚시대',
+      '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
+    ];
+    return fishingRods.indexOf(fishingRodName) >= 0 ? fishingRods.indexOf(fishingRodName) : 0;
+  };
+
+  // 전투 초기화 (항해 전투 시스템 기반)
+  const initBattle = (playerData, opponentData, battleId, opponentRank) => {
+    // 플레이어 능력치 계산
+    const accessoryLevel = getAccessoryLevel(userEquipment.accessory);
+    const accessoryEnhancementBonus = calculateTotalEnhancementBonus(userEquipment.accessoryEnhancement || 0);
+    const baseMaxHP = calculatePlayerMaxHp(accessoryLevel, accessoryEnhancementBonus);
+    const healthStatBonus = accessoryLevel * (userStats?.health || 0) * 5;
+    const playerMaxHP = baseMaxHP + healthStatBonus;
+
+    const rodEnhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
+    const attackRange = calculatePlayerAttack(fishingSkill, rodEnhancementBonus);
+    const baseAttack = attackRange.base || attackRange; // base 값 사용
+    const fishingRodIndex = getFishingRodIndex(userEquipment.fishingRod);
+    const attackStatBonus = fishingRodIndex * (userStats?.attack || 0);
+    const playerAttack = baseAttack + attackStatBonus;
+
+    // 플레이어 동료들
+    const playerCompanions = battleCompanions.map(companionName => {
+      const stats = companionStats[companionName];
+      const level = stats?.level || 1;
+      const tier = stats?.tier || 0;
+      const breakthrough = stats?.breakthrough || 0;
+      const breakthroughStats = stats?.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 };
+      const companionData = calculateCompanionStats(companionName, level, tier, breakthrough, breakthroughStats);
+      
+      const maxCooldown = Math.max(500, 5000 - companionData.speed * 20);
+      return {
+        name: companionName,
+        hp: companionData.hp,
+        maxHp: companionData.hp,
+        attack: companionData.attack,
+        speed: companionData.speed,
+        cooldown: maxCooldown,
+        maxCooldown: maxCooldown,
+        morale: 50,
+        maxMorale: 100,
+        skill: companionData.skill,
+        side: 'player'
+      };
+    });
+
+    // 상대 동료들 (서버 데이터 기반)
+    const opponentCompanions = (opponentData.companions || []).map(c => {
+      const maxCooldown = Math.max(500, 5000 - (c.speed || 50) * 20);
+      return {
+        name: c.name || c.companionName,
+        hp: c.stats?.health || c.health || 100,
+        maxHp: c.stats?.health || c.health || 100,
+        attack: c.stats?.attack || c.attack || 10,
+        speed: c.stats?.speed || c.speed || 50,
+        cooldown: maxCooldown,
+        maxCooldown: maxCooldown,
+        morale: 50,
+        maxMorale: 100,
+        skill: c.skill || null,
+        side: 'opponent'
+      };
+    });
+
+    // 플레이어 속도
+    const speedStatBonus = (userStats?.speed || 0) * 2;
+    const playerSpeed = 100 + fishingSkill * 10 + speedStatBonus;
+    const playerMaxCooldown = 3000;
+
+    // 상대 능력치 계산 (서버에서 받은 장비 정보 사용)
+    const opponentAccessoryLevel = getAccessoryLevel(opponentData.userStats?.accessory);
+    const opponentAccessoryBonus = calculateTotalEnhancementBonus(opponentData.userStats?.accessoryEnhancement || 0);
+    const opponentBaseHP = calculatePlayerMaxHp(opponentAccessoryLevel, opponentAccessoryBonus);
+    const opponentHealthBonus = opponentAccessoryLevel * (opponentData.userStats?.health || 0) * 5;
+    const opponentMaxHP = opponentBaseHP + opponentHealthBonus;
+
+    const opponentRodBonus = calculateTotalEnhancementBonus(opponentData.userStats?.fishingRodEnhancement || 0);
+    const opponentAttackRange = calculatePlayerAttack(opponentData.fishingSkill, opponentRodBonus);
+    const opponentBaseAttack = opponentAttackRange.base || opponentAttackRange;
+    const opponentRodIndex = getFishingRodIndex(opponentData.userStats?.fishingRod);
+    const opponentAttackBonus = opponentRodIndex * (opponentData.userStats?.attack || 0);
+    const opponentAttack = opponentBaseAttack + opponentAttackBonus;
+
+    // 상대 속도
+    const opponentSpeed = 100 + (opponentData.fishingSkill || 1) * 10;
+    const opponentMaxCooldown = 3000;
+
+    const initialState = {
+      battleId,
+      opponentRank,
+      player: {
+        username: playerData.username,
+        hp: playerMaxHP,
+        maxHp: playerMaxHP,
+        attack: playerAttack,
+        speed: playerSpeed,
+        cooldown: playerMaxCooldown,
+        maxCooldown: playerMaxCooldown,
+        companions: playerCompanions
+      },
+      opponent: {
+        username: opponentData.username,
+        hp: opponentMaxHP,
+        maxHp: opponentMaxHP,
+        attack: opponentAttack,
+        speed: opponentSpeed,
+        cooldown: opponentMaxCooldown,
+        maxCooldown: opponentMaxCooldown,
+        companions: opponentCompanions
+      },
+      status: 'fighting'
+    };
+
+    setBattleState(initialState);
+    setBattleLog([
+      `⚔️ ${playerData.username} vs ${opponentData.username} 결투 시작!`
+    ]);
+  };
+
+  // 실시간 전투 로직 (항해 시스템 기반)
+  useEffect(() => {
+    if (currentView !== 'battle' || !battleState || battleState.status !== 'fighting') {
+      if (battleIntervalRef.current) {
+        clearInterval(battleIntervalRef.current);
+        battleIntervalRef.current = null;
+      }
+      return;
+    }
+
+    // 50ms마다 업데이트
+    battleIntervalRef.current = setInterval(() => {
+      setBattleState(prev => {
+        if (!prev || prev.status !== 'fighting') return prev;
+
+        const newState = { ...prev };
+        const newLog = [];
+
+        // 플레이어 공격
+        if (newState.player.hp > 0) {
+          newState.player.cooldown -= 25;
+          if (newState.player.cooldown <= 0 && newState.opponent.hp > 0) {
+            const damage = Math.floor(newState.player.attack * (0.9 + Math.random() * 0.2));
+            newState.opponent.hp = Math.max(0, newState.opponent.hp - damage);
+            newState.player.cooldown = newState.player.maxCooldown;
+            newLog.push(`⚔️ ${newState.player.username}의 공격! ${damage} 데미지`);
+          }
+        }
+
+        // 플레이어 동료 공격
+        newState.player.companions = newState.player.companions.map(companion => {
+          if (companion.hp <= 0) return companion;
+          
+          const updated = { ...companion };
+          updated.cooldown -= 25;
+          
+          if (updated.cooldown <= 0 && newState.opponent.hp > 0) {
+            updated.morale = Math.min(updated.maxMorale, updated.morale + 15);
+            
+            const canUseSkill = updated.skill && updated.morale >= 100;
+            let damage;
+            let isSkill = false;
+            
+            if (canUseSkill) {
+              isSkill = true;
+              updated.morale = 0;
+              
+              if (updated.skill.skillType === 'heal') {
+                // 힐 스킬
+                const healTargets = newState.player.companions.filter(c => c.hp > 0 && c.hp < c.maxHp);
+                if (healTargets.length > 0) {
+                  const target = healTargets.reduce((min, c) => c.hp < min.hp ? c : min);
+                  const healAmount = Math.floor(updated.attack * (updated.skill.healMultiplier || 1.5));
+                  const actualHeal = Math.min(healAmount, target.maxHp - target.hp);
+                  target.hp = Math.min(target.maxHp, target.hp + healAmount);
+                  newLog.push(`✨ ${updated.name}의 ${updated.skill.name}! ${target.name} +${actualHeal} HP`);
+                }
+                damage = 0;
+              } else {
+                // 공격 스킬
+                damage = Math.floor(updated.attack * updated.skill.damageMultiplier * (0.9 + Math.random() * 0.2));
+                newLog.push(`✨ ${updated.name}의 ${updated.skill.name}! ${damage} 데미지!`);
+              }
+            } else {
+              damage = Math.floor(updated.attack * (0.9 + Math.random() * 0.2));
+              newLog.push(`${updated.name}의 공격! ${damage} 데미지`);
+            }
+            
+            if (damage > 0) {
+              newState.opponent.hp = Math.max(0, newState.opponent.hp - damage);
+            }
+            
+            updated.cooldown = updated.maxCooldown;
+          }
+          
+          return updated;
+        });
+
+        // 상대 플레이어 공격
+        if (newState.opponent.hp > 0) {
+          newState.opponent.cooldown -= 25;
+          if (newState.opponent.cooldown <= 0) {
+            const targets = [
+              { type: 'player', data: newState.player },
+              ...newState.player.companions.map((c, idx) => ({ type: 'companion', data: c, index: idx })).filter(t => t.data.hp > 0)
+            ].filter(t => t.data.hp > 0);
+
+            if (targets.length > 0) {
+              const target = targets[Math.floor(Math.random() * targets.length)];
+              const damage = Math.floor(newState.opponent.attack * (0.8 + Math.random() * 0.4));
+              
+              if (target.type === 'player') {
+                newState.player.hp = Math.max(0, newState.player.hp - damage);
+                newLog.push(`⚔️ ${newState.opponent.username}의 공격! ${damage} 데미지`);
+              } else {
+                newState.player.companions[target.index].hp = Math.max(0, newState.player.companions[target.index].hp - damage);
+                newLog.push(`⚔️ ${newState.opponent.username}이(가) ${target.data.name}에게 ${damage} 데미지`);
+              }
+              
+              newState.opponent.cooldown = newState.opponent.maxCooldown;
+            }
+          }
+        }
+
+        // 상대 동료 공격
+        newState.opponent.companions = newState.opponent.companions.map(companion => {
+          if (companion.hp <= 0) return companion;
+          
+          const updated = { ...companion };
+          updated.cooldown -= 25;
+          
+          if (updated.cooldown <= 0) {
+            const targets = [
+              { type: 'player', data: newState.player },
+              ...newState.player.companions.map((c, idx) => ({ type: 'companion', data: c, index: idx })).filter(t => t.data.hp > 0)
+            ].filter(t => t.data.hp > 0);
+
+            if (targets.length > 0) {
+              updated.morale = Math.min(updated.maxMorale, updated.morale + 15);
+              
+              const canUseSkill = updated.skill && updated.morale >= 100;
+              let damage;
+              let isSkill = false;
+              
+              if (canUseSkill) {
+                isSkill = true;
+                updated.morale = 0;
+                
+                if (updated.skill.skillType === 'heal') {
+                  // 상대 힐 스킬
+                  const healTargets = newState.opponent.companions.filter(c => c.hp > 0 && c.hp < c.maxHp);
+                  if (healTargets.length > 0) {
+                    const target = healTargets.reduce((min, c) => c.hp < min.hp ? c : min);
+                    const healAmount = Math.floor(updated.attack * (updated.skill.healMultiplier || 1.5));
+                    const actualHeal = Math.min(healAmount, target.maxHp - target.hp);
+                    target.hp = Math.min(target.maxHp, target.hp + healAmount);
+                    newLog.push(`✨ ${updated.name}의 ${updated.skill.name}! ${target.name} +${actualHeal} HP`);
+                  }
+                  damage = 0;
+                } else {
+                  damage = Math.floor(updated.attack * updated.skill.damageMultiplier * (0.9 + Math.random() * 0.2));
+                  newLog.push(`✨ ${updated.name}의 ${updated.skill.name}! ${damage} 데미지!`);
+                }
+              } else {
+                damage = Math.floor(updated.attack * (0.9 + Math.random() * 0.2));
+                newLog.push(`${updated.name}의 공격! ${damage} 데미지`);
+              }
+              
+              if (damage > 0) {
+                const target = targets[Math.floor(Math.random() * targets.length)];
+                
+                if (target.type === 'player') {
+                  newState.player.hp = Math.max(0, newState.player.hp - damage);
+                } else {
+                  newState.player.companions[target.index].hp = Math.max(0, newState.player.companions[target.index].hp - damage);
+                }
+              }
+              
+              updated.cooldown = updated.maxCooldown;
+            }
+          }
+          
+          return updated;
+        });
+
+        // 전투 종료 확인
+        const playerAlive = newState.player.hp > 0 || newState.player.companions.some(c => c.hp > 0);
+        const opponentAlive = newState.opponent.hp > 0 || newState.opponent.companions.some(c => c.hp > 0);
+        
+        if (!playerAlive) {
+          newState.status = 'defeat';
+          newLog.push('', '😢 패배했습니다...');
+          finishBattle(false, newState);
+        } else if (!opponentAlive) {
+          newState.status = 'victory';
+          newLog.push('', '🎉 승리했습니다!');
+          finishBattle(true, newState);
+        }
+
+        if (newLog.length > 0) {
+          setBattleLog(prev => [...prev, ...newLog]);
+        }
+
+        return newState;
+      });
+    }, 50);
+
+    return () => {
+      if (battleIntervalRef.current) {
+        clearInterval(battleIntervalRef.current);
+      }
+    };
+  }, [currentView, battleState?.status]);
+
+  // 전투 종료
+  const finishBattle = async (isWin, finalState) => {
+    try {
+      if (battleIntervalRef.current) {
+        clearInterval(battleIntervalRef.current);
+      }
+
+      const token = localStorage.getItem('jwtToken');
+      
+      console.log('[Arena] 전투 종료 요청:', {
+        battleId: finalState.battleId,
+        isWin,
+        opponentUuid: selectedOpponent.userUuid,
+        opponentRank: finalState.opponentRank
+      });
+      
+      const response = await axios.post(
+        `${serverUrl}/api/arena/finish-battle`,
+        {
+          battleId: finalState.battleId,
+          isWin,
+          opponentUuid: selectedOpponent.userUuid,
+          opponentUsername: finalState.opponent.username,
+          opponentRank: finalState.opponentRank || 1
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.data.success) {
+        setBattleResult({
+          ...response.data.result,
+          opponentName: finalState.opponent.username
+        });
+        
+        // 전투 종료 콜백 (낚시실력 새로고침)
+        if (onBattleEnd) {
+          await onBattleEnd();
+        }
+        
+        setTimeout(() => {
+          setCurrentView('result');
+          loadArenaData();
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('전투 결과 처리 실패:', error);
+      alert('전투 결과 처리에 실패했습니다.');
+      returnToLobby();
+    }
+  };
+
+  // 로비로 돌아가기
+  const returnToLobby = () => {
+    if (battleIntervalRef.current) {
+      clearInterval(battleIntervalRef.current);
+    }
+    setCurrentView('lobby');
+    setBattleState(null);
+    setBattleLog([]);
+    setBattleResult(null);
+    setSelectedOpponent(null);
+    loadArenaData();
+  };
+
+  // ELO 변화 색상
+  const getEloChangeColor = (change) => {
+    if (change > 0) return 'text-green-400';
+    if (change < 0) return 'text-red-400';
+    return 'text-gray-400';
+  };
+
+  // 로그인 확인
+  if (!userData?.userUuid || !userData?.username) {
+    return (
+      <div className={`flex items-center justify-center min-h-[400px] rounded-2xl ${
+        isDarkMode ? 'glass-card' : 'bg-white/80 backdrop-blur-md border border-gray-300/30'
+      }`}>
+        <div className="text-center">
+          <Trophy className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+          <p className={`text-lg font-bold mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            결투장 입장 불가
+          </p>
+          <p className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>
+            로그인이 필요합니다.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // 로딩 중
+  if (loading && currentView === 'lobby') {
+    return (
+      <div className={`flex items-center justify-center min-h-[400px] rounded-2xl ${
+        isDarkMode ? 'glass-card' : 'bg-white/80 backdrop-blur-md border border-gray-300/30'
+      }`}>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>로딩 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 결과 화면
+  if (currentView === 'result' && battleResult) {
+    return (
+      <div className={`rounded-2xl board-shadow min-h-full flex flex-col ${
+        isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
+      }`}>
+        {/* 헤더 */}
+        <div className={`border-b p-4 ${
+          isDarkMode ? "border-white/10" : "border-gray-300/20"
+        }`}>
+          <div className="flex items-center justify-center">
+            <div className={`px-4 py-2 rounded-lg font-bold ${
+              battleResult.isWin
+                ? isDarkMode ? "bg-yellow-500/20 text-yellow-400 border border-yellow-400/30" : "bg-yellow-500/10 text-yellow-600 border border-yellow-500/30"
+                : isDarkMode ? "bg-gray-500/20 text-gray-400 border border-gray-400/30" : "bg-gray-500/10 text-gray-600 border border-gray-500/30"
+            }`}>
+              {battleResult.isWin ? '🎉 승리!' : '😢 패배'}
+            </div>
+          </div>
+        </div>
+
+        {/* 결과 콘텐츠 */}
+        <div className="flex-1 p-6">
+        <div className="text-center">
+          <div className="mb-6">
+            {battleResult.isWin ? (
+              <div className="text-6xl mb-4">🎉</div>
+            ) : (
+              <div className="text-6xl mb-4">😢</div>
+            )}
+            <h2 className={`text-3xl font-bold mb-2 ${
+              battleResult.isWin ? 'text-yellow-400' : 'text-gray-400'
+            }`}>
+              {battleResult.isWin ? '승리!' : '패배'}
+            </h2>
+            <p className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
+              vs {battleResult.opponentName}
+            </p>
+          </div>
+
+          <div className={`p-6 rounded-xl mb-6 ${
+            isDarkMode ? 'bg-white/5' : 'bg-gray-100'
+          }`}>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
+                  ELO 변화
+                </span>
+                <span className={`text-2xl font-bold ${getEloChangeColor(battleResult.eloChange)}`}>
+                  {battleResult.eloChange > 0 ? '+' : ''}{battleResult.eloChange}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
+                  새 ELO
+                </span>
+                <span className={`text-xl font-bold ${
+                  isDarkMode ? 'text-blue-400' : 'text-blue-600'
+                }`}>
+                  {battleResult.newElo}
+                </span>
+              </div>
+
+              {battleResult.isWin && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
+                      승점 획득
+                    </span>
+                    <span className="text-xl font-bold text-yellow-400">
+                      +{battleResult.victorPoints}
+                    </span>
+                  </div>
+
+                  {battleResult.winStreak > 1 && (
+                    <div className="flex items-center justify-center gap-2 text-orange-400 text-lg font-bold">
+                      <Zap className="w-5 h-5" />
+                      {battleResult.winStreak}연승!
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          <button
+            onClick={returnToLobby}
+            className={`px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
+              isDarkMode
+                ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-400/30'
+                : 'bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border border-blue-500/30'
+            }`}
+          >
+            로비로 돌아가기
+          </button>
+        </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 전투 화면
+  if (currentView === 'battle' && battleState) {
+    return (
+      <div className={`rounded-2xl board-shadow min-h-full flex flex-col ${
+        isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
+      }`}>
+        {/* 헤더 */}
+        <div className={`border-b p-4 ${
+          isDarkMode ? "border-white/10" : "border-gray-300/20"
+        }`}>
+          <div className="flex items-center justify-center">
+            <div className={`px-4 py-2 rounded-lg font-bold ${
+              isDarkMode ? "bg-red-500/20 text-red-400 border border-red-400/30" : "bg-red-500/10 text-red-600 border border-red-500/30"
+            }`}>
+              ⚔️ 전투 중
+            </div>
+          </div>
+        </div>
+
+        {/* 전투 콘텐츠 */}
+        <div className="flex-1 p-6 overflow-y-auto">
+        {/* 전투 정보 */}
+        <div className="grid grid-cols-2 gap-6 mb-6">
+          {/* 플레이어 */}
+          <CharacterPanel
+            character={battleState.player}
+            companions={battleState.player.companions}
+            isDarkMode={isDarkMode}
+            isPlayer={true}
+          />
+
+          {/* 상대 */}
+          <CharacterPanel
+            character={battleState.opponent}
+            companions={battleState.opponent.companions}
+            isDarkMode={isDarkMode}
+            isPlayer={false}
+          />
+        </div>
+
+        {/* 전투 로그 */}
+        <div className={`p-4 rounded-xl h-64 overflow-y-auto ${
+          isDarkMode ? 'bg-black/20' : 'bg-gray-100'
+        }`} ref={battleLogRef}>
+          {battleLog.map((log, idx) => (
+            <div key={idx} className={`text-sm mb-1 ${
+              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>
+              {log}
+            </div>
+          ))}
+        </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 결투랭킹 화면
+  if (subTab === 'rankings') {
+    const totalPages = Math.ceil(allRankings.length / ITEMS_PER_PAGE);
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    const currentRankings = allRankings.slice(startIndex, endIndex);
+
+    return (
+      <div className={`rounded-2xl board-shadow min-h-full flex flex-col ${
+        isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
+      }`}>
+        {/* 헤더 */}
+        <div className={`border-b p-4 ${
+          isDarkMode ? "border-white/10" : "border-gray-300/20"
+        }`}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 border ${
+                isDarkMode ? "border-white/10" : "border-purple-300/30"
+              }`}>
+                <Shield className={`w-4 h-4 ${
+                  isDarkMode ? "text-purple-400" : "text-purple-600"
+                }`} />
+              </div>
+              <div>
+                <h2 className={`text-lg font-semibold ${
+                  isDarkMode ? "text-white" : "text-gray-800"
+                }`}>결투장</h2>
+                <p className={`text-xs ${
+                  isDarkMode ? "text-gray-400" : "text-gray-600"
+                }`}>PVP 전투 시스템</p>
+              </div>
+            </div>
+            <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+              isDarkMode ? "bg-blue-500/20 text-blue-400" : "bg-blue-500/10 text-blue-600"
+            }`}>
+              총 {allRankings.length}명
+            </div>
+          </div>
+
+          {/* 하위 탭 버튼 */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setSubTab('battle')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
+                subTab === 'battle'
+                  ? isDarkMode
+                    ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
+                    : "bg-purple-500/10 text-purple-600 border border-purple-500/30"
+                  : isDarkMode
+                    ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                    : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
+              }`}
+            >
+              <Sword className="w-4 h-4" />
+              결투장
+            </button>
+            <button
+              onClick={() => {
+                setSubTab('rankings');
+                setCurrentPage(1);
+              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
+                subTab === 'rankings'
+                  ? isDarkMode
+                    ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
+                    : "bg-blue-500/10 text-blue-600 border border-blue-500/30"
+                  : isDarkMode
+                    ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                    : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
+              }`}
+            >
+              <Trophy className="w-4 h-4" />
+              결투랭킹
+            </button>
+            <button
+              onClick={() => setSubTab('shop')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
+                subTab === 'shop'
+                  ? isDarkMode
+                    ? "bg-yellow-500/20 text-yellow-400 border border-yellow-400/30"
+                    : "bg-yellow-500/10 text-yellow-600 border border-yellow-500/30"
+                  : isDarkMode
+                    ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                    : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
+              }`}
+            >
+              <ShoppingCart className="w-4 h-4" />
+              결투상점
+            </button>
+          </div>
+        </div>
+
+        {/* 결투랭킹 콘텐츠 */}
+        <div className="flex-1 p-4 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+            </div>
+          ) : currentRankings.length === 0 ? (
+            <div className={`p-6 rounded-xl text-center ${
+              isDarkMode ? 'bg-white/5' : 'bg-gray-100'
+            }`}>
+              <Trophy className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+              <p className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>
+                랭킹 데이터가 없습니다
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2 mb-4">
+                {currentRankings.map((player, idx) => {
+                  const actualRank = startIndex + idx + 1;
+                  const isMyself = player.userUuid === userData?.userUuid;
+                  
+                  return (
+                    <div
+                      key={player.userUuid}
+                      className={`p-4 rounded-xl flex items-center justify-between transition-all duration-300 ${
+                        isMyself
+                          ? isDarkMode
+                            ? 'bg-yellow-500/20 border-2 border-yellow-400/50'
+                            : 'bg-yellow-500/10 border-2 border-yellow-500/50'
+                          : isDarkMode
+                            ? 'bg-white/5 hover:bg-white/10'
+                            : 'bg-gray-100 hover:bg-gray-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`text-lg font-bold min-w-[3rem] text-center ${
+                          actualRank === 1
+                            ? 'text-yellow-400'
+                            : actualRank === 2
+                            ? 'text-gray-400'
+                            : actualRank === 3
+                            ? 'text-orange-400'
+                            : 'text-gray-500'
+                        }`}>
+                          {actualRank === 1 && <Crown className="w-6 h-6 inline mb-1" />}
+                          {actualRank}위
+                        </div>
+                        <div>
+                          <div className={`font-bold flex items-center gap-2 ${
+                            isDarkMode ? 'text-white' : 'text-gray-900'
+                          }`}>
+                            {player.username}
+                            {isMyself && (
+                              <span className={`text-xs px-2 py-0.5 rounded ${
+                                isDarkMode ? 'bg-yellow-500/30 text-yellow-400' : 'bg-yellow-500/20 text-yellow-600'
+                              }`}>
+                                나
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-400">
+                            {player.totalWins}승 {player.totalLosses}패
+                            {player.winStreak > 0 && (
+                              <span className="ml-2 text-orange-400">
+                                • {player.winStreak}연승
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <div className="text-xl font-bold text-blue-400">
+                          {player.elo}
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          승점: {player.victorPoints}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 페이지네이션 */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-6">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className={`p-2 rounded-lg transition-all duration-300 ${
+                      currentPage === 1
+                        ? 'opacity-50 cursor-not-allowed'
+                        : isDarkMode
+                          ? 'hover:bg-white/10'
+                          : 'hover:bg-gray-200'
+                    } ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+
+                  <div className="flex gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(page => {
+                        // 현재 페이지 근처만 표시
+                        if (totalPages <= 7) return true;
+                        if (page === 1 || page === totalPages) return true;
+                        if (page >= currentPage - 1 && page <= currentPage + 1) return true;
+                        return false;
+                      })
+                      .map((page, idx, arr) => {
+                        // ... 표시
+                        if (idx > 0 && page - arr[idx - 1] > 1) {
+                          return (
+                            <React.Fragment key={`gap-${page}`}>
+                              <span className={`px-3 py-2 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                ...
+                              </span>
+                              <button
+                                onClick={() => setCurrentPage(page)}
+                                className={`px-3 py-2 rounded-lg transition-all duration-300 ${
+                                  currentPage === page
+                                    ? isDarkMode
+                                      ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
+                                      : 'bg-blue-500/10 text-blue-600 border border-blue-500/30'
+                                    : isDarkMode
+                                      ? 'text-gray-400 hover:bg-white/10'
+                                      : 'text-gray-600 hover:bg-gray-200'
+                                }`}
+                              >
+                                {page}
+                              </button>
+                            </React.Fragment>
+                          );
+                        }
+
+                        return (
+                          <button
+                            key={page}
+                            onClick={() => setCurrentPage(page)}
+                            className={`px-3 py-2 rounded-lg transition-all duration-300 ${
+                              currentPage === page
+                                ? isDarkMode
+                                  ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
+                                  : 'bg-blue-500/10 text-blue-600 border border-blue-500/30'
+                                : isDarkMode
+                                  ? 'text-gray-400 hover:bg-white/10'
+                                  : 'text-gray-600 hover:bg-gray-200'
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        );
+                      })}
+                  </div>
+
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className={`p-2 rounded-lg transition-all duration-300 ${
+                      currentPage === totalPages
+                        ? 'opacity-50 cursor-not-allowed'
+                        : isDarkMode
+                          ? 'hover:bg-white/10'
+                          : 'hover:bg-gray-200'
+                    } ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // 결투상점 화면
+  if (subTab === 'shop') {
+    return (
+      <div className={`rounded-2xl board-shadow min-h-full flex flex-col ${
+        isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
+      }`}>
+        {/* 헤더 */}
+        <div className={`border-b p-4 ${
+          isDarkMode ? "border-white/10" : "border-gray-300/20"
+        }`}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 border ${
+                isDarkMode ? "border-white/10" : "border-purple-300/30"
+              }`}>
+                <Shield className={`w-4 h-4 ${
+                  isDarkMode ? "text-purple-400" : "text-purple-600"
+                }`} />
+              </div>
+              <div>
+                <h2 className={`text-lg font-semibold ${
+                  isDarkMode ? "text-white" : "text-gray-800"
+                }`}>결투장</h2>
+                <p className={`text-xs ${
+                  isDarkMode ? "text-gray-400" : "text-gray-600"
+                }`}>PVP 전투 시스템</p>
+              </div>
+            </div>
+            {myStats && (
+              <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                isDarkMode ? "bg-yellow-500/20 text-yellow-400" : "bg-yellow-500/10 text-yellow-600"
+              }`}>
+                승점: {myStats.victorPoints}
+              </div>
+            )}
+          </div>
+
+          {/* 하위 탭 버튼 */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setSubTab('battle')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
+                subTab === 'battle'
+                  ? isDarkMode
+                    ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
+                    : "bg-purple-500/10 text-purple-600 border border-purple-500/30"
+                  : isDarkMode
+                    ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                    : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
+              }`}
+            >
+              <Sword className="w-4 h-4" />
+              결투장
+            </button>
+            <button
+              onClick={() => {
+                setSubTab('rankings');
+                setCurrentPage(1);
+              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
+                subTab === 'rankings'
+                  ? isDarkMode
+                    ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
+                    : "bg-blue-500/10 text-blue-600 border border-blue-500/30"
+                  : isDarkMode
+                    ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                    : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
+              }`}
+            >
+              <Trophy className="w-4 h-4" />
+              결투랭킹
+            </button>
+            <button
+              onClick={() => setSubTab('shop')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
+                subTab === 'shop'
+                  ? isDarkMode
+                    ? "bg-yellow-500/20 text-yellow-400 border border-yellow-400/30"
+                    : "bg-yellow-500/10 text-yellow-600 border border-yellow-500/30"
+                  : isDarkMode
+                    ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                    : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
+              }`}
+            >
+              <ShoppingCart className="w-4 h-4" />
+              결투상점
+            </button>
+          </div>
+        </div>
+
+        {/* 결투상점 콘텐츠 */}
+        <div className="flex-1 p-4">
+          <div className={`p-6 rounded-xl text-center ${
+            isDarkMode ? 'bg-white/5' : 'bg-gray-100'
+          }`}>
+            <ShoppingCart className="w-16 h-16 mx-auto mb-4 text-purple-400" />
+            <h3 className={`text-xl font-bold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+              결투상점
+            </h3>
+            <p className={`mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              승점으로 특별한 아이템을 구매할 수 있습니다
+            </p>
+            <p className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+              준비 중...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 결투장 로비 화면
+  return (
+    <div className={`rounded-2xl board-shadow min-h-full flex flex-col ${
+      isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
+    }`}>
+      {/* 헤더 */}
+      <div className={`border-b p-4 ${
+        isDarkMode ? "border-white/10" : "border-gray-300/20"
+      }`}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 border ${
+              isDarkMode ? "border-white/10" : "border-purple-300/30"
+            }`}>
+              <Shield className={`w-4 h-4 ${
+                isDarkMode ? "text-purple-400" : "text-purple-600"
+              }`} />
+            </div>
+            <div>
+              <h2 className={`text-lg font-semibold ${
+                isDarkMode ? "text-white" : "text-gray-800"
+              }`}>결투장</h2>
+              <p className={`text-xs ${
+                isDarkMode ? "text-gray-400" : "text-gray-600"
+              }`}>PVP 전투 시스템</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            {dailyLimit && (
+              <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                dailyLimit.canBattle
+                  ? isDarkMode
+                    ? 'bg-green-500/20 text-green-400 border border-green-400/30'
+                    : 'bg-green-500/10 text-green-600 border border-green-500/30'
+                  : isDarkMode
+                    ? 'bg-red-500/20 text-red-400 border border-red-400/30'
+                    : 'bg-red-500/10 text-red-600 border border-red-500/30'
+              }`}>
+                오늘 전투: {dailyLimit.remaining}/10
+              </div>
+            )}
+            {myStats && (
+              <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                isDarkMode ? "bg-yellow-500/20 text-yellow-400" : "bg-yellow-500/10 text-yellow-600"
+              }`}>
+                승점: {myStats.victorPoints}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 하위 탭 버튼 */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setSubTab('battle')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
+              subTab === 'battle'
+                ? isDarkMode
+                  ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
+                  : "bg-purple-500/10 text-purple-600 border border-purple-500/30"
+                : isDarkMode
+                  ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                  : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
+            }`}
+          >
+            <Sword className="w-4 h-4" />
+            결투장
+          </button>
+          <button
+            onClick={() => {
+              setSubTab('rankings');
+              setCurrentPage(1);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
+              subTab === 'rankings'
+                ? isDarkMode
+                  ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
+                  : "bg-blue-500/10 text-blue-600 border border-blue-500/30"
+                : isDarkMode
+                  ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                  : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
+            }`}
+          >
+            <Trophy className="w-4 h-4" />
+            결투랭킹
+          </button>
+          <button
+            onClick={() => setSubTab('shop')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
+              subTab === 'shop'
+                ? isDarkMode
+                  ? "bg-yellow-500/20 text-yellow-400 border border-yellow-400/30"
+                  : "bg-yellow-500/10 text-yellow-600 border border-yellow-500/30"
+                : isDarkMode
+                  ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                  : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
+            }`}
+          >
+            <ShoppingCart className="w-4 h-4" />
+            결투상점
+          </button>
+        </div>
+      </div>
+
+      {/* 결투장 콘텐츠 */}
+      <div className="flex-1 p-4 overflow-y-auto">
+
+      {myStats && (
+        <div className={`p-4 rounded-xl mb-6 ${
+          isDarkMode ? 'bg-blue-500/10 border border-blue-400/30' : 'bg-blue-500/5 border border-blue-500/30'
+        }`}>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <div className="text-sm text-gray-400 mb-1">ELO</div>
+              <div className="text-2xl font-bold text-blue-400">{myStats.elo}</div>
+            </div>
+            <div>
+              <div className="text-sm text-gray-400 mb-1">승점</div>
+              <div className="text-2xl font-bold text-yellow-400">{myStats.victorPoints}</div>
+            </div>
+            <div>
+              <div className="text-sm text-gray-400 mb-1">전적</div>
+              <div className={`text-lg font-bold ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                {myStats.totalWins}승 {myStats.totalLosses}패
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!rankings ? (
+        <div className={`p-6 rounded-xl text-center ${
+          isDarkMode ? 'bg-white/5' : 'bg-gray-100'
+        }`}>
+          <p className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>
+            랭킹 데이터를 불러오는 중...
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {rankings.higher.length > 0 && (
+            <div>
+              <h3 className={`text-lg font-bold mb-3 flex items-center gap-2 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                <TrendingUp className="w-5 h-5 text-green-400" />
+                상위 랭커
+              </h3>
+              <div className="space-y-2">
+                {rankings.higher.map((player, idx) => (
+                  <PlayerCard
+                    key={player.userUuid}
+                    player={player}
+                    rank={idx + 1}
+                    isDarkMode={isDarkMode}
+                    onBattle={startBattle}
+                    canBattle={dailyLimit?.canBattle}
+                    myElo={myStats?.elo}
+                    isHigher={true}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {rankings.myData && (
+            <div className={`p-4 rounded-xl border-2 ${
+              isDarkMode 
+                ? 'bg-yellow-500/10 border-yellow-400' 
+                : 'bg-yellow-500/5 border-yellow-500'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Crown className="w-6 h-6 text-yellow-400" />
+                  <div>
+                    <div className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {userData?.username} (나)
+                    </div>
+                    <div className="text-sm text-gray-400">
+                      {rankings.myData.rank}위
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-bold text-blue-400">{rankings.myData.elo}</div>
+                  <div className="text-sm text-gray-400">
+                    {rankings.myData.totalWins}승 {rankings.myData.totalLosses}패
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {rankings.lower.length > 0 && (
+            <div>
+              <h3 className={`text-lg font-bold mb-3 flex items-center gap-2 ${
+                isDarkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                <TrendingDown className="w-5 h-5 text-orange-400" />
+                하위 유저
+              </h3>
+              <div className="space-y-2">
+                {rankings.lower.map((player, idx) => (
+                  <PlayerCard
+                    key={player.userUuid}
+                    player={player}
+                    rank={idx + 1}
+                    isDarkMode={isDarkMode}
+                    onBattle={startBattle}
+                    canBattle={dailyLimit?.canBattle}
+                    myElo={myStats?.elo}
+                    isHigher={false}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {rankings.higher.length === 0 && rankings.lower.length === 0 && (
+            <div className={`p-6 rounded-xl text-center ${
+              isDarkMode ? 'bg-white/5' : 'bg-gray-100'
+            }`}>
+              <Users className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+              <p className={`font-bold mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                대결 가능한 상대가 없습니다
+              </p>
+              <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                다른 유저가 결투장에 참여할 때까지 기다려주세요!
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+      </div>
+    </div>
+  );
+};
+
+// 캐릭터 패널 컴포넌트
+const CharacterPanel = ({ character, companions, isDarkMode, isPlayer }) => {
+  const bgColor = isPlayer 
+    ? isDarkMode ? 'bg-blue-500/10 border border-blue-400/30' : 'bg-blue-500/5 border border-blue-500/30'
+    : isDarkMode ? 'bg-red-500/10 border border-red-400/30' : 'bg-red-500/5 border border-red-500/30';
+  
+  const textColor = isPlayer ? 'text-blue-400' : 'text-red-400';
+
+  return (
+    <div className={`p-4 rounded-xl ${bgColor}`}>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className={`font-bold ${textColor}`}>{character.username}</h3>
+      </div>
+      
+      {/* HP 바 */}
+      <div className="mb-3">
+        <div className="flex items-center justify-between text-sm mb-1">
+          <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>HP</span>
+          <span className="text-red-400 font-bold">
+            {character.hp}/{character.maxHp}
+          </span>
+        </div>
+        <div className="w-full bg-gray-700 rounded-full h-3">
+          <div
+            className={`h-3 rounded-full transition-all duration-300 ${
+              isPlayer ? 'bg-gradient-to-r from-green-500 to-blue-500' : 'bg-gradient-to-r from-red-500 to-orange-500'
+            }`}
+            style={{ width: `${(character.hp / character.maxHp) * 100}%` }}
+          />
+        </div>
+      </div>
+
+      {/* 속도바 */}
+      <div className="mb-3">
+        <div className="w-full bg-gray-700 rounded-full h-2">
+          <div
+            className={`h-2 rounded-full transition-all ${
+              isPlayer ? 'bg-blue-400' : 'bg-red-400'
+            }`}
+            style={{ 
+              width: `${100 - (character.cooldown / character.maxCooldown) * 100}%`,
+              transition: 'width 0.05s linear'
+            }}
+          />
+        </div>
+      </div>
+      
+      <div className="text-xs text-gray-400 mb-3">
+        <div>⚔️ 공격력: {character.attack}</div>
+        <div>⚡ 속도: {character.speed}</div>
+      </div>
+      
+      {/* 동료 목록 */}
+      <div className="space-y-1 max-h-48 overflow-y-auto">
+        <div className="text-xs font-bold text-gray-400 mb-1">
+          동료 ({companions.length}명)
+        </div>
+        {companions.length === 0 ? (
+          <div className="text-xs text-gray-500">참여 중인 동료 없음</div>
+        ) : (
+          companions.map((companion, idx) => (
+            <div key={idx} className="space-y-1 mb-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className={companion.hp > 0 ? 'text-gray-300' : 'text-gray-600 line-through'}>
+                  {companion.name}
+                </span>
+                <span className={companion.hp > 0 ? 'text-green-400' : 'text-gray-600'}>
+                  {companion.hp > 0 ? `${companion.hp}/${companion.maxHp}` : '전투불능'}
+                </span>
+              </div>
+              {companion.hp > 0 && (
+                <>
+                  {/* 체력바 */}
+                  <div className="w-full bg-gray-700 rounded-full h-1.5">
+                    <div
+                      className="h-1.5 rounded-full bg-gradient-to-r from-green-500 to-green-400"
+                      style={{ 
+                        width: `${(companion.hp / companion.maxHp) * 100}%`,
+                        transition: 'width 0.3s ease-out'
+                      }}
+                    />
+                  </div>
+                  {/* 속도바 */}
+                  <div className="w-full bg-gray-700 rounded-full h-1">
+                    <div
+                      className={`h-1 rounded-full ${
+                        isPlayer ? 'bg-blue-300' : 'bg-red-300'
+                      }`}
+                      style={{ 
+                        width: `${100 - (companion.cooldown / companion.maxCooldown) * 100}%`,
+                        transition: 'width 0.05s linear'
+                      }}
+                    />
+                  </div>
+                  {/* Morale 바 */}
+                  {companion.skill && (
+                    <div className="w-full bg-gray-700 rounded-full h-1">
+                      <div
+                        className="h-1 rounded-full bg-yellow-400"
+                        style={{ width: `${(companion.morale / companion.maxMorale) * 100}%` }}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
+// 플레이어 카드 컴포넌트
+const PlayerCard = ({ player, rank, isDarkMode, onBattle, canBattle, myElo, isHigher }) => {
+  const expectedEloChange = 60 - (rank - 1) * 3;
+  const expectedLoseChange = -3 - (rank - 1) * 3;
+
+  return (
+    <div className={`p-4 rounded-xl flex items-center justify-between ${
+      isDarkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-gray-100 hover:bg-gray-200'
+    } transition-all duration-300`}>
+      <div className="flex items-center gap-4">
+        <div className={`text-lg font-bold ${
+          rank <= 3 ? 'text-yellow-400' : 'text-gray-400'
+        }`}>
+          #{rank}
+        </div>
+        <div>
+          <div className={`font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            {player.username}
+          </div>
+          <div className="text-sm text-gray-400">
+            {player.totalWins}승 {player.totalLosses}패
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <div className="text-right">
+          <div className="text-xl font-bold text-blue-400">{player.elo}</div>
+          <div className="text-xs text-gray-400">
+            <span className="text-green-400">+{expectedEloChange}</span>
+            {' / '}
+            <span className="text-red-400">{expectedLoseChange}</span>
+          </div>
+        </div>
+        
+        <button
+          onClick={() => onBattle(player)}
+          disabled={!canBattle}
+          className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center gap-2 ${
+            canBattle
+              ? isDarkMode
+                ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-400/30'
+                : 'bg-red-500/10 text-red-600 hover:bg-red-500/20 border border-red-500/30'
+              : 'bg-gray-500/20 text-gray-500 cursor-not-allowed'
+          }`}
+        >
+          <Sword className="w-4 h-4" />
+          전투
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default ArenaTab;

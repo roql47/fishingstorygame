@@ -6,13 +6,15 @@ const router = express.Router();
 const recentClaims = new Map(); // userUuid -> timestamp
 
 // 항해 보상 지급 API
-const setupVoyageRoutes = (app, UserMoneyModel, CatchModel, DailyQuestModel, getKSTDate) => {
+const setupVoyageRoutes = (app, UserMoneyModel, CatchModel, DailyQuestModel, getKSTDate, authenticateJWT) => {
   // 항해 보상 지급
-  app.post('/api/voyage/reward', async (req, res) => {
+  app.post('/api/voyage/reward', authenticateJWT, async (req, res) => {
     try {
-      const { username, userUuid, fishName, gold, rank } = req.body;
+      // 🔐 JWT에서 사용자 정보 추출 (보안 강화)
+      const { userUuid, username } = req.user;
+      const { fishName, gold, rank } = req.body;
 
-      if (!username || !userUuid || !fishName || !gold) {
+      if (!fishName || !gold) {
         return res.status(400).json({
           success: false,
           error: '필수 정보가 누락되었습니다.'
@@ -84,10 +86,12 @@ const setupVoyageRoutes = (app, UserMoneyModel, CatchModel, DailyQuestModel, get
                   explorationWins: 0,
                   fishSold: 0,
                   voyageWins: 1, // 첫 승리
+                  expeditionWins: 0,
                   questFishCaught: false,
                   questExplorationWin: false,
                   questFishSold: false,
                   questVoyageWin: false,
+                  questExpeditionWin: false,
                   lastResetDate: today
                 }
               },

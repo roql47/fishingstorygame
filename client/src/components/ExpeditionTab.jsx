@@ -32,6 +32,10 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
         return isDark ? 'text-purple-400' : 'text-purple-600'; // 심연 (보라)
       case '깊은어둠의':
         return isDark ? 'text-red-400' : 'text-red-600'; // 깊은어둠 (빨강)
+      case '파멸의':
+        return isDark ? 'text-orange-400' : 'text-orange-600'; // 파멸 (주황)
+      case '종말의':
+        return isDark ? 'text-yellow-400' : 'text-yellow-600'; // 종말 (금색)
       default:
         return isDark ? 'text-gray-300' : 'text-gray-700';
     }
@@ -56,6 +60,14 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
         return isDark 
           ? 'from-red-500/10 to-pink-500/10 border-red-500/30'
           : 'from-red-500/5 to-pink-500/5 border-red-500/30';
+      case '파멸의':
+        return isDark 
+          ? 'from-orange-500/10 to-amber-500/10 border-orange-500/30'
+          : 'from-orange-500/5 to-amber-500/5 border-orange-500/30';
+      case '종말의':
+        return isDark 
+          ? 'from-yellow-500/10 to-amber-400/10 border-yellow-500/30'
+          : 'from-yellow-500/5 to-amber-400/5 border-yellow-500/30';
       default:
         return isDark 
           ? 'from-gray-500/10 to-gray-600/10 border-gray-500/30'
@@ -690,13 +702,14 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
   };
 
   // 모든 파티 멤버의 동료 정보 로드
-  const loadAllPlayersCompanions = async () => {
-    if (!currentRoom?.players) return;
+  const loadAllPlayersCompanions = async (players = null) => {
+    const playersToLoad = players || currentRoom?.players;
+    if (!playersToLoad) return;
     
-    console.log(`[EXPEDITION] Loading companions for ${currentRoom.players.length} players`);
+    console.log(`[EXPEDITION] Loading companions for ${playersToLoad.length} players`);
     const companionsData = {};
     
-    for (const player of currentRoom.players) {
+    for (const player of playersToLoad) {
       const companions = await fetchPlayerCompanions(player.id, player.name);
       companionsData[player.id] = companions;
     }
@@ -804,12 +817,17 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
     loadAvailableRooms();
   };
 
-  const handleRoomUpdated = (room) => {
+  const handleRoomUpdated = async (room) => {
     console.log('[EXPEDITION] Room updated event received:', room);
     if (currentRoom && currentRoom.id === room.id) {
       console.log('[EXPEDITION] Updating current room state');
       setCurrentRoom(room);
       setForceUpdateCounter(prev => prev + 1); // 강제 리렌더링
+      
+      // 🔄 동료 정보 다시 로드 (대기실에서만)
+      if (currentView === 'room') {
+        await loadAllPlayersCompanions(room.players);
+      }
     }
     loadAvailableRooms();
     setForceUpdateCounter(prev => prev + 1); // 전체 강제 리렌더링
@@ -955,7 +973,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
     }
   };
 
-  const handlePlayerJoined = (data) => {
+  const handlePlayerJoined = async (data) => {
     console.log('[EXPEDITION] Player joined event received:', data);
     // 현재 방에 있는 경우 실시간으로 업데이트
     if (currentRoom && currentRoom.id === data.roomId) {
@@ -964,16 +982,26 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
       console.log('[EXPEDITION] New players:', data.room.players);
       setCurrentRoom(data.room);
       setForceUpdateCounter(prev => prev + 1);
+      
+      // 🔄 동료 정보 다시 로드 (새 플레이어 포함)
+      if (currentView === 'room') {
+        await loadAllPlayersCompanions(data.room.players);
+      }
     }
     // 방 목록도 업데이트
     loadAvailableRooms();
   };
 
-  const handlePlayerReady = (data) => {
+  const handlePlayerReady = async (data) => {
     // 현재 방에 있는 경우 실시간으로 업데이트
     if (currentRoom && currentRoom.id === data.roomId) {
       setCurrentRoom(data.room);
       setForceUpdateCounter(prev => prev + 1);
+      
+      // 🔄 동료 정보 다시 로드 (대기실에서만)
+      if (currentView === 'room') {
+        await loadAllPlayersCompanions(data.room.players);
+      }
     }
     // 방 목록도 업데이트
     loadAvailableRooms();

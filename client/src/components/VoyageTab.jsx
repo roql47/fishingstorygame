@@ -231,9 +231,37 @@ const VoyageTab = ({
               updatedCompanion.morale = 0; // 스킬 사용 시 사기 초기화
               
               if (updatedCompanion.skill.skillType === 'heal') {
-                // 힐 스킬 (항해에서는 단순화)
+                // 힐 스킬: 플레이어 + 다른 동료 중 랜덤 선택
                 damage = 0;
-                newLog.push(`✨ ${updatedCompanion.name}이(가) ${updatedCompanion.skill.name} 스킬을 사용했습니다!`);
+                
+                // 치유 가능한 대상 수집 (자기 자신 제외)
+                const healTargets = [
+                  { type: 'player', data: newState.player },
+                  ...newState.companions
+                    .map((c, idx) => ({ type: 'companion', data: c, index: idx }))
+                    .filter(t => t.data.name !== updatedCompanion.name && t.data.hp > 0)
+                ].filter(t => t.data.hp > 0);
+                
+                if (healTargets.length > 0) {
+                  // 랜덤 타겟 선택
+                  const healTarget = healTargets[Math.floor(Math.random() * healTargets.length)];
+                  const healAmount = Math.floor(updatedCompanion.attack * updatedCompanion.skill.damageMultiplier * 0.5);
+                  
+                  if (healTarget.type === 'player') {
+                    const beforeHp = newState.player.hp;
+                    newState.player.hp = Math.min(newState.player.maxHp, newState.player.hp + healAmount);
+                    const actualHeal = newState.player.hp - beforeHp;
+                    newLog.push(`✨ ${updatedCompanion.name}이(가) ${updatedCompanion.skill.name} 스킬로 플레이어를 ${actualHeal} 회복시켰습니다!`);
+                  } else {
+                    const targetCompanion = newState.companions[healTarget.index];
+                    const beforeHp = targetCompanion.hp;
+                    targetCompanion.hp = Math.min(targetCompanion.maxHp, targetCompanion.hp + healAmount);
+                    const actualHeal = targetCompanion.hp - beforeHp;
+                    newLog.push(`✨ ${updatedCompanion.name}이(가) ${updatedCompanion.skill.name} 스킬로 ${targetCompanion.name}을(를) ${actualHeal} 회복시켰습니다!`);
+                  }
+                } else {
+                  newLog.push(`✨ ${updatedCompanion.name}이(가) ${updatedCompanion.skill.name} 스킬을 사용했지만 치유할 대상이 없습니다.`);
+                }
               } else {
                 // 공격 스킬
                 damage = Math.floor(updatedCompanion.attack * updatedCompanion.skill.damageMultiplier * (0.9 + Math.random() * 0.2));
@@ -543,7 +571,7 @@ const VoyageTab = ({
                       <img 
                         src={fish.image} 
                         alt={fish.name}
-                        className="w-full h-32 object-cover rounded-lg"
+                        className="w-full h-20 sm:h-24 md:h-28 lg:h-32 object-cover rounded-lg"
                         style={{ objectPosition: fish.imagePosition || 'center' }}
                       />
                       <div className={`absolute top-2 right-2 px-2 py-1 rounded-full text-xs font-bold ${
@@ -654,7 +682,7 @@ const VoyageTab = ({
                 <img 
                   src={selectedFish.image} 
                   alt={battleState.enemy.name}
-                  className="w-80 h-80 object-contain rounded-xl border-4 border-red-500/50 shadow-lg bg-gradient-to-br from-red-900/20 to-red-800/20"
+                  className="w-40 h-40 sm:w-52 sm:h-52 md:w-64 md:h-64 lg:w-80 lg:h-80 object-contain rounded-xl border-4 border-red-500/50 shadow-lg bg-gradient-to-br from-red-900/20 to-red-800/20"
                 />
                 {/* 피격 애니메이션 - 플레이어나 동료가 공격할 때 */}
                 {((attackAnimations.player && Date.now() - attackAnimations.player < 300) ||

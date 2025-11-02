@@ -51,6 +51,22 @@ class ExpeditionSystem {
                 fishRankRange: [16, 20],
                 maxMonsters: 5,
                 minMonsters: 4
+            },
+            {
+                id: 5,
+                name: '비문의잔해',
+                description: '고대 비문의 잔해가 흩어진 신비로운 장소에서 레벨 21-25의 강력한 물고기들이 출몰합니다',
+                fishRankRange: [21, 25],
+                maxMonsters: 6,
+                minMonsters: 5
+            },
+            {
+                id: 6,
+                name: '트루키다토르',
+                description: '전설의 물고기들이 잠든 고대 전장에서 레벨 26-30의 최강 물고기들이 기다립니다',
+                fishRankRange: [26, 30],
+                maxMonsters: 6,
+                minMonsters: 5
             }
         ];
     }
@@ -2197,10 +2213,12 @@ class ExpeditionSystem {
                             explorationWins: 0,
                             fishSold: 0,
                             voyageWins: 1,
+                            expeditionWins: 0,
                             questFishCaught: false,
                             questExplorationWin: false,
                             questFishSold: false,
                             questVoyageWin: false,
+                            questExpeditionWin: false,
                             lastResetDate: today
                         }
                     },

@@ -10,6 +10,8 @@ const bcrypt = require('bcrypt'); // 🔐 비밀번호 암호화
 const multer = require('multer'); // 📸 이미지 업로드
 const sharp = require('sharp'); // 🖼️ 이미지 리사이징
 const fs = require('fs'); // 📁 파일 시스템
+const mongoSanitize = require('express-mongo-sanitize'); // 🛡️ NoSQL Injection 방어
+const validator = require('validator'); // 🛡️ 입력값 검증
 // ☁️ AWS SDK for S3 + CloudFront
 const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
@@ -29,6 +31,9 @@ const setupExpeditionRoutes = require('./routes/expeditionRoutes');
 
 // 항해 시스템 모듈 import
 const setupVoyageRoutes = require('./routes/voyageRoutes');
+
+// 결투장 시스템 모듈 import
+const { setupArenaRoutes } = require('./routes/arenaRoutes');
 
 // 🦊 여우 AI 챗봇 모듈 import
 const FoxAiBot = require('./modules/foxAiBot');
@@ -495,6 +500,14 @@ if (isProduction) {
 app.use(express.json({ limit: '10mb', charset: 'utf-8' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb', charset: 'utf-8' }));
 
+// 🛡️ NoSQL Injection 방어 - MongoDB 연산자 제거 (Body만 처리)
+app.use((req, res, next) => {
+  if (req.body) {
+    req.body = mongoSanitize.sanitize(req.body, { replaceWith: '_' });
+  }
+  next();
+});
+
 // 성능 최적화 설정
 app.use((req, res, next) => {
   // Keep-Alive 연결 유지
@@ -854,6 +867,17 @@ io.on('connection', (socket) => {
       clearInterval(heartbeatInterval);
     }
     
+    // 🔐 활성 세션 정리 (현재 소켓이 활성 세션인 경우에만)
+    if (socket.data && socket.data.userUuid) {
+      const activeSession = activeUserSessions.get(socket.data.userUuid);
+      if (activeSession && activeSession.socketId === socket.id) {
+        activeUserSessions.delete(socket.data.userUuid);
+        console.log(`🔐 Active session removed for ${socket.data.username} (session: ${socket.id})`);
+      } else {
+        console.log(`🔐 Inactive session disconnected for ${socket.data.username || 'unknown'} (session: ${socket.id})`);
+      }
+    }
+    
     if (socket.username) {
       console.log(`🔌 User disconnected: ${socket.username} (${reason})`);
     } else {
@@ -1148,6 +1172,26 @@ const adminSchema = new mongoose.Schema(
 );
 
 const AdminModel = mongoose.model("Admin", adminSchema);
+
+// 🏟️ Arena ELO Schema (결투장 시스템)
+const arenaEloSchema = new mongoose.Schema(
+  {
+    userUuid: { type: String, required: true, unique: true, index: true },
+    username: { type: String, required: true },
+    elo: { type: Number, default: 1000, index: true },
+    victorPoints: { type: Number, default: 0 },
+    dailyBattles: { type: Number, default: 0 },
+    lastBattleDate: { type: Date, default: null },
+    totalWins: { type: Number, default: 0 },
+    totalLosses: { type: Number, default: 0 },
+    winStreak: { type: Number, default: 0 },
+    maxWinStreak: { type: Number, default: 0 },
+    lastOpponentUuid: { type: String, default: null }
+  },
+  { timestamps: true }
+);
+
+const ArenaEloModel = mongoose.model("ArenaElo", arenaEloSchema);
 
 // Profile Image Schema (프로필 이미지 시스템)
 const profileImageSchema = new mongoose.Schema(
@@ -1687,6 +1731,113 @@ async function getOrCreateUser(username, googleId = null, kakaoId = null) {
   }
 }
 
+// 🛡️ 입력값 검증 헬퍼 함수들
+function validateInput(input, fieldName, options = {}) {
+  const {
+    type = 'string',
+    required = false,
+    minLength,
+    maxLength,
+    min,
+    max,
+    enum: enumValues,
+    pattern
+  } = options;
+
+  // 필수값 체크
+  if (required && (input === undefined || input === null || input === '')) {
+    throw new Error(`${fieldName}은(는) 필수 입력값입니다.`);
+  }
+
+  // null/undefined 체크 (required가 false인 경우)
+  if (!required && (input === undefined || input === null || input === '')) {
+    return true; // 선택적 필드는 통과
+  }
+
+  // 타입 체크
+  if (type === 'string' && typeof input !== 'string') {
+    throw new Error(`${fieldName}은(는) 문자열이어야 합니다.`);
+  }
+  if (type === 'number' && typeof input !== 'number') {
+    throw new Error(`${fieldName}은(는) 숫자여야 합니다.`);
+  }
+  if (type === 'boolean' && typeof input !== 'boolean') {
+    throw new Error(`${fieldName}은(는) 불리언이어야 합니다.`);
+  }
+
+  // 문자열 검증
+  if (type === 'string') {
+    if (minLength !== undefined && input.length < minLength) {
+      throw new Error(`${fieldName}은(는) 최소 ${minLength}자 이상이어야 합니다.`);
+    }
+    if (maxLength !== undefined && input.length > maxLength) {
+      throw new Error(`${fieldName}은(는) 최대 ${maxLength}자 이하여야 합니다.`);
+    }
+    if (pattern && !pattern.test(input)) {
+      throw new Error(`${fieldName} 형식이 올바르지 않습니다.`);
+    }
+    // NoSQL Injection 방어 - 객체/배열인지 확인
+    if (typeof input === 'object') {
+      throw new Error(`${fieldName}에 잘못된 데이터 형식이 포함되어 있습니다.`);
+    }
+  }
+
+  // 숫자 검증
+  if (type === 'number') {
+    if (min !== undefined && input < min) {
+      throw new Error(`${fieldName}은(는) ${min} 이상이어야 합니다.`);
+    }
+    if (max !== undefined && input > max) {
+      throw new Error(`${fieldName}은(는) ${max} 이하여야 합니다.`);
+    }
+    if (!isFinite(input)) {
+      throw new Error(`${fieldName}은(는) 유효한 숫자여야 합니다.`);
+    }
+  }
+
+  // enum 검증
+  if (enumValues && !enumValues.includes(input)) {
+    throw new Error(`${fieldName}은(는) 다음 값 중 하나여야 합니다: ${enumValues.join(', ')}`);
+  }
+
+  return true;
+}
+
+// 🛡️ 입력값 sanitization (문자열 정제)
+function sanitizeString(input) {
+  if (typeof input !== 'string') return input;
+  // HTML 태그 제거 및 특수문자 이스케이프
+  return validator.escape(validator.stripLow(input));
+}
+
+// 🛡️ 여러 필드 검증 헬퍼
+function validateFields(body, fieldDefinitions) {
+  const errors = [];
+  const sanitized = {};
+
+  for (const [fieldName, options] of Object.entries(fieldDefinitions)) {
+    try {
+      const value = body[fieldName];
+      validateInput(value, fieldName, options);
+      
+      // 문자열인 경우 sanitization
+      if (options.type === 'string' && value !== undefined && value !== null) {
+        sanitized[fieldName] = sanitizeString(value);
+      } else {
+        sanitized[fieldName] = value;
+      }
+    } catch (error) {
+      errors.push(error.message);
+    }
+  }
+
+  if (errors.length > 0) {
+    return { valid: false, errors, sanitized: null };
+  }
+
+  return { valid: true, errors: [], sanitized };
+}
+
 // API용 사용자 조회 헬퍼 함수 (userUuid 우선 조회)
 async function getUserQuery(userId, username, userUuid = null) {
   // 사용자 식별 정보는 보안상 로그에 기록하지 않음
@@ -2039,6 +2190,9 @@ const recentJoins = new Map(); // 최근 입장 메시지 추적 (userUuid -> ti
 const processingMaterialConsumption = new Set(); // 중복 재료 소모 요청 방지
 const processingFishing = new Set(); // 🚀 중복 낚시 요청 방지
 const lastFishingTime = new Map(); // 🛡️ 사용자별 마지막 낚시 시간 추적
+
+// 🔐 중복 로그인 방지: 활성 세션 관리
+const activeUserSessions = new Map(); // userUuid -> { socketId, sessionId }
 
 // 스팸 방지 및 Rate Limiting
 const userMessageHistory = new Map(); // userUuid -> 메시지 기록
@@ -2526,22 +2680,19 @@ io.on("connection", (socket) => {
           // 기존 연결이 실제로 활성 상태인지 확인
           const existingSocket = io.sockets.sockets.get(existingSocketId);
           if (existingSocket && existingSocket.connected) {
-            // 기존 연결이 살아있는 경우 - 부드러운 전환
-            console.log(`📱 Graceful session transition for ${existingUserData.username}`);
+            // 기존 연결이 살아있는 경우 - 강제 로그아웃
+            console.log(`🚨 [SECURITY] Forcing logout of previous session for ${existingUserData.username}`);
             
-            // 기존 연결에 세션 전환 알림 (강제 해제 대신)
-            existingSocket.emit("session:transition", {
-              message: "새 창에서 접속하여 세션이 전환됩니다.",
+            // 기존 연결에 강제 로그아웃 알림
+            existingSocket.emit("auth:session-replaced", {
+              message: "다른 위치에서 로그인하여 세션이 종료되었습니다.",
+              reason: "DUPLICATE_LOGIN",
               newSessionId: socket.id
             });
             
-            // 잠시 후 기존 연결 정리 (사용자가 메시지를 볼 수 있도록)
-            setTimeout(() => {
-              if (existingSocket.connected) {
-                existingSocket.disconnect(true);
-                console.log(`🔄 Previous session gracefully disconnected: ${existingSocketId}`);
-              }
-            }, 2000); // 2초 후 정리
+            // 즉시 연결 끊기
+            existingSocket.disconnect(true);
+            console.log(`🔄 Previous session forcefully disconnected: ${existingSocketId}`);
           } else {
             // 기존 연결이 이미 끊어진 경우
             console.log(`🧹 Cleaning up stale connection: ${existingSocketId}`);
@@ -2638,13 +2789,28 @@ io.on("connection", (socket) => {
         console.warn('Failed to check admin status:', e);
       }
       
-      // 🔐 JWT 토큰 생성 및 전송 (실제 관리자 상태 반영)
+      // 🔐 JWT 토큰 생성 및 전송 (세션 ID 포함)
+      const sessionId = socket.id; // 소켓 ID를 세션 ID로 사용
       const jwtToken = generateJWT({
         userUuid: user.userUuid,
         username: user.username,
         displayName: displayNameToSend,
-        isAdmin: isUserAdmin // 실제 DB에서 확인한 관리자 상태
+        isAdmin: isUserAdmin, // 실제 DB에서 확인한 관리자 상태
+        sessionId: sessionId // 세션 ID 추가
       });
+      
+      // 🔐 활성 세션 등록 (이전 세션은 자동으로 무효화됨)
+      if (jwtToken) {
+        const oldSession = activeUserSessions.get(user.userUuid);
+        if (oldSession && oldSession.socketId !== socket.id) {
+          console.log(`🔄 [SECURITY] Previous session invalidated for ${user.username} (socket: ${oldSession.socketId} -> ${socket.id})`);
+        }
+        activeUserSessions.set(user.userUuid, {
+          socketId: socket.id,
+          sessionId: sessionId
+        });
+        console.log(`🔐 Active session registered for ${user.username} (${user.userUuid}) - Session: ${sessionId}`);
+      }
       
       // 🔐 JWT 토큰을 클라이언트에 전송
       if (jwtToken) {
@@ -6021,23 +6187,22 @@ app.get("/api/admin/companion-rollback-logs", authenticateJWT, async (req, res) 
 // 동료 능력치 업데이트 API (롤백 방지 강화 + 중복 방지)
 app.post("/api/update-companion-stats", authenticateJWT, async (req, res) => {
   try {
-    const { companionName, level, experience, isInBattle } = req.body;
+    // 🛡️ 입력값 검증
+    const validation = validateFields(req.body, {
+      companionName: { type: 'string', required: true, minLength: 1, maxLength: 100 },
+      level: { type: 'number', required: false, min: 1, max: 100 },
+      experience: { type: 'number', required: false, min: 0 },
+      isInBattle: { type: 'boolean', required: false }
+    });
+
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.errors.join(', ') });
+    }
+
+    const { companionName, level, experience, isInBattle } = validation.sanitized;
     const { userUuid, username } = req.user;
     
     console.log("Update companion stats:", { companionName, level, experience, isInBattle, username });
-    
-    // 🔧 입력값 검증 강화
-    if (!companionName || typeof companionName !== 'string') {
-      return res.status(400).json({ error: "유효한 동료 이름이 필요합니다." });
-    }
-    
-    if (level !== undefined && (typeof level !== 'number' || level < 1 || level > 100)) {
-      return res.status(400).json({ error: "레벨은 1-100 사이의 숫자여야 합니다." });
-    }
-    
-    if (experience !== undefined && (typeof experience !== 'number' || experience < 0)) {
-      return res.status(400).json({ error: "경험치는 0 이상의 숫자여야 합니다." });
-    }
     
     const queryResult = await getUserQuery('user', username, userUuid);
     let query;
@@ -9437,7 +9602,18 @@ const calculateServerFishPrice = async (fishName, userQuery) => {
 // Fish Selling API (보안 강화 - 서버에서 가격 계산 + JWT 인증)
 app.post("/api/sell-fish", authenticateJWT, async (req, res) => {
   try {
-    const { fishName, quantity, totalPrice: clientTotalPrice } = req.body;
+    // 🛡️ 입력값 검증
+    const validation = validateFields(req.body, {
+      fishName: { type: 'string', required: true, minLength: 1, maxLength: 100 },
+      quantity: { type: 'number', required: true, min: 1, max: 99999 },
+      totalPrice: { type: 'number', required: true, min: 0 }
+    });
+
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.errors.join(', ') });
+    }
+
+    const { fishName, quantity, totalPrice: clientTotalPrice } = validation.sanitized;
     // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
     const { userUuid, username } = req.user;
     console.log(`🔐 JWT Sell fish request: ${fishName} x${quantity} by ${username} (${userUuid})`);
@@ -9615,7 +9791,20 @@ app.post("/api/sell-all-fish", authenticateJWT, async (req, res) => {
 // Item Buying API (재료 기반 구매 시스템 - 서버에서 재료 검증 + JWT 인증)
 app.post("/api/buy-item", authenticateJWT, async (req, res) => {
   try {
-    const { itemName, material: clientMaterial, materialCount: clientMaterialCount, category, purchaseQuantity: clientPurchaseQuantity } = req.body;
+    // 🛡️ 입력값 검증
+    const validation = validateFields(req.body, {
+      itemName: { type: 'string', required: true, minLength: 1, maxLength: 100 },
+      material: { type: 'string', required: false, maxLength: 50 },
+      materialCount: { type: 'number', required: false, min: 0 },
+      category: { type: 'string', required: true, minLength: 1, maxLength: 50 },
+      purchaseQuantity: { type: 'number', required: false, min: 1, max: 9999 }
+    });
+
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.errors.join(', ') });
+    }
+
+    const { itemName, material: clientMaterial, materialCount: clientMaterialCount, category, purchaseQuantity: clientPurchaseQuantity } = validation.sanitized;
     // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
     const { userUuid, username } = req.user;
     
@@ -10010,7 +10199,18 @@ app.get("/api/fish-discoveries/:userId", optionalJWT, async (req, res) => {
 // Equipment Enhancement API (장비 강화)
 app.post("/api/enhance-equipment", authenticateJWT, async (req, res) => {
   try {
-    const { equipmentType, targetLevel, amberCost } = req.body;
+    // 🛡️ 입력값 검증
+    const validation = validateFields(req.body, {
+      equipmentType: { type: 'string', required: true, enum: ['fishingRod', 'accessory'] },
+      targetLevel: { type: 'number', required: true, min: 1, max: 100 },
+      amberCost: { type: 'number', required: true, min: 0, max: 9999999 }
+    });
+
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.errors.join(', ') });
+    }
+
+    const { equipmentType, targetLevel, amberCost } = validation.sanitized;
     const { userUuid, username } = req.user;
     
     console.log("=== EQUIPMENT ENHANCEMENT REQUEST (No Transaction) ===");
@@ -10506,7 +10706,18 @@ app.get("/api/materials/:userId", optionalJWT, async (req, res) => {
 // Fish Decomposition API
 app.post("/api/decompose-fish", authenticateJWT, async (req, res) => {
   try {
-    let { fishName, quantity, material } = req.body;
+    // 🛡️ 입력값 검증
+    const validation = validateFields(req.body, {
+      fishName: { type: 'string', required: true, minLength: 1, maxLength: 100 },
+      quantity: { type: 'number', required: true, min: 1, max: 99999 },
+      material: { type: 'string', required: false, maxLength: 50 }
+    });
+
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.errors.join(', ') });
+    }
+
+    let { fishName, quantity, material } = validation.sanitized;
     // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
     const { userUuid, username } = req.user;
     
@@ -10872,7 +11083,17 @@ app.post("/api/decompose-all-fish", authenticateJWT, async (req, res) => {
 
 // Material Consumption API (for exploration)
 app.post("/api/consume-material", authenticateJWT, async (req, res) => {
-  const { materialName, quantity } = req.body;
+  // 🛡️ 입력값 검증
+  const validation = validateFields(req.body, {
+    materialName: { type: 'string', required: true, minLength: 1, maxLength: 100 },
+    quantity: { type: 'number', required: true, min: 1, max: 99999 }
+  });
+
+  if (!validation.valid) {
+    return res.status(400).json({ error: validation.errors.join(', ') });
+  }
+
+  const { materialName, quantity } = validation.sanitized;
   // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
   const { userUuid, username } = req.user;
   
@@ -10945,7 +11166,20 @@ const { getCraftingRecipe, getDecomposeRecipe, getSourceFishForMaterial } = requ
 // 재료 조합 API (하위 재료 3개 → 상위 재료 1개)
 app.post("/api/craft-material", authenticateJWT, async (req, res) => {
   try {
-    const { inputMaterial, inputCount, outputMaterial, outputCount, quantity = 1 } = req.body;
+    // 🛡️ 입력값 검증
+    const validation = validateFields(req.body, {
+      inputMaterial: { type: 'string', required: true, minLength: 1, maxLength: 100 },
+      inputCount: { type: 'number', required: true, min: 1, max: 99999 },
+      outputMaterial: { type: 'string', required: true, minLength: 1, maxLength: 100 },
+      outputCount: { type: 'number', required: true, min: 1, max: 99999 },
+      quantity: { type: 'number', required: false, min: 1, max: 9999 }
+    });
+
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.errors.join(', ') });
+    }
+
+    const { inputMaterial, inputCount, outputMaterial, outputCount, quantity = 1 } = validation.sanitized;
     // 🔐 JWT에서 사용자 정보 추출
     const { userUuid, username } = req.user;
     
@@ -11799,14 +12033,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.411"
+    version: "v1.412"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.411",
+    version: "v1.412",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
@@ -12979,6 +13213,33 @@ app.post("/api/fishing", authenticateJWT, async (req, res) => {
     
     console.log(`🎣 Fishing request from ${username} (${userUuid}) - IP: ${clientIP}`);
     
+    // 🔐 소켓 연결 상태 확인 (중복 로그인 방지)
+    const activeSocket = Array.from(connectedUsers.entries())
+      .find(([socketId, userData]) => userData.userUuid === userUuid);
+    
+    if (!activeSocket) {
+      console.log(`🚨 Fishing attempt without active socket: ${username} (${userUuid})`);
+      return res.status(401).json({ 
+        error: "세션이 종료되었습니다. 다시 로그인해주세요.",
+        code: "NO_ACTIVE_SESSION",
+        requiresReauth: true
+      });
+    }
+    
+    const [socketId, userData] = activeSocket;
+    // 소켓이 실제로 연결되어 있는지 확인
+    const socket = io.sockets.sockets.get(socketId);
+    if (!socket || !socket.connected) {
+      console.log(`🚨 Fishing attempt with disconnected socket: ${username} (${userUuid})`);
+      // 끊어진 소켓 정보 정리
+      connectedUsers.delete(socketId);
+      return res.status(401).json({ 
+        error: "세션이 종료되었습니다. 다시 로그인해주세요.",
+        code: "NO_ACTIVE_SESSION",
+        requiresReauth: true
+      });
+    }
+    
     // 🛡️ 1단계: 사용자 존재 확인
     const user = await UserUuidModel.findOne({ userUuid });
     if (!user) {
@@ -13261,6 +13522,20 @@ function authenticateJWT(req, res, next) {
     });
   }
   
+  // 🔐 중복 로그인 방지: 활성 세션 확인
+  const activeSession = activeUserSessions.get(decoded.userUuid);
+  if (activeSession) {
+    // JWT의 세션 ID와 현재 활성 세션 ID가 다르면 차단
+    if (decoded.sessionId && decoded.sessionId !== activeSession.sessionId) {
+      console.log(`🚨 [SECURITY] Outdated session JWT used by ${decoded.username} (session: ${decoded.sessionId} vs active: ${activeSession.sessionId})`);
+      return res.status(401).json({ 
+        error: "다른 탭에서 접속하여 세션이 종료되었습니다.",
+        code: "SESSION_REPLACED",
+        requiresReauth: true
+      });
+    }
+  }
+  
   // 요청 객체에 사용자 정보 추가
   req.user = decoded;
   req.userUuid = decoded.userUuid;
@@ -13314,6 +13589,10 @@ function authenticateOptionalJWT(req, res, next) {
   const raidRouter = setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, FishingSkillModel, CompanionStatsModel, AchievementModel, achievementSystem, AdminModel, CooldownModel, StarPieceModel, RaidDamageModel, RareFishCountModel, CatchModel, RaidKillCountModel, UserEquipmentModel, UserStatsModel);
   app.use("/api/raid", raidRouter);
 
+// 결투장 라우터 등록
+const arenaRouter = setupArenaRoutes(io, ArenaEloModel, CompanionStatsModel, UserStatsModel, FishingSkillModel, authenticateJWT, UserUuidModel, UserEquipmentModel);
+app.use("/api/arena", arenaRouter);
+
 // 원정 라우터 등록
 app.use((req, res, next) => {
   req.io = io;
@@ -13323,7 +13602,7 @@ const expeditionRouter = setupExpeditionRoutes(authenticateJWT, CompanionStatsMo
 app.use("/api/expedition", expeditionRouter);
 
 // 항해 라우터 등록
-setupVoyageRoutes(app, UserMoneyModel, CatchModel, DailyQuestModel, getKSTDate);
+setupVoyageRoutes(app, UserMoneyModel, CatchModel, DailyQuestModel, getKSTDate, authenticateJWT);
 
 // 업적 라우터 등록
 const { router: achievementRouter } = setupAchievementRoutes(authenticateJWT, UserUuidModel, CatchModel, FishingSkillModel, RaidDamageModel, RareFishCountModel);
