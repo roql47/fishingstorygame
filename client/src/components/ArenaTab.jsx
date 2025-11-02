@@ -14,9 +14,7 @@ import {
   Star,
   ShoppingCart,
   Coins,
-  Gift,
-  ChevronLeft,
-  ChevronRight
+  Gift
 } from 'lucide-react';
 import axios from 'axios';
 import { calculateCompanionStats } from '../data/companionData';
@@ -37,12 +35,10 @@ const ArenaTab = ({
   activeTab,
   onBattleEnd
 }) => {
-  const [subTab, setSubTab] = useState('battle'); // 'battle', 'rankings', or 'shop'
+  const [subTab, setSubTab] = useState('battle'); // 'battle' or 'shop'
   const [currentView, setCurrentView] = useState('lobby'); // lobby, battle, result
   const [myStats, setMyStats] = useState(null);
   const [rankings, setRankings] = useState(null);
-  const [allRankings, setAllRankings] = useState([]); // 전체 랭킹 데이터
-  const [currentPage, setCurrentPage] = useState(1); // 현재 페이지
   const [loading, setLoading] = useState(false);
   const [selectedOpponent, setSelectedOpponent] = useState(null);
   const [battleState, setBattleState] = useState(null);
@@ -52,8 +48,6 @@ const ArenaTab = ({
   
   const battleLogRef = useRef(null);
   const battleIntervalRef = useRef(null);
-
-  const ITEMS_PER_PAGE = 20; // 페이지당 표시할 항목 수
 
   // 초기 데이터 로드
   useEffect(() => {
@@ -116,38 +110,6 @@ const ArenaTab = ({
       setLoading(false);
     }
   };
-
-  // 전체 랭킹 데이터 로드
-  const loadAllRankings = async () => {
-    try {
-      setLoading(true);
-      
-      const token = localStorage.getItem('jwtToken');
-      if (!token) return;
-
-      const config = {
-        headers: { Authorization: `Bearer ${token}` }
-      };
-
-      const response = await axios.get(`${serverUrl}/api/arena/all-rankings`, config);
-
-      if (response.data.success) {
-        setAllRankings(response.data.rankings || []);
-      }
-    } catch (error) {
-      console.error('전체 랭킹 로드 실패:', error);
-      setAllRankings([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 랭킹 탭으로 전환 시 전체 랭킹 로드
-  useEffect(() => {
-    if (subTab === 'rankings' && userData?.userUuid) {
-      loadAllRankings();
-    }
-  }, [subTab, userData]);
 
   // 전투 시작
   const startBattle = async (opponent) => {
@@ -763,278 +725,6 @@ const ArenaTab = ({
     );
   }
 
-  // 결투랭킹 화면
-  if (subTab === 'rankings') {
-    const totalPages = Math.ceil(allRankings.length / ITEMS_PER_PAGE);
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    const endIndex = startIndex + ITEMS_PER_PAGE;
-    const currentRankings = allRankings.slice(startIndex, endIndex);
-
-    return (
-      <div className={`rounded-2xl board-shadow min-h-full flex flex-col ${
-        isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
-      }`}>
-        {/* 헤더 */}
-        <div className={`border-b p-4 ${
-          isDarkMode ? "border-white/10" : "border-gray-300/20"
-        }`}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 border ${
-                isDarkMode ? "border-white/10" : "border-purple-300/30"
-              }`}>
-                <Shield className={`w-4 h-4 ${
-                  isDarkMode ? "text-purple-400" : "text-purple-600"
-                }`} />
-              </div>
-              <div>
-                <h2 className={`text-lg font-semibold ${
-                  isDarkMode ? "text-white" : "text-gray-800"
-                }`}>결투장</h2>
-                <p className={`text-xs ${
-                  isDarkMode ? "text-gray-400" : "text-gray-600"
-                }`}>PVP 전투 시스템</p>
-              </div>
-            </div>
-            <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-              isDarkMode ? "bg-blue-500/20 text-blue-400" : "bg-blue-500/10 text-blue-600"
-            }`}>
-              총 {allRankings.length}명
-            </div>
-          </div>
-
-          {/* 하위 탭 버튼 */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => setSubTab('battle')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
-                subTab === 'battle'
-                  ? isDarkMode
-                    ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
-                    : "bg-purple-500/10 text-purple-600 border border-purple-500/30"
-                  : isDarkMode
-                    ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
-                    : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
-              }`}
-            >
-              <Sword className="w-4 h-4" />
-              결투장
-            </button>
-            <button
-              onClick={() => {
-                setSubTab('rankings');
-                setCurrentPage(1);
-              }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
-                subTab === 'rankings'
-                  ? isDarkMode
-                    ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
-                    : "bg-blue-500/10 text-blue-600 border border-blue-500/30"
-                  : isDarkMode
-                    ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
-                    : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
-              }`}
-            >
-              <Trophy className="w-4 h-4" />
-              결투랭킹
-            </button>
-            <button
-              onClick={() => setSubTab('shop')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
-                subTab === 'shop'
-                  ? isDarkMode
-                    ? "bg-yellow-500/20 text-yellow-400 border border-yellow-400/30"
-                    : "bg-yellow-500/10 text-yellow-600 border border-yellow-500/30"
-                  : isDarkMode
-                    ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
-                    : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
-              }`}
-            >
-              <ShoppingCart className="w-4 h-4" />
-              결투상점
-            </button>
-          </div>
-        </div>
-
-        {/* 결투랭킹 콘텐츠 */}
-        <div className="flex-1 p-4 overflow-y-auto">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-            </div>
-          ) : currentRankings.length === 0 ? (
-            <div className={`p-6 rounded-xl text-center ${
-              isDarkMode ? 'bg-white/5' : 'bg-gray-100'
-            }`}>
-              <Trophy className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-              <p className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>
-                랭킹 데이터가 없습니다
-              </p>
-            </div>
-          ) : (
-            <>
-              <div className="space-y-2 mb-4">
-                {currentRankings.map((player, idx) => {
-                  const actualRank = startIndex + idx + 1;
-                  const isMyself = player.userUuid === userData?.userUuid;
-                  
-                  return (
-                    <div
-                      key={player.userUuid}
-                      className={`p-4 rounded-xl flex items-center justify-between transition-all duration-300 ${
-                        isMyself
-                          ? isDarkMode
-                            ? 'bg-yellow-500/20 border-2 border-yellow-400/50'
-                            : 'bg-yellow-500/10 border-2 border-yellow-500/50'
-                          : isDarkMode
-                            ? 'bg-white/5 hover:bg-white/10'
-                            : 'bg-gray-100 hover:bg-gray-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className={`text-lg font-bold min-w-[3rem] text-center ${
-                          actualRank === 1
-                            ? 'text-yellow-400'
-                            : actualRank === 2
-                            ? 'text-gray-400'
-                            : actualRank === 3
-                            ? 'text-orange-400'
-                            : 'text-gray-500'
-                        }`}>
-                          {actualRank === 1 && <Crown className="w-6 h-6 inline mb-1" />}
-                          {actualRank}위
-                        </div>
-                        <div>
-                          <div className={`font-bold flex items-center gap-2 ${
-                            isDarkMode ? 'text-white' : 'text-gray-900'
-                          }`}>
-                            {player.username}
-                            {isMyself && (
-                              <span className={`text-xs px-2 py-0.5 rounded ${
-                                isDarkMode ? 'bg-yellow-500/30 text-yellow-400' : 'bg-yellow-500/20 text-yellow-600'
-                              }`}>
-                                나
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-sm text-gray-400">
-                            {player.totalWins}승 {player.totalLosses}패
-                            {player.winStreak > 0 && (
-                              <span className="ml-2 text-orange-400">
-                                • {player.winStreak}연승
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="text-right">
-                        <div className="text-xl font-bold text-blue-400">
-                          {player.elo}
-                        </div>
-                        <div className="text-xs text-gray-400">
-                          승점: {player.victorPoints}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* 페이지네이션 */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-center gap-2 mt-6">
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    disabled={currentPage === 1}
-                    className={`p-2 rounded-lg transition-all duration-300 ${
-                      currentPage === 1
-                        ? 'opacity-50 cursor-not-allowed'
-                        : isDarkMode
-                          ? 'hover:bg-white/10'
-                          : 'hover:bg-gray-200'
-                    } ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                  >
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
-
-                  <div className="flex gap-1">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1)
-                      .filter(page => {
-                        // 현재 페이지 근처만 표시
-                        if (totalPages <= 7) return true;
-                        if (page === 1 || page === totalPages) return true;
-                        if (page >= currentPage - 1 && page <= currentPage + 1) return true;
-                        return false;
-                      })
-                      .map((page, idx, arr) => {
-                        // ... 표시
-                        if (idx > 0 && page - arr[idx - 1] > 1) {
-                          return (
-                            <React.Fragment key={`gap-${page}`}>
-                              <span className={`px-3 py-2 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                ...
-                              </span>
-                              <button
-                                onClick={() => setCurrentPage(page)}
-                                className={`px-3 py-2 rounded-lg transition-all duration-300 ${
-                                  currentPage === page
-                                    ? isDarkMode
-                                      ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
-                                      : 'bg-blue-500/10 text-blue-600 border border-blue-500/30'
-                                    : isDarkMode
-                                      ? 'text-gray-400 hover:bg-white/10'
-                                      : 'text-gray-600 hover:bg-gray-200'
-                                }`}
-                              >
-                                {page}
-                              </button>
-                            </React.Fragment>
-                          );
-                        }
-
-                        return (
-                          <button
-                            key={page}
-                            onClick={() => setCurrentPage(page)}
-                            className={`px-3 py-2 rounded-lg transition-all duration-300 ${
-                              currentPage === page
-                                ? isDarkMode
-                                  ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
-                                  : 'bg-blue-500/10 text-blue-600 border border-blue-500/30'
-                                : isDarkMode
-                                  ? 'text-gray-400 hover:bg-white/10'
-                                  : 'text-gray-600 hover:bg-gray-200'
-                            }`}
-                          >
-                            {page}
-                          </button>
-                        );
-                      })}
-                  </div>
-
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                    disabled={currentPage === totalPages}
-                    className={`p-2 rounded-lg transition-all duration-300 ${
-                      currentPage === totalPages
-                        ? 'opacity-50 cursor-not-allowed'
-                        : isDarkMode
-                          ? 'hover:bg-white/10'
-                          : 'hover:bg-gray-200'
-                    } ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                  >
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    );
-  }
-
   // 결투상점 화면
   if (subTab === 'shop') {
     return (
@@ -1076,51 +766,37 @@ const ArenaTab = ({
           <div className="flex gap-2">
             <button
               onClick={() => setSubTab('battle')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
+              className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-300 ${
                 subTab === 'battle'
                   ? isDarkMode
                     ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
                     : "bg-purple-500/10 text-purple-600 border border-purple-500/30"
                   : isDarkMode
-                    ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
-                    : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
+                    ? "bg-white/5 text-gray-400 hover:bg-white/10"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
-              <Sword className="w-4 h-4" />
-              결투장
-            </button>
-            <button
-              onClick={() => {
-                setSubTab('rankings');
-                setCurrentPage(1);
-              }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
-                subTab === 'rankings'
-                  ? isDarkMode
-                    ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
-                    : "bg-blue-500/10 text-blue-600 border border-blue-500/30"
-                  : isDarkMode
-                    ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
-                    : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
-              }`}
-            >
-              <Trophy className="w-4 h-4" />
-              결투랭킹
+              <div className="flex items-center justify-center gap-2">
+                <Sword className="w-4 h-4" />
+                결투장
+              </div>
             </button>
             <button
               onClick={() => setSubTab('shop')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
+              className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-300 ${
                 subTab === 'shop'
                   ? isDarkMode
-                    ? "bg-yellow-500/20 text-yellow-400 border border-yellow-400/30"
-                    : "bg-yellow-500/10 text-yellow-600 border border-yellow-500/30"
+                    ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
+                    : "bg-purple-500/10 text-purple-600 border border-purple-500/30"
                   : isDarkMode
-                    ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
-                    : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
+                    ? "bg-white/5 text-gray-400 hover:bg-white/10"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
-              <ShoppingCart className="w-4 h-4" />
-              결투상점
+              <div className="flex items-center justify-center gap-2">
+                <ShoppingCart className="w-4 h-4" />
+                결투상점
+              </div>
             </button>
           </div>
         </div>
@@ -1201,51 +877,37 @@ const ArenaTab = ({
         <div className="flex gap-2">
           <button
             onClick={() => setSubTab('battle')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
+            className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-300 ${
               subTab === 'battle'
                 ? isDarkMode
                   ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
                   : "bg-purple-500/10 text-purple-600 border border-purple-500/30"
                 : isDarkMode
-                  ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
-                  : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
+                  ? "bg-white/5 text-gray-400 hover:bg-white/10"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
-            <Sword className="w-4 h-4" />
-            결투장
-          </button>
-          <button
-            onClick={() => {
-              setSubTab('rankings');
-              setCurrentPage(1);
-            }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
-              subTab === 'rankings'
-                ? isDarkMode
-                  ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
-                  : "bg-blue-500/10 text-blue-600 border border-blue-500/30"
-                : isDarkMode
-                  ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
-                  : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
-            }`}
-          >
-            <Trophy className="w-4 h-4" />
-            결투랭킹
+            <div className="flex items-center justify-center gap-2">
+              <Sword className="w-4 h-4" />
+              결투장
+            </div>
           </button>
           <button
             onClick={() => setSubTab('shop')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
+            className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-300 ${
               subTab === 'shop'
                 ? isDarkMode
-                  ? "bg-yellow-500/20 text-yellow-400 border border-yellow-400/30"
-                  : "bg-yellow-500/10 text-yellow-600 border border-yellow-500/30"
+                  ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
+                  : "bg-purple-500/10 text-purple-600 border border-purple-500/30"
                 : isDarkMode
-                  ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
-                  : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
+                  ? "bg-white/5 text-gray-400 hover:bg-white/10"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
-            <ShoppingCart className="w-4 h-4" />
-            결투상점
+            <div className="flex items-center justify-center gap-2">
+              <ShoppingCart className="w-4 h-4" />
+              결투상점
+            </div>
           </button>
         </div>
       </div>

@@ -3266,25 +3266,8 @@ function App() {
       // JWT 토큰은 유지하고 소켓만 재연결
     };
     
-    // 🚨 세션 대체 처리 (강제 로그아웃)
-    const onSessionReplaced = (data) => {
-      console.log("🚨 [SECURITY] Session replaced:", data);
-      alert(data.message || "다른 위치에서 로그인하여 세션이 종료되었습니다.");
-      
-      // 모든 로컬 데이터 제거
-      localStorage.removeItem("idToken");
-      localStorage.removeItem("nickname");
-      localStorage.removeItem("userUuid");
-      localStorage.removeItem("jwtToken");
-      localStorage.removeItem("jwtExpiresIn");
-      
-      // 페이지 리로드하여 로그인 화면으로 이동
-      window.location.reload();
-    };
-    
     socket.on("duplicate_login", onDuplicateLogin);
     socket.on("session:transition", onSessionTransition);
-    socket.on("auth:session-replaced", onSessionReplaced);
     
     // 레이드 이벤트 리스너 등록
     socket.on("raid:boss:update", onRaidBossUpdate);
@@ -3480,8 +3463,6 @@ function App() {
       socket.off("user:uuid", onUserUuid);
       socket.off("message:reaction:update", onReactionUpdate);
       socket.off("duplicate_login", onDuplicateLogin);
-      socket.off("session:transition", onSessionTransition);
-      socket.off("auth:session-replaced", onSessionReplaced);
       socket.off("join:error", onJoinError);
       socket.off("chat:error", onChatError);
       socket.off("connect_error", onConnectError);
@@ -5016,10 +4997,6 @@ function App() {
         return isDark ? 'text-purple-400' : 'text-purple-600'; // 심연 (보라)
       case '깊은어둠의':
         return isDark ? 'text-red-400' : 'text-red-600'; // 깊은어둠 (빨강)
-      case '파멸의':
-        return isDark ? 'text-orange-400' : 'text-orange-600'; // 파멸 (주황)
-      case '종말의':
-        return isDark ? 'text-yellow-400' : 'text-yellow-600'; // 종말 (금색)
       default:
         return isDark ? 'text-gray-300' : 'text-gray-700';
     }

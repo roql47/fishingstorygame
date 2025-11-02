@@ -1,4 +1,3 @@
-// 🏟️ 결투장 시스템 모듈
 class ArenaSystem {
     constructor(ArenaEloModel, CompanionStatsModel, UserStatsModel, FishingSkillModel, UserEquipmentModel) {
         this.ArenaEloModel = ArenaEloModel;
@@ -6,10 +5,14 @@ class ArenaSystem {
         this.UserStatsModel = UserStatsModel;
         this.FishingSkillModel = FishingSkillModel;
         this.UserEquipmentModel = UserEquipmentModel;
-        this.ongoingBattles = new Map(); // battleId -> battle data
+        
+        // 진행 중인 전투 데이터 저장
+        this.activeBattles = new Map();
+        
+        console.log('🏟️ ArenaSystem 초기화 완료');
     }
-
-    // 유저의 ELO 데이터 초기화 또는 조회
+    
+    // ELO 데이터 조회 또는 생성
     async getOrCreateEloData(userUuid, username) {
         let eloData = await this.ArenaEloModel.findOne({ userUuid });
         
@@ -24,271 +27,222 @@ class ArenaSystem {
                 totalWins: 0,
                 totalLosses: 0,
                 winStreak: 0,
-                maxWinStreak: 0
+                maxWinStreak: 0,
+                lastOpponentUuid: null
             });
             await eloData.save();
+            console.log(`✨ 새로운 결투장 유저 생성: ${username} (ELO: 1000)`);
         }
-        
-        // 일일 리셋 확인
-        await this.checkDailyReset(eloData);
         
         return eloData;
     }
-
-    // 일일 리셋 확인 (날짜가 바뀌면 dailyBattles 초기화)
-    async checkDailyReset(eloData) {
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    // 일일 제한 확인
+    async checkDailyLimit(userUuid) {
+        const eloData = await this.getOrCreateEloData(userUuid, '');
         
-        if (!eloData.lastBattleDate) {
-            return;
+        // 날짜 변경 확인 (한국 시간 기준 자정)
+        const now = new Date();
+        const kstOffset = 9 * 60 * 60 * 1000; // 한국 시간 +9시간
+        const kstNow = new Date(now.getTime() + kstOffset);
+        const today = new Date(kstNow.getFullYear(), kstNow.getMonth(), kstNow.getDate());
+        
+        let lastBattleDate = null;
+        if (eloData.lastBattleDate) {
+            const lastBattle = new Date(eloData.lastBattleDate.getTime() + kstOffset);
+            lastBattleDate = new Date(lastBattle.getFullYear(), lastBattle.getMonth(), lastBattle.getDate());
         }
         
-        const lastBattleDay = new Date(
-            eloData.lastBattleDate.getFullYear(),
-            eloData.lastBattleDate.getMonth(),
-            eloData.lastBattleDate.getDate()
-        );
-        
-        // 날짜가 바뀌었으면 리셋
-        if (today.getTime() > lastBattleDay.getTime()) {
+        // 날짜가 바뀌었으면 카운트 리셋
+        if (!lastBattleDate || lastBattleDate.getTime() !== today.getTime()) {
             eloData.dailyBattles = 0;
             await eloData.save();
         }
-    }
-
-    // 일일 제한 확인 (10회)
-    async checkDailyLimit(userUuid) {
-        const eloData = await this.ArenaEloModel.findOne({ userUuid });
-        if (!eloData) {
-            return { canBattle: true, remaining: 10 };
-        }
         
-        await this.checkDailyReset(eloData);
+        const maxDailyBattles = 10;
+        const remaining = Math.max(0, maxDailyBattles - eloData.dailyBattles);
         
-        const remaining = Math.max(0, 10 - eloData.dailyBattles);
         return {
-            canBattle: eloData.dailyBattles < 10,
+            current: eloData.dailyBattles,
+            max: maxDailyBattles,
             remaining,
-            dailyBattles: eloData.dailyBattles
+            canBattle: remaining > 0
         };
     }
-
-    // 랭킹 조회 (자신 기준 상위 10명, 하위 10명)
+    
+    // 랭킹 조회 (자신 기준 상위/하위 10명)
     async getEloRankings(userUuid, username) {
-        // 유저 ELO 데이터 조회 또는 생성
+        // 내 ELO 조회
         const myEloData = await this.getOrCreateEloData(userUuid, username);
         const myElo = myEloData.elo;
         
-        // 전체 랭킹 조회 (ELO 내림차순)
-        const allRankings = await this.ArenaEloModel.find({})
-            .sort({ elo: -1 })
-            .lean();
+        // 전체 유저 중에서 내 순위 계산
+        const totalUsers = await this.ArenaEloModel.countDocuments();
+        const higherRanked = await this.ArenaEloModel.countDocuments({ 
+            elo: { $gt: myElo } 
+        });
+        const myRank = higherRanked + 1;
         
-        // 내 순위 찾기
-        const myRank = allRankings.findIndex(r => r.userUuid === userUuid) + 1;
+        // 상위 10명 조회 (나보다 ELO가 높은 사람들)
+        const higher = await this.ArenaEloModel.find({ 
+            elo: { $gte: myElo },
+            userUuid: { $ne: userUuid }
+        })
+        .sort({ elo: -1, username: 1 })
+        .limit(10)
+        .lean();
         
-        // 상위 10명 (나보다 ELO가 높은 유저들)
-        const higher = allRankings
-            .filter(r => r.elo > myElo || (r.elo === myElo && r.userUuid !== userUuid))
-            .slice(0, 10);
-        
-        // 하위 10명 (나보다 ELO가 낮은 유저들)
-        const lower = allRankings
-            .filter(r => r.elo < myElo || (r.elo === myElo && r.userUuid !== userUuid))
-            .slice(0, 10);
+        // 하위 10명 조회 (나보다 ELO가 낮은 사람들)
+        const lower = await this.ArenaEloModel.find({ 
+            elo: { $lt: myElo } 
+        })
+        .sort({ elo: -1, username: 1 })
+        .limit(10)
+        .lean();
         
         return {
-            myData: {
-                ...myEloData.toObject(),
-                rank: myRank
-            },
+            myRank,
+            totalUsers,
+            myElo,
             higher,
-            lower,
-            totalPlayers: allRankings.length
+            lower
         };
     }
-
-    // 전체 랭킹 조회 (페이지네이션용)
-    async getAllRankings() {
-        try {
-            // 전체 랭킹 조회 (ELO 내림차순)
-            const allRankings = await this.ArenaEloModel.find({})
-                .sort({ elo: -1 })
-                .lean();
-            
-            return allRankings;
-        } catch (error) {
-            console.error('전체 랭킹 조회 실패:', error);
-            throw error;
-        }
-    }
-
-    // ELO 변화량 계산
-    calculateEloChange(myElo, opponentElo, rank, isWin) {
-        // rank 값 검증 (1-10 사이)
-        const validRank = (rank && !isNaN(rank) && rank >= 1 && rank <= 10) ? rank : 1;
-        
-        console.log('[Arena] ELO 변화 계산:', { myElo, opponentElo, rank, validRank, isWin });
-        
-        if (isWin) {
-            // 승리: 가장 강한 상대 +60, 2번째 +57, 3번째 +54... (3점씩 감소)
-            return 60 - (validRank - 1) * 3;
-        } else {
-            // 패배: 가장 강한 상대 -3, 2번째 -6, 3번째 -9... (3점씩 증가)
-            return -3 - (validRank - 1) * 3;
-        }
-    }
-
-    // 상대방의 순위 계산 (상위/하위 목록에서의 순위)
+    
+    // 상대방의 순위 계산 (예상 ELO 변화량 계산용)
     calculateOpponentRank(myElo, opponentElo, higherList, lowerList, opponentUuid) {
-        // 상위 목록에 있는지 확인
-        const higherIndex = higherList.findIndex(r => r.userUuid === opponentUuid);
+        // 상위 리스트에서 찾기
+        const higherIndex = higherList.findIndex(u => u.userUuid === opponentUuid);
         if (higherIndex !== -1) {
-            return higherIndex + 1; // 1번부터 시작
+            return higherIndex + 1; // 1위부터 시작
         }
         
-        // 하위 목록에 있는지 확인
-        const lowerIndex = lowerList.findIndex(r => r.userUuid === opponentUuid);
+        // 하위 리스트에서 찾기
+        const lowerIndex = lowerList.findIndex(u => u.userUuid === opponentUuid);
         if (lowerIndex !== -1) {
-            return lowerIndex + 1; // 1번부터 시작
+            return higherList.length + 2 + lowerIndex; // 내 순위 다음부터
         }
         
-        // 못 찾으면 기본값
-        return 1;
+        // 리스트에 없으면 대략적인 순위 계산
+        if (opponentElo > myElo) {
+            return Math.max(1, Math.floor((myElo - opponentElo) / 50) + 5);
+        } else {
+            return Math.min(20, higherList.length + 2 + Math.floor((myElo - opponentElo) / 50));
+        }
     }
-
+    
+    // ELO 변화량 계산
+    calculateEloChange(myElo, opponentElo, opponentRank, isWin) {
+        if (isWin) {
+            // 승리 시: 순위가 높을수록 큰 보상
+            const baseReward = 60;
+            const rankPenalty = (opponentRank - 1) * 3;
+            return Math.max(30, baseReward - rankPenalty);
+        } else {
+            // 패배 시: 순위가 낮을수록 큰 감점
+            const basePenalty = -3;
+            const rankPenalty = (opponentRank - 1) * 3;
+            return Math.min(-3, basePenalty - rankPenalty);
+        }
+    }
+    
     // 상대방의 전투 데이터 조회
-    async getOpponentBattleData(opponentUuid) {
-        try {
-            // 낚시 레벨 조회
-            const fishingSkill = await this.FishingSkillModel.findOne({ userUuid: opponentUuid });
-            
-            // 성장 스탯 조회
-            const userStats = await this.UserStatsModel.findOne({ userUuid: opponentUuid });
-            
-            // 장비 정보 조회 (공격력, 체력 계산에 필요)
-            const equipment = await this.UserEquipmentModel.findOne({ userUuid: opponentUuid });
-            
-            // 동료 조회 (전투 참여 중인 동료만)
-            const companions = await this.CompanionStatsModel.find({
-                userUuid: opponentUuid,
-                isBattleActive: true
-            }).lean();
-            
-            console.log(`[Arena] ${opponentUuid} 데이터:`, {
-                fishingSkill: fishingSkill?.fishingSkill,
-                equipment: equipment,
-                userStats: userStats,
-                companionsCount: companions.length
-            });
-            
-            return {
-                fishingSkill: fishingSkill?.fishingSkill || 1,
-                userStats: {
-                    attack: userStats?.attack || 0,
-                    health: userStats?.health || 0,
-                    critical: userStats?.critical || 0,
-                    // 장비 정보 포함
-                    fishingRod: equipment?.fishingRod,
-                    fishingRodEnhancement: equipment?.fishingRodEnhancement || 0,
-                    accessory: equipment?.accessory,
-                    accessoryEnhancement: equipment?.accessoryEnhancement || 0
-                },
-                companions: companions || []
-            };
-        } catch (error) {
-            console.error('상대방 전투 데이터 조회 실패:', error);
-            return {
-                fishingSkill: 1,
-                userStats: {
-                    attack: 0,
-                    health: 0,
-                    critical: 0,
-                    fishingRod: null,
-                    fishingRodEnhancement: 0,
-                    accessory: null,
-                    accessoryEnhancement: 0
-                },
-                companions: []
-            };
+    async getOpponentBattleData(userUuid) {
+        // 유저 기본 스탯
+        const userStats = await this.UserStatsModel.findOne({ userUuid });
+        const fishingSkill = await this.FishingSkillModel.findOne({ userUuid });
+        const equipment = await this.UserEquipmentModel.findOne({ userUuid });
+        
+        // 동료 스탯 (전투 참여 중인 동료만)
+        const companions = await this.CompanionStatsModel.find({
+            userUuid,
+            inBattle: true
+        }).lean();
+        
+        // HP 계산 (기본 HP + 장비 보너스)
+        let baseHp = 100;
+        let equipmentBonus = 0;
+        
+        if (equipment) {
+            if (equipment.weapon) equipmentBonus += equipment.weapon.hp || 0;
+            if (equipment.armor) equipmentBonus += equipment.armor.hp || 0;
+            if (equipment.accessory) equipmentBonus += equipment.accessory.hp || 0;
         }
-    }
-
-    // 전투 결과 처리
-    async processArenaResult(winnerUuid, winnerUsername, loserUuid, loserUsername, myElo, opponentElo, opponentRank) {
-        try {
-            // 승자 데이터 업데이트
-            const winnerData = await this.getOrCreateEloData(winnerUuid, winnerUsername);
-            const eloChange = this.calculateEloChange(myElo, opponentElo, opponentRank, true);
-            const victorPointsGain = 10; // 승리 시 10점
-            
-            winnerData.elo += eloChange;
-            winnerData.victorPoints += victorPointsGain;
-            winnerData.dailyBattles += 1;
-            winnerData.totalWins += 1;
-            winnerData.winStreak += 1;
-            winnerData.lastBattleDate = new Date();
-            winnerData.lastOpponentUuid = loserUuid;
-            
-            // 최대 연승 기록 갱신
-            if (winnerData.winStreak > winnerData.maxWinStreak) {
-                winnerData.maxWinStreak = winnerData.winStreak;
-            }
-            
-            await winnerData.save();
-            
-            // 패자 데이터 업데이트
-            const loserData = await this.getOrCreateEloData(loserUuid, loserUsername);
-            const loserEloChange = this.calculateEloChange(opponentElo, myElo, opponentRank, false);
-            
-            loserData.elo = Math.max(0, loserData.elo + loserEloChange); // ELO는 0 이하로 떨어지지 않음
-            loserData.dailyBattles += 1; // 패자도 일일 전투 횟수 증가
-            loserData.totalLosses += 1;
-            loserData.winStreak = 0; // 연승 초기화
-            loserData.lastBattleDate = new Date();
-            loserData.lastOpponentUuid = winnerUuid;
-            
-            await loserData.save();
-            
-            return {
-                winnerEloChange: eloChange,
-                winnerNewElo: winnerData.elo,
-                winnerVictorPoints: victorPointsGain,
-                loserEloChange: loserEloChange,
-                loserNewElo: loserData.elo,
-                winStreak: winnerData.winStreak
-            };
-        } catch (error) {
-            console.error('전투 결과 처리 실패:', error);
-            throw error;
+        
+        const totalHp = baseHp + equipmentBonus + (userStats?.hp || 0);
+        
+        // 공격력 계산 (스킬 레벨 + 장비)
+        let baseAttack = (fishingSkill?.level || 1) * 2;
+        let weaponAttack = 0;
+        
+        if (equipment?.weapon) {
+            weaponAttack = equipment.weapon.attack || 0;
         }
+        
+        const totalAttack = baseAttack + weaponAttack;
+        
+        return {
+            hp: totalHp,
+            maxHp: totalHp,
+            attack: totalAttack,
+            companions: companions.map(c => ({
+                id: c.companionId,
+                name: c.companionName,
+                level: c.level,
+                hp: c.hp,
+                maxHp: c.maxHp,
+                attack: c.attack
+            }))
+        };
     }
-
-    // 전투 시작
+    
+    // 전투 생성
     createBattle(battleId, playerData, opponentData) {
         const battle = {
-            id: battleId,
+            battleId,
             player: playerData,
             opponent: opponentData,
             createdAt: Date.now()
         };
         
-        this.ongoingBattles.set(battleId, battle);
+        this.activeBattles.set(battleId, battle);
+        console.log(`⚔️ 전투 생성: ${playerData.username} vs ${opponentData.username}`);
         
         return battle;
     }
-
+    
     // 전투 데이터 조회
     getBattle(battleId) {
-        return this.ongoingBattles.get(battleId);
+        return this.activeBattles.get(battleId);
     }
-
+    
     // 전투 종료
     endBattle(battleId) {
-        this.ongoingBattles.delete(battleId);
+        const battle = this.activeBattles.get(battleId);
+        if (battle) {
+            console.log(`🏁 전투 종료: ${battle.player.username} vs ${battle.opponent.username}`);
+            this.activeBattles.delete(battleId);
+            return true;
+        }
+        return false;
+    }
+    
+    // 진행 중인 전투 정리 (1시간 이상 된 전투 삭제)
+    cleanupOldBattles() {
+        const oneHourAgo = Date.now() - 60 * 60 * 1000;
+        let cleaned = 0;
+        
+        for (const [battleId, battle] of this.activeBattles.entries()) {
+            if (battle.createdAt < oneHourAgo) {
+                this.activeBattles.delete(battleId);
+                cleaned++;
+            }
+        }
+        
+        if (cleaned > 0) {
+            console.log(`🧹 오래된 전투 ${cleaned}개 정리 완료`);
+        }
     }
 }
 
 module.exports = ArenaSystem;
-

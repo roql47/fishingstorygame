@@ -63,21 +63,6 @@ function setupArenaRoutes(
         }
     });
 
-    // 전체 랭킹 조회 (페이지네이션용)
-    router.get('/all-rankings', authenticateJWT, async (req, res) => {
-        try {
-            const allRankings = await arenaSystem.getAllRankings();
-            
-            res.json({
-                success: true,
-                rankings: allRankings
-            });
-        } catch (error) {
-            console.error('전체 랭킹 조회 실패:', error);
-            res.status(500).json({ error: '전체 랭킹 조회에 실패했습니다.' });
-        }
-    });
-
     // 전투 시작
     router.post('/start-battle', authenticateJWT, async (req, res) => {
         try {
