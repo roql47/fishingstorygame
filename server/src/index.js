@@ -13350,7 +13350,7 @@ const expeditionRouter = setupExpeditionRoutes(authenticateJWT, CompanionStatsMo
 app.use("/api/expedition", expeditionRouter);
 
 // 항해 라우터 등록
-setupVoyageRoutes(app, UserMoneyModel, CatchModel, DailyQuestModel, getKSTDate);
+setupVoyageRoutes(app, UserMoneyModel, CatchModel, DailyQuestModel, getKSTDate, authenticateJWT);
 
 // 업적 라우터 등록
 const { router: achievementRouter } = setupAchievementRoutes(authenticateJWT, UserUuidModel, CatchModel, FishingSkillModel, RaidDamageModel, RareFishCountModel);
