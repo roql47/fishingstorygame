@@ -33,7 +33,7 @@ function setupArenaRoutes(
             const { userUuid, username } = req.user;
             
             const eloData = await arenaSystem.getOrCreateEloData(userUuid, username);
-            const limitInfo = await arenaSystem.checkDailyLimit(userUuid);
+            const limitInfo = await arenaSystem.checkDailyLimit(userUuid, username);
             
             res.json({
                 success: true,
@@ -93,7 +93,7 @@ function setupArenaRoutes(
             }
             
             // 일일 제한 확인
-            const limitInfo = await arenaSystem.checkDailyLimit(userUuid);
+            const limitInfo = await arenaSystem.checkDailyLimit(userUuid, username);
             if (!limitInfo.canBattle) {
                 return res.status(400).json({ 
                     error: '오늘의 전투 횟수를 모두 소진했습니다.',

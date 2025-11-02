@@ -38,8 +38,8 @@ class ArenaSystem {
     }
     
     // 일일 제한 확인
-    async checkDailyLimit(userUuid) {
-        const eloData = await this.getOrCreateEloData(userUuid, '');
+    async checkDailyLimit(userUuid, username = '') {
+        const eloData = await this.getOrCreateEloData(userUuid, username);
         
         // 날짜 변경 확인 (한국 시간 기준 자정)
         const now = new Date();

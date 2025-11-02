@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Trophy, 
   Sword, 
@@ -54,14 +54,14 @@ const ArenaTab = ({
     if (userData?.userUuid && userData?.username) {
       loadArenaData();
     }
-  }, [userData]);
+  }, [userData?.userUuid, userData?.username, loadArenaData]);
 
   // 결투장 탭 클릭 시 자동 새로고침
   useEffect(() => {
     if (activeTab === 'arena' && userData?.userUuid && currentView === 'lobby') {
       loadArenaData();
     }
-  }, [activeTab]);
+  }, [activeTab, currentView, userData?.userUuid, loadArenaData]);
 
   // 전투 로그 자동 스크롤
   useEffect(() => {
@@ -80,7 +80,7 @@ const ArenaTab = ({
   }, []);
 
   // 결투장 데이터 로드
-  const loadArenaData = async () => {
+  const loadArenaData = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -145,7 +145,7 @@ const ArenaTab = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [serverUrl]);
 
   // 전투 시작
   const startBattle = async (opponent) => {

@@ -778,12 +778,12 @@ class ExpeditionSystem {
             const selectedPrefix = this.selectFishPrefix();
             const fishName = `${selectedPrefix.name} ${baseFish.name}`;
             
-            // 물고기 체력 계산 (접두어 배율 적용)
+            // 물고기 체력 계산 (접두어 배율 적용) - 2배 증가
             const baseHp = this.fishHealthData[baseFish.name] || (baseFish.rank * 50 + 50);
-            const maxHp = Math.floor(baseHp * selectedPrefix.hpMultiplier);
+            const maxHp = Math.floor(baseHp * selectedPrefix.hpMultiplier * 2);
             
-            // 공격력 계산 (랭크 기반)
-            const attackPower = this.calculateEnemyAttack(baseFish.rank);
+            // 공격력 계산 (랭크 기반) - 2배 증가
+            const attackPower = this.calculateEnemyAttack(baseFish.rank) * 2;
             
             // 속도 계산 (새로운 공식: 25 + (물고기인덱스 * 0.5) * 접두어배율)
             const baseSpeed = 25 + (baseFish.rank * 0.5);

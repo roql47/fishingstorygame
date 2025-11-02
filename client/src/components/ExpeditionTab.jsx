@@ -1215,7 +1215,9 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                     1: 1,   // 쓸쓸한 부두
                     2: 6,   // 노스트라
                     3: 11,  // 가을초입길
-                    4: 16   // 폭풍이 치는 곳
+                    4: 16,  // 폭풍이 치는 곳
+                    5: 21,  // 비문의잔해
+                    6: 26   // 트루키다토르
                   };
                   const requiredSkill = requiredSkills[area.id] || 1;
                   const meetsRequirement = fishingSkill >= requiredSkill;
