@@ -10719,7 +10719,7 @@ function App() {
                 companionStats={companionStats}
                 fishingSkill={fishingSkill}
                 userStats={userStats}
-                serverUrl={import.meta.env.VITE_SERVER_URL || "http://localhost:4000"}
+                serverUrl={serverUrl}
                 userEquipment={userEquipment}
                 calculateTotalEnhancementBonus={calculateTotalEnhancementBonus}
                 calculatePlayerAttack={getAttackRange}
