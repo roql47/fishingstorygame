@@ -85,27 +85,45 @@ const ArenaTab = ({
       setLoading(true);
       
       const token = localStorage.getItem('jwtToken');
-      if (!token) return;
+      if (!token) {
+        console.log('[Arena] JWT 토큰 없음');
+        return;
+      }
 
       const config = {
         headers: { Authorization: `Bearer ${token}` }
       };
+
+      console.log('[Arena] 결투장 데이터 로드 시작...');
 
       const [statsRes, rankingsRes] = await Promise.all([
         axios.get(`${serverUrl}/api/arena/my-stats`, config),
         axios.get(`${serverUrl}/api/arena/rankings`, config)
       ]);
 
+      console.log('[Arena] 스탯 응답:', statsRes.data);
+      console.log('[Arena] 랭킹 응답:', rankingsRes.data);
+
       if (statsRes.data.success) {
         setMyStats(statsRes.data.stats);
         setDailyLimit(statsRes.data.dailyLimit);
+        console.log('[Arena] 스탯 설정 완료');
       }
 
       if (rankingsRes.data.success) {
         setRankings(rankingsRes.data.rankings);
+        console.log('[Arena] 랭킹 설정 완료:', rankingsRes.data.rankings);
       }
     } catch (error) {
-      console.error('결투장 데이터 로드 실패:', error);
+      console.error('[Arena] 결투장 데이터 로드 실패:', error);
+      console.error('[Arena] 에러 상세:', error.response?.data);
+      
+      // 사용자에게 에러 알림
+      if (error.response?.status === 401) {
+        alert('로그인이 필요합니다.');
+      } else if (error.response?.status === 500) {
+        alert('서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+      }
     } finally {
       setLoading(false);
     }

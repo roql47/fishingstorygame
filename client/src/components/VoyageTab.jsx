@@ -18,7 +18,8 @@ const VoyageTab = ({
   userStats,
   updateQuestProgress,
   setUserMoney,
-  refreshInventory
+  refreshInventory,
+  idToken
 }) => {
   const [currentView, setCurrentView] = useState('select'); // 'select', 'battle', 'result'
   const [selectedFish, setSelectedFish] = useState(null);
@@ -391,7 +392,10 @@ const VoyageTab = ({
     try {
       const response = await fetch(`${import.meta.env.VITE_SERVER_URL || window.location.origin}/api/voyage/reward`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
         body: JSON.stringify({
           username,
           userUuid,

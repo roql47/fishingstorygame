@@ -105,7 +105,15 @@ class ArenaSystem {
             totalUsers,
             myElo,
             higher,
-            lower
+            lower,
+            myData: {
+                rank: myRank,
+                elo: myEloData.elo,
+                totalWins: myEloData.totalWins,
+                totalLosses: myEloData.totalLosses,
+                winStreak: myEloData.winStreak,
+                victorPoints: myEloData.victorPoints
+            }
         };
     }
     

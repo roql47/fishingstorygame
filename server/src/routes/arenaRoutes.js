@@ -51,15 +51,29 @@ function setupArenaRoutes(
         try {
             const { userUuid, username } = req.user;
             
+            console.log(`[Arena] 랭킹 조회 요청: ${username} (${userUuid})`);
+            
             const rankings = await arenaSystem.getEloRankings(userUuid, username);
+            
+            console.log(`[Arena] 랭킹 조회 완료:`, {
+                myRank: rankings.myRank,
+                totalUsers: rankings.totalUsers,
+                higherCount: rankings.higher.length,
+                lowerCount: rankings.lower.length
+            });
             
             res.json({
                 success: true,
                 rankings
             });
         } catch (error) {
-            console.error('랭킹 조회 실패:', error);
-            res.status(500).json({ error: '랭킹 조회에 실패했습니다.' });
+            console.error('[Arena] 랭킹 조회 실패:', error);
+            console.error('[Arena] 에러 스택:', error.stack);
+            res.status(500).json({ 
+                success: false,
+                error: '랭킹 조회에 실패했습니다.',
+                details: error.message 
+            });
         }
     });
 

@@ -10306,6 +10306,7 @@ function App() {
               updateQuestProgress={updateQuestProgress}
               setUserMoney={setUserMoney}
               refreshInventory={refreshInventory}
+              idToken={idToken}
             />
           )}
 
