@@ -158,49 +158,73 @@ class ArenaSystem {
     async getOpponentBattleData(userUuid) {
         // 유저 기본 스탯
         const userStats = await this.UserStatsModel.findOne({ userUuid });
-        const fishingSkill = await this.FishingSkillModel.findOne({ userUuid });
+        const fishingSkillData = await this.FishingSkillModel.findOne({ userUuid });
         const equipment = await this.UserEquipmentModel.findOne({ userUuid });
         
         // 동료 스탯 (전투 참여 중인 동료만)
         const companions = await this.CompanionStatsModel.find({
             userUuid,
-            inBattle: true
+            isInBattle: true
         }).lean();
         
-        // HP 계산 (기본 HP + 장비 보너스)
-        let baseHp = 100;
-        let equipmentBonus = 0;
+        const fishingSkill = fishingSkillData?.skill || 1;
         
-        if (equipment) {
-            if (equipment.weapon) equipmentBonus += equipment.weapon.hp || 0;
-            if (equipment.armor) equipmentBonus += equipment.armor.hp || 0;
-            if (equipment.accessory) equipmentBonus += equipment.accessory.hp || 0;
-        }
-        
-        const totalHp = baseHp + equipmentBonus + (userStats?.hp || 0);
-        
-        // 공격력 계산 (스킬 레벨 + 장비)
-        let baseAttack = (fishingSkill?.level || 1) * 2;
-        let weaponAttack = 0;
-        
-        if (equipment?.weapon) {
-            weaponAttack = equipment.weapon.attack || 0;
-        }
-        
-        const totalAttack = baseAttack + weaponAttack;
+        // 동료 데이터 구조화 (프론트엔드가 기대하는 형식)
+        const companionsData = companions.map(c => {
+            // 동료 스탯 계산
+            const level = c.level || 1;
+            const tier = c.tier || 0;
+            const breakthrough = c.breakthrough || 0;
+            
+            // 기본 스탯
+            let baseHp = 100 + (level - 1) * 20;
+            let baseAttack = 10 + (level - 1) * 2;
+            let baseSpeed = 50 + (level - 1) * 1;
+            
+            // 티어 보너스
+            const tierMultiplier = 1 + tier * 0.1;
+            baseHp = Math.floor(baseHp * tierMultiplier);
+            baseAttack = Math.floor(baseAttack * tierMultiplier);
+            baseSpeed = Math.floor(baseSpeed * tierMultiplier);
+            
+            // 돌파 보너스
+            if (breakthrough > 0) {
+                const breakthroughStats = c.breakthroughStats || {};
+                baseHp += (breakthroughStats.bonusGrowthHp || 0) * breakthrough;
+                baseAttack += (breakthroughStats.bonusGrowthAttack || 0) * breakthrough;
+                baseSpeed += (breakthroughStats.bonusGrowthSpeed || 0) * breakthrough;
+            }
+            
+            return {
+                name: c.companionName,
+                companionName: c.companionName,
+                level,
+                tier,
+                breakthrough,
+                stats: {
+                    health: baseHp,
+                    attack: baseAttack,
+                    speed: baseSpeed
+                },
+                health: baseHp,
+                attack: baseAttack,
+                speed: baseSpeed,
+                skill: c.skill || null
+            };
+        });
         
         return {
-            hp: totalHp,
-            maxHp: totalHp,
-            attack: totalAttack,
-            companions: companions.map(c => ({
-                id: c.companionId,
-                name: c.companionName,
-                level: c.level,
-                hp: c.hp,
-                maxHp: c.maxHp,
-                attack: c.attack
-            }))
+            fishingSkill,
+            userStats: {
+                accessory: equipment?.accessory || '없음',
+                accessoryEnhancement: equipment?.accessoryEnhancement || 0,
+                health: userStats?.health || 0,
+                attack: userStats?.attack || 0,
+                speed: userStats?.speed || 0,
+                fishingRod: equipment?.fishingRod || '나무낚시대',
+                fishingRodEnhancement: equipment?.fishingRodEnhancement || 0
+            },
+            companions: companionsData
         };
     }
     
