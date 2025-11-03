@@ -124,7 +124,7 @@ export const COMPANION_DATA = {
     growthSpeed: 0.5,
     description: "별을 인도하는 자",
     rarity: "영웅",
-    recruitmentCost: { ambers: 50000, requiredCompanions: 6 }, // 기본 6명 보유 + 호박 5만개
+    recruitmentCost: { ambers: 10000, requiredCompanions: 6 }, // 기본 6명 보유 + 호박 1만개
     skill: {
       name: "달빛의 그림자",
       description: "최대 3명의 적에게 50% 데미지를 주고 3초간 속도를 정지시킵니다",
