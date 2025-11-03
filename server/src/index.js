@@ -6518,8 +6518,8 @@ app.post("/api/recruit-hero-companion", authenticateJWT, async (req, res) => {
         });
       }
       
-      // 2. 호박 5만개 확인
-      const requiredAmbers = 50000;
+      // 2. 호박 1만개 확인
+      const requiredAmbers = 10000;
       if (!userAmbers || userAmbers.amber < requiredAmbers) {
         return res.status(400).json({ 
           error: `호박이 부족합니다. (필요: ${requiredAmbers.toLocaleString()}개)`,
