@@ -6697,7 +6697,8 @@ app.post("/api/companion/breakthrough", authenticateJWT, async (req, res) => {
       "애비게일": "바람의정수",
       "림스&베리": "어둠의정수",
       "클로에": "빛의정수",
-      "나하트라": "자연의정수"
+      "나하트라": "자연의정수",
+      "메이델": "영혼의정수"
     };
     
     const essenceName = COMPANION_ESSENCE[companionName];
@@ -6917,7 +6918,8 @@ app.get("/api/companion/breakthrough-cost/:companionName", authenticateJWT, asyn
       "애비게일": "바람의정수",
       "림스&베리": "어둠의정수",
       "클로에": "빛의정수",
-      "나하트라": "자연의정수"
+      "나하트라": "자연의정수",
+      "메이델": "영혼의정수"
     };
     
     const essenceName = COMPANION_ESSENCE[companionName];
