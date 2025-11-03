@@ -345,9 +345,9 @@ const CompanionTab = ({
             </h3>
             <button
               onClick={() => recruitHeroCompanion("메이델")}
-              disabled={(userAmber || 0) < 50000}
+              disabled={(userAmber || 0) < 10000}
               className={`w-full px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
-                (userAmber || 0) >= 50000
+                (userAmber || 0) >= 10000
                   ? isDarkMode
                     ? "bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 border border-purple-400/40"
                     : "bg-purple-500/10 text-purple-700 hover:bg-purple-500/20 border border-purple-500/40"
@@ -356,9 +356,9 @@ const CompanionTab = ({
                     : "bg-gray-300/30 text-gray-400 cursor-not-allowed border border-gray-300/30"
               }`}
             >
-              {(userAmber || 0) < 50000
-                ? `호박 부족 (${(userAmber || 0).toLocaleString()}/50,000)`
-                : "메이델 영입 (호박 50,000개)"
+              {(userAmber || 0) < 10000
+                ? `호박 부족 (${(userAmber || 0).toLocaleString()}/10,000)`
+                : "메이델 영입 (호박 10,000개)"
               }
             </button>
             <p className={`text-xs mt-2 ${
