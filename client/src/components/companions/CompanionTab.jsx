@@ -8,6 +8,7 @@ import {
   GROWTH_COSTS,
   BREAKTHROUGH_COSTS,
   BREAKTHROUGH_BONUS,
+  BREAKTHROUGH_BONUS_MEIDEL,
   COMPANION_ESSENCE,
   ESSENCE_EMOJI,
   getTierColor,
@@ -20,11 +21,13 @@ import character3 from '../../assets/character3.jpg';
 import character4 from '../../assets/character4.jpeg';
 import character5 from '../../assets/character5.jpg';
 import character6 from '../../assets/character6.jpg';
+import character7 from '../../assets/character7.jpg';
 
 const CompanionTab = ({
   // 상태
   isDarkMode,
   userStarPieces,
+  userAmber,
   companions,
   battleCompanions,
   companionStats,
@@ -33,6 +36,7 @@ const CompanionTab = ({
   
   // 함수
   recruitCompanion,
+  recruitHeroCompanion,
   toggleBattleCompanion,
   refreshAllData,
   onGrowth,
@@ -62,7 +66,8 @@ const CompanionTab = ({
     setSelectedCompanion(null);
   };
 
-  const allCompanions = ["실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라"];
+  const allCompanions = ["실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라", "메이델"];
+  const basicCompanions = ["실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라"];
   const maxBattleCompanions = 3;
 
   // 동료 이미지 매핑
@@ -72,7 +77,8 @@ const CompanionTab = ({
     "애비게일": character5,
     "림스&베리": character3,
     "클로에": character2,
-    "나하트라": character4
+    "나하트라": character4,
+    "메이델": character7
   };
 
   // 강화 헬퍼 함수들
@@ -182,7 +188,9 @@ const CompanionTab = ({
     const stats = companionStats[selectedEnhanceCompanion] || {};
     const currentBreakthrough = stats.breakthrough || 0;
     const essenceName = COMPANION_ESSENCE[selectedEnhanceCompanion];
-    const bonus = BREAKTHROUGH_BONUS[currentBreakthrough];
+    // 메이델이면 전용 보너스 사용
+    const bonusTable = selectedEnhanceCompanion === "메이델" ? BREAKTHROUGH_BONUS_MEIDEL : BREAKTHROUGH_BONUS;
+    const bonus = bonusTable[currentBreakthrough];
     
     if (!window.confirm(`${selectedEnhanceCompanion}을(를) ${currentBreakthrough + 1}차 돌파하시겠습니까?\n레벨당 성장률이 증가합니다!`)) {
       return;
@@ -319,9 +327,47 @@ const CompanionTab = ({
           <div className={`text-xs mt-2 ${
             isDarkMode ? "text-gray-400" : "text-gray-600"
           }`}>
-            성공 확률: 15% | 남은 동료: {6 - companions.length}명
+            성공 확률: 15% | 남은 기본 동료: {6 - companions.length}명
           </div>
         </div>
+        
+        {/* 영웅 동료 구매 섹션 */}
+        {companions.length >= 6 && !companions.includes("메이델") && (
+          <div className={`p-4 rounded-xl mb-4 border ${
+            isDarkMode 
+              ? "glass-input border-purple-500/30" 
+              : "bg-white/60 backdrop-blur-sm border-purple-500/40"
+          }`}>
+            <h3 className={`text-lg font-bold mb-3 ${
+              isDarkMode ? "text-purple-300" : "text-purple-700"
+            }`}>
+              영웅 동료: 메이델
+            </h3>
+            <button
+              onClick={() => recruitHeroCompanion("메이델")}
+              disabled={(userAmber || 0) < 50000}
+              className={`w-full px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
+                (userAmber || 0) >= 50000
+                  ? isDarkMode
+                    ? "bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 border border-purple-400/40"
+                    : "bg-purple-500/10 text-purple-700 hover:bg-purple-500/20 border border-purple-500/40"
+                  : isDarkMode
+                    ? "bg-gray-500/20 text-gray-500 cursor-not-allowed border border-gray-500/20"
+                    : "bg-gray-300/30 text-gray-400 cursor-not-allowed border border-gray-300/30"
+              }`}
+            >
+              {(userAmber || 0) < 50000
+                ? `호박 부족 (${(userAmber || 0).toLocaleString()}/50,000)`
+                : "메이델 영입 (호박 50,000개)"
+              }
+            </button>
+            <p className={`text-xs mt-2 ${
+              isDarkMode ? "text-gray-400" : "text-gray-600"
+            }`}>
+              기본 동료 6명 보유 필요
+            </p>
+          </div>
+        )}
         
         {/* 보유 동료 목록 - 전투 참여 토글 기능 */}
         <div className={`p-4 rounded-xl mb-4 ${
@@ -331,7 +377,7 @@ const CompanionTab = ({
             isDarkMode ? "text-white" : "text-gray-800"
           }`}>
             <Sword className="w-4 h-4" />
-            보유 동료 ({companions.length}/6)
+            보유 동료 ({companions.length}/{allCompanions.length})
           </h3>
           {companions.length > 0 ? (
             <div className="grid grid-cols-1 gap-3">

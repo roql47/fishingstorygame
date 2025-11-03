@@ -23,6 +23,7 @@ import ArenaTab from './components/ArenaTab';
 import ShopTab from './components/ShopTab';
 import { COMPANION_DATA, calculateCompanionStats } from './data/companionData';
 import { useAchievements, ACHIEVEMENT_DEFINITIONS } from './hooks/useAchievements';
+import { processExplorationCompanionSkill, processExplorationCompanionNormalAttack } from './utils/explorationBattle';
 import AchievementModal from './components/AchievementModal';
 import RoguelikeModal from './components/RoguelikeModal';
 import ClickerModal from './components/ClickerModal';
@@ -223,7 +224,7 @@ function App() {
 
   // 🔄 버전 업데이트 시 캐시 초기화 (v1.405)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.412";
+    const CURRENT_VERSION = "v1.413";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -412,8 +413,8 @@ function App() {
   const [showGuestModal, setShowGuestModal] = useState(false); // 게스트 계정 모달
   
   // 레이드 관련 상태
-  const [raidBosses, setRaidBosses] = useState({ beginner: null, intermediate: null, advanced: null });
-  const [raidLogs, setRaidLogs] = useState({ beginner: [], intermediate: [], advanced: [] });
+  const [raidBosses, setRaidBosses] = useState({ beginner: null, intermediate: null, advanced: null, legendary: null });
+  const [raidLogs, setRaidLogs] = useState({ beginner: [], intermediate: [], advanced: [], legendary: [] });
   const [selectedRaidType, setSelectedRaidType] = useState('beginner');
   const [raidView, setRaidView] = useState('lobby');
   const [currentRaidRoom, setCurrentRaidRoom] = useState(null);
@@ -449,6 +450,7 @@ function App() {
   // 탐사 전투 속도바 관련
   const [speedBars, setSpeedBars] = useState({}); // 각 캐릭터의 속도바 상태
   const speedBarIntervalsRef = useRef({});
+  const battleStateRef = useRef(null); // battleState ref (속도바에서 접근용)
 
   // 호박석 지급 함수 (TDZ 문제 해결을 위해 상단에 선언)
   const addAmber = async (amount) => {
@@ -769,6 +771,12 @@ function App() {
     speedBarIntervalsRef.current = {};
     setSpeedBars({});
   }, []);
+  
+  // battleState가 변경될 때마다 ref 업데이트
+  useEffect(() => {
+    battleStateRef.current = battleState;
+  }, [battleState]);
+  
   // 속도바 시작 함수 (원정 전투와 동일한 방식)
   const startSpeedBar = useCallback((characterId, speed, characterType) => {
     // 기존 타이머가 있으면 정리
@@ -787,7 +795,20 @@ function App() {
     console.log(`[SPEED] Starting ${characterId}: speed=${speed}, maxProgress=${maxProgress}, increment=${increment.toFixed(2)}, expectedTime=${(maxProgress/speed).toFixed(2)}s`);
 
     speedBarIntervalsRef.current[characterId] = setInterval(() => {
-      progress += increment;
+      // 적의 경우 speedMultiplier 체크
+      let effectiveIncrement = increment;
+      if (characterType === 'enemy' && characterId.startsWith('enemy_')) {
+        const enemyIdStr = characterId.replace('enemy_', '');
+        const currentBattleState = battleStateRef.current;
+        if (currentBattleState && currentBattleState.enemies) {
+          const enemy = currentBattleState.enemies.find(e => e.id === enemyIdStr);
+          if (enemy && enemy.speedMultiplier === 0) {
+            effectiveIncrement = 0; // 속도 정지
+          }
+        }
+      }
+      
+      progress += effectiveIncrement;
       const newProgress = Math.min(progress, maxProgress);
       setSpeedBars(prev => ({ ...prev, [characterId]: { current: newProgress, max: maxProgress } }));
       
@@ -1007,7 +1028,7 @@ function App() {
               let damage = 0;
               let isSkillUsed = false;
               const newLog = [...currentState.log];
-              const newEnemies = [...currentState.enemies];
+              let newEnemies = [...currentState.enemies];
               const newCompanionMorale = { ...currentState.companionMorale };
               const newCompanionBuffs = { ...currentState.companionBuffs };
               
@@ -1021,135 +1042,58 @@ function App() {
                   newCompanionMorale[companionName] = { ...newCompanionMorale[companionName], morale: 0 };
                 }
                 
-                if (skill.skillType === 'heal') {
-                  // 클로에의 힐 스킬
-                  const healAmount = Math.floor(companionData.attack * skill.healMultiplier);
-                  
-                  // 체력이 가장 낮은 아군 찾기 (살아있는 대상만)
-                  let lowestHpTarget = null;
-                  let lowestHpRatio = 1;
-                  
-                  // 플레이어 체크 (살아있을 때만)
-                  if (currentState?.playerHp > 0) {
-                    const playerHpRatio = currentState.playerHp / currentState.playerMaxHp;
-                    if (playerHpRatio < lowestHpRatio) {
-                      lowestHpRatio = playerHpRatio;
-                      lowestHpTarget = { type: 'player', currentHp: currentState.playerHp, maxHp: currentState.playerMaxHp };
-                    }
-                  }
-                  
-                  // 동료들 체크 (살아있을 때만)
-                  if (currentState.companions) {
-                    currentState.companions.forEach(c => {
-                      const hp = currentState.companionHp?.[c];
-                      if (hp && hp.hp > 0) {
-                        const hpRatio = hp.hp / hp.maxHp;
-                        if (hpRatio < lowestHpRatio) {
-                          lowestHpRatio = hpRatio;
-                          lowestHpTarget = { type: 'companion', name: c, currentHp: hp.hp, maxHp: hp.maxHp };
-                        }
-                      }
-                    });
-                  }
-                  
-                  if (lowestHpTarget) {
-                    if (lowestHpTarget.type === 'player') {
-                      const newHp = Math.min(currentState.playerMaxHp, (currentState?.playerHp || 0) + healAmount);
-                      currentState.playerHp = newHp;
-                      newLog.push(`✨ ${companionName}이(가) ${skill.name}을(를) 사용!`);
-                      newLog.push(`💚 플레이어의 체력이 ${healAmount} 회복! (${newHp}/${currentState.playerMaxHp})`);
-                    } else {
-                      const newHp = Math.min(lowestHpTarget.maxHp, lowestHpTarget.currentHp + healAmount);
-                      currentState.companionHp[lowestHpTarget.name].hp = newHp;
-                      newLog.push(`✨ ${companionName}이(가) ${skill.name}을(를) 사용!`);
-                      newLog.push(`💚 ${lowestHpTarget.name}의 체력이 ${healAmount} 회복! (${newHp}/${lowestHpTarget.maxHp})`);
-                    }
-                  }
-                } else if (skill.buffType) {
-                  // 버프 스킬 (피에나의 무의태세, 애비게일의 집중포화)
-                  const baseDamage = Math.floor(companionData.attack * (skill.damageMultiplier || 1.0));
-                  damage = Math.floor(baseDamage * (0.8 + Math.random() * 0.4));
-                  
-                  // 버프 적용
-                  if (!newCompanionBuffs[companionName]) {
-                    newCompanionBuffs[companionName] = {};
-                  }
-                  
-                  newCompanionBuffs[companionName][skill.buffType] = {
-                    multiplier: skill.buffMultiplier,
-                    duration: skill.buffDuration,
-                    turnsLeft: skill.buffDuration
-                  };
-                  
-                  newLog.push(`✨ ${companionName}이(가) ${skill.name}을(를) 사용!`);
-                  
-                  if (skill.buffType === 'attack') {
-                    newLog.push(`🔥 3턴 동안 공격력이 25% 상승!`);
-                  } else if (skill.buffType === 'critical') {
-                    newLog.push(`🎯 3턴 동안 크리티컬 확률이 20% 상승!`);
-                  }
-                  
-                  // 데미지 처리
-                  if (damage > 0) {
-                    const targetEnemy = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
-                    const enemy = newEnemies.find(e => e.id === targetEnemy.id);
-                    enemy.hp = Math.max(0, enemy.hp - damage);
-                    newLog.push(`${enemy.name}에게 ${damage} 데미지! (${enemy.hp}/${enemy.maxHp})`);
-                    
-                    if (enemy.hp <= 0) {
-                      enemy.isAlive = false;
-                      newLog.push(`${enemy.name}을(를) 물리쳤습니다!`);
-                      if (speedBarIntervalsRef.current[`enemy_${enemy.id}`]) {
-                        clearInterval(speedBarIntervalsRef.current[`enemy_${enemy.id}`]);
-                        delete speedBarIntervalsRef.current[`enemy_${enemy.id}`];
-                      }
-                    }
-                  }
-                } else {
-                  // 데미지 스킬 (실의 폭격)
-                  const baseDamage = Math.floor(companionData.attack * skill.damageMultiplier);
-                  damage = Math.floor(baseDamage * (0.8 + Math.random() * 0.4));
-                  
-                  const targetEnemy = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
-                  const enemy = newEnemies.find(e => e.id === targetEnemy.id);
-                  enemy.hp = Math.max(0, enemy.hp - damage);
-                  
-                  newLog.push(`✨ ${companionName}이(가) ${skill.name}을(를) 사용!`);
-                  newLog.push(`${enemy.name}에게 ${damage} 데미지! (${enemy.hp}/${enemy.maxHp})`);
-                  
-                  if (enemy.hp <= 0) {
-                    enemy.isAlive = false;
-                    newLog.push(`${enemy.name}을(를) 물리쳤습니다!`);
-                    if (speedBarIntervalsRef.current[`enemy_${enemy.id}`]) {
-                      clearInterval(speedBarIntervalsRef.current[`enemy_${enemy.id}`]);
-                      delete speedBarIntervalsRef.current[`enemy_${enemy.id}`];
-                    }
-                  }
-                }
+                // 스킬 처리 (모듈 사용)
+                const result = processExplorationCompanionSkill({
+                  companionName,
+                  companionData,
+                  skill,
+                  currentState,
+                  newEnemies,
+                  aliveEnemies,
+                  newLog,
+                  newCompanionBuffs,
+                  speedBarIntervalsRef
+                });
+                damage = result.damage;
+                newEnemies = result.enemies || newEnemies; // 수정된 enemies 반영
               } else {
-                // 일반 공격
-                const targetEnemy = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
-                damage = Math.floor(companionData.attack * (0.8 + Math.random() * 0.4));
-                
-                const enemy = newEnemies.find(e => e.id === targetEnemy.id);
-                enemy.hp = Math.max(0, enemy.hp - damage);
-                
-                newLog.push(`${companionName}이(가) ${enemy.name}에게 ${damage} 데미지! (${enemy.hp}/${enemy.maxHp})`);
-                
-                if (enemy.hp <= 0) {
-                  enemy.isAlive = false;
-                  newLog.push(`${enemy.name}을(를) 물리쳤습니다!`);
-                  if (speedBarIntervalsRef.current[`enemy_${enemy.id}`]) {
-                    clearInterval(speedBarIntervalsRef.current[`enemy_${enemy.id}`]);
-                    delete speedBarIntervalsRef.current[`enemy_${enemy.id}`];
-                  }
-                }
+                // 일반 공격 (모듈 사용)
+                const result = processExplorationCompanionNormalAttack({
+                  companionName,
+                  companionData,
+                  aliveEnemies,
+                  newEnemies,
+                  newLog,
+                  speedBarIntervalsRef
+                });
+                damage = result.damage;
+                newEnemies = result.enemies || newEnemies; // 수정된 enemies 반영
                 
                 // 일반 공격 시 사기 증가
                 if (newCompanionMorale[companionName]) {
                   newCompanionMorale[companionName] = { ...newCompanionMorale[companionName], morale: Math.min(100, newCompanionMorale[companionName].morale + 15) };
                 }
               }
+              
+              // 속도 디버프 타이머 설정 (새로 걸린 것만)
+              newEnemies.forEach(enemy => {
+                if (enemy.freezeTimerId && enemy.freezeDuration && !currentState.enemies.find(e => e.id === enemy.id)?.freezeTimerId) {
+                  const enemyId = enemy.freezeTimerId;
+                  const duration = enemy.freezeDuration;
+                  
+                  setTimeout(() => {
+                    setBattleState(state => {
+                      if (state && state.enemies) {
+                        const updatedEnemies = state.enemies.map(e => 
+                          e.id === enemyId ? { ...e, speedMultiplier: 1, freezeTimerId: undefined, freezeDuration: undefined } : e
+                        );
+                        return { ...state, enemies: updatedEnemies };
+                      }
+                      return state;
+                    });
+                  }, duration);
+                }
+              });
               
               // 동료 속도바 재시작 (살아있을 때만)
               const finalCompanionHp = currentState.companionHp?.[companionName]?.hp || 0;
@@ -1274,7 +1218,8 @@ function App() {
     const room = [
       { id: 'beginner', name: '마르가글레숨', icon: '🐟', requiredSkill: { min: 1, max: 10 }},
       { id: 'intermediate', name: '운다발레나', icon: '🐋', requiredSkill: { min: 11, max: 20 }},
-      { id: 'advanced', name: '폭주하는 해신', icon: '🌊', requiredSkill: { min: 21, max: 999 }}
+      { id: 'advanced', name: '폭주하는 해신', icon: '🌊', requiredSkill: { min: 21, max: 30 }},
+      { id: 'legendary', name: '임포머스', icon: '🦈', requiredSkill: { min: 31, max: 999 }}
     ].find(r => r.id === roomId);
     
     if (!room) return;
@@ -5003,6 +4948,10 @@ function App() {
         return isDark ? 'text-purple-400' : 'text-purple-600'; // 심연 (보라)
       case '깊은어둠의':
         return isDark ? 'text-red-400' : 'text-red-600'; // 깊은어둠 (빨강)
+      case '파멸의':
+        return isDark ? 'text-orange-400' : 'text-orange-600'; // 파멸 (주황)
+      case '종말의':
+        return isDark ? 'text-yellow-400' : 'text-yellow-600'; // 종말 (금색)
       default:
         return isDark ? 'text-gray-300' : 'text-gray-700';
     }
@@ -5385,7 +5334,7 @@ function App() {
     }
     
     if (companions.length >= 6) {
-      alert('모든 동료를 이미 보유하고 있습니다!');
+      alert('모든 기본 동료를 이미 보유하고 있습니다!');
       return;
     }
     
@@ -5431,6 +5380,40 @@ function App() {
         alert(error.response.data.error || '동료 모집에 실패했습니다.');
       } else {
         alert('동료 모집에 실패했습니다.');
+      }
+    }
+  };
+
+  // 영웅 동료 구매 함수 (메이델 등)
+  const recruitHeroCompanion = async (companionName) => {
+    try {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/recruit-hero-companion`, {
+        companionName
+      });
+      
+      if (response.data.success) {
+        setUserAmber(response.data.remainingAmbers);
+        
+        // 서버에서 최신 동료 목록을 새로고침 (DB와 동기화)
+        await refreshCompanions();
+        
+        // 새 동료 능력치 초기화 (서버 우선)
+        await initializeCompanionStats(response.data.companion);
+        
+        setMessages(prev => [...prev, {
+          system: true,
+          username: "system",
+          content: `✨ ${response.data.companion}을(를) 영입했습니다!`,
+          timestamp: new Date().toISOString()
+        }]);
+        alert(`✨ ${response.data.companion}을(를) 영입했습니다!`);
+      }
+    } catch (error) {
+      console.error('Failed to recruit hero companion:', error);
+      if (error.response?.status === 400) {
+        alert(error.response.data.error || '영웅 동료 영입에 실패했습니다.');
+      } else {
+        alert('영웅 동료 영입에 실패했습니다.');
       }
     }
   };
@@ -7081,11 +7064,23 @@ function App() {
   // 동료 공격 함수
   const companionAttack = (companionName, currentState) => {
     setBattleState(prevState => {
-      if (!prevState || prevState.enemyHp <= 0) return prevState;
+      // enemies 배열이 있으면 그걸 체크, 없으면 enemyHp 체크
+      if (!prevState) return prevState;
+      if (prevState.enemies && prevState.enemies.length > 0) {
+        // 다중 적 전투: 모든 적이 죽었는지 확인
+        const allDead = prevState.enemies.every(e => !e.isAlive);
+        if (allDead) return prevState;
+      } else if (prevState.enemyHp <= 0) {
+        // 단일 적 전투
+        return prevState;
+      }
       
       const companionStat = companionStats[companionName];
       const companionLevel = companionStat?.level || 1;
-      const companionData = calculateCompanionStats(companionName, companionLevel);
+      const tier = companionStat?.tier || 0;
+      const breakthrough = companionStat?.breakthrough || 0;
+      const breakthroughStats = companionStat?.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 };
+      const companionData = calculateCompanionStats(companionName, companionLevel, tier, breakthrough, breakthroughStats);
       const companionBaseData = COMPANION_DATA[companionName];
       
       // 동료가 쓰러져 있으면 턴 넘김
@@ -7134,7 +7129,15 @@ function App() {
         
         // skillResult가 null인 경우 (승리 처리 등) 기존 로직 계속 진행
         const skill = companionBaseData.skill;
-        if (skill.skillType === 'heal') {
+        
+        // ⚠️ enemies 배열이 있으면서 AOE/다중타겟 스킬인 경우는 처리하지 않음 (오류 방지)
+        if (prevState.enemies && prevState.enemies.length > 0 && (skill?.skillType === 'multi_target' || skill?.skillType === 'aoe')) {
+          const newLog = [...prevState.log, `⚠️ ${companionName}의 스킬이 실패했습니다!`];
+          newCompanionMorale[companionName].morale = 0;
+          return nextTurn({ ...prevState, log: newLog, companionMorale: newCompanionMorale });
+        }
+        
+        if (skill?.skillType === 'heal') {
           damage = 0;
           isCritical = false;
           attackType = 'heal_skill';
@@ -8444,7 +8447,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.412
+                여우이야기 v1.413
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -10747,6 +10750,7 @@ function App() {
               // 상태
               isDarkMode={isDarkMode}
               userStarPieces={userStarPieces}
+              userAmber={userAmber}
               companions={companions}
               battleCompanions={battleCompanions}
               companionStats={companionStats}
@@ -10755,6 +10759,7 @@ function App() {
               
               // 함수
               recruitCompanion={recruitCompanion}
+              recruitHeroCompanion={recruitHeroCompanion}
               toggleBattleCompanion={toggleBattleCompanion}
               refreshAllData={refreshAllData}
               onGrowth={growthCompanion}
@@ -10931,7 +10936,8 @@ function App() {
                   {[
                     { id: 'beginner', name: '마르가글레숨', icon: '🐟', color: 'green', level: '1-10' },
                     { id: 'intermediate', name: '운다발레나', icon: '🐋', color: 'blue', level: '11-20' },
-                    { id: 'advanced', name: '폭주하는 해신', icon: '🌊', color: 'purple', level: '21+' }
+                    { id: 'advanced', name: '폭주하는 해신', icon: '🌊', color: 'purple', level: '21-30' },
+                    { id: 'legendary', name: '임포머스', icon: '🦈', color: 'red', level: '31+' }
                   ].map(room => {
                     const isActive = raidBosses[room.id]?.isActive;
                     const isSelected = selectedRaidType === room.id;
@@ -10943,7 +10949,8 @@ function App() {
                           isSelected
                             ? room.color === 'green' ? (isDarkMode ? "bg-green-600 text-white shadow-lg" : "bg-green-500 text-white shadow-lg")
                             : room.color === 'blue' ? (isDarkMode ? "bg-blue-600 text-white shadow-lg" : "bg-blue-500 text-white shadow-lg")
-                            : (isDarkMode ? "bg-purple-600 text-white shadow-lg" : "bg-purple-500 text-white shadow-lg")
+                            : room.color === 'purple' ? (isDarkMode ? "bg-purple-600 text-white shadow-lg" : "bg-purple-500 text-white shadow-lg")
+                            : (isDarkMode ? "bg-red-600 text-white shadow-lg" : "bg-red-500 text-white shadow-lg")
                             : isDarkMode ? "bg-gray-700/50 text-gray-300 hover:bg-gray-700" : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                         }`}
                       >
@@ -10990,7 +10997,8 @@ function App() {
                           {[
                             { id: 'beginner', name: '마르가글레숨', icon: '🐟', hp: 8000, level: '1-10', colorFrom: 'from-green-500', colorTo: 'to-green-600', hoverFrom: 'hover:from-green-600', hoverTo: 'hover:to-green-700' },
                             { id: 'intermediate', name: '운다발레나', icon: '🐋', hp: 15000, level: '11-20', colorFrom: 'from-blue-500', colorTo: 'to-blue-600', hoverFrom: 'hover:from-blue-600', hoverTo: 'hover:to-blue-700' },
-                            { id: 'advanced', name: '폭주하는 해신', icon: '🌊', hp: 30000, level: '21+', colorFrom: 'from-purple-500', colorTo: 'to-purple-600', hoverFrom: 'hover:from-purple-600', hoverTo: 'hover:to-purple-700' }
+                            { id: 'advanced', name: '폭주하는 해신', icon: '🌊', hp: 30000, level: '21-30', colorFrom: 'from-purple-500', colorTo: 'to-purple-600', hoverFrom: 'hover:from-purple-600', hoverTo: 'hover:to-purple-700' },
+                            { id: 'legendary', name: '임포머스', icon: '🦈', hp: 770000, level: '31+', colorFrom: 'from-red-500', colorTo: 'to-red-600', hoverFrom: 'hover:from-red-600', hoverTo: 'hover:to-red-700' }
                           ].map(boss => (
                             <button
                               key={boss.id}
@@ -11018,7 +11026,7 @@ function App() {
                   ) : (
                     <>
                       <div className={`text-6xl mb-6 ${shakeEffect ? 'animate-bounce' : 'animate-pulse'}`}>
-                        {selectedRaidType === 'beginner' ? '🐟' : selectedRaidType === 'intermediate' ? '🐋' : '🌊'}
+                        {selectedRaidType === 'beginner' ? '🐟' : selectedRaidType === 'intermediate' ? '🐋' : selectedRaidType === 'advanced' ? '🌊' : '🦈'}
                       </div>
                       <h3 className={`text-3xl font-bold mb-3 ${isDarkMode ? "text-white" : "text-gray-800"}`}>
                         {raidBoss.name}
@@ -11044,7 +11052,7 @@ function App() {
                   }`}>
                     <div className="flex items-center gap-4 mb-6">
                       <div className={`text-7xl ${shakeEffect ? 'animate-bounce' : 'animate-pulse'}`}>
-                        {selectedRaidType === 'beginner' ? '🐟' : selectedRaidType === 'intermediate' ? '🐋' : '🌊'}
+                        {selectedRaidType === 'beginner' ? '🐟' : selectedRaidType === 'intermediate' ? '🐋' : selectedRaidType === 'advanced' ? '🌊' : '🦈'}
                       </div>
                       <div className="flex-1">
                         <h3 className={`text-3xl font-black mb-2 ${isDarkMode ? "text-white" : "text-gray-900"}`}>

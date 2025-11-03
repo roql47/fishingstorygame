@@ -340,7 +340,8 @@ const ArenaTab = ({
         morale: 50,
         maxMorale: 100,
         skill: companionData.skill,
-        side: 'player'
+        side: 'player',
+        speedMultiplier: 1
       };
     });
 
@@ -363,7 +364,8 @@ const ArenaTab = ({
         morale: 50,
         maxMorale: 100,
         skill: c.skill || null,
-        side: 'opponent'
+        side: 'opponent',
+        speedMultiplier: 1
       };
     });
 
@@ -404,7 +406,8 @@ const ArenaTab = ({
         speed: playerSpeed,
         cooldown: playerMaxCooldown,
         maxCooldown: playerMaxCooldown,
-        companions: playerCompanions
+        companions: playerCompanions,
+        speedMultiplier: 1
       },
       opponent: {
         username: opponentData.username,
@@ -414,7 +417,8 @@ const ArenaTab = ({
         speed: opponentSpeed,
         cooldown: opponentMaxCooldown,
         maxCooldown: opponentMaxCooldown,
-        companions: opponentCompanions
+        companions: opponentCompanions,
+        speedMultiplier: 1
       },
       status: 'fighting'
     };
@@ -451,7 +455,10 @@ const ArenaTab = ({
 
         // 플레이어 공격 (상대 타겟이 있을 때만)
         if (newState.player.hp > 0 && opponentTargets.length > 0) {
-          newState.player.cooldown -= 25;
+          // speedMultiplier 체크
+          if (newState.player.speedMultiplier !== 0) {
+            newState.player.cooldown -= 25;
+          }
           if (newState.player.cooldown <= 0) {
             const target = opponentTargets[Math.floor(Math.random() * opponentTargets.length)];
             const damage = Math.floor(newState.player.attack * (0.9 + Math.random() * 0.2));
@@ -473,7 +480,10 @@ const ArenaTab = ({
           if (companion.hp <= 0 || opponentTargets.length === 0) return companion;
           
           const updated = { ...companion };
-          updated.cooldown -= 25;
+          // speedMultiplier 체크
+          if (updated.speedMultiplier !== 0) {
+            updated.cooldown -= 25;
+          }
           
           if (updated.cooldown <= 0) {
             updated.morale = Math.min(updated.maxMorale, updated.morale + 15);
@@ -501,6 +511,31 @@ const ArenaTab = ({
                 // 공격 스킬
                 damage = Math.floor(updated.attack * updated.skill.damageMultiplier * (0.9 + Math.random() * 0.2));
                 newLog.push(`✨ ${updated.name}의 ${updated.skill.name}! ${damage} 데미지!`);
+                
+                // 속도 디버프 적용 - speedMultiplier를 0으로
+                if (updated.skill.debuffType === 'speed_freeze') {
+                  const debuffDuration = updated.skill.debuffDuration || 3000;
+                  newLog.push(`❄️ 상대의 속도가 ${debuffDuration / 1000}초간 정지되었습니다!`);
+                  
+                  // 상대 플레이어와 동료들의 speedMultiplier를 0으로
+                  newState.opponent.speedMultiplier = 0;
+                  newState.opponent.companions.forEach(c => {
+                    if (c.hp > 0) {
+                      c.speedMultiplier = 0;
+                    }
+                  });
+                  
+                  // duration 후 복원
+                  setTimeout(() => {
+                    setBattleState(state => {
+                      if (!state) return state;
+                      const updated = { ...state };
+                      updated.opponent.speedMultiplier = 1;
+                      updated.opponent.companions = updated.opponent.companions.map(c => ({ ...c, speedMultiplier: 1 }));
+                      return updated;
+                    });
+                  }, debuffDuration);
+                }
               }
             } else {
               damage = Math.floor(updated.attack * (0.9 + Math.random() * 0.2));
@@ -531,7 +566,11 @@ const ArenaTab = ({
         ].filter(t => t !== null);
         
         if (newState.opponent.hp > 0 && playerTargets.length > 0) {
-          newState.opponent.cooldown -= 25;
+          // speedMultiplier 체크
+          const shouldDecrease = newState.opponent.speedMultiplier !== 0;
+          if (shouldDecrease) {
+            newState.opponent.cooldown -= 25;
+          }
           if (newState.opponent.cooldown <= 0) {
             const target = playerTargets[Math.floor(Math.random() * playerTargets.length)];
             const damage = Math.floor(newState.opponent.attack * (0.8 + Math.random() * 0.4));
@@ -553,7 +592,11 @@ const ArenaTab = ({
           if (companion.hp <= 0 || playerTargets.length === 0) return companion;
           
           const updated = { ...companion };
-          updated.cooldown -= 25;
+          // speedMultiplier 체크
+          const shouldDecrease = updated.speedMultiplier !== 0;
+          if (shouldDecrease) {
+            updated.cooldown -= 25;
+          }
           
           if (updated.cooldown <= 0 && playerTargets.length > 0) {
             updated.morale = Math.min(updated.maxMorale, updated.morale + 15);
@@ -580,6 +623,31 @@ const ArenaTab = ({
               } else {
                 damage = Math.floor(updated.attack * updated.skill.damageMultiplier * (0.9 + Math.random() * 0.2));
                 newLog.push(`✨ ${updated.name}의 ${updated.skill.name}! ${damage} 데미지!`);
+                
+                // 속도 디버프 적용 - speedMultiplier를 0으로
+                if (updated.skill.debuffType === 'speed_freeze') {
+                  const debuffDuration = updated.skill.debuffDuration || 3000;
+                  newLog.push(`❄️ 아군의 속도가 ${debuffDuration / 1000}초간 정지되었습니다!`);
+                  
+                  // 아군 플레이어와 동료들의 speedMultiplier를 0으로
+                  newState.player.speedMultiplier = 0;
+                  newState.player.companions.forEach(c => {
+                    if (c.hp > 0) {
+                      c.speedMultiplier = 0;
+                    }
+                  });
+                  
+                  // duration 후 복원
+                  setTimeout(() => {
+                    setBattleState(state => {
+                      if (!state) return state;
+                      const updated = { ...state };
+                      updated.player.speedMultiplier = 1;
+                      updated.player.companions = updated.player.companions.map(c => ({ ...c, speedMultiplier: 1 }));
+                      return updated;
+                    });
+                  }, debuffDuration);
+                }
               }
             } else {
               damage = Math.floor(updated.attack * (0.9 + Math.random() * 0.2));

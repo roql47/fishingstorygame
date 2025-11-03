@@ -142,7 +142,8 @@ const VoyageTab = ({
         attack: playerAttack,
         speed: playerSpeed,
         cooldown: playerMaxCooldown, // maxCooldown에서 시작 (속도바 0%부터)
-        maxCooldown: playerMaxCooldown
+        maxCooldown: playerMaxCooldown,
+        speedMultiplier: 1
       },
       companions: companions,
       enemy: {
@@ -152,7 +153,8 @@ const VoyageTab = ({
         attack: fish.attack,
         speed: fish.speed,
         cooldown: enemyMaxCooldown, // maxCooldown에서 시작 (속도바 0%부터)
-        maxCooldown: enemyMaxCooldown
+        maxCooldown: enemyMaxCooldown,
+        speedMultiplier: 1
       },
       status: 'fighting' // 'fighting', 'victory', 'defeat'
     };
@@ -182,7 +184,10 @@ const VoyageTab = ({
 
         // 플레이어 공격
         if (newState.player.hp > 0) {
-          newState.player.cooldown -= 25;
+          // speedMultiplier 체크
+          if (newState.player.speedMultiplier !== 0) {
+            newState.player.cooldown -= 25;
+          }
           if (newState.player.cooldown <= 0 && newState.enemy.hp > 0) {
             const damage = Math.floor(newState.player.attack * (0.9 + Math.random() * 0.2));
             newState.enemy.hp = Math.max(0, newState.enemy.hp - damage);
@@ -217,7 +222,10 @@ const VoyageTab = ({
           if (companion.hp <= 0) return companion;
           
           const updatedCompanion = { ...companion };
-          updatedCompanion.cooldown -= 25;
+          // speedMultiplier 체크
+          if (updatedCompanion.speedMultiplier !== 0) {
+            updatedCompanion.cooldown -= 25;
+          }
           
           if (updatedCompanion.cooldown <= 0 && newState.enemy.hp > 0) {
             // 사기 증가 (매 공격마다 +15)
@@ -269,6 +277,27 @@ const VoyageTab = ({
                 // 공격 스킬
                 damage = Math.floor(updatedCompanion.attack * updatedCompanion.skill.damageMultiplier * (0.9 + Math.random() * 0.2));
                 newLog.push(`✨ ${updatedCompanion.name}이(가) ${updatedCompanion.skill.name}! ${damage} 데미지!`);
+                
+                // 속도 디버프 적용 (메이델의 달빛의 그림자 등)
+                if (updatedCompanion.skill.debuffType === 'speed_freeze') {
+                  const duration = updatedCompanion.skill.debuffDuration || 3000;
+                  newLog.push(`❄️ ${newState.enemy.name}의 속도가 ${duration / 1000}초간 정지되었습니다!`);
+                  
+                  newState.enemy.speedMultiplier = 0;
+                  
+                  // duration 후 복원
+                  setTimeout(() => {
+                    setBattleState(state => {
+                      if (state && state.enemy) {
+                        return {
+                          ...state,
+                          enemy: { ...state.enemy, speedMultiplier: 1 }
+                        };
+                      }
+                      return state;
+                    });
+                  }, duration);
+                }
               }
             } else {
               // 일반 공격
@@ -312,7 +341,11 @@ const VoyageTab = ({
 
         // 적 공격 (2배 느린 속도)
         if (newState.enemy.hp > 0) {
-          newState.enemy.cooldown -= 25;
+          // speedMultiplier 체크
+          if (newState.enemy.speedMultiplier !== 0) {
+            newState.enemy.cooldown -= 25;
+          }
+          
           if (newState.enemy.cooldown <= 0) {
             const targets = [
               { type: 'player', data: newState.player },

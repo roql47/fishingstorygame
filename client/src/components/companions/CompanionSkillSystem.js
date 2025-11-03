@@ -217,7 +217,7 @@ export const processMultiTargetSkill = ({
   
   let newLog = [...battleState.log];
   
-  const skillMessage = `${companionName}(Lv.${companionLevel})이(가) 스킬 '${skill.name}'을(를) 사용했습니다!`;
+  const skillMessage = `🌿 ${companionName}이(가) ${skill.name}을(를) 사용!`;
   newLog.push(skillMessage);
   
   // 다중 타겟 스킬 설명 추가
@@ -341,6 +341,11 @@ export const processCompanionSkill = ({
       companionBuffs,
       calculateCriticalHit
     });
+    
+    // result가 없거나 enemies가 없으면 null 반환 (폴백 로직 사용)
+    if (!result || !result.enemies) {
+      return null;
+    }
     
     // 모든 적이 죽었는지 확인
     const allEnemiesDead = result.enemies.every(e => !e.isAlive);

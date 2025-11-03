@@ -1,18 +1,20 @@
 // 레이드 시스템 모듈
 class RaidSystem {
   constructor() {
-    // 3개의 독립적인 레이드 보스 인스턴스
+    // 4개의 독립적인 레이드 보스 인스턴스
     this.raidBosses = {
       'beginner': null,
       'intermediate': null,
-      'advanced': null
+      'advanced': null,
+      'legendary': null
     };
     
     // 보스 타입별 로그
     this.raidLogs = {
       'beginner': [],
       'intermediate': [],
-      'advanced': []
+      'advanced': [],
+      'legendary': []
     };
     
     // 보스 타입별 설정
@@ -46,7 +48,7 @@ class RaidSystem {
       'advanced': {
         name: '폭주하는 해신',
         hp: 50000,
-        requiredSkill: { min: 21, max: 999 },
+        requiredSkill: { min: 21, max: 30 },
         rewards: {
           rank1: 1500,
           rank2: 1200,
@@ -54,6 +56,19 @@ class RaidSystem {
           rank4: 900,
           rank5: 750,
           others: 500
+        }
+      },
+      'legendary': {
+        name: '임포머스',
+        hp: 770000,
+        requiredSkill: { min: 31, max: 999 },
+        rewards: {
+          rank1: 3000,
+          rank2: 2500,
+          rank3: 2000,
+          rank4: 1700,
+          rank5: 1400,
+          others: 1000
         }
       }
     };
@@ -201,7 +216,8 @@ class RaidSystem {
     return {
       beginner: this.getRaidStatus('beginner'),
       intermediate: this.getRaidStatus('intermediate'),
-      advanced: this.getRaidStatus('advanced')
+      advanced: this.getRaidStatus('advanced'),
+      legendary: this.getRaidStatus('legendary')
     };
   }
 

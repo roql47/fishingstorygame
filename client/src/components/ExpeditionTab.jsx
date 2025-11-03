@@ -93,6 +93,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
   const speedBarIntervalsRef = useRef({});
   const battleLogRef = useRef(null);
   const dropdownRef = useRef(null);
+  const currentRoomRef = useRef(null); // currentRoom ref (속도바에서 접근용)
 
   // 🧹 컴포넌트 언마운트 시 모든 interval 정리
   useEffect(() => {
@@ -151,58 +152,203 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
     setIsProcessingTurn(false);
   };
 
-   // 속도바 시작 함수 (탐사전투와 동일)
+  // 속도 저장용 ref (재시작 시 사용)
+  const speedsRef = useRef({});
+  
+  // currentRoom이 변경될 때마다 ref 업데이트
+  useEffect(() => {
+    currentRoomRef.current = currentRoom;
+  }, [currentRoom]);
+
+   // 속도바 시작 함수 (항해 전투와 동일한 쿨다운 방식)
    const startSpeedBar = (characterId, speed) => {
+     // 🔥 속도 저장 (재시작 시 사용) - 최초 1회만 저장
+     if (!speedsRef.current[characterId]) {
+       speedsRef.current[characterId] = speed;
+       console.log(`[EXPEDITION-SPEED] ${characterId} 속도 최초 저장: ${speed}`);
+     } else {
+       console.log(`[EXPEDITION-SPEED] ${characterId} 속도 재사용: ${speedsRef.current[characterId]} (요청: ${speed})`);
+     }
+     
+     // 저장된 속도 사용 (일관성 유지)
+     const actualSpeed = speedsRef.current[characterId];
+     
      // 기존 타이머가 있으면 정리
      if (speedBarIntervalsRef.current[characterId]) {
        clearInterval(speedBarIntervalsRef.current[characterId]);
      }
 
-     // 탐사전투와 동일하게 계산
-     const maxProgress = 250;
-    const interval = 50; // 50ms마다 업데이트
-    const increment = (speed * interval) / 1000; // 초당 speed만큼 증가
+     // 🔥 원정 전투 전용: 캐릭터별 개별 속도 조정
+     let maxCooldown;
+     if (characterId.startsWith('player_')) {
+       // 플레이어: × 5 (항해 전투와 동일)
+       maxCooldown = Math.max(500, 5000 - actualSpeed * 10);
+     } else if (characterId.startsWith('companion_')) {
+       // 동료: × 5 (항해 전투와 동일)
+       maxCooldown = Math.max(500, 5000 - actualSpeed * 50);
+     } else {
+       // 몬스터: × 50 (매우 빠름)
+       maxCooldown = Math.max(500, 5000 - actualSpeed * 50);
+     }
+     
+     const interval = 50; // 50ms마다 업데이트
     
-    let progress = 0;
-    setSpeedBars(prev => ({ ...prev, [characterId]: { current: 0, max: maxProgress } }));
+    let cooldown = maxCooldown; // maxCooldown에서 시작 (속도바 0%부터)
+    setSpeedBars(prev => ({ ...prev, [characterId]: { current: maxCooldown, max: maxCooldown } }));
+    
+    console.log(`[EXPEDITION] ${characterId}: actualSpeed=${actualSpeed}, maxCooldown=${maxCooldown}, 도달시간=${(maxCooldown/1000).toFixed(2)}초`);
 
     speedBarIntervalsRef.current[characterId] = setInterval(() => {
-      // 아군 전멸 체크 - 전멸 시 속도바 중단
-      if (currentRoom && checkAllAlliesDead(currentRoom)) {
+      // 🔥 ref를 통해 최신 room 상태 확인
+      const room = currentRoomRef.current;
+      
+      // 전투 종료 체크 (패배/승리 시 속도바 중단)
+      if (!room) {
         clearInterval(speedBarIntervalsRef.current[characterId]);
         delete speedBarIntervalsRef.current[characterId];
         return;
       }
       
-      progress += increment;
-      const newProgress = Math.min(progress, maxProgress);
-      setSpeedBars(prev => ({ ...prev, [characterId]: { current: newProgress, max: maxProgress } }));
-      
-      if (progress >= maxProgress) {
-        // 속도바가 max에 도달하면 자동 리셋 (지연 없음)
+      // 🔥 전투 종료 상태 체크 (completed, failed 등)
+      if (room.status !== 'in_progress') {
         clearInterval(speedBarIntervalsRef.current[characterId]);
         delete speedBarIntervalsRef.current[characterId];
-        
-        // 즉시 0으로 리셋 (noTransition으로 즉시 점프)
-        setSpeedBars(prev => ({ ...prev, [characterId]: { current: 0, max: maxProgress, noTransition: true } }));
-        
-        // 캐릭터가 살아있으면 즉시 재시작
-        let shouldRestart = true;
-        
-        if (characterId.startsWith('monster_')) {
-          const monsterId = characterId.replace('monster_', '');
-          const monster = currentRoom?.monsters?.find(m => m.id === monsterId);
-          if (monster && !monster.isAlive) {
-            shouldRestart = false;
+        console.log(`[EXPEDITION-SPEED] ${characterId} 속도바 중단 (전투 종료: ${room.status})`);
+        return;
+      }
+      
+      // 아군 전멸 체크
+      if (checkAllAlliesDead(room)) {
+        clearInterval(speedBarIntervalsRef.current[characterId]);
+        delete speedBarIntervalsRef.current[characterId];
+        console.log(`[EXPEDITION-SPEED] ${characterId} 속도바 중단 (아군 전멸)`);
+        return;
+      }
+      
+      // 승리 체크 (모든 몬스터 사망)
+      const allMonstersDead = room.monsters?.every(m => !m.isAlive);
+      if (allMonstersDead) {
+        clearInterval(speedBarIntervalsRef.current[characterId]);
+        delete speedBarIntervalsRef.current[characterId];
+        console.log(`[EXPEDITION-SPEED] ${characterId} 속도바 중단 (승리)`);
+        return;
+      }
+      
+      // 🔥 몬스터의 speedMultiplier 확인 (frozen 효과)
+      let speedMultiplier = 1; // 기본값
+      if (characterId.startsWith('monster_')) {
+        const monsterId = characterId.replace('monster_', '');
+        const monster = room.monsters?.find(m => m.id == monsterId);
+        if (monster && monster.speedMultiplier !== undefined) {
+          speedMultiplier = monster.speedMultiplier;
+          if (speedMultiplier === 0) {
+            // frozen 상태면 속도바가 증가하지 않음
+            return;
           }
         }
+      }
+      
+      // speedMultiplier 적용
+      cooldown -= 25 * speedMultiplier;
+      const newCooldown = Math.max(0, cooldown);
+      setSpeedBars(prev => ({ ...prev, [characterId]: { current: newCooldown, max: maxCooldown } }));
+      
+      if (cooldown <= 0) {
+        // 쿨다운이 0이 되면 공격 실행 (항해 전투와 동일)
+        clearInterval(speedBarIntervalsRef.current[characterId]);
+        delete speedBarIntervalsRef.current[characterId];
+        setSpeedBars(prev => ({ ...prev, [characterId]: { current: 0, max: maxCooldown } }));
         
-        if (shouldRestart) {
-          // 16ms 후 재시작 (1 프레임, noTransition 플래그 제거용)
+        console.log(`[EXPEDITION-SPEED] ${characterId} 쿨다운 완료 - 공격 실행`);
+        
+        // 100ms 후 공격 실행 및 리셋 (항해 전투와 동일한 타이밍)
+        setTimeout(() => {
+          console.log(`[EXPEDITION-SPEED] ${characterId} 공격 실행 시작`);
+          
+          // 🔥 항해 전투와 동일: 쿨다운을 maxCooldown으로 리셋 (속도바 0%로)
+          setSpeedBars(prev => ({ ...prev, [characterId]: { current: maxCooldown, max: maxCooldown } }));
+          
+          // 🎯 서버에 공격 요청 보내기 (탐사전투와 동일하게 즉시 처리)
+          if (characterId.startsWith('player_')) {
+            const playerId = characterId.replace('player_', '');
+            socket.emit('expeditionPlayerAttack', { playerId });
+            // 탐사전투와 동일: 즉시 UI 반영
+            setForceUpdateCounter(prev => prev + 1);
+          } else if (characterId.startsWith('companion_')) {
+            const companionKey = characterId.replace('companion_', '');
+            // companionKey는 "playerId_companionName" 형식
+            const firstUnderscoreIndex = companionKey.indexOf('_');
+            const playerId = companionKey.substring(0, firstUnderscoreIndex);
+            const companionName = companionKey.substring(firstUnderscoreIndex + 1);
+            socket.emit('expeditionCompanionAttack', { playerId, companionName });
+            // 탐사전투와 동일: 즉시 UI 반영
+            setForceUpdateCounter(prev => prev + 1);
+          } else if (characterId.startsWith('monster_')) {
+            const monsterId = characterId.replace('monster_', '');
+            
+            // 🔥 서버에 요청 보내기
+            socket.emit('expeditionMonsterAttack', { monsterId });
+            
+            // 🎯 탐사전투와 동일: 낙관적 업데이트 (즉시 UI 반영)
+            // 서버 응답이 오면 최종 결과로 덮어씀
+            setForceUpdateCounter(prev => prev + 1);
+          }
+          
+          // 100ms 후 속도바 재시작 (탐사전투와 동일 - 최신 상태 확인)
           setTimeout(() => {
-            startSpeedBar(characterId, speed);
-          }, 16);
-        }
+            // setCurrentRoom의 콜백으로 최신 상태 확인 (탐사전투의 setBattleState와 동일)
+            setCurrentRoom(room => {
+              if (!room) return room;
+              
+              // 🔥 전투 종료 상태면 재시작 안 함
+              if (room.status !== 'in_progress') {
+                console.log(`[EXPEDITION-SPEED] ${characterId} 속도바 재시작 취소 (전투 종료)`);
+                return room;
+              }
+              
+              let shouldRestart = true;
+              
+              if (characterId.startsWith('monster_')) {
+                const monsterId = characterId.replace('monster_', '');
+                const monster = room.monsters?.find(m => m.id == monsterId);
+                if (!monster || !monster.isAlive) {
+                  shouldRestart = false;
+                }
+                
+                // 🔥 모든 아군이 죽었으면 몬스터 속도바 중단
+                if (checkAllAlliesDead(room)) {
+                  shouldRestart = false;
+                  console.log(`[EXPEDITION-SPEED] ${characterId} 속도바 재시작 취소 (아군 전멸)`);
+                }
+              } else if (characterId.startsWith('player_')) {
+                const playerId = characterId.replace('player_', '');
+                const playerHp = room.battleState?.playerHp?.[playerId] || 0;
+                if (playerHp <= 0) {
+                  shouldRestart = false;
+                }
+              } else if (characterId.startsWith('companion_')) {
+                const companionKey = characterId.replace('companion_', '');
+                const companionHp = room.battleState?.companionHp?.[companionKey] || 0;
+                if (companionHp <= 0) {
+                  shouldRestart = false;
+                }
+              }
+              
+              if (shouldRestart) {
+                // 🔥 항해 전투와 동일: 저장된 속도만 사용 (클로저 문제 방지)
+                const savedSpeed = speedsRef.current[characterId];
+                if (savedSpeed) {
+                  console.log(`[EXPEDITION-SPEED] ${characterId} 쿨다운 재시작 (speed: ${savedSpeed})`);
+                  startSpeedBar(characterId, savedSpeed);
+                } else {
+                  console.warn(`[EXPEDITION-SPEED] ${characterId} 저장된 속도 없음 - 재시작 취소`);
+                }
+              }
+              
+              return room; // 상태 변경 없이 반환
+            });
+          }, 100);
+        }, 100);
         
         return;
       }
@@ -215,7 +361,9 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
       clearInterval(interval);
     });
     speedBarIntervalsRef.current = {};
+    speedsRef.current = {}; // 🔥 속도 ref도 초기화
     setSpeedBars({});
+    console.log('[EXPEDITION] 모든 속도바 및 속도 ref 초기화');
   };
 
   // 아군 전멸 체크 함수
@@ -456,6 +604,20 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
     
     setLoading(true);
     try {
+      // 🔥 이전 방 상태 완전히 정리 (항해 전투와 동일)
+      console.log('[EXPEDITION] 이전 방 상태 정리 중...');
+      clearAllSpeedBars(); // speedsRef도 여기서 초기화됨
+      clearTurnProgress();
+      
+      // 🔥 이전 소켓 룸에서 나가기
+      if (currentRoom?.id && socket) {
+        socket.emit('expedition-leave-room', currentRoom.id);
+        console.log('[EXPEDITION] 이전 소켓 룸에서 나가기:', currentRoom.id);
+      }
+      
+      setCurrentRoom(null);
+      setCurrentView('lobby');
+      
       // 🔧 원정 방 생성 전에 동료 전투 상태를 서버와 동기화
       console.log('[EXPEDITION] Syncing companion battle status before creating room...');
       if (syncBattleCompanionsToServer) {
@@ -476,6 +638,14 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
       
       const data = await response.json();
       if (data.success) {
+        console.log('[EXPEDITION] 새 방 생성 완료:', data.room.id);
+        
+        // 🔥 새 방 소켓 룸 조인
+        if (socket) {
+          socket.emit('expedition-join-room', data.room.id);
+          console.log('[EXPEDITION] 새 소켓 룸 조인:', data.room.id);
+        }
+        
         setCurrentRoom(data.room);
         setCurrentView('room');
         
@@ -859,8 +1029,13 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                         (updateData.type === 'battleStarted');
     
     if (shouldUpdate && updateData.room) {
-      // 방 상태 업데이트 (리렌더링 최소화를 위해 forceUpdate는 battleStarted만)
+      // 🔥 탐사전투와 동일: 즉시 상태 업데이트 (강제 리렌더링)
       setCurrentRoom(updateData.room);
+      
+      // 공격 타입일 때도 강제 업데이트 (탐사전투처럼 즉시 반영)
+      if (updateData.type === 'playerAttack' || updateData.type === 'monsterAttack' || updateData.type === 'companionAttack') {
+        setForceUpdateCounter(prev => prev + 1);
+      }
       
       // 죽은 몬스터의 속도바 정리
       updateData.room.monsters?.forEach(monster => {
@@ -881,60 +1056,79 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
         setForceUpdateCounter(prev => prev + 1);
         setCurrentView('battle');
         
-        // 플레이어 속도바 시작 (🌟 속도 스탯 적용: 기본 100 + 속도 레벨 × 2)
-        updateData.room?.players?.forEach(player => {
-          if (updateData.room.battleState?.playerHp?.[player.id] > 0) {
-            const playerData = updateData.room?.playerData?.[player.id];
-            const playerSpeed = 100 + ((playerData?.speedStat || 0) * 2);
-            console.log(`[EXPEDITION] Player ${player.name} speed: ${playerSpeed} (base 100 + speedStat ${playerData?.speedStat || 0} × 2)`);
-            startSpeedBar(`player_${player.id}`, playerSpeed);
-          }
-        });
+        // 🔥 전투 시작 시 속도 ref 초기화 (항해 전투와 동일)
+        speedsRef.current = {};
+        console.log('[EXPEDITION] battleStarted - 속도 ref 초기화 및 속도바 시작 준비');
         
-        // 동료 속도바 시작
-        Object.entries(updateData.room?.playerData || {}).forEach(([playerId, playerData]) => {
-          playerData.companions?.forEach(companion => {
-            const companionKey = `${playerId}_${companion.companionName}`;
-            if (updateData.room.battleState?.companionHp?.[companionKey] > 0) {
-              // 동료 속도 계산 (tier, breakthrough 반영)
-              const level = companion.level || 1;
-              const tier = companion.tier || 0;
-              const breakthrough = companion.breakthrough || 0;
-              const breakthroughStats = companion.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 };
-              const companionData = calculateCompanionStats(companion.companionName, level, tier, breakthrough, breakthroughStats);
-              const speed = companionData?.speed || 150;
-              
-              startSpeedBar(`companion_${companionKey}`, speed);
+        // 100ms 후 속도바 시작 (UI 렌더링 완료 대기)
+        setTimeout(() => {
+          // 플레이어 속도바 시작 (🌟 항해 전투와 동일한 공식)
+          updateData.room?.players?.forEach(player => {
+            if (updateData.room.battleState?.playerHp?.[player.id] > 0) {
+              const playerData = updateData.room?.playerData?.[player.id];
+              const fishingSkill = playerData?.fishingSkill || 1;
+              const speedStatBonus = (playerData?.speedStat || 0) * 2;
+              // 항해 전투와 동일: 100 + 낚시실력 * 10 + 속도스탯 * 2
+              const playerSpeed = 100 + fishingSkill * 10 + speedStatBonus;
+              console.log(`[EXPEDITION] Player ${player.name} speed: ${playerSpeed} (100 + fishingSkill ${fishingSkill} * 10 + speedStat ${playerData?.speedStat || 0} * 2)`);
+              startSpeedBar(`player_${player.id}`, playerSpeed);
             }
           });
-        });
-        
-        // 몬스터 속도바 시작
-        updateData.room?.monsters?.forEach(monster => {
-          if (monster.isAlive) {
-            startSpeedBar(`monster_${monster.id}`, monster.speed || 30);
-          }
-        });
-        
-        startTurnProgress();
-      }
-      
-      if (updateData.type === 'playerAttack' || updateData.type === 'monsterAttack' || updateData.type === 'companionAttack') {
-        setTimeout(() => {
+          
+          // 동료 속도바 시작 (항해 전투와 동일)
+          Object.entries(updateData.room?.playerData || {}).forEach(([playerId, playerData]) => {
+            playerData.companions?.forEach(companion => {
+              const companionKey = `${playerId}_${companion.companionName}`;
+              if (updateData.room.battleState?.companionHp?.[companionKey] > 0) {
+                // 동료 속도 계산 (tier, breakthrough 반영)
+                const level = companion.level || 1;
+                const tier = companion.tier || 0;
+                const breakthrough = companion.breakthrough || 0;
+                const breakthroughStats = companion.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 };
+                const companionData = calculateCompanionStats(companion.companionName, level, tier, breakthrough, breakthroughStats);
+                const speed = companionData?.speed || 50;
+                
+                console.log(`[EXPEDITION] Companion ${companion.companionName} speed: ${speed} (Lv.${level}, tier ${tier}, breakthrough ${breakthrough})`);
+                startSpeedBar(`companion_${companionKey}`, speed);
+              }
+            });
+          });
+          
+          // 몬스터 속도바 시작
+          updateData.room?.monsters?.forEach(monster => {
+            if (monster.isAlive) {
+              console.log(`[EXPEDITION] Monster ${monster.id} speed: ${monster.speed || 30}`);
+              startSpeedBar(`monster_${monster.id}`, monster.speed || 30);
+            }
+          });
+          
           startTurnProgress();
-        }, 500);
+        }, 100); // 탐사전투와 동일한 100ms 지연
       }
       
-      // 전투 종료 처리
+      // 탐사전투와 동일: 공격 타입은 속도바가 자동으로 재시작되므로 별도 처리 불필요
+      
+      // 전투 종료 처리 (탐사전투와 동일)
       if (updateData.type === 'victory' || updateData.type === 'defeat' || updateData.type === 'battleEnd') {
         console.log('[EXPEDITION] Battle ended:', updateData.type);
+        
+        // 🔥 탐사전투와 동일: 즉시 모든 속도바 정리
         clearTurnProgress();
-        clearAllSpeedBars(); // 전투 종료 시 속도바 중단
+        clearAllSpeedBars();
+        
+        // 강제 리렌더링
+        setForceUpdateCounter(prev => prev + 1);
         
         // 승리 시 즉시 방 상태 업데이트
         if (updateData.type === 'victory') {
           setCurrentRoom(updateData.room);
-          setForceUpdateCounter(prev => prev + 1);
+          console.log('[EXPEDITION] 승리! 모든 속도바 중단');
+          
+          // 🔥 탐사전투와 동일: 즉시 속도바 완전 정리
+          setTimeout(() => {
+            clearAllSpeedBars();
+            console.log('[EXPEDITION] 승리 후 속도바 재정리');
+          }, 100);
           
           // 승리 시 보상 화면을 보여주지만 자동 수령은 제거
           // 사용자가 수동으로 보상 수령 버튼을 눌러야 함
@@ -942,6 +1136,15 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
         
         // 패배 시 패배 모달 표시
         if (updateData.type === 'defeat') {
+          setCurrentRoom(updateData.room);
+          console.log('[EXPEDITION] 패배! 모든 속도바 중단');
+          
+          // 🔥 탐사전투와 동일: 즉시 속도바 완전 정리
+          setTimeout(() => {
+            clearAllSpeedBars();
+            console.log('[EXPEDITION] 패배 후 속도바 재정리');
+          }, 100);
+          
           setTimeout(() => {
             setShowDefeatModal(true);
           }, 1000);
@@ -2067,16 +2270,16 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                           </div>
                         </div>
                         
-                        {/* 플레이어 속도바 */}
+                        {/* 플레이어 속도바 (항해 전투와 동일 - 쿨다운 방식) */}
                         <div className="mt-3">
                           <div className={`w-full rounded-full h-1.5 ${
                             isDarkMode ? "bg-gray-700" : "bg-gray-200"
                           }`}>
                             <div
-                              className={`h-1.5 rounded-full bg-gradient-to-r from-orange-500 to-orange-600 ${
-                                speedBars[`player_${player.id}`]?.noTransition ? '' : 'transition-all duration-300 ease-linear'
-                              }`}
-                              style={{ width: `${((speedBars[`player_${player.id}`]?.current || 0) / 250) * 100}%` }}
+                              className={`h-1.5 rounded-full bg-gradient-to-r from-cyan-500 to-cyan-400 rounded-full transition-all duration-100`}
+                              style={{ 
+                                width: `${speedBars[`player_${player.id}`] ? ((speedBars[`player_${player.id}`].max - speedBars[`player_${player.id}`].current) / speedBars[`player_${player.id}`].max) * 100 : 0}%` 
+                              }}
                             ></div>
                           </div>
                         </div>
@@ -2145,16 +2348,16 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                                     </div>
                                   </div>
                                   
-                                  {/* 동료 속도 바 */}
+                                  {/* 동료 속도바 (항해 전투와 동일 - 쿨다운 방식) */}
                                   <div className="mt-2">
                                     <div className={`w-full rounded-full h-1.5 ${
                                       isDarkMode ? "bg-gray-700" : "bg-gray-200"
                                     }`}>
                                       <div
-                                        className={`h-1.5 rounded-full bg-gradient-to-r from-orange-500 to-orange-600 ${
-                                          speedBars[`companion_${companionKey}`]?.noTransition ? '' : 'transition-all duration-300 ease-linear'
-                                        }`}
-                                        style={{ width: `${((speedBars[`companion_${companionKey}`]?.current || 0) / 250) * 100}%` }}
+                                        className={`h-1.5 rounded-full bg-gradient-to-r from-purple-500 to-purple-400 rounded-full transition-all duration-100`}
+                                        style={{ 
+                                          width: `${speedBars[`companion_${companionKey}`] ? ((speedBars[`companion_${companionKey}`].max - speedBars[`companion_${companionKey}`].current) / speedBars[`companion_${companionKey}`].max) * 100 : 0}%` 
+                                        }}
                                       ></div>
                                     </div>
                                   </div>
@@ -2276,16 +2479,16 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                        </div>
                      </div>
                      
-                     {/* 속도바 */}
+                     {/* 몬스터 속도바 (항해 전투와 동일 - 쿨다운 방식) */}
                     <div className="mb-1.5">
-                      <div className={`w-full rounded-full h-1 ${
+                      <div className={`w-full rounded-full h-1.5 ${
                         isDarkMode ? "bg-gray-700" : "bg-gray-200"
                       }`}>
                         <div
-                          className={`h-1 rounded-full bg-gradient-to-r from-orange-500 to-orange-600 ${
-                            speedBars[`monster_${monster.id}`]?.noTransition ? '' : 'transition-all duration-300 ease-linear'
-                          }`}
-                          style={{ width: `${((speedBars[`monster_${monster.id}`]?.current || 0) / 250) * 100}%` }}
+                          className={`h-1.5 rounded-full bg-gradient-to-r from-orange-500 to-orange-400 rounded-full transition-all duration-100`}
+                          style={{ 
+                            width: `${speedBars[`monster_${monster.id}`] ? ((speedBars[`monster_${monster.id}`].max - speedBars[`monster_${monster.id}`].current) / speedBars[`monster_${monster.id}`].max) * 100 : 0}%` 
+                          }}
                         ></div>
                       </div>
                     </div>
@@ -2507,8 +2710,14 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
   // 패배 모달 핸들러
   const handleDefeatModalClose = () => {
     setShowDefeatModal(false);
-    setCurrentView('lobby');
+    
+    // 🔥 탐사전투와 동일: 완전히 정리
+    clearAllSpeedBars();
+    clearTurnProgress();
     setCurrentRoom(null);
+    setCurrentView('lobby');
+    
+    console.log('[EXPEDITION] 패배 모달 닫힘 - 상태 완전 초기화');
     loadAvailableRooms();
   };
 

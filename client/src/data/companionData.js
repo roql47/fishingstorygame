@@ -113,6 +113,28 @@ export const COMPANION_DATA = {
       targetCount: 5, // 최대 5명
       skillType: "aoe"
     }
+  },
+  "메이델": {
+    name: "메이델",
+    baseHp: 85,
+    baseAttack: 12,
+    baseSpeed: 50,
+    growthHp: 13,
+    growthAttack: 3,
+    growthSpeed: 0.5,
+    description: "별을 인도하는 자",
+    rarity: "영웅",
+    recruitmentCost: { ambers: 50000, requiredCompanions: 6 }, // 기본 6명 보유 + 호박 5만개
+    skill: {
+      name: "달빛의 그림자",
+      description: "최대 3명의 적에게 50% 데미지를 주고 3초간 속도를 정지시킵니다",
+      damageMultiplier: 0.5,
+      moraleRequired: 100,
+      targetCount: 3,
+      skillType: "multi_target",
+      debuffType: "speed_freeze", // 속도 정지 디버프
+      debuffDuration: 3000 // 3초 (밀리초)
+    }
   }
 };
 
@@ -149,11 +171,10 @@ export const calculateCompanionStats = (companionName, level = 1, tier = 0, brea
   speed = Math.floor(speed * tierInfo.statMultiplier);
 
   // 스킬 데이터에 등급 배율 적용
-  const enhancedSkill = baseData.skill ? {
-    ...baseData.skill,
+  const enhancedSkill = baseData.skill ? Object.assign({}, baseData.skill, {
     damageMultiplier: (baseData.skill.damageMultiplier || 1.0) * tierInfo.skillMultiplier,
     moraleRequired: tierInfo.moraleRequired
-  } : null;
+  }) : null;
 
   return {
     ...baseData,
@@ -205,7 +226,8 @@ export const COMPANION_ESSENCE = {
   "애비게일": "바람의정수",
   "림스&베리": "어둠의정수",
   "클로에": "빛의정수",
-  "나하트라": "자연의정수"
+  "나하트라": "자연의정수",
+  "메이델": "영혼의정수"
 };
 
 // 정수별 이모지
@@ -238,6 +260,16 @@ export const BREAKTHROUGH_BONUS = {
   3: { growthHp: 5, growthAttack: 1.5, growthSpeed: 0.25 }, // 4차 돌파
   4: { growthHp: 7, growthAttack: 2, growthSpeed: 0.3 }, // 5차 돌파
   5: { growthHp: 10, growthAttack: 3, growthSpeed: 0.5 } // 6차 돌파
+};
+
+// 메이델 전용 돌파 보너스 성장률 (영웅 등급)
+export const BREAKTHROUGH_BONUS_MEIDEL = {
+  0: { growthHp: 2.5, growthAttack: 0.6, growthSpeed: 0.1 }, // 1차 돌파
+  1: { growthHp: 3.5, growthAttack: 0.8, growthSpeed: 0.15 }, // 2차 돌파
+  2: { growthHp: 4.5, growthAttack: 1.2, growthSpeed: 0.2 }, // 3차 돌파
+  3: { growthHp: 5.5, growthAttack: 1.8, growthSpeed: 0.25 }, // 4차 돌파
+  4: { growthHp: 8, growthAttack: 2.5, growthSpeed: 0.3 }, // 5차 돌파
+  5: { growthHp: 12, growthAttack: 3.5, growthSpeed: 0.5 } // 6차 돌파
 };
 
 // 등급별 색상 가져오기 (tier 기반)

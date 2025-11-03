@@ -259,6 +259,15 @@ class ArenaSystem {
                 skillType: 'aoe',
                 targetCount: 5,
                 moraleRequired: 100
+            },
+            '메이델': {
+                name: '달빛의 그림자',
+                damageMultiplier: 0.5,
+                skillType: 'multi_target',
+                targetCount: 3,
+                debuffType: 'speed_freeze',
+                debuffDuration: 3000,
+                moraleRequired: 100
             }
         };
         

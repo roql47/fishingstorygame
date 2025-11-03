@@ -717,6 +717,63 @@ io.on('connection', (socket) => {
     console.log(`🚪 Socket ${socket.id} left expedition room: ${roomId}`);
   });
   
+  // 원정 전투 - 플레이어 공격
+  socket.on('expeditionPlayerAttack', async ({ playerId }) => {
+    try {
+      const result = expeditionSystem.playerAttackSpeedBased(playerId);
+      // null 반환 시 조용히 무시 (전투 종료, 캐릭터 사망 등)
+      if (result && result.room) {
+        io.to(`expedition_${result.room.id}`).emit('expeditionBattleUpdate', {
+          type: 'playerAttack',
+          room: expeditionSystem.getRoomForSocket(result.room)
+        });
+        
+        // 패배/승리 체크 (탐사전투와 동일)
+        await expeditionSystem.checkBattleEnd(result.room, io);
+      }
+    } catch (error) {
+      console.error('원정 플레이어 공격 오류:', error);
+    }
+  });
+  
+  // 원정 전투 - 동료 공격
+  socket.on('expeditionCompanionAttack', async ({ playerId, companionName }) => {
+    try {
+      const result = expeditionSystem.companionAttackSpeedBased(playerId, companionName);
+      // null 반환 시 조용히 무시 (전투 종료, 동료 사망 등)
+      if (result && result.room) {
+        io.to(`expedition_${result.room.id}`).emit('expeditionBattleUpdate', {
+          type: 'companionAttack',
+          room: expeditionSystem.getRoomForSocket(result.room)
+        });
+        
+        // 패배/승리 체크 (탐사전투와 동일)
+        await expeditionSystem.checkBattleEnd(result.room, io);
+      }
+    } catch (error) {
+      console.error('원정 동료 공격 오류:', error);
+    }
+  });
+  
+  // 원정 전투 - 몬스터 공격
+  socket.on('expeditionMonsterAttack', async ({ monsterId }) => {
+    try {
+      const result = expeditionSystem.monsterAttackSpeedBased(monsterId);
+      // null 반환 시 조용히 무시 (전투 종료, 몬스터 사망 등)
+      if (result && result.room) {
+        io.to(`expedition_${result.room.id}`).emit('expeditionBattleUpdate', {
+          type: 'monsterAttack',
+          room: expeditionSystem.getRoomForSocket(result.room)
+        });
+        
+        // 패배/승리 체크 (탐사전투와 동일)
+        await expeditionSystem.checkBattleEnd(result.room, io);
+      }
+    } catch (error) {
+      console.error('원정 몬스터 공격 오류:', error);
+    }
+  });
+  
   // 사용자 정보 저장 (로그인 시 설정됨)
   socket.on('user-login', (userData) => {
     if (userData && userData.username && userData.userUuid) {
@@ -1240,6 +1297,11 @@ const RareFishCountModel = mongoose.model("RareFishCount", rareFishCountSchema);
 // 동료 목록 정의
 const COMPANION_LIST = [
   "실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라"
+];
+
+// 영웅 동료 목록 (별도 구매)
+const HERO_COMPANION_LIST = [
+  "메이델"
 ];
 
 // User UUID Schema (사용자 고유 ID 관리)
@@ -6409,6 +6471,107 @@ app.post("/api/recruit-companion", authenticateJWT, async (req, res) => {
   }
 });
 
+// 🌟 영웅 동료 구매 API (메이델 등)
+app.post("/api/recruit-hero-companion", authenticateJWT, async (req, res) => {
+  try {
+    const { companionName } = req.body;
+    const { userUuid, username } = req.user;
+    
+    console.log("Recruit hero companion request:", { companionName, username, userUuid });
+    
+    // 영웅 동료 목록 확인
+    if (!HERO_COMPANION_LIST.includes(companionName)) {
+      return res.status(400).json({ error: "올바른 영웅 동료가 아닙니다." });
+    }
+    
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    // 병렬로 데이터 조회
+    const [userAmbers, userCompanions] = await Promise.all([
+      UserAmberModel.findOne(query),
+      CompanionModel.findOne(query)
+    ]);
+    
+    // 이미 보유 확인
+    if (userCompanions?.companions.includes(companionName)) {
+      return res.status(400).json({ error: "이미 보유한 동료입니다." });
+    }
+    
+    // 메이델 구매 조건 확인
+    if (companionName === "메이델") {
+      // 1. 기본 동료 6명 보유 확인
+      const hasAllBasicCompanions = COMPANION_LIST.every(
+        companion => userCompanions?.companions.includes(companion)
+      );
+      
+      if (!hasAllBasicCompanions) {
+        return res.status(400).json({ 
+          error: "메이델을 영입하려면 기본 동료 6명을 모두 보유해야 합니다.",
+          requiredCompanions: COMPANION_LIST.length,
+          currentCompanions: userCompanions?.companions.length || 0
+        });
+      }
+      
+      // 2. 호박 5만개 확인
+      const requiredAmbers = 50000;
+      if (!userAmbers || userAmbers.amber < requiredAmbers) {
+        return res.status(400).json({ 
+          error: `호박이 부족합니다. (필요: ${requiredAmbers.toLocaleString()}개)`,
+          required: requiredAmbers,
+          current: userAmbers?.amber || 0
+        });
+      }
+      
+      // 호박 차감
+      userAmbers.amber -= requiredAmbers;
+      await userAmbers.save();
+      
+      // 동료 추가
+      if (!userCompanions) {
+        const createData = {
+          userId: query.userId || 'user',
+          username: query.username || username,
+          userUuid: query.userUuid || userUuid,
+          companions: [companionName]
+        };
+        await CompanionModel.create(createData);
+      } else {
+        userCompanions.companions.push(companionName);
+        await userCompanions.save();
+      }
+      
+      // 실시간 브로드캐스트
+      broadcastUserDataUpdate(userUuid, username, 'companions', { 
+        companions: userCompanions?.companions || [companionName]
+      });
+      broadcastUserDataUpdate(userUuid, username, 'amber', { 
+        amber: userAmbers.amber 
+      });
+      
+      console.log(`✨ ${username}이(가) ${companionName}을(를) 영입했습니다!`);
+      
+      return res.json({
+        success: true,
+        companion: companionName,
+        remainingAmbers: userAmbers.amber,
+        totalCompanions: (userCompanions?.companions.length || 0) + 1
+      });
+    }
+    
+    return res.status(400).json({ error: "알 수 없는 영웅 동료입니다." });
+    
+  } catch (error) {
+    console.error("Failed to recruit hero companion:", error);
+    res.status(500).json({ error: "영웅 동료 영입에 실패했습니다." });
+  }
+});
+
 // 🌟 동료 성장 API (등급 상승: 일반→희귀→전설)
 app.post("/api/companion/growth", authenticateJWT, async (req, res) => {
   try {
@@ -6595,8 +6758,20 @@ app.post("/api/companion/breakthrough", authenticateJWT, async (req, res) => {
       5: { growthHp: 10, growthAttack: 3, growthSpeed: 0.5 }
     };
     
+    // 메이델 전용 돌파 보너스
+    const BREAKTHROUGH_BONUS_MEIDEL = {
+      0: { growthHp: 2.5, growthAttack: 0.6, growthSpeed: 0.1 },
+      1: { growthHp: 3.5, growthAttack: 0.8, growthSpeed: 0.15 },
+      2: { growthHp: 4.5, growthAttack: 1.2, growthSpeed: 0.2 },
+      3: { growthHp: 5.5, growthAttack: 1.8, growthSpeed: 0.25 },
+      4: { growthHp: 8, growthAttack: 2.5, growthSpeed: 0.3 },
+      5: { growthHp: 12, growthAttack: 3.5, growthSpeed: 0.5 }
+    };
+    
     const cost = BREAKTHROUGH_COSTS[currentBreakthrough];
-    const bonus = BREAKTHROUGH_BONUS[currentBreakthrough];
+    // 메이델이면 전용 보너스 사용
+    const bonusTable = companionName === "메이델" ? BREAKTHROUGH_BONUS_MEIDEL : BREAKTHROUGH_BONUS;
+    const bonus = bonusTable[currentBreakthrough];
     
     if (!cost || !bonus) {
       return res.status(400).json({ error: "돌파 비용을 찾을 수 없습니다." });
@@ -8077,7 +8252,8 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
         hp: enemyMaxHp,
         maxHp: enemyMaxHp,
         speed: speed,
-        isAlive: true
+        isAlive: true,
+        speedMultiplier: 1
       });
     }
     
@@ -11969,14 +12145,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.412"
+    version: "v1.413"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.412",
+    version: "v1.413",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
@@ -13515,7 +13691,7 @@ app.use((req, res, next) => {
   req.io = io;
   next();
 });
-const expeditionRouter = setupExpeditionRoutes(authenticateJWT, CompanionStatsModel, FishingSkillModel, UserEquipmentModel, EtherKeyModel, UserStatsModel, DailyQuestModel);
+const { router: expeditionRouter, expeditionSystem } = setupExpeditionRoutes(authenticateJWT, CompanionStatsModel, FishingSkillModel, UserEquipmentModel, EtherKeyModel, UserStatsModel, DailyQuestModel);
 app.use("/api/expedition", expeditionRouter);
 
 // 항해 라우터 등록

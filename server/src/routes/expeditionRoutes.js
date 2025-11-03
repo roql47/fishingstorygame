@@ -777,7 +777,7 @@ router.get('/rooms/:roomId', (req, res) => {
     }
 });
 
-    return router;
+    return { router, expeditionSystem };
 }
 
 module.exports = setupExpeditionRoutes;

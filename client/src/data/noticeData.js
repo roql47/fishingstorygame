@@ -1,6 +1,25 @@
 // 공지사항 데이터 (ID 내림차순 정렬 - 최신이 가장 높은 ID)
 export const NOTICE_DATA = [
   {
+    id: 50,
+    date: "2025.11.03",
+    title: "[v1.413] ⚔️ 신규 레이드 보스 신규 동료 추가",
+    content: [
+      "신규 레이드 보스:임포머스",
+      " 요구 낚시실력: 31 이상",
+      "난이도 조정:",
+      " '폭주하는 해신' 요구 실력을 21-30으로 변경",
+      "신규 동료 추가:",
+      " 기본동료 이후에는 호박석을 사용하여 동료를 모집하게 됩니다.",
+      " 신규동료 '메이델' 영입비용 호박석 5만개",
+      "버그 fix:",
+      " 원정 전투시 전투 데미지와 렌더링 싱크가 안맞은 버그 수정",
+      " 원정 전투 속도 로직 변경"
+    ],
+    isNew: true,
+    type: "major_update"
+  },
+  {
     id: 49,
     date: "2025.11.02",
     title: "[v1.412] 🏟️ 결투장 PVP 시스템 추가",
@@ -35,7 +54,7 @@ export const NOTICE_DATA = [
       "- 결투중 세션이탈시 자동 패배처리",
       "- 일일퀘스트 원정전투 초기화 안되던 버그 수정"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
@@ -53,7 +72,7 @@ export const NOTICE_DATA = [
       "탐사전투시 동료 성장/돌파 적용 안되던 문제 수정",
       "탐사전투시 동료 성장/돌파 동기화가 안되던 문제 수정"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
@@ -884,5 +903,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.412"
+  version: "v1.413"
 };
