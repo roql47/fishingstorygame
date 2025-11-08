@@ -407,11 +407,6 @@ const CompanionTab = ({
                 : "아이란 영입 (호박 50,000개)"
               }
             </button>
-            <p className={`text-xs mt-2 ${
-              isDarkMode ? "text-gray-400" : "text-gray-600"
-            }`}>
-              불굴의 수호자 - 방어형 영웅
-            </p>
           </div>
         )}
         
