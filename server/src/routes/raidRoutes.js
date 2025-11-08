@@ -63,7 +63,7 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       }
       
       // 보스 타입 유효성 검증
-      if (!['beginner', 'intermediate', 'advanced'].includes(bossType)) {
+      if (!['beginner', 'intermediate', 'advanced', 'legendary'].includes(bossType)) {
         return res.status(400).json({ error: "잘못된 보스 타입입니다." });
       }
       
@@ -118,7 +118,7 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       const { userUuid } = req.user;
       const { bossType, battleCompanions } = req.body;
       
-      if (!bossType || !['beginner', 'intermediate', 'advanced'].includes(bossType)) {
+      if (!bossType || !['beginner', 'intermediate', 'advanced', 'legendary'].includes(bossType)) {
         return res.status(400).json({ error: "유효하지 않은 보스 타입입니다." });
       }
 

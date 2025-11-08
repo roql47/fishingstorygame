@@ -135,6 +135,28 @@ export const COMPANION_DATA = {
       debuffType: "speed_freeze", // 속도 정지 디버프
       debuffDuration: 3000 // 3초 (밀리초)
     }
+  },
+  "아이란": {
+    name: "아이란",
+    baseHp: 95,        // 방어형 - 높은 체력
+    baseAttack: 10,    // 방어형 - 낮은 공격력
+    baseSpeed: 40,     // 보통 속도
+    growthHp: 15,      // 높은 체력 성장
+    growthAttack: 2.5, // 낮은 공격력 성장
+    growthSpeed: 0.5,
+    description: "불굴의 수호자",
+    rarity: "영웅",
+    recruitmentCost: { ambers: 50000 }, // 호박 5만개
+    skill: {
+      name: "연의검무",
+      description: "2턴 동안 아군 전체가 받는 데미지를 30% 감소시킵니다",
+      damageMultiplier: 0, // 데미지 없음
+      moraleRequired: 100,
+      buffType: "damage_reduction",
+      buffMultiplier: 0.7, // 받는 데미지의 70%만 받음 (30% 감소)
+      buffDuration: 2,
+      isPartyBuff: true // 아군 전체에 적용
+    }
   }
 };
 
@@ -227,7 +249,8 @@ export const COMPANION_ESSENCE = {
   "림스&베리": "어둠의정수",
   "클로에": "빛의정수",
   "나하트라": "자연의정수",
-  "메이델": "영혼의정수"
+  "메이델": "영혼의정수",
+  "아이란": "땅의정수"
 };
 
 // 정수별 이모지
@@ -270,6 +293,16 @@ export const BREAKTHROUGH_BONUS_MEIDEL = {
   3: { growthHp: 5.5, growthAttack: 1.8, growthSpeed: 0.25 }, // 4차 돌파
   4: { growthHp: 8, growthAttack: 2.5, growthSpeed: 0.3 }, // 5차 돌파
   5: { growthHp: 12, growthAttack: 3.5, growthSpeed: 0.5 } // 6차 돌파
+};
+
+// 아이란 전용 돌파 보너스 성장률 (영웅 등급 - 방어형)
+export const BREAKTHROUGH_BONUS_AIRAN = {
+  0: { growthHp: 3, growthAttack: 0.5, growthSpeed: 0.1 }, // 1차 돌파
+  1: { growthHp: 4, growthAttack: 0.7, growthSpeed: 0.15 }, // 2차 돌파
+  2: { growthHp: 5, growthAttack: 1, growthSpeed: 0.2 }, // 3차 돌파
+  3: { growthHp: 6.5, growthAttack: 1.5, growthSpeed: 0.25 }, // 4차 돌파
+  4: { growthHp: 9, growthAttack: 2, growthSpeed: 0.3 }, // 5차 돌파
+  5: { growthHp: 13, growthAttack: 3, growthSpeed: 0.5 } // 6차 돌파
 };
 
 // 등급별 색상 가져오기 (tier 기반)

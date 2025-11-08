@@ -137,6 +137,8 @@ export const processBuffSkill = ({
     newLog.push(`🔥 3턴 동안 공격력이 25% 상승합니다!`);
   } else if (skill.buffType === 'critical') {
     newLog.push(`🎯 3턴 동안 크리티컬 확률이 20% 상승합니다!`);
+  } else if (skill.buffType === 'damage_reduction') {
+    newLog.push(`🛡️ 2턴 동안 아군 전체가 받는 데미지가 30% 감소합니다!`);
   }
   
   if (damage > 0) {

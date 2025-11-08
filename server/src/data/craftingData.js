@@ -308,6 +308,51 @@ const CRAFTING_RECIPES = [
     outputMaterial: "타파스", 
     outputCount: 1,
     tier: 34
+  },
+  // rank 35 → rank 36
+  { 
+    id: 35,
+    inputMaterial: "타파스", 
+    inputCount: 3, 
+    outputMaterial: "진주조개", 
+    outputCount: 1,
+    tier: 35
+  },
+  // rank 36 → rank 37
+  { 
+    id: 36,
+    inputMaterial: "진주조개", 
+    inputCount: 3, 
+    outputMaterial: "트러플리조토", 
+    outputCount: 1,
+    tier: 36
+  },
+  // rank 37 → rank 38
+  { 
+    id: 37,
+    inputMaterial: "트러플리조토", 
+    inputCount: 3, 
+    outputMaterial: "캐비아소스", 
+    outputCount: 1,
+    tier: 37
+  },
+  // rank 38 → rank 39
+  { 
+    id: 38,
+    inputMaterial: "캐비아소스", 
+    inputCount: 3, 
+    outputMaterial: "푸아그라에스푸마", 
+    outputCount: 1,
+    tier: 38
+  },
+  // rank 39 → rank 40
+  { 
+    id: 39,
+    inputMaterial: "푸아그라에스푸마", 
+    inputCount: 3, 
+    outputMaterial: "버터넛스쿼시", 
+    outputCount: 1,
+    tier: 39
   }
 ];
 

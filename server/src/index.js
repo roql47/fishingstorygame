@@ -1301,7 +1301,8 @@ const COMPANION_LIST = [
 
 // 영웅 동료 목록 (별도 구매)
 const HERO_COMPANION_LIST = [
-  "메이델"
+  "메이델",
+  "아이란"
 ];
 
 // User UUID Schema (사용자 고유 ID 관리)
@@ -1974,6 +1975,11 @@ const allFishData = [
   { name: "태양가사리", price: 2991000, material: "시더플랭크", rank: 33, extraMaterial: "불의정수", extraMaterialChance: 0.004 },
   { name: "빅파더펭귄", price: 3251000, material: "세비체", rank: 34, extraMaterial: "물의정수", extraMaterialChance: 0.006 },
   { name: "크레인터틀", price: 3523000, material: "타파스", rank: 35, extraMaterial: "땅의정수", extraMaterialChance: 0.005 },
+  { name: "조가비여인", price: 3807000, material: "진주조개", rank: 36, extraMaterial: "자연의정수", extraMaterialChance: 0.006 },
+  { name: "조립식생선", price: 4103000, material: "트러플리조토", rank: 37, extraMaterial: "빛의정수", extraMaterialChance: 0.005 },
+  { name: "데드케이지", price: 4411000, material: "캐비아소스", rank: 38, extraMaterial: "영혼의정수", extraMaterialChance: 0.004 },
+  { name: "다크암모나이트", price: 4731000, material: "푸아그라에스푸마", rank: 39, extraMaterial: "어둠의정수", extraMaterialChance: 0.005 },
+  { name: "10기통고래", price: 5063000, material: "버터넛스쿼시", rank: 40, extraMaterial: "물의정수", extraMaterialChance: 0.007 },
   { name: "스타피쉬", price: 100, material: "별조각", rank: 0 } // 항상 포함되는 특별한 물고기
 ];
 
@@ -6564,6 +6570,54 @@ app.post("/api/recruit-hero-companion", authenticateJWT, async (req, res) => {
       });
     }
     
+    // 아이란 구매 조건 확인
+    if (companionName === "아이란") {
+      // 호박 5만개 확인
+      const requiredAmbers = 50000;
+      if (!userAmbers || userAmbers.amber < requiredAmbers) {
+        return res.status(400).json({ 
+          error: `호박이 부족합니다. (필요: ${requiredAmbers.toLocaleString()}개)`,
+          required: requiredAmbers,
+          current: userAmbers?.amber || 0
+        });
+      }
+      
+      // 호박 차감
+      userAmbers.amber -= requiredAmbers;
+      await userAmbers.save();
+      
+      // 동료 추가
+      if (!userCompanions) {
+        const createData = {
+          userId: query.userId || 'user',
+          username: query.username || username,
+          userUuid: query.userUuid || userUuid,
+          companions: [companionName]
+        };
+        await CompanionModel.create(createData);
+      } else {
+        userCompanions.companions.push(companionName);
+        await userCompanions.save();
+      }
+      
+      // 실시간 브로드캐스트
+      broadcastUserDataUpdate(userUuid, username, 'companions', { 
+        companions: userCompanions?.companions || [companionName]
+      });
+      broadcastUserDataUpdate(userUuid, username, 'amber', { 
+        amber: userAmbers.amber 
+      });
+      
+      console.log(`✨ ${username}이(가) ${companionName}을(를) 영입했습니다!`);
+      
+      return res.json({
+        success: true,
+        companion: companionName,
+        remainingAmbers: userAmbers.amber,
+        totalCompanions: (userCompanions?.companions.length || 0) + 1
+      });
+    }
+    
     return res.status(400).json({ error: "알 수 없는 영웅 동료입니다." });
     
   } catch (error) {
@@ -6698,7 +6752,8 @@ app.post("/api/companion/breakthrough", authenticateJWT, async (req, res) => {
       "림스&베리": "어둠의정수",
       "클로에": "빛의정수",
       "나하트라": "자연의정수",
-      "메이델": "영혼의정수"
+      "메이델": "영혼의정수",
+      "아이란": "땅의정수"
     };
     
     const essenceName = COMPANION_ESSENCE[companionName];
@@ -6769,9 +6824,24 @@ app.post("/api/companion/breakthrough", authenticateJWT, async (req, res) => {
       5: { growthHp: 12, growthAttack: 3.5, growthSpeed: 0.5 }
     };
     
+    // 아이란 전용 돌파 보너스 (방어형)
+    const BREAKTHROUGH_BONUS_AIRAN = {
+      0: { growthHp: 3, growthAttack: 0.5, growthSpeed: 0.1 },
+      1: { growthHp: 4, growthAttack: 0.7, growthSpeed: 0.15 },
+      2: { growthHp: 5, growthAttack: 1, growthSpeed: 0.2 },
+      3: { growthHp: 6.5, growthAttack: 1.5, growthSpeed: 0.25 },
+      4: { growthHp: 9, growthAttack: 2, growthSpeed: 0.3 },
+      5: { growthHp: 13, growthAttack: 3, growthSpeed: 0.5 }
+    };
+    
     const cost = BREAKTHROUGH_COSTS[currentBreakthrough];
-    // 메이델이면 전용 보너스 사용
-    const bonusTable = companionName === "메이델" ? BREAKTHROUGH_BONUS_MEIDEL : BREAKTHROUGH_BONUS;
+    // 영웅 동료별 전용 보너스 사용
+    let bonusTable = BREAKTHROUGH_BONUS;
+    if (companionName === "메이델") {
+      bonusTable = BREAKTHROUGH_BONUS_MEIDEL;
+    } else if (companionName === "아이란") {
+      bonusTable = BREAKTHROUGH_BONUS_AIRAN;
+    }
     const bonus = bonusTable[currentBreakthrough];
     
     if (!cost || !bonus) {
@@ -6919,7 +6989,8 @@ app.get("/api/companion/breakthrough-cost/:companionName", authenticateJWT, asyn
       "림스&베리": "어둠의정수",
       "클로에": "빛의정수",
       "나하트라": "자연의정수",
-      "메이델": "영혼의정수"
+      "메이델": "영혼의정수",
+      "아이란": "땅의정수"
     };
     
     const essenceName = COMPANION_ESSENCE[companionName];
@@ -8086,7 +8157,8 @@ const getServerFishHealthMap = () => {
     "천사해파리": 1015, "악마복어": 1160, "칠성장어": 1315, "닥터블랙": 1480, "해룡": 1655,
     "메카핫킹크랩": 1840, "램프리": 2035, "마지막잎새": 2240, "아이스브리더": 2455, "해신": 2680,
     "핑키피쉬": 2915, "콘토퍼스": 3160, "딥원": 3415, "큐틀루": 3680, "꽃술나리": 3955,
-    "다무스": 4240, "수호자": 4535, "태양가사리": 4840, "빅파더펭귄": 5155, "크레인터틀": 5480
+    "다무스": 4240, "수호자": 4535, "태양가사리": 4840, "빅파더펭귄": 5155, "크레인터틀": 5480,
+    "조가비여인": 5815, "조립식생선": 6160, "데드케이지": 6515, "다크암모나이트": 6880, "10기통고래": 7255
   };
 };
 
@@ -9398,7 +9470,8 @@ app.get("/api/clicker/stage", authenticateJWT, async (req, res) => {
       await clickerStage.save();
     }
     
-    // 낚시실력 조회 (업적 보너스 + 아레나 보너스 포함)
+    // 낚시실력 조회 (업적 보너스만 포함, 아레나 보너스는 제외)
+    // 아레나 보너스는 낚시할 때만 적용되는 일시적 보너스로, 스테이지 제한에는 영향 없음
     const fishingSkillData = await FishingSkillModel.findOne(query);
     const baseSkill = fishingSkillData?.skill || 0;
     
@@ -9413,33 +9486,8 @@ app.get("/api/clicker/stage", authenticateJWT, async (req, res) => {
       console.error("Failed to calculate achievement bonus for clicker:", error);
     }
     
-    // 🏟️ Arena 보너스 계산
-    let arenaBonus = 0;
-    try {
-      const targetUserUuid = queryResult.userUuid || userUuid;
-      if (targetUserUuid) {
-        const arenaSystem = getArenaSystem();
-        if (arenaSystem && arenaSystem.ArenaEloModel) {
-          const arenaData = await arenaSystem.getOrCreateEloData(targetUserUuid, username);
-          if (arenaData && arenaData.elo !== undefined) {
-            const higherRanked = await arenaSystem.ArenaEloModel.countDocuments({ 
-              elo: { $gt: arenaData.elo } 
-            });
-            const arenaRank = higherRanked + 1;
-            
-            if (arenaRank === 1) {
-              arenaBonus = 2; // 1위: +2
-            } else if (arenaRank >= 2 && arenaRank <= 10) {
-              arenaBonus = 1; // 2~10위: +1
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Failed to calculate arena bonus for clicker:", error);
-    }
-    
-    const userFishingSkill = baseSkill + achievementBonus + arenaBonus;
+    // 스테이지 제한용 낚시실력 (아레나 보너스 제외)
+    const userFishingSkill = baseSkill + achievementBonus;
     
     // 자동 다운그레이드: 현재 스테이지가 낚시실력을 초과하면 조정
     if (clickerStage.currentStage - 1 > userFishingSkill) {
@@ -9447,7 +9495,7 @@ app.get("/api/clicker/stage", authenticateJWT, async (req, res) => {
       clickerStage.currentStage = Math.max(1, userFishingSkill + 1); // 최소 1 스테이지
       await clickerStage.save();
       
-      console.log(`[Auto Downgrade] ${username}: Stage ${originalStage} → ${clickerStage.currentStage} (Fishing Skill: ${baseSkill} + ${achievementBonus} + ${arenaBonus} = ${userFishingSkill})`);
+      console.log(`[Auto Downgrade] ${username}: Stage ${originalStage} → ${clickerStage.currentStage} (Fishing Skill: ${baseSkill} + ${achievementBonus} = ${userFishingSkill})`);
     }
     
     res.json({
@@ -9483,7 +9531,8 @@ app.post("/api/clicker/upgrade-stage", authenticateJWT, async (req, res) => {
     
     const currentStage = clickerStage.currentStage;
     
-    // 낚시실력 조회 (업적 보너스 + 아레나 보너스 포함)
+    // 낚시실력 조회 (업적 보너스만 포함, 아레나 보너스는 제외)
+    // 아레나 보너스는 낚시할 때만 적용되는 일시적 보너스로, 스테이지 제한에는 영향 없음
     const fishingSkillData = await FishingSkillModel.findOne(query);
     const baseSkill = fishingSkillData?.skill || 0;
     
@@ -9498,39 +9547,14 @@ app.post("/api/clicker/upgrade-stage", authenticateJWT, async (req, res) => {
       console.error("Failed to calculate achievement bonus for upgrade:", error);
     }
     
-    // 🏟️ Arena 보너스 계산
-    let arenaBonus = 0;
-    try {
-      const targetUserUuid = queryResult.userUuid || userUuid;
-      if (targetUserUuid) {
-        const arenaSystem = getArenaSystem();
-        if (arenaSystem && arenaSystem.ArenaEloModel) {
-          const arenaData = await arenaSystem.getOrCreateEloData(targetUserUuid, username);
-          if (arenaData && arenaData.elo !== undefined) {
-            const higherRanked = await arenaSystem.ArenaEloModel.countDocuments({ 
-              elo: { $gt: arenaData.elo } 
-            });
-            const arenaRank = higherRanked + 1;
-            
-            if (arenaRank === 1) {
-              arenaBonus = 2; // 1위: +2
-            } else if (arenaRank >= 2 && arenaRank <= 10) {
-              arenaBonus = 1; // 2~10위: +1
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Failed to calculate arena bonus for upgrade:", error);
-    }
-    
-    const userFishingSkill = baseSkill + achievementBonus + arenaBonus;
+    // 스테이지 제한용 낚시실력 (아레나 보너스 제외)
+    const userFishingSkill = baseSkill + achievementBonus;
     
     // 낚시실력 제한 확인 (다음 스테이지가 낚시실력을 초과하는지 체크)
     const nextStage = currentStage + 1;
     if (nextStage - 1 > userFishingSkill) {
       return res.status(400).json({ 
-        error: `낚시실력이 부족합니다. 스테이지 ${nextStage}는 낚시실력 ${nextStage - 1} 이상이 필요합니다. (현재: ${userFishingSkill} = 기본 ${baseSkill} + 업적 ${achievementBonus} + 아레나 ${arenaBonus})`,
+        error: `낚시실력이 부족합니다. 스테이지 ${nextStage}는 낚시실력 ${nextStage - 1} 이상이 필요합니다. (현재: ${userFishingSkill} = 기본 ${baseSkill} + 업적 ${achievementBonus})`,
         requiredSkill: nextStage - 1,
         currentSkill: userFishingSkill
       });

@@ -461,7 +461,18 @@ const ArenaTab = ({
           }
           if (newState.player.cooldown <= 0) {
             const target = opponentTargets[Math.floor(Math.random() * opponentTargets.length)];
-            const damage = Math.floor(newState.player.attack * (0.9 + Math.random() * 0.2));
+            let damage = Math.floor(newState.player.attack * (0.9 + Math.random() * 0.2));
+            
+            // 🛡️ 상대 damage_reduction 버프 확인
+            let damageReduction = 1.0;
+            if (newState.opponent.companions) {
+              newState.opponent.companions.forEach(companion => {
+                if (companion.buffs?.damage_reduction) {
+                  damageReduction = companion.buffs.damage_reduction.multiplier;
+                }
+              });
+            }
+            damage = Math.floor(damage * damageReduction);
             
             if (target.type === 'player') {
               newState.opponent.hp = Math.max(0, newState.opponent.hp - damage);
@@ -507,6 +518,23 @@ const ArenaTab = ({
                   newLog.push(`✨ ${updated.name}의 ${updated.skill.name}! ${target.name} +${actualHeal} HP`);
                 }
                 damage = 0;
+              } else if (updated.skill.buffType) {
+                // 버프 스킬 (공격력, 크리티컬, 데미지 감소 등)
+                if (!updated.buffs) updated.buffs = {};
+                updated.buffs[updated.skill.buffType] = {
+                  multiplier: updated.skill.buffMultiplier,
+                  duration: updated.skill.buffDuration || 2
+                };
+                
+                newLog.push(`✨ ${updated.name}의 ${updated.skill.name}!`);
+                if (updated.skill.buffType === 'attack') {
+                  newLog.push(`🔥 공격력 상승!`);
+                } else if (updated.skill.buffType === 'critical') {
+                  newLog.push(`🎯 크리티컬 확률 상승!`);
+                } else if (updated.skill.buffType === 'damage_reduction') {
+                  newLog.push(`🛡️ 아군 전체 데미지 감소!`);
+                }
+                damage = Math.floor(updated.attack * (updated.skill.damageMultiplier || 0) * (0.9 + Math.random() * 0.2));
               } else {
                 // 공격 스킬
                 damage = Math.floor(updated.attack * updated.skill.damageMultiplier * (0.9 + Math.random() * 0.2));
@@ -542,6 +570,17 @@ const ArenaTab = ({
               newLog.push(`${updated.name}의 공격! ${damage} 데미지`);
             }
             
+            // 🛡️ 상대 damage_reduction 버프 확인
+            let opponentDamageReduction = 1.0;
+            if (newState.opponent.companions) {
+              newState.opponent.companions.forEach(companion => {
+                if (companion.buffs?.damage_reduction) {
+                  opponentDamageReduction = companion.buffs.damage_reduction.multiplier;
+                }
+              });
+            }
+            damage = Math.floor(damage * opponentDamageReduction);
+            
             // 상대 타겟 공격
             if (damage > 0 && opponentTargets.length > 0) {
               const target = opponentTargets[Math.floor(Math.random() * opponentTargets.length)];
@@ -573,14 +612,31 @@ const ArenaTab = ({
           }
           if (newState.opponent.cooldown <= 0) {
             const target = playerTargets[Math.floor(Math.random() * playerTargets.length)];
-            const damage = Math.floor(newState.opponent.attack * (0.8 + Math.random() * 0.4));
+            let damage = Math.floor(newState.opponent.attack * (0.8 + Math.random() * 0.4));
+            
+            // 🛡️ 아군 damage_reduction 버프 확인
+            let damageReduction = 1.0;
+            if (newState.player.companions) {
+              newState.player.companions.forEach(companion => {
+                if (companion.buffs?.damage_reduction) {
+                  damageReduction = companion.buffs.damage_reduction.multiplier;
+                }
+              });
+            }
+            damage = Math.floor(damage * damageReduction);
             
             if (target.type === 'player') {
               newState.player.hp = Math.max(0, newState.player.hp - damage);
               newLog.push(`⚔️ ${newState.opponent.username}의 공격! ${damage} 데미지`);
+              if (damageReduction < 1.0) {
+                newLog.push(`🛡️ 데미지 감소 효과 적용!`);
+              }
             } else {
               newState.player.companions[target.index].hp = Math.max(0, newState.player.companions[target.index].hp - damage);
               newLog.push(`⚔️ ${newState.opponent.username}이(가) ${target.data.name}에게 ${damage} 데미지`);
+              if (damageReduction < 1.0) {
+                newLog.push(`🛡️ 데미지 감소 효과 적용!`);
+              }
             }
             
             newState.opponent.cooldown = newState.opponent.maxCooldown;
@@ -620,6 +676,23 @@ const ArenaTab = ({
                   newLog.push(`✨ ${updated.name}의 ${updated.skill.name}! ${target.name} +${actualHeal} HP`);
                 }
                 damage = 0;
+              } else if (updated.skill.buffType) {
+                // 상대 버프 스킬
+                if (!updated.buffs) updated.buffs = {};
+                updated.buffs[updated.skill.buffType] = {
+                  multiplier: updated.skill.buffMultiplier,
+                  duration: updated.skill.buffDuration || 2
+                };
+                
+                newLog.push(`✨ ${updated.name}의 ${updated.skill.name}!`);
+                if (updated.skill.buffType === 'attack') {
+                  newLog.push(`🔥 상대 공격력 상승!`);
+                } else if (updated.skill.buffType === 'critical') {
+                  newLog.push(`🎯 상대 크리티컬 확률 상승!`);
+                } else if (updated.skill.buffType === 'damage_reduction') {
+                  newLog.push(`🛡️ 상대 전체 데미지 감소!`);
+                }
+                damage = Math.floor(updated.attack * (updated.skill.damageMultiplier || 0) * (0.9 + Math.random() * 0.2));
               } else {
                 damage = Math.floor(updated.attack * updated.skill.damageMultiplier * (0.9 + Math.random() * 0.2));
                 newLog.push(`✨ ${updated.name}의 ${updated.skill.name}! ${damage} 데미지!`);
@@ -653,6 +726,17 @@ const ArenaTab = ({
               damage = Math.floor(updated.attack * (0.9 + Math.random() * 0.2));
               newLog.push(`${updated.name}의 공격! ${damage} 데미지`);
             }
+            
+            // 🛡️ 아군 damage_reduction 버프 확인 (상대 동료 공격 시)
+            let damageReduction = 1.0;
+            if (newState.player.companions) {
+              newState.player.companions.forEach(companion => {
+                if (companion.buffs?.damage_reduction) {
+                  damageReduction = companion.buffs.damage_reduction.multiplier;
+                }
+              });
+            }
+            damage = Math.floor(damage * damageReduction);
             
             if (damage > 0) {
               const target = playerTargets[Math.floor(Math.random() * playerTargets.length)];

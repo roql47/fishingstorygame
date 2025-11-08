@@ -2456,7 +2456,10 @@ class ExpeditionSystem {
                     if (buffs[buffType].turnsLeft <= 0) {
                         // 버프 만료
                         const companionName = companionKey.split('_')[1];
-                        const buffName = buffType === 'attack' ? '무의태세' : '집중포화';
+                        let buffName = '알 수 없는 효과';
+                        if (buffType === 'attack') buffName = '무의태세';
+                        else if (buffType === 'critical') buffName = '집중포화';
+                        else if (buffType === 'damage_reduction') buffName = '연의검무';
                         battleState.battleLog.push(`⏰ ${companionName}의 '${buffName}' 효과가 만료되었습니다.`);
                         delete buffs[buffType];
                     }
@@ -2508,13 +2511,27 @@ class ExpeditionSystem {
             
             // 랜덤 대상 선택
             const target = targets[Math.floor(Math.random() * targets.length)];
-            const damage = Math.floor(monster.attackPower * (0.8 + Math.random() * 0.4)); // ±20% 변동
+            let damage = Math.floor(monster.attackPower * (0.8 + Math.random() * 0.4)); // ±20% 변동
+            
+            // 🛡️ damage_reduction 버프 확인 (아군 전체 보호)
+            let damageReduction = 1.0;
+            if (battleState.companionBuffs) {
+                Object.keys(battleState.companionBuffs).forEach(companionKey => {
+                    if (battleState.companionBuffs[companionKey]?.damage_reduction) {
+                        damageReduction = battleState.companionBuffs[companionKey].damage_reduction.multiplier;
+                    }
+                });
+            }
+            damage = Math.floor(damage * damageReduction);
             
             if (target.type === 'player') {
                 // 플레이어에게 데미지 적용
                 battleState.playerHp[target.id] = Math.max(0, battleState.playerHp[target.id] - damage);
                 
                 battleState.battleLog.push(`${monster.name}이(가) ${target.name}에게 공격! ${damage} 데미지!`);
+                if (damageReduction < 1.0) {
+                    battleState.battleLog.push(`🛡️ 데미지 감소 효과 적용!`);
+                }
                 
                 if (battleState.playerHp[target.id] === 0) {
                     battleState.battleLog.push(`${target.name}이(가) 쓰러졌습니다!`);
@@ -2524,6 +2541,9 @@ class ExpeditionSystem {
                 battleState.companionHp[target.id] = Math.max(0, battleState.companionHp[target.id] - damage);
                 
                 battleState.battleLog.push(`${monster.name}이(가) ${target.name}에게 공격! ${damage} 데미지!`);
+                if (damageReduction < 1.0) {
+                    battleState.battleLog.push(`🛡️ 데미지 감소 효과 적용!`);
+                }
                 
                 if (battleState.companionHp[target.id] === 0) {
                     battleState.battleLog.push(`${target.name}이(가) 쓰러졌습니다!`);

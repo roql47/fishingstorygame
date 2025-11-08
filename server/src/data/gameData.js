@@ -37,6 +37,11 @@ const FISH_DATA = [
   { name: "태양가사리", price: 2991000, material: "시더플랭크", rank: 33 },
   { name: "빅파더펭귄", price: 3251000, material: "세비체", rank: 34 },
   { name: "크레인터틀", price: 3523000, material: "타파스", rank: 35 },
+  { name: "조가비여인", price: 3807000, material: "진주조개", rank: 36 },
+  { name: "조립식생선", price: 4103000, material: "트러플리조토", rank: 37 },
+  { name: "데드케이지", price: 4411000, material: "캐비아소스", rank: 38 },
+  { name: "다크암모나이트", price: 4731000, material: "푸아그라에스푸마", rank: 39 },
+  { name: "10기통고래", price: 5063000, material: "버터넛스쿼시", rank: 40 },
   { name: "스타피쉬", price: 100, material: "별조각", rank: 0 }
 ];
 
@@ -76,7 +81,12 @@ const FISH_HEALTH_DATA = {
   "수호자": 4535,
   "태양가사리": 4840,
   "빅파더펭귄": 5155,
-  "크레인터틀": 5480
+  "크레인터틀": 5480,
+  "조가비여인": 5815,
+  "조립식생선": 6160,
+  "데드케이지": 6515,
+  "다크암모나이트": 6880,
+  "10기통고래": 7255
 };
 
 // 물고기 속도 데이터 (랭크 기반)
@@ -115,7 +125,12 @@ const FISH_SPEED_DATA = {
   "수호자": 175,       // rank 32
   "태양가사리": 180,   // rank 33
   "빅파더펭귄": 185,    // rank 34 (펭귄은 느림)
-  "크레인터틀": 190     // rank 35 (거북이는 매우 느림)
+  "크레인터틀": 190,     // rank 35 (거북이는 매우 느림)
+  "조가비여인": 195,     // rank 36
+  "조립식생선": 200,     // rank 37
+  "데드케이지": 205,     // rank 38
+  "다크암모나이트": 210,  // rank 39
+  "10기통고래": 215      // rank 40 (고래는 느림)
 };
 
 // 확률 템플릿 데이터
@@ -157,7 +172,12 @@ const SHOP_DATA = {
     { name: '호박유령낚시대', material: '마법의정수', materialCount: 85, description: '호박 속 유령의 힘이 깃든 무서운 낚시대입니다', requiredSkill: 20 },
     { name: '핑크버니낚시대', material: '휘핑크림', materialCount: 90, description: '핑크빛 토끼의 귀여움이 담긴 낚시대입니다', requiredSkill: 21 },
     { name: '할로우낚시대', material: '와플리머신', materialCount: 95, description: '할로윈의 신비로운 힘이 깃든 낚시대입니다', requiredSkill: 22 },
-    { name: '여우불낚시대', material: '베르쥬스', materialCount: 100, description: '여우불의 환상적인 힘을 지닌 최고급 낚시대입니다', requiredSkill: 23 }
+    { name: '여우불낚시대', material: '베르쥬스', materialCount: 100, description: '여우불의 환상적인 힘을 지닌 최고급 낚시대입니다', requiredSkill: 23 },
+    { name: '네오더스트낚시대', material: '안쵸비', materialCount: 105, description: '미래의 먼지로 만들어진 초현대적 낚시대입니다', requiredSkill: 24 },
+    { name: '드림캐쳐', material: '핑크멜로우', materialCount: 110, description: '꿈을 잡아내는 신비로운 힘을 지닌 낚시대입니다', requiredSkill: 25 },
+    { name: '아포카토낚시대', material: '와일드갈릭', materialCount: 115, description: '부드러운 아포카토의 힘이 담긴 낚시대입니다', requiredSkill: 26 },
+    { name: '스윗슈터', material: '그루누아', materialCount: 120, description: '달콤한 슈팅의 정확성을 자랑하는 낚시대입니다', requiredSkill: 27 },
+    { name: '인도하는별빛', material: '시더플랭크', materialCount: 125, description: '별빛의 인도를 받아 길을 밝히는 신성한 낚시대입니다', requiredSkill: 28 }
   ],
   accessories: [
     { name: '오래된반지', material: 'gold', price: 15000, description: '낡았지만 의미있는 반지입니다', requiredSkill: 0 },
@@ -166,13 +186,16 @@ const SHOP_DATA = {
     { name: '마법의펜던트', material: 'gold', price: 240000, description: '마법의 힘이 깃든 신비한 펜던트입니다', requiredSkill: 3 },
     { name: '에메랄드브로치', material: 'gold', price: 450000, description: '에메랄드가 박힌 고급스러운 브로치입니다', requiredSkill: 4 },
     { name: '토파즈이어링', material: '백년송', materialCount: 5, description: '토파즈의 빛이 아름다운 이어링입니다', requiredSkill: 5 },
-    { name: '자수정팔찌', material: '후춧가루', materialCount: 10, description: '자수정으로 만든 우아한 팔찌입니다', requiredSkill: 6 },
-    { name: '백금티아라', material: '석화', materialCount: 15, description: '백금으로 제작된 고귀한 티아라입니다', requiredSkill: 7 },
-    { name: '만드라고라허브', material: '핫소스', materialCount: 20, description: '신비한 만드라고라 허브입니다', requiredSkill: 8 },
-    { name: '에테르나무묘목', material: '펌킨조각', materialCount: 25, description: '에테르 나무의 신비한 묘목입니다', requiredSkill: 9 },
-    { name: '몽마의조각상', material: '꽃술', materialCount: 30, description: '몽마의 힘이 깃든 신비한 조각상입니다', requiredSkill: 10 },
-    { name: '마카롱훈장', material: '프레첼', materialCount: 35, description: '달콤한 마카롱 모양의 특별한 훈장입니다', requiredSkill: 11 },
-    { name: '빛나는마력순환체', material: '베놈', materialCount: 40, description: '마력이 순환하는 빛나는 신비한 구슬입니다', requiredSkill: 12 }
+    { name: '자수정팔찌', material: '석화', materialCount: 10, description: '자수정으로 만든 우아한 팔찌입니다', requiredSkill: 6 },
+    { name: '백금티아라', material: '펌킨조각', materialCount: 15, description: '백금으로 제작된 고귀한 티아라입니다', requiredSkill: 7 },
+    { name: '만드라고라허브', material: '프레첼', materialCount: 20, description: '신비한 만드라고라 허브입니다', requiredSkill: 8 },
+    { name: '에테르나무묘목', material: '장어꼬리', materialCount: 25, description: '에테르 나무의 신비한 묘목입니다', requiredSkill: 9 },
+    { name: '몽마의조각상', material: '헤븐즈서펀트', materialCount: 30, description: '몽마의 힘이 깃든 신비한 조각상입니다', requiredSkill: 10 },
+    { name: '마카롱훈장', material: '이즈니버터', materialCount: 35, description: '달콤한 마카롱 모양의 특별한 훈장입니다', requiredSkill: 11 },
+    { name: '빛나는마력순환체', material: '샤베트', materialCount: 40, description: '마력이 순환하는 빛나는 신비한 구슬입니다', requiredSkill: 12 },
+    { name: '갈라진백조인형', material: '휘핑크림', materialCount: 45, description: '갈라진 백조의 슬픈 전설이 담긴 인형입니다', requiredSkill: 13 },
+    { name: '기계천사', material: '베르쥬스', materialCount: 50, description: '기계로 만들어진 천사의 축복을 담은 악세사리입니다', requiredSkill: 14 },
+    { name: '공명하는보석', material: '핑크멜로우', materialCount: 55, description: '천상의 공명으로 울려퍼지는 신비한 보석입니다', requiredSkill: 15 }
   ],
   items: [
     { name: '연금술포션', material: '별조각', materialCount: 1, count: 10, description: '낚시 쿨타임을 10초로 줄여주는 신비한 포션입니다 (10개 구매)', requiredSkill: 0 },

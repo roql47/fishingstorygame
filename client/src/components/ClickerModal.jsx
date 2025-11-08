@@ -444,7 +444,12 @@ const ClickerModal = ({
       { rank: 32, name: '수호자', material: '그루누아' },
       { rank: 33, name: '태양가사리', material: '시더플랭크' },
       { rank: 34, name: '빅파더펭귄', material: '세비체' },
-      { rank: 35, name: '크레인터틀', material: '타파스' }
+      { rank: 35, name: '크레인터틀', material: '타파스' },
+      { rank: 36, name: '조가비여인', material: '진주조개' },
+      { rank: 37, name: '조립식생선', material: '트러플리조토' },
+      { rank: 38, name: '데드케이지', material: '캐비아소스' },
+      { rank: 39, name: '다크암모나이트', material: '푸아그라에스푸마' },
+      { rank: 40, name: '10기통고래', material: '버터넛스쿼시' }
     ];
     return fishData.find(f => f.rank === currentStage);
   };

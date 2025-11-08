@@ -948,7 +948,18 @@ function App() {
               
               const target = aliveTargets[Math.floor(Math.random() * aliveTargets.length)];
               const fishData = allFishTypes.find(f => f.name === enemy.baseFish);
-              const damage = calculateEnemyAttack(fishData?.rank || 1);
+              let damage = calculateEnemyAttack(fishData?.rank || 1);
+              
+              // 🛡️ damage_reduction 버프 확인 (아군 전체 보호)
+              let damageReduction = 1.0;
+              if (currentState.companionBuffs) {
+                Object.keys(currentState.companionBuffs).forEach(companionName => {
+                  if (currentState.companionBuffs[companionName]?.damage_reduction) {
+                    damageReduction = currentState.companionBuffs[companionName].damage_reduction.multiplier;
+                  }
+                });
+              }
+              damage = Math.floor(damage * damageReduction);
               
               const newLog = [...currentState.log];
               let newPlayerHp = currentState?.playerHp || 0;
@@ -958,12 +969,18 @@ function App() {
               if (target === 'player') {
                 newPlayerHp = Math.max(0, newPlayerHp - damage);
                 newLog.push(`${enemy.name}이(가) 플레이어에게 ${damage} 데미지!`);
+                if (damageReduction < 1.0) {
+                  newLog.push(`🛡️ 데미지 감소 효과 적용!`);
+                }
                 if (newPlayerHp <= 0) newLog.push(`플레이어가 쓰러졌습니다!`);
               } else {
                 const oldHp = newCompanionHp[target]?.hp || 0;
                 const newHp = Math.max(0, oldHp - damage);
                 newCompanionHp[target] = { ...newCompanionHp[target], hp: newHp };
                 newLog.push(`${enemy.name}이(가) ${target}에게 ${damage} 데미지!`);
+                if (damageReduction < 1.0) {
+                  newLog.push(`🛡️ 데미지 감소 효과 적용!`);
+                }
                 if (newHp <= 0) {
                   newLog.push(`${target}이(가) 쓰러졌습니다!`);
                   if (speedBarIntervalsRef.current[`companion_${target}`]) {

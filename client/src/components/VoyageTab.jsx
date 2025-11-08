@@ -273,6 +273,23 @@ const VoyageTab = ({
                 } else {
                   newLog.push(`✨ ${updatedCompanion.name}이(가) ${updatedCompanion.skill.name} 스킬을 사용했지만 치유할 대상이 없습니다.`);
                 }
+              } else if (updatedCompanion.skill.buffType) {
+                // 버프 스킬 (공격력, 크리티컬, 데미지 감소 등)
+                if (!updatedCompanion.buffs) updatedCompanion.buffs = {};
+                updatedCompanion.buffs[updatedCompanion.skill.buffType] = {
+                  multiplier: updatedCompanion.skill.buffMultiplier,
+                  duration: updatedCompanion.skill.buffDuration || 2
+                };
+                
+                newLog.push(`✨ ${updatedCompanion.name}이(가) ${updatedCompanion.skill.name}!`);
+                if (updatedCompanion.skill.buffType === 'attack') {
+                  newLog.push(`🔥 공격력 상승!`);
+                } else if (updatedCompanion.skill.buffType === 'critical') {
+                  newLog.push(`🎯 크리티컬 확률 상승!`);
+                } else if (updatedCompanion.skill.buffType === 'damage_reduction') {
+                  newLog.push(`🛡️ 아군 전체 데미지 감소!`);
+                }
+                damage = Math.floor(updatedCompanion.attack * (updatedCompanion.skill.damageMultiplier || 0) * (0.9 + Math.random() * 0.2));
               } else {
                 // 공격 스킬
                 damage = Math.floor(updatedCompanion.attack * updatedCompanion.skill.damageMultiplier * (0.9 + Math.random() * 0.2));
@@ -354,14 +371,31 @@ const VoyageTab = ({
 
             if (targets.length > 0) {
               const target = targets[Math.floor(Math.random() * targets.length)];
-              const damage = Math.floor(newState.enemy.attack * (0.8 + Math.random() * 0.4));
+              let damage = Math.floor(newState.enemy.attack * (0.8 + Math.random() * 0.4));
+              
+              // 🛡️ damage_reduction 버프 확인 (아군 전체 보호)
+              let damageReduction = 1.0;
+              if (newState.companions) {
+                newState.companions.forEach(companion => {
+                  if (companion.buffs?.damage_reduction) {
+                    damageReduction = companion.buffs.damage_reduction.multiplier;
+                  }
+                });
+              }
+              damage = Math.floor(damage * damageReduction);
               
               if (target.type === 'player') {
                 newState.player.hp = Math.max(0, newState.player.hp - damage);
                 newLog.push(`${newState.enemy.name}이(가) 플레이어에게 ${damage} 데미지를 입혔습니다!`);
+                if (damageReduction < 1.0) {
+                  newLog.push(`🛡️ 데미지 감소 효과 적용!`);
+                }
               } else {
                 newState.companions[target.index].hp = Math.max(0, newState.companions[target.index].hp - damage);
                 newLog.push(`${newState.enemy.name}이(가) ${target.data.name}에게 ${damage} 데미지를 입혔습니다!`);
+                if (damageReduction < 1.0) {
+                  newLog.push(`🛡️ 데미지 감소 효과 적용!`);
+                }
               }
               
               newState.enemy.cooldown = newState.enemy.maxCooldown;
@@ -535,7 +569,7 @@ const VoyageTab = ({
   };
 
   return (
-    <div className={`rounded-2xl board-shadow min-h-full flex flex-col ${
+    <div className={`rounded-2xl board-shadow h-full flex flex-col overflow-hidden ${
       isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
     }`}>
       {/* 헤더 */}
@@ -731,20 +765,21 @@ const VoyageTab = ({
 
       {/* 전투 화면 */}
       {currentView === 'battle' && battleState && selectedFish && (
-        <div className="flex-1 p-6 space-y-6">
+        <div className="flex-1 p-3 sm:p-6 space-y-3 sm:space-y-6 overflow-y-auto">
           {/* 적 이미지 및 정보 */}
-          <div className={`p-6 rounded-xl border-2 ${
+          <div className={`p-3 sm:p-6 rounded-xl border-2 ${
             isDarkMode 
               ? "bg-red-900/20 border-red-500/30" 
               : "bg-red-50 border-red-200"
           }`}>
             {/* 적 이미지 */}
             <div className="flex justify-center mb-4">
-              <div className="relative">
+              <div className="relative max-w-full">
                 <img 
                   src={selectedFish.image} 
                   alt={battleState.enemy.name}
-                  className="w-40 h-40 sm:w-52 sm:h-52 md:w-64 md:h-64 lg:w-80 lg:h-80 object-contain rounded-xl border-4 border-red-500/50 shadow-lg bg-gradient-to-br from-red-900/20 to-red-800/20"
+                  className="w-56 h-56 sm:w-72 sm:h-72 md:w-96 md:h-96 lg:w-[450px] lg:h-[450px] object-contain rounded-xl border-4 border-red-500/50 shadow-lg bg-gradient-to-br from-red-900/20 to-red-800/20"
+                  style={{ objectPosition: selectedFish.imagePosition || 'center' }}
                 />
                 {/* 피격 애니메이션 - 플레이어나 동료가 공격할 때 */}
                 {((attackAnimations.player && Date.now() - attackAnimations.player < 300) ||
@@ -976,7 +1011,7 @@ const VoyageTab = ({
 
       {/* 결과 화면 */}
       {currentView === 'result' && battleState && (
-        <div className="flex-1 p-6 flex items-center justify-center">
+        <div className="flex-1 p-3 sm:p-6 flex items-center justify-center overflow-y-auto">
           <div className={`max-w-md w-full p-8 rounded-2xl border-2 text-center ${
             battleState.status === 'victory'
               ? (isDarkMode 
