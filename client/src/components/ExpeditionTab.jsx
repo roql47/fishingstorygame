@@ -2243,7 +2243,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                               const accessories = [
                                 '없음', '오래된반지', '은목걸이', '금귀걸이', '마법의펜던트', '에메랄드브로치',
                                 '토파즈이어링', '자수정팔찌', '백금티아라', '만드라고라허브', '에테르나무묘목',
-                                '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
+                                '몽마의조각상', '마카롱훈장', '빛나는마력순환체', '갈라진백조인형', '기계천사', '공명하는보석'
                               ];
                               const accessoryName = accessories[accessoryLevel] || '없음';
                               return accessoryLevel === 0 ? '없음' : `Lv.${accessoryLevel} ${accessoryName}`;

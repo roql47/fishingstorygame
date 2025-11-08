@@ -89,7 +89,12 @@ const CollectionModal = ({
     { name: '호박유령낚시대', price: 13723500, description: '호박 속 유령의 힘이 깃든 무서운 낚시대입니다', currency: 'gold' },
     { name: '핑크버니낚시대', price: 16280000, description: '핑크빛 토끼의 귀여움이 담긴 낚시대입니다', currency: 'gold' },
     { name: '할로우낚시대', price: 19147500, description: '할로윈의 신비로운 힘이 깃든 낚시대입니다', currency: 'gold' },
-    { name: '여우불낚시대', price: 22344000, description: '여우불의 환상적인 힘을 지닌 최고급 낚시대입니다', currency: 'gold' }
+    { name: '여우불낚시대', price: 22344000, description: '여우불의 환상적인 힘을 지닌 최고급 낚시대입니다', currency: 'gold' },
+    { name: '네오더스트낚시대', price: 217455, description: '미래의 먼지로 만들어진 초현대적 낚시대입니다', currency: 'gold' },
+    { name: '드림캐쳐', price: 251130, description: '꿈을 잡아내는 신비로운 힘을 지닌 낚시대입니다', currency: 'gold' },
+    { name: '아포카토낚시대', price: 288305, description: '부드러운 아포카토의 힘이 담긴 낚시대입니다', currency: 'gold' },
+    { name: '스윗슈터', price: 329160, description: '달콤한 슈팅의 정확성을 자랑하는 낚시대입니다', currency: 'gold' },
+    { name: '인도하는별빛', price: 373875, description: '별빛의 인도를 받아 길을 밝히는 신성한 낚시대입니다', currency: 'gold' }
   ];
 
   // 악세사리 목록 (실제 상점 가격과 동일하게 계산 - 골드 단위)
@@ -106,7 +111,10 @@ const CollectionModal = ({
     { name: '에테르나무묘목', price: 1330000, description: '에테르 나무의 신비한 묘목입니다', currency: 'gold' },
     { name: '몽마의조각상', price: 1936000, description: '몽마의 힘이 깃든 신비한 조각상입니다', currency: 'gold' },
     { name: '마카롱훈장', price: 2868000, description: '달콤한 마카롱 모양의 특별한 훈장입니다', currency: 'gold' },
-    { name: '빛나는마력순환체', price: 3770000, description: '마력이 순환하는 빛나는 신비한 구슬입니다', currency: 'gold' }
+    { name: '빛나는마력순환체', price: 3770000, description: '마력이 순환하는 빛나는 신비한 구슬입니다', currency: 'gold' },
+    { name: '갈라진백조인형', price: 666000, description: '갈라진 백조의 슬픈 전설이 담긴 인형입니다', currency: 'gold' },
+    { name: '기계천사', price: 1035500, description: '기계로 만들어진 천사의 축복을 담은 악세사리입니다', currency: 'gold' },
+    { name: '공명하는보석', price: 1255650, description: '천상의 공명으로 울려퍼지는 신비한 보석입니다', currency: 'gold' }
   ];
 
   // 보유 여부 확인 함수

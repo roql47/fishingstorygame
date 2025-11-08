@@ -8203,7 +8203,7 @@ const getServerAccessoryLevel = (accessoryName) => {
   const accessories = [
     '오래된반지', '은목걸이', '금귀걸이', '마법의펜던트', '에메랄드브로치',
     '토파즈이어링', '자수정팔찌', '백금티아라', '만드라고라허브', '에테르나무묘목',
-    '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
+    '몽마의조각상', '마카롱훈장', '빛나는마력순환체', '갈라진백조인형', '기계천사', '공명하는보석'
   ];
   const level = accessories.indexOf(accessoryName);
   return level >= 0 ? level + 1 : 0;
@@ -8348,7 +8348,8 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
       '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대', '레드다이아몬드낚시대',
       '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산호등낚시대', '피크닉', '마녀빗자루',
       '에테르낚시대', '별조각낚시대', '여우꼬리낚시대', '초콜릿롤낚시대', '호박유령낚시대',
-      '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
+      '핑크버니낚시대', '할로우낚시대', '여우불낚시대', '네오더스트낚시대', '드림캐쳐',
+      '아포카토낚시대', '스윗슈터', '인도하는별빛'
     ];
     const fishingRodIndex = fishingRods.indexOf(userEquipment?.fishingRod) >= 0 ? fishingRods.indexOf(userEquipment?.fishingRod) : 0;
     
