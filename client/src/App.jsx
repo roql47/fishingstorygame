@@ -12573,12 +12573,7 @@ function App() {
                             const enhancementBonus = calculateTotalEnhancementBonus(accessoryEnhancement);
                             
                             // 악세사리 레벨 계산
-                            const accessories = [
-                              '오래된반지', '은목걸이', '금귀걸이', '마법의펜던트', '에메랄드브로치',
-                              '토파즈이어링', '자수정팔찌', '백금티아라', '만드라고라허브', '에테르나무묘목',
-                              '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
-                            ];
-                            const accessoryLevel = accessoryName ? accessories.indexOf(accessoryName) + 1 : 0;
+                            const accessoryLevel = getAccessoryLevel(accessoryName);
                             const baseMaxHp = calculatePlayerMaxHp(accessoryLevel, enhancementBonus);
                             const healthStatBonus = accessoryLevel * (otherUserData?.userStats?.health || 0) * 5;
                             const maxHp = baseMaxHp + healthStatBonus;
@@ -12608,12 +12603,7 @@ function App() {
                               const accessoryEnhancement = otherUserData?.equipment?.accessoryEnhancement || 0;
                               const enhancementBonus = calculateTotalEnhancementBonus(accessoryEnhancement);
                               
-                              const accessories = [
-                                '오래된반지', '은목걸이', '금귀걸이', '마법의펜던트', '에메랄드브로치',
-                                '토파즈이어링', '자수정팔찌', '백금티아라', '만드라고라허브', '에테르나무묘목',
-                                '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
-                              ];
-                              const accessoryLevel = accessoryName ? accessories.indexOf(accessoryName) + 1 : 0;
+                              const accessoryLevel = getAccessoryLevel(accessoryName);
                               const baseHp = calculatePlayerMaxHp(accessoryLevel, 0);
                               const enhancementHp = (baseHp * enhancementBonus / 100);
                               const healthStatBonus = accessoryLevel * (otherUserData?.userStats?.health || 0) * 5;
