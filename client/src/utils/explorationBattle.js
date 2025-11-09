@@ -86,6 +86,8 @@ export const processExplorationCompanionSkill = ({
       newLog.push(`🎯 3턴 동안 크리티컬 확률이 20% 상승!`);
     } else if (skill.buffType === 'damage_reduction') {
       newLog.push(`🛡️ 2턴 동안 아군 전체가 받는 데미지가 30% 감소!`);
+    } else if (skill.buffType === 'speed_boost') {
+      newLog.push(`💨 5초 동안 아군의 속도가 2배로 증가!`);
     }
     
     // 데미지 처리
@@ -142,6 +144,8 @@ export const processExplorationCompanionSkill = ({
       availableTargets.splice(randomIndex, 1);
     }
     
+    let killCount = 0; // 처치한 적 수 추적
+    
     // 각 타겟에게 데미지 및 디버프 적용
     targets.forEach(target => {
       const baseDamage = Math.floor(companionData.attack * skill.damageMultiplier);
@@ -172,6 +176,7 @@ export const processExplorationCompanionSkill = ({
         
         if (newHp <= 0) {
           newLog.push(`${enemy.name}을(를) 물리쳤습니다!`);
+          killCount++; // 처치 카운트 증가
           if (speedBarIntervalsRef.current[`enemy_${enemy.id}`]) {
             clearInterval(speedBarIntervalsRef.current[`enemy_${enemy.id}`]);
             delete speedBarIntervalsRef.current[`enemy_${enemy.id}`];
@@ -179,6 +184,13 @@ export const processExplorationCompanionSkill = ({
         }
       }
     });
+    
+    // 적 처치 시 사기 증가 (onKillMoraleGain 스킬 속성)
+    if (killCount > 0 && skill.onKillMoraleGain) {
+      const moraleGain = skill.onKillMoraleGain * killCount;
+      newCompanionMorale[companionName] = Math.min(100, newCompanionMorale[companionName] + moraleGain);
+      newLog.push(`⚡ ${companionName}의 사기가 ${moraleGain} 증가했습니다! (${newCompanionMorale[companionName]}/100)`);
+    }
   }
   // 단일 타겟 데미지 스킬
   else {

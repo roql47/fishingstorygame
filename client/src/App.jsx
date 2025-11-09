@@ -224,7 +224,7 @@ function App() {
 
   // 🔄 버전 업데이트 시 캐시 초기화 (v1.405)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.414";
+    const CURRENT_VERSION = "v1.415";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -5031,7 +5031,7 @@ function App() {
   // 사용자 체력 계산 함수 (악세사리 단계 기반) + 강화 보너스 (퍼센트)
   const calculatePlayerMaxHp = (accessoryLevel, enhancementBonusPercent = 0) => {
     if (accessoryLevel === 0 && enhancementBonusPercent === 0) return 50; // 기본 체력
-    const baseHp = accessoryLevel === 0 ? 50 : Math.floor(Math.pow(accessoryLevel, 1.325) + 50 * accessoryLevel + 5 * accessoryLevel);
+    const baseHp = accessoryLevel === 0 ? 50 : Math.floor(Math.pow(accessoryLevel, 1.525) + 65 * accessoryLevel);
     // 강화 보너스 퍼센트 적용
     return Math.floor(baseHp + (baseHp * enhancementBonusPercent / 100));
   };
@@ -8465,7 +8465,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.414
+                여우이야기 v1.415
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -12515,7 +12515,7 @@ function App() {
                                 <>
                                   <div>낚시실력 기본: {Math.floor(baseAttack)}</div>
                                   {fishingRodEnhancement > 0 && (
-                                    <div>강화 보너스: +{Math.floor(enhancementAttack)} (+{enhancementBonus}%)</div>
+                                    <div>강화 보너스: +{Math.floor(enhancementAttack)} (+{Math.floor(enhancementBonus)}%)</div>
                                   )}
                                   {attackStatBonus > 0 && (
                                     <div>성장 보너스: +{attackStatBonus}</div>
@@ -12537,7 +12537,7 @@ function App() {
                                 <>
                                   <div>낚시실력 기본: {Math.floor(baseAttack)}</div>
                                   {userEquipment.fishingRodEnhancement > 0 && (
-                                    <div>강화 보너스: +{Math.floor(enhancementAttack)} (+{enhancementBonus}%)</div>
+                                    <div>강화 보너스: +{Math.floor(enhancementAttack)} (+{Math.floor(enhancementBonus)}%)</div>
                                   )}
                                   {attackStatBonus > 0 && (
                                     <div>성장 보너스: +{attackStatBonus}</div>
@@ -12613,7 +12613,7 @@ function App() {
                                 <>
                                   <div>악세사리 기본: {Math.floor(baseHp)}</div>
                                   {accessoryEnhancement > 0 && (
-                                    <div>강화 보너스: +{Math.floor(enhancementHp)} (+{enhancementBonus}%)</div>
+                                    <div>강화 보너스: +{Math.floor(enhancementHp)} (+{Math.floor(enhancementBonus)}%)</div>
                                   )}
                                   {healthStatBonus > 0 && (
                                     <div>성장 보너스: +{healthStatBonus}</div>
@@ -12635,7 +12635,7 @@ function App() {
                                 <>
                                   <div>악세사리 기본: {Math.floor(baseHp)}</div>
                                   {userEquipment.accessoryEnhancement > 0 && (
-                                    <div>강화 보너스: +{Math.floor(enhancementHp)} (+{enhancementBonus}%)</div>
+                                    <div>강화 보너스: +{Math.floor(enhancementHp)} (+{Math.floor(enhancementBonus)}%)</div>
                                   )}
                                   {healthStatBonus > 0 && (
                                     <div>성장 보너스: +{healthStatBonus}</div>
@@ -14913,6 +14913,8 @@ function App() {
         inventory={inventory}
         userEquipment={userEquipment}
         allFishTypes={allFishTypes}
+        companions={companions}
+        companionStats={companionStats}
       />
 
       {/* 거래소 모달 */}

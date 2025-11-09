@@ -25,10 +25,10 @@ const EnhancementModal = ({
     return 0.0015 * Math.pow(level, 3) + 0.07 * Math.pow(level, 2) + 1.6 * level;
   };
 
-  // 호박석 비용 계산용 공식: f(x) = 0.2x³ - 0.55x² + 1.2x
+  // 호박석 비용 계산용 공식: f(x) = 0.25x³ - 0.65x² + 1.3x
   const calculateAmberCostBonus = (level) => {
     if (level <= 0) return 0;
-    return 0.2 * Math.pow(level, 3) - 0.55 * Math.pow(level, 2) + 1.2 * level;
+    return 0.45 * Math.pow(level, 3) - 0.65 * Math.pow(level, 2) + 1.3 * level;
   };
 
   // 장비 등급별 강화 비용 배율 (3차방정식: f(x) = 0.1x³ - 0.5x² + 2x + 0.4)
@@ -39,7 +39,8 @@ const EnhancementModal = ({
         '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대', '레드다이아몬드낚시대',
         '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산호등낚시대', '피크닉', '마녀빗자루',
         '에테르낚시대', '별조각낚시대', '여우꼬리낚시대', '초콜릿롤낚시대', '호박유령낚시대',
-        '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
+        '핑크버니낚시대', '할로우낚시대', '여우불낚시대', '네오더스트낚시대', '드림캐쳐',
+        '아포카토낚시대', '스윗슈터', '인도하는별빛'
       ];
       const grade = fishingRodOrder.indexOf(equipmentName);
       if (grade === -1) return 1.0;
@@ -49,7 +50,7 @@ const EnhancementModal = ({
       const accessoryOrder = [
         '오래된반지', '은목걸이', '금귀걸이', '마법의펜던트', '에메랄드브로치',
         '토파즈이어링', '자수정팔찌', '백금티아라', '만드라고라허브', '에테르나무묘목',
-        '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
+        '몽마의조각상', '마카롱훈장', '빛나는마력순환체', '갈라진백조인형', '기계천사', '공명하는보석'
       ];
       const grade = accessoryOrder.indexOf(equipmentName);
       if (grade === -1) return 1.0;
@@ -73,9 +74,12 @@ const EnhancementModal = ({
     
     if (currentLevel === 0) {
       baseRate = 100; // 0강 → 1강: 100%
-    } else {
-      // 1강부터: 95%, 90%, 85%, 80%, ... (최소 5%)
+    } else if (currentLevel <= 20) {
+      // 1강~20강: 95%, 90%, 85%, 80%, ... (최소 5%)
       baseRate = Math.max(5, 100 - (currentLevel * 5));
+    } else {
+      // 21강부터: 4.5%, 4.0%, 3.5%, 3.0%, ... (최소 1%)
+      baseRate = Math.max(1, 5 - (currentLevel - 20) * 0.5);
     }
     
     // 실패 횟수에 따른 확률 증가: 원래확률 + (기본확률 * 0.01 * 실패횟수)
@@ -120,11 +124,11 @@ const EnhancementModal = ({
       const accessoryOrder = [
         '오래된반지', '은목걸이', '금귀걸이', '마법의펜던트', '에메랄드브로치',
         '토파즈이어링', '자수정팔찌', '백금티아라', '만드라고라허브', '에테르나무묘목',
-        '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
+        '몽마의조각상', '마카롱훈장', '빛나는마력순환체', '갈라진백조인형', '기계천사', '공명하는보석'
       ];
       const accessoryLevel = accessoryOrder.indexOf(equipment) + 1;
       if (accessoryLevel === 0) return 50;
-      return Math.floor(Math.pow(accessoryLevel, 1.325) + 50 * accessoryLevel + 5 * accessoryLevel);
+      return Math.floor(Math.pow(accessoryLevel, 1.525) + 65 * accessoryLevel);
     }
     return 0;
   };

@@ -2234,7 +2234,7 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
                               }
                               
                               // 체력 계산 (내 정보탭과 동일한 공식)
-                              const baseHp = accessoryLevel === 0 ? 50 : Math.floor(Math.pow(accessoryLevel, 1.325) + 50 * accessoryLevel + 5 * accessoryLevel);
+                              const baseHp = accessoryLevel === 0 ? 50 : Math.floor(Math.pow(accessoryLevel, 1.525) + 65 * accessoryLevel);
                               const totalHp = baseHp + (baseHp * enhancementBonus / 100);
                               return Math.floor(totalHp);
                             })()} | 

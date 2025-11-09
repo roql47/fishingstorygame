@@ -202,20 +202,13 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       
       console.log(`[Raid][${bossType}] ${user.displayName} 낚시실력: ${fishingSkill} - 참여 허용`);
       
-      // 캐시에서 동료 정보 가져오기
+      // 동료 정보 가져오기 (캐시 사용하지 않고 매번 DB에서 최신 데이터 조회)
       let companions = [];
       
       if (battleCompanions && Array.isArray(battleCompanions) && battleCompanions.length > 0) {
-        let cachedCompanions = cacheSystem.getCachedData('raidCompanions', 'companions', userUuid);
-        
-        if (!cachedCompanions) {
-          cachedCompanions = await CompanionStatsModel.find({ userUuid }).lean();
-          if (cachedCompanions && cachedCompanions.length > 0) {
-            cacheSystem.setCachedData('raidCompanions', 'companions', cachedCompanions, userUuid);
-          }
-        }
-        
-        companions = cachedCompanions?.filter(c => battleCompanions.includes(c.companionName)) || [];
+        // 동료 데이터는 매번 DB에서 가져오기 (전투 상태가 자주 변경되므로)
+        const allCompanions = await CompanionStatsModel.find({ userUuid }).lean();
+        companions = allCompanions?.filter(c => battleCompanions.includes(c.companionName)) || [];
       }
       
       // 캐시에서 장비 정보 가져오기
@@ -516,10 +509,13 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         console.log(`[Raid][${bossType}] 보상 지급: ${userUuid} - 순위 ${rank}, 데미지 ${damage}, 보상 ${rewardAmount}${isLastAttacker ? ' (막타 보너스 포함)' : ''}`);
       }
       
-      // 마지막 공격자에게 별조각 1개 추가 지급
+      // 마지막 공격자에게 별조각 추가 지급 (폭주하는 해신, 임포머스: 2개 / 나머지: 1개)
       if (rewards.length > 0) {
         const lastAttacker = rewards.find(r => r.isLastAttacker);
         if (lastAttacker) {
+          // 보스 타입에 따른 별조각 보상 개수 결정
+          const starPieceReward = (bossType === 'advanced' || bossType === 'legendary') ? 2 : 1;
+          
           // StarPieceModel을 사용하여 별조각 지급
           let userStarPieces = await StarPieceModel.findOne({ userUuid: lastAttacker.userUuid });
           
@@ -529,11 +525,11 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
               userId: 'user',
               username: lastAttacker.username,
               userUuid: lastAttacker.userUuid,
-              starPieces: 1
+              starPieces: starPieceReward
             };
             userStarPieces = new StarPieceModel(createData);
           } else {
-            userStarPieces.starPieces = (userStarPieces.starPieces || 0) + 1;
+            userStarPieces.starPieces = (userStarPieces.starPieces || 0) + starPieceReward;
           }
           
           await userStarPieces.save();
@@ -561,11 +557,11 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
             lastAttackerSocket.emit("raid:boss:defeated", { 
               bossType,
               reward: { amount: 0 }, 
-              lastAttackBonus: { starPieces: 1 } 
+              lastAttackBonus: { starPieces: starPieceReward } 
             });
           }
           
-          console.log(`[Raid][${bossType}] 막타 보너스: ${lastAttacker.userUuid} - 별조각 1개 (총 ${userStarPieces.starPieces}개)`);
+          console.log(`[Raid][${bossType}] 막타 보너스: ${lastAttacker.userUuid} - 별조각 ${starPieceReward}개 (총 ${userStarPieces.starPieces}개)`);
         }
       }
       
@@ -577,7 +573,9 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         const topPlayerData = await UserUuidModel.findOne({ userUuid: topPlayer.userUuid }).lean();
         const lastAttackerData = await UserUuidModel.findOne({ userUuid: lastAttacker?.userUuid }).lean();
         
-        let defeatMessage = `🎉 레이드 보스 '${bossName}'이(가) 처치되었습니다! MVP: ${topPlayerData?.displayName || topPlayerData?.username} (${topPlayer.damage} 데미지), 막타: ${lastAttackerData?.displayName || lastAttackerData?.username} (별조각 +1)`;
+        // 보스 타입에 따른 막타 별조각 보상 개수
+        const starPieceReward = (bossType === 'advanced' || bossType === 'legendary') ? 2 : 1;
+        let defeatMessage = `🎉 레이드 보스 '${bossName}'이(가) 처치되었습니다! MVP: ${topPlayerData?.displayName || topPlayerData?.username} (${topPlayer.damage} 데미지), 막타: ${lastAttackerData?.displayName || lastAttackerData?.username} (별조각 +${starPieceReward})`;
         
         io.emit("chat:message", {
           system: true,

@@ -52,7 +52,7 @@ class RaidScheduler {
     try {
       console.log('🕛 [RaidScheduler] 자동 레이드 소환 시작...');
       
-      const bossTypes = ['beginner', 'intermediate', 'advanced'];
+      const bossTypes = ['beginner', 'intermediate', 'advanced', 'legendary'];
       const results = [];
       
       for (const bossType of bossTypes) {

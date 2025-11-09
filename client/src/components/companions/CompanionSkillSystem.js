@@ -139,6 +139,8 @@ export const processBuffSkill = ({
     newLog.push(`🎯 3턴 동안 크리티컬 확률이 20% 상승합니다!`);
   } else if (skill.buffType === 'damage_reduction') {
     newLog.push(`🛡️ 2턴 동안 아군 전체가 받는 데미지가 30% 감소합니다!`);
+  } else if (skill.buffType === 'speed_boost') {
+    newLog.push(`💨 5초 동안 아군의 속도가 2배로 증가합니다!`);
   }
   
   if (damage > 0) {
@@ -246,6 +248,7 @@ export const processMultiTargetSkill = ({
   
   // 새로운 enemies 배열 생성
   const newEnemies = [...battleState.enemies];
+  let killCount = 0; // 처치한 적 수 추적
   
   // 각 타겟에게 데미지 적용
   targets.forEach(target => {
@@ -269,9 +272,17 @@ export const processMultiTargetSkill = ({
       if (newEnemies[enemyIndex].hp <= 0) {
         newEnemies[enemyIndex].isAlive = false;
         newLog.push(`${target.name}을(를) 물리쳤습니다!`);
+        killCount++; // 처치 카운트 증가
       }
     }
   });
+  
+  // 적 처치 시 사기 증가 (onKillMoraleGain 스킬 속성)
+  if (killCount > 0 && skill.onKillMoraleGain) {
+    const moraleGain = skill.onKillMoraleGain * killCount;
+    newCompanionMorale[companionName].morale = Math.min(100, newCompanionMorale[companionName].morale + moraleGain);
+    newLog.push(`⚡ ${companionName}의 사기가 ${moraleGain} 증가했습니다! (${newCompanionMorale[companionName].morale}/100)`);
+  }
   
   return {
     enemies: newEnemies,

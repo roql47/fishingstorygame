@@ -10,6 +10,8 @@ import {
   BREAKTHROUGH_BONUS,
   BREAKTHROUGH_BONUS_MEIDEL,
   BREAKTHROUGH_BONUS_AIRAN,
+  BREAKTHROUGH_BONUS_RIMU,
+  BREAKTHROUGH_BONUS_SHERRY,
   COMPANION_ESSENCE,
   ESSENCE_EMOJI,
   getTierColor,
@@ -24,6 +26,8 @@ import character5 from '../../assets/character5.jpg';
 import character6 from '../../assets/character6.jpg';
 import character7 from '../../assets/character7.jpg';
 import character8 from '../../assets/character8.jpg';
+import character9 from '../../assets/character9.jpg';
+import character10 from '../../assets/character10.jpg';
 
 const CompanionTab = ({
   // 상태
@@ -68,7 +72,7 @@ const CompanionTab = ({
     setSelectedCompanion(null);
   };
 
-  const allCompanions = ["실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라", "메이델", "아이란"];
+  const allCompanions = ["실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라", "메이델", "아이란", "리무", "셰리"];
   const basicCompanions = ["실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라"];
   const maxBattleCompanions = 3;
 
@@ -81,7 +85,9 @@ const CompanionTab = ({
     "클로에": character2,
     "나하트라": character4,
     "메이델": character7,
-    "아이란": character8
+    "아이란": character8,
+    "리무": character9,
+    "셰리": character10
   };
 
   // 강화 헬퍼 함수들
@@ -197,6 +203,10 @@ const CompanionTab = ({
       bonusTable = BREAKTHROUGH_BONUS_MEIDEL;
     } else if (selectedEnhanceCompanion === "아이란") {
       bonusTable = BREAKTHROUGH_BONUS_AIRAN;
+    } else if (selectedEnhanceCompanion === "리무") {
+      bonusTable = BREAKTHROUGH_BONUS_RIMU;
+    } else if (selectedEnhanceCompanion === "셰리") {
+      bonusTable = BREAKTHROUGH_BONUS_SHERRY;
     }
     const bonus = bonusTable[currentBreakthrough];
     
@@ -405,6 +415,72 @@ const CompanionTab = ({
               {(userAmber || 0) < 50000
                 ? `호박 부족 (${(userAmber || 0).toLocaleString()}/50,000)`
                 : "아이란 영입 (호박 50,000개)"
+              }
+            </button>
+          </div>
+        )}
+
+        {/* 영웅 동료 구매 섹션 - 리무 */}
+        {!companions.includes("리무") && (
+          <div className={`p-4 rounded-xl mb-4 border ${
+            isDarkMode 
+              ? "glass-input border-cyan-500/30" 
+              : "bg-white/60 backdrop-blur-sm border-cyan-500/40"
+          }`}>
+            <h3 className={`text-lg font-bold mb-3 ${
+              isDarkMode ? "text-cyan-300" : "text-cyan-700"
+            }`}>
+              영웅 동료: 리무
+            </h3>
+            <button
+              onClick={() => recruitHeroCompanion("리무")}
+              disabled={(userAmber || 0) < 100000}
+              className={`w-full px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
+                (userAmber || 0) >= 100000
+                  ? isDarkMode
+                    ? "bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 border border-cyan-400/40"
+                    : "bg-cyan-500/10 text-cyan-700 hover:bg-cyan-500/20 border border-cyan-500/40"
+                  : isDarkMode
+                    ? "bg-gray-500/20 text-gray-500 cursor-not-allowed border border-gray-500/20"
+                    : "bg-gray-300/30 text-gray-400 cursor-not-allowed border border-gray-300/30"
+              }`}
+            >
+              {(userAmber || 0) < 100000
+                ? `호박 부족 (${(userAmber || 0).toLocaleString()}/100,000)`
+                : "리무 영입 (호박 100,000개)"
+              }
+            </button>
+          </div>
+        )}
+
+        {/* 영웅 동료 구매 섹션 - 셰리 */}
+        {!companions.includes("셰리") && (
+          <div className={`p-4 rounded-xl mb-4 border ${
+            isDarkMode 
+              ? "glass-input border-emerald-500/30" 
+              : "bg-white/60 backdrop-blur-sm border-emerald-500/40"
+          }`}>
+            <h3 className={`text-lg font-bold mb-3 ${
+              isDarkMode ? "text-emerald-300" : "text-emerald-700"
+            }`}>
+              영웅 동료: 셰리
+            </h3>
+            <button
+              onClick={() => recruitHeroCompanion("셰리")}
+              disabled={(userAmber || 0) < 180000}
+              className={`w-full px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
+                (userAmber || 0) >= 180000
+                  ? isDarkMode
+                    ? "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-400/40"
+                    : "bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 border border-emerald-500/40"
+                  : isDarkMode
+                    ? "bg-gray-500/20 text-gray-500 cursor-not-allowed border border-gray-500/20"
+                    : "bg-gray-300/30 text-gray-400 cursor-not-allowed border border-gray-300/30"
+              }`}
+            >
+              {(userAmber || 0) < 180000
+                ? `호박 부족 (${(userAmber || 0).toLocaleString()}/180,000)`
+                : "셰리 영입 (호박 180,000개)"
               }
             </button>
           </div>
@@ -1294,6 +1370,8 @@ const CompanionTab = ({
                                         <Star className="w-3 h-3 text-yellow-400" />
                                       ) : baseData.skill.buffType === 'damage_reduction' ? (
                                         <Shield className="w-3 h-3 text-blue-400" />
+                                      ) : baseData.skill.buffType === 'speed_boost' ? (
+                                        <Zap className="w-3 h-3 text-green-400" />
                                       ) : (
                                         <Star className="w-3 h-3 text-gray-400" />
                                       )}
@@ -1306,6 +1384,8 @@ const CompanionTab = ({
                                         `크리티컬 +${Math.floor(baseData.skill.buffMultiplier * 100)}%`
                                       ) : baseData.skill.buffType === 'damage_reduction' ? (
                                         `받는 데미지 -${Math.floor((1 - baseData.skill.buffMultiplier) * 100)}%`
+                                      ) : baseData.skill.buffType === 'speed_boost' ? (
+                                        `아군 속도 ${Math.floor(baseData.skill.buffMultiplier)}배`
                                       ) : (
                                         '알 수 없는 효과'
                                       )}
@@ -1317,7 +1397,10 @@ const CompanionTab = ({
                                       <span className={isDarkMode ? "text-gray-400" : "text-gray-600"}>지속 시간:</span>
                                     </div>
                                     <span className={isDarkMode ? "font-semibold text-purple-400" : "font-semibold text-purple-600"}>
-                                      {baseData.skill.buffDuration}턴
+                                      {baseData.skill.buffType === 'speed_boost' 
+                                        ? `${baseData.skill.buffDuration / 1000}초`
+                                        : `${baseData.skill.buffDuration}턴`
+                                      }
                                     </span>
                                   </div>
                                 </>

@@ -268,6 +268,30 @@ class ArenaSystem {
                 debuffType: 'speed_freeze',
                 debuffDuration: 3000,
                 moraleRequired: 100
+            },
+            '아이란': {
+                name: '연의검무',
+                damageMultiplier: 0,
+                buffType: 'damage_reduction',
+                buffMultiplier: 0.7,
+                buffDuration: 2,
+                moraleRequired: 100
+            },
+            '리무': {
+                name: '폭풍해일',
+                damageMultiplier: 0.7,
+                skillType: 'multi_target',
+                targetCount: 3,
+                onKillMoraleGain: 30,
+                moraleRequired: 100
+            },
+            '셰리': {
+                name: '계절풍',
+                damageMultiplier: 1.2,
+                buffType: 'speed_boost',
+                buffMultiplier: 2.0,
+                buffDuration: 5000,
+                moraleRequired: 100
             }
         };
         

@@ -186,7 +186,14 @@ const VoyageTab = ({
         if (newState.player.hp > 0) {
           // speedMultiplier 체크
           if (newState.player.speedMultiplier !== 0) {
-            newState.player.cooldown -= 25;
+            // 🌪️ speed_boost 버프 확인
+            let cooldownDecrease = 25;
+            newState.companions.forEach(c => {
+              if (c.buffs?.speed_boost) {
+                cooldownDecrease = 50; // 2배 빠르게
+              }
+            });
+            newState.player.cooldown -= cooldownDecrease;
           }
           if (newState.player.cooldown <= 0 && newState.enemy.hp > 0) {
             const damage = Math.floor(newState.player.attack * (0.9 + Math.random() * 0.2));
@@ -224,7 +231,15 @@ const VoyageTab = ({
           const updatedCompanion = { ...companion };
           // speedMultiplier 체크
           if (updatedCompanion.speedMultiplier !== 0) {
-            updatedCompanion.cooldown -= 25;
+            // 🌪️ speed_boost 버프 확인 (다른 동료가 건 버프)
+            let cooldownDecrease = 25;
+            const otherCompanions = newState.companions.filter(c => c.name !== updatedCompanion.name);
+            otherCompanions.forEach(c => {
+              if (c.buffs?.speed_boost) {
+                cooldownDecrease = 50; // 2배 빠르게
+              }
+            });
+            updatedCompanion.cooldown -= cooldownDecrease;
           }
           
           if (updatedCompanion.cooldown <= 0 && newState.enemy.hp > 0) {
@@ -288,6 +303,20 @@ const VoyageTab = ({
                   newLog.push(`🎯 크리티컬 확률 상승!`);
                 } else if (updatedCompanion.skill.buffType === 'damage_reduction') {
                   newLog.push(`🛡️ 아군 전체 데미지 감소!`);
+                } else if (updatedCompanion.skill.buffType === 'speed_boost') {
+                  newLog.push(`💨 아군 속도 2배 증가!`);
+                  
+                  // 5초 후 버프 제거
+                  setTimeout(() => {
+                    setBattleState(state => {
+                      if (!state) return state;
+                      const newCompanions = state.companions.map(c => {
+                        if (c.name === updatedCompanion.name) return c;
+                        return { ...c, buffs: c.buffs ? { ...c.buffs, speed_boost: undefined } : {} };
+                      });
+                      return { ...state, companions: newCompanions };
+                    });
+                  }, updatedCompanion.skill.buffDuration || 5000);
                 }
                 damage = Math.floor(updatedCompanion.attack * (updatedCompanion.skill.damageMultiplier || 0) * (0.9 + Math.random() * 0.2));
               } else {
@@ -322,7 +351,15 @@ const VoyageTab = ({
               newLog.push(`${updatedCompanion.name}이(가) ${damage} 데미지를 입혔습니다!`);
             }
             
+            const beforeEnemyHp = newState.enemy.hp;
             newState.enemy.hp = Math.max(0, newState.enemy.hp - damage);
+            
+            // 적 처치 시 사기 증가 (스킬 사용 시만)
+            if (beforeEnemyHp > 0 && newState.enemy.hp <= 0 && isSkill && updatedCompanion.skill?.onKillMoraleGain) {
+              updatedCompanion.morale = Math.min(updatedCompanion.maxMorale, updatedCompanion.morale + updatedCompanion.skill.onKillMoraleGain);
+              newLog.push(`⚡ ${updatedCompanion.name}의 사기가 ${updatedCompanion.skill.onKillMoraleGain} 증가!`);
+            }
+            
             updatedCompanion.cooldown = updatedCompanion.maxCooldown;
             
             // 공격 애니메이션 트리거 (스킬은 다르게)

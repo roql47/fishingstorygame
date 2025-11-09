@@ -1,5 +1,18 @@
 import React, { useState } from 'react';
-import { X, Fish, Zap, Package } from 'lucide-react';
+import { X, Fish, Zap, Package, Users } from 'lucide-react';
+import { COMPANION_DATA, getTierColor, getTierBgColor } from '../data/companionData';
+
+// 동료 이미지 import
+import character1 from '../assets/character1.jpg';
+import character2 from '../assets/character2.jpeg';
+import character3 from '../assets/character3.jpg';
+import character4 from '../assets/character4.jpeg';
+import character5 from '../assets/character5.jpg';
+import character6 from '../assets/character6.jpg';
+import character7 from '../assets/character7.jpg';
+import character8 from '../assets/character8.jpg';
+import character9 from '../assets/character9.jpg';
+import character10 from '../assets/character10.jpg';
 
 const CollectionModal = ({ 
   showCollectionModal, 
@@ -7,11 +20,27 @@ const CollectionModal = ({
   isDarkMode,
   inventory,
   userEquipment,
-  allFishTypes
+  allFishTypes,
+  companions,
+  companionStats
 }) => {
   const [activeCollectionTab, setActiveCollectionTab] = useState('fish');
   const [discoveredFish, setDiscoveredFish] = useState([]);
   const [hoveredFish, setHoveredFish] = useState(null);
+
+  // 동료 이미지 매핑
+  const companionImages = {
+    "실": character6,
+    "피에나": character1,
+    "애비게일": character5,
+    "림스&베리": character3,
+    "클로에": character2,
+    "나하트라": character4,
+    "메이델": character7,
+    "아이란": character8,
+    "리무": character9,
+    "셰리": character10
+  };
 
   // 발견한 물고기 목록 가져오기
   React.useEffect(() => {
@@ -145,6 +174,10 @@ const CollectionModal = ({
     } else if (type === 'fish') {
       // 물고기는 한번이라도 낚았으면 발견된 것으로 간주
       return inventory?.some(item => item.fish === itemName) || false;
+    } else if (type === 'companion') {
+      // 동료는 companions 배열에 해당 이름이 있으면 보유한 것으로 간주
+      // companions는 문자열 배열 ["실", "피에나", ...] 형태
+      return companions?.includes(itemName) || false;
     }
     return false;
   };
@@ -170,6 +203,9 @@ const CollectionModal = ({
     } else if (type === 'accessory') {
       total = accessories.length;
       collected = accessories.filter(acc => hasItem(acc.name, 'accessory')).length;
+    } else if (type === 'companion') {
+      total = Object.keys(COMPANION_DATA).length;
+      collected = Object.keys(COMPANION_DATA).filter(name => hasItem(name, 'companion')).length;
     }
 
     return { total, collected, percentage: total > 0 ? Math.round((collected / total) * 100) : 0 };
@@ -248,6 +284,21 @@ const CollectionModal = ({
             >
               <Package className="w-4 h-4" />
               악세사리 ({getCompletionRate('accessory').collected}/{getCompletionRate('accessory').total})
+            </button>
+            <button
+              onClick={() => setActiveCollectionTab('companion')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${
+                activeCollectionTab === 'companion'
+                  ? isDarkMode
+                    ? "bg-yellow-500/20 text-yellow-400 border border-yellow-400/30"
+                    : "bg-yellow-500/10 text-yellow-600 border border-yellow-500/30"
+                  : isDarkMode
+                    ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                    : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              동료 ({getCompletionRate('companion').collected}/{getCompletionRate('companion').total})
             </button>
           </div>
         </div>
@@ -471,6 +522,172 @@ const CollectionModal = ({
               })}
             </div>
           )}
+
+          {/* 동료 도감 */}
+          {activeCollectionTab === 'companion' && (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+              {Object.entries(COMPANION_DATA).map(([name, data]) => {
+                const collected = hasItem(name, 'companion');
+                // companionStats는 { "동료이름": { level, experience, tier, breakthrough, ... } } 형태
+                const companionInfo = companionStats?.[name];
+                const companionImage = companionImages[name];
+                
+                // 등급 정보 (tier)
+                const tier = companionInfo?.tier || 0;
+                
+                // 등급별 그라데이션 색상
+                const getGradient = (tier) => {
+                  if (!collected) {
+                    return isDarkMode 
+                      ? "from-gray-800/80 to-gray-900/80" 
+                      : "from-gray-100/80 to-gray-200/80";
+                  }
+                  
+                  if (tier === 2) { // 전설
+                    return isDarkMode 
+                      ? "from-purple-600/20 via-pink-600/20 to-purple-700/20" 
+                      : "from-purple-100 via-pink-100 to-purple-200";
+                  } else if (tier === 1) { // 희귀
+                    return isDarkMode 
+                      ? "from-blue-600/20 via-cyan-600/20 to-blue-700/20" 
+                      : "from-blue-100 via-cyan-100 to-blue-200";
+                  }
+                  // 일반
+                  return isDarkMode 
+                    ? "from-slate-700/20 to-slate-800/20" 
+                    : "from-slate-50 to-slate-100";
+                };
+                
+                return (
+                  <div
+                    key={name}
+                    className={`group relative overflow-hidden rounded-xl transition-all duration-300 ${
+                      collected 
+                        ? "hover:scale-105 hover:shadow-2xl cursor-pointer" 
+                        : "opacity-60"
+                    }`}
+                  >
+                    {/* 배경 그라데이션 */}
+                    <div className={`absolute inset-0 bg-gradient-to-br ${getGradient(tier)} backdrop-blur-sm`} />
+                    
+                    {/* 테두리 효과 */}
+                    <div className={`absolute inset-0 rounded-xl ${
+                      collected
+                        ? tier === 2
+                          ? "ring-2 ring-purple-400/50"
+                          : tier === 1
+                            ? "ring-2 ring-blue-400/50"
+                            : "ring-1 ring-gray-400/30"
+                        : "ring-1 ring-gray-600/30"
+                    }`} />
+                    
+                    <div className="relative p-2">
+                      {/* 동료 이미지 */}
+                      <div className={`relative mb-2 overflow-hidden rounded-lg bg-gradient-to-b ${
+                        isDarkMode ? "from-gray-900/50 to-gray-800/50" : "from-gray-50 to-white"
+                      } ${collected ? "" : "filter grayscale brightness-75"}`}>
+                        {companionImage ? (
+                          <img 
+                            src={companionImage} 
+                            alt={collected ? name : "???"}
+                            className="w-full h-48 object-contain"
+                            style={{ imageRendering: 'crisp-edges' }}
+                          />
+                        ) : (
+                          <div className="w-full h-48 flex items-center justify-center text-4xl opacity-30">
+                            ?
+                          </div>
+                        )}
+                        
+                        {/* 레벨 & 돌파 표시 (이미지 위 오른쪽 상단) */}
+                        {collected && (
+                          <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
+                            {companionInfo?.level && (
+                              <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                isDarkMode 
+                                  ? "bg-black/70 text-amber-300" 
+                                  : "bg-white/90 text-amber-700 shadow-md"
+                              }`}>
+                                Lv.{companionInfo.level}
+                              </span>
+                            )}
+                            {companionInfo?.breakthrough > 0 && (
+                              <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                isDarkMode 
+                                  ? "bg-black/70 text-cyan-300" 
+                                  : "bg-white/90 text-cyan-700 shadow-md"
+                              }`}>
+                                돌파 {companionInfo.breakthrough}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* 정보 영역 */}
+                      <div className="space-y-1.5">
+                        {/* 동료 이름 */}
+                        <h3 className={`font-bold text-sm text-center truncate ${
+                          collected
+                            ? tier === 2
+                              ? isDarkMode ? "text-purple-300" : "text-purple-700"
+                              : tier === 1
+                                ? isDarkMode ? "text-blue-300" : "text-blue-700"
+                                : isDarkMode ? "text-white" : "text-gray-800"
+                            : isDarkMode ? "text-gray-600" : "text-gray-500"
+                        }`}>
+                          {collected ? name : "???"}
+                        </h3>
+                        
+                        {collected && (
+                          <>
+                            {/* 스킬 정보 */}
+                            {data.skill && (
+                              <div className={`mt-1.5 p-1.5 rounded-lg ${
+                                isDarkMode 
+                                  ? "bg-black/40 backdrop-blur-sm" 
+                                  : "bg-white/60 backdrop-blur-sm"
+                              }`}>
+                                <p className={`text-xs font-semibold mb-0.5 truncate ${
+                                  isDarkMode ? "text-amber-400" : "text-amber-600"
+                                }`}>
+                                  {data.skill.name}
+                                </p>
+                                <p className={`text-xs leading-tight line-clamp-2 ${
+                                  isDarkMode ? "text-gray-300" : "text-gray-700"
+                                }`}>
+                                  {data.skill.description}
+                                </p>
+                              </div>
+                            )}
+                          </>
+                        )}
+                        
+                        {!collected && (
+                          <p className={`text-xs text-center font-medium ${
+                            isDarkMode ? "text-gray-600" : "text-gray-500"
+                          }`}>
+                            잠김
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* 호버 효과 */}
+                    {collected && (
+                      <div className={`absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none ${
+                        tier === 2
+                          ? "bg-gradient-to-t from-purple-500/10 to-transparent"
+                          : tier === 1
+                            ? "bg-gradient-to-t from-blue-500/10 to-transparent"
+                            : "bg-gradient-to-t from-gray-500/10 to-transparent"
+                      }`} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* 푸터 - 완성도 표시 */}
@@ -484,6 +701,7 @@ const CollectionModal = ({
               {activeCollectionTab === 'fish' && `물고기 도감 완성도: ${getCompletionRate('fish').percentage}%`}
               {activeCollectionTab === 'fishingRod' && `낚시대 수집 완성도: ${getCompletionRate('fishingRod').percentage}%`}
               {activeCollectionTab === 'accessory' && `악세사리 수집 완성도: ${getCompletionRate('accessory').percentage}%`}
+              {activeCollectionTab === 'companion' && `동료 수집 완성도: ${getCompletionRate('companion').percentage}%`}
             </p>
           </div>
         </div>

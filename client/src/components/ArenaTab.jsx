@@ -458,7 +458,14 @@ const ArenaTab = ({
         if (newState.player.hp > 0 && opponentTargets.length > 0) {
           // speedMultiplier 체크
           if (newState.player.speedMultiplier !== 0) {
-            newState.player.cooldown -= 25;
+            // 🌪️ speed_boost 버프 확인
+            let cooldownDecrease = 25;
+            newState.player.companions.forEach(c => {
+              if (c.buffs?.speed_boost) {
+                cooldownDecrease = 50; // 2배 빠르게
+              }
+            });
+            newState.player.cooldown -= cooldownDecrease;
           }
           if (newState.player.cooldown <= 0) {
             const target = opponentTargets[Math.floor(Math.random() * opponentTargets.length)];
@@ -494,7 +501,15 @@ const ArenaTab = ({
           const updated = { ...companion };
           // speedMultiplier 체크
           if (updated.speedMultiplier !== 0) {
-            updated.cooldown -= 25;
+            // 🌪️ speed_boost 버프 확인 (다른 동료가 건 버프)
+            let cooldownDecrease = 25;
+            const otherCompanions = newState.player.companions.filter(c => c.name !== updated.name);
+            otherCompanions.forEach(c => {
+              if (c.buffs?.speed_boost) {
+                cooldownDecrease = 50; // 2배 빠르게
+              }
+            });
+            updated.cooldown -= cooldownDecrease;
           }
           
           if (updated.cooldown <= 0) {
@@ -534,6 +549,20 @@ const ArenaTab = ({
                   newLog.push(`🎯 크리티컬 확률 상승!`);
                 } else if (updated.skill.buffType === 'damage_reduction') {
                   newLog.push(`🛡️ 아군 전체 데미지 감소!`);
+                } else if (updated.skill.buffType === 'speed_boost') {
+                  newLog.push(`💨 아군 속도 2배 증가!`);
+                  
+                  // 5초 후 버프 제거
+                  setTimeout(() => {
+                    setBattleState(state => {
+                      if (!state) return state;
+                      const newCompanions = state.player.companions.map(c => {
+                        if (c.name === updated.name) return c;
+                        return { ...c, buffs: c.buffs ? { ...c.buffs, speed_boost: undefined } : {} };
+                      });
+                      return { ...state, player: { ...state.player, companions: newCompanions } };
+                    });
+                  }, updated.skill.buffDuration || 5000);
                 }
                 damage = Math.floor(updated.attack * (updated.skill.damageMultiplier || 0) * (0.9 + Math.random() * 0.2));
               } else {
@@ -585,11 +614,23 @@ const ArenaTab = ({
             // 상대 타겟 공격
             if (damage > 0 && opponentTargets.length > 0) {
               const target = opponentTargets[Math.floor(Math.random() * opponentTargets.length)];
+              let wasKilled = false;
               
               if (target.type === 'player') {
                 newState.opponent.hp = Math.max(0, newState.opponent.hp - damage);
               } else {
+                const beforeHp = newState.opponent.companions[target.index].hp;
                 newState.opponent.companions[target.index].hp = Math.max(0, newState.opponent.companions[target.index].hp - damage);
+                // 동료 처치 확인
+                if (beforeHp > 0 && newState.opponent.companions[target.index].hp <= 0) {
+                  wasKilled = true;
+                }
+              }
+              
+              // 적 처치 시 사기 증가 (스킬 사용 시만)
+              if (wasKilled && isSkill && updated.skill?.onKillMoraleGain) {
+                updated.morale = Math.min(updated.maxMorale, updated.morale + updated.skill.onKillMoraleGain);
+                newLog.push(`⚡ ${updated.name}의 사기가 ${updated.skill.onKillMoraleGain} 증가!`);
               }
             }
             
@@ -692,6 +733,20 @@ const ArenaTab = ({
                   newLog.push(`🎯 상대 크리티컬 확률 상승!`);
                 } else if (updated.skill.buffType === 'damage_reduction') {
                   newLog.push(`🛡️ 상대 전체 데미지 감소!`);
+                } else if (updated.skill.buffType === 'speed_boost') {
+                  newLog.push(`💨 상대 속도 2배 증가!`);
+                  
+                  // 5초 후 버프 제거
+                  setTimeout(() => {
+                    setBattleState(state => {
+                      if (!state) return state;
+                      const newCompanions = state.opponent.companions.map(c => {
+                        if (c.name === updated.name) return c;
+                        return { ...c, buffs: c.buffs ? { ...c.buffs, speed_boost: undefined } : {} };
+                      });
+                      return { ...state, opponent: { ...state.opponent, companions: newCompanions } };
+                    });
+                  }, updated.skill.buffDuration || 5000);
                 }
                 damage = Math.floor(updated.attack * (updated.skill.damageMultiplier || 0) * (0.9 + Math.random() * 0.2));
               } else {
@@ -741,11 +796,23 @@ const ArenaTab = ({
             
             if (damage > 0) {
               const target = playerTargets[Math.floor(Math.random() * playerTargets.length)];
+              let wasKilled = false;
               
               if (target.type === 'player') {
                 newState.player.hp = Math.max(0, newState.player.hp - damage);
               } else {
+                const beforeHp = newState.player.companions[target.index].hp;
                 newState.player.companions[target.index].hp = Math.max(0, newState.player.companions[target.index].hp - damage);
+                // 동료 처치 확인
+                if (beforeHp > 0 && newState.player.companions[target.index].hp <= 0) {
+                  wasKilled = true;
+                }
+              }
+              
+              // 적 처치 시 사기 증가 (스킬 사용 시만)
+              if (wasKilled && isSkill && updated.skill?.onKillMoraleGain) {
+                updated.morale = Math.min(updated.maxMorale, updated.morale + updated.skill.onKillMoraleGain);
+                newLog.push(`⚡ ${updated.name}의 사기가 ${updated.skill.onKillMoraleGain} 증가!`);
               }
             }
             

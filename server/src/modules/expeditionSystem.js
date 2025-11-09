@@ -469,7 +469,7 @@ class ExpeditionSystem {
     calculatePlayerMaxHp(accessoryLevel, enhancementBonusPercent = 0) {
         // 내정보 탭과 동일한 체력 계산 공식 사용
         if (accessoryLevel === 0 && enhancementBonusPercent === 0) return 50; // 기본 체력
-        const baseHp = accessoryLevel === 0 ? 50 : Math.floor(Math.pow(accessoryLevel, 1.325) + 50 * accessoryLevel + 5 * accessoryLevel);
+        const baseHp = accessoryLevel === 0 ? 50 : Math.floor(Math.pow(accessoryLevel, 1.525) + 65 * accessoryLevel);
         // 강화 보너스 퍼센트 적용
         return Math.floor(baseHp + (baseHp * enhancementBonusPercent / 100));
     }
@@ -610,6 +610,69 @@ class ExpeditionSystem {
                     skillType: "multi_target",
                     debuffType: "speed_freeze",
                     debuffDuration: 3000
+                }
+            },
+            "아이란": {
+                name: "아이란",
+                baseHp: 95,
+                baseAttack: 10,
+                baseSpeed: 40,
+                growthHp: 15,
+                growthAttack: 2.5,
+                growthSpeed: 0.5,
+                description: "불굴의 수호자",
+                rarity: "영웅",
+                skill: {
+                    name: "연의검무",
+                    description: "2턴 동안 아군 전체가 받는 데미지를 30% 감소시킵니다",
+                    damageMultiplier: 0,
+                    moraleRequired: 100,
+                    buffType: "damage_reduction",
+                    buffMultiplier: 0.7,
+                    buffDuration: 2,
+                    isPartyBuff: true
+                }
+            },
+            "리무": {
+                name: "리무",
+                baseHp: 90,
+                baseAttack: 13,
+                baseSpeed: 55,
+                growthHp: 14,
+                growthAttack: 3.2,
+                growthSpeed: 0.5,
+                description: "폭풍을 부르는 자",
+                rarity: "영웅",
+                skill: {
+                    name: "폭풍해일",
+                    description: "랜덤한 적 3명에게 70% 데미지를 입히고 처치시 사기 30 증가",
+                    damageMultiplier: 0.7,
+                    moraleRequired: 100,
+                    targetCount: 3,
+                    skillType: "multi_target",
+                    onKillMoraleGain: 30
+                }
+            },
+            "셰리": {
+                name: "셰리",
+                baseHp: 88,
+                baseAttack: 13,
+                baseSpeed: 65,
+                growthHp: 13.5,
+                growthAttack: 3.1,
+                growthSpeed: 0.6,
+                description: "질풍의 무희",
+                rarity: "영웅",
+                skill: {
+                    name: "계절풍",
+                    description: "적에게 120% 데미지를 주고 5초간 아군의 속도를 2배로 증가",
+                    damageMultiplier: 1.2,
+                    moraleRequired: 100,
+                    buffType: "speed_boost",
+                    buffMultiplier: 2.0,
+                    buffDuration: 5000,
+                    isPartyBuff: true,
+                    excludeSelf: true
                 }
             }
         };
@@ -1787,6 +1850,8 @@ class ExpeditionSystem {
                     battleState.battleLog.push(`⭐ 공격받은 적은 ${(skill.debuffDuration || 3000) / 1000}초간 속도가 정지됩니다!`);
                 }
                 
+                let killCount = 0; // 처치한 적 수 추적
+                
                 // 각 타겟에게 데미지
                 for (const target of targets) {
                     const targetDamage = Math.floor(companionStats.attack * skill.damageMultiplier * (0.8 + Math.random() * 0.4));
@@ -1818,6 +1883,7 @@ class ExpeditionSystem {
                     if (target.currentHp <= 0) {
                         target.isAlive = false;
                         battleState.battleLog.push(`${target.name}이(가) 쓰러졌습니다!`);
+                        killCount++; // 처치 카운트 증가
                         
                         // 몬스터가 죽으면 속도바 리셋 신호 전송
                         if (io) {
@@ -1828,6 +1894,13 @@ class ExpeditionSystem {
                             });
                         }
                     }
+                }
+                
+                // 적 처치 시 사기 증가 (onKillMoraleGain 스킬 속성)
+                if (killCount > 0 && skill.onKillMoraleGain) {
+                    const moraleGain = skill.onKillMoraleGain * killCount;
+                    battleState.companionMorale[companionKey] = Math.min(100, battleState.companionMorale[companionKey] + moraleGain);
+                    battleState.battleLog.push(`⚡ ${companionName}의 사기가 ${moraleGain} 증가했습니다! (${battleState.companionMorale[companionKey]}/100)`);
                 }
                 
                 // 다중 타겟 스킬은 여기서 처리 완료

@@ -1302,7 +1302,9 @@ const COMPANION_LIST = [
 // 영웅 동료 목록 (별도 구매)
 const HERO_COMPANION_LIST = [
   "메이델",
-  "아이란"
+  "아이란",
+  "리무",
+  "셰리"
 ];
 
 // User UUID Schema (사용자 고유 ID 관리)
@@ -6618,6 +6620,102 @@ app.post("/api/recruit-hero-companion", authenticateJWT, async (req, res) => {
       });
     }
     
+    // 리무 구매 조건 확인
+    if (companionName === "리무") {
+      // 호박 10만개 확인
+      const requiredAmbers = 100000;
+      if (!userAmbers || userAmbers.amber < requiredAmbers) {
+        return res.status(400).json({ 
+          error: `호박이 부족합니다. (필요: ${requiredAmbers.toLocaleString()}개)`,
+          required: requiredAmbers,
+          current: userAmbers?.amber || 0
+        });
+      }
+      
+      // 호박 차감
+      userAmbers.amber -= requiredAmbers;
+      await userAmbers.save();
+      
+      // 동료 추가
+      if (!userCompanions) {
+        const createData = {
+          userId: query.userId || 'user',
+          username: query.username || username,
+          userUuid: query.userUuid || userUuid,
+          companions: [companionName]
+        };
+        await CompanionModel.create(createData);
+      } else {
+        userCompanions.companions.push(companionName);
+        await userCompanions.save();
+      }
+      
+      // 실시간 브로드캐스트
+      broadcastUserDataUpdate(userUuid, username, 'companions', { 
+        companions: userCompanions?.companions || [companionName]
+      });
+      broadcastUserDataUpdate(userUuid, username, 'amber', { 
+        amber: userAmbers.amber 
+      });
+      
+      console.log(`✨ ${username}이(가) ${companionName}을(를) 영입했습니다!`);
+      
+      return res.json({
+        success: true,
+        companion: companionName,
+        remainingAmbers: userAmbers.amber,
+        totalCompanions: (userCompanions?.companions.length || 0) + 1
+      });
+    }
+    
+    // 셰리 구매 조건 확인
+    if (companionName === "셰리") {
+      // 호박 18만개 확인
+      const requiredAmbers = 180000;
+      if (!userAmbers || userAmbers.amber < requiredAmbers) {
+        return res.status(400).json({ 
+          error: `호박이 부족합니다. (필요: ${requiredAmbers.toLocaleString()}개)`,
+          required: requiredAmbers,
+          current: userAmbers?.amber || 0
+        });
+      }
+      
+      // 호박 차감
+      userAmbers.amber -= requiredAmbers;
+      await userAmbers.save();
+      
+      // 동료 추가
+      if (!userCompanions) {
+        const createData = {
+          userId: query.userId || 'user',
+          username: query.username || username,
+          userUuid: query.userUuid || userUuid,
+          companions: [companionName]
+        };
+        await CompanionModel.create(createData);
+      } else {
+        userCompanions.companions.push(companionName);
+        await userCompanions.save();
+      }
+      
+      // 실시간 브로드캐스트
+      broadcastUserDataUpdate(userUuid, username, 'companions', { 
+        companions: userCompanions?.companions || [companionName]
+      });
+      broadcastUserDataUpdate(userUuid, username, 'amber', { 
+        amber: userAmbers.amber 
+      });
+      
+      console.log(`✨ ${username}이(가) ${companionName}을(를) 영입했습니다!`);
+      
+      return res.json({
+        success: true,
+        companion: companionName,
+        remainingAmbers: userAmbers.amber,
+        totalCompanions: (userCompanions?.companions.length || 0) + 1
+      });
+    }
+    
     return res.status(400).json({ error: "알 수 없는 영웅 동료입니다." });
     
   } catch (error) {
@@ -6753,7 +6851,9 @@ app.post("/api/companion/breakthrough", authenticateJWT, async (req, res) => {
       "클로에": "빛의정수",
       "나하트라": "자연의정수",
       "메이델": "영혼의정수",
-      "아이란": "땅의정수"
+      "아이란": "땅의정수",
+      "리무": "물의정수",
+      "셰리": "바람의정수"
     };
     
     const essenceName = COMPANION_ESSENCE[companionName];
@@ -6834,6 +6934,26 @@ app.post("/api/companion/breakthrough", authenticateJWT, async (req, res) => {
       5: { growthHp: 13, growthAttack: 3, growthSpeed: 0.5 }
     };
     
+    // 리무 전용 돌파 보너스 (밸런스형)
+    const BREAKTHROUGH_BONUS_RIMU = {
+      0: { growthHp: 2.8, growthAttack: 0.7, growthSpeed: 0.1 },
+      1: { growthHp: 3.8, growthAttack: 0.9, growthSpeed: 0.15 },
+      2: { growthHp: 4.8, growthAttack: 1.3, growthSpeed: 0.2 },
+      3: { growthHp: 6, growthAttack: 1.9, growthSpeed: 0.25 },
+      4: { growthHp: 8.5, growthAttack: 2.6, growthSpeed: 0.3 },
+      5: { growthHp: 12.5, growthAttack: 3.7, growthSpeed: 0.5 }
+    };
+    
+    // 셰리 전용 돌파 보너스 (속도 특화)
+    const BREAKTHROUGH_BONUS_SHERRY = {
+      0: { growthHp: 2.7, growthAttack: 0.6, growthSpeed: 0.15 },
+      1: { growthHp: 3.7, growthAttack: 0.8, growthSpeed: 0.2 },
+      2: { growthHp: 4.7, growthAttack: 1.2, growthSpeed: 0.25 },
+      3: { growthHp: 5.9, growthAttack: 1.7, growthSpeed: 0.3 },
+      4: { growthHp: 8.4, growthAttack: 2.4, growthSpeed: 0.4 },
+      5: { growthHp: 12.4, growthAttack: 3.2, growthSpeed: 0.6 }
+    };
+    
     const cost = BREAKTHROUGH_COSTS[currentBreakthrough];
     // 영웅 동료별 전용 보너스 사용
     let bonusTable = BREAKTHROUGH_BONUS;
@@ -6841,6 +6961,10 @@ app.post("/api/companion/breakthrough", authenticateJWT, async (req, res) => {
       bonusTable = BREAKTHROUGH_BONUS_MEIDEL;
     } else if (companionName === "아이란") {
       bonusTable = BREAKTHROUGH_BONUS_AIRAN;
+    } else if (companionName === "리무") {
+      bonusTable = BREAKTHROUGH_BONUS_RIMU;
+    } else if (companionName === "셰리") {
+      bonusTable = BREAKTHROUGH_BONUS_SHERRY;
     }
     const bonus = bonusTable[currentBreakthrough];
     
@@ -6990,7 +7114,9 @@ app.get("/api/companion/breakthrough-cost/:companionName", authenticateJWT, asyn
       "클로에": "빛의정수",
       "나하트라": "자연의정수",
       "메이델": "영혼의정수",
-      "아이란": "땅의정수"
+      "아이란": "땅의정수",
+      "리무": "물의정수",
+      "셰리": "바람의정수"
     };
     
     const essenceName = COMPANION_ESSENCE[companionName];
@@ -8180,7 +8306,7 @@ const calculateServerTotalEnhancementBonus = (level) => {
 // 체력 계산 (내정보 탭과 동일한 공식 사용 + 강화 보너스 적용)
 const calculateServerPlayerMaxHp = (accessoryLevel, enhancementBonusPercent = 0) => {
   if (accessoryLevel === 0 && enhancementBonusPercent === 0) return 50; // 기본 체력
-  const baseHp = accessoryLevel === 0 ? 50 : Math.floor(Math.pow(accessoryLevel, 1.325) + 50 * accessoryLevel + 5 * accessoryLevel);
+  const baseHp = accessoryLevel === 0 ? 50 : Math.floor(Math.pow(accessoryLevel, 1.525) + 65 * accessoryLevel);
   // 강화 보너스 퍼센트 적용
   return Math.floor(baseHp + (baseHp * enhancementBonusPercent / 100));
 };
@@ -10374,7 +10500,7 @@ app.post("/api/enhance-equipment", authenticateJWT, async (req, res) => {
         const accessoryOrder = [
           '오래된반지', '은목걸이', '금귀걸이', '마법의펜던트', '에메랄드브로치',
           '토파즈이어링', '자수정팔찌', '백금티아라', '만드라고라허브', '에테르나무묘목',
-          '몽마의조각상', '마카롱훈장', '빛나는마력순환체'
+          '몽마의조각상', '마카롱훈장', '빛나는마력순환체', '갈라진백조인형', '기계천사', '공명하는보석'
         ];
         const grade = accessoryOrder.indexOf(equipmentName);
         if (grade === -1) return 1.0;
@@ -10407,9 +10533,12 @@ app.post("/api/enhance-equipment", authenticateJWT, async (req, res) => {
       
       if (currentLevel === 0) {
         baseRate = 100; // 0강 → 1강: 100%
-      } else {
-        // 1강부터: 95%, 90%, 85%, 80%, ... (최소 5%)
+      } else if (currentLevel <= 20) {
+        // 1강~20강: 95%, 90%, 85%, 80%, ... (최소 5%)
         baseRate = Math.max(5, 100 - (currentLevel * 5));
+      } else {
+        // 21강부터: 4.5%, 4.0%, 3.5%, 3.0%, ... (최소 1%)
+        baseRate = Math.max(1, 5 - (currentLevel - 20) * 0.5);
       }
       
       // 실패 횟수에 따른 확률 증가: 원래확률 + (기본확률 * 0.01 * 실패횟수)
@@ -12172,14 +12301,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.414"
+    version: "v1.415"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.414",
+    version: "v1.415",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [

@@ -63,12 +63,12 @@ class RaidSystem {
         hp: 770000,
         requiredSkill: { min: 31, max: 999 },
         rewards: {
-          rank1: 3000,
-          rank2: 2500,
-          rank3: 2000,
-          rank4: 1700,
-          rank5: 1400,
-          others: 1000
+          rank1: 10000,
+          rank2: 8000,
+          rank3: 6000,
+          rank4: 5000,
+          rank5: 4000,
+          others: 3000
         }
       }
     };
