@@ -146,7 +146,7 @@ export const COMPANION_DATA = {
     growthSpeed: 0.5,
     description: "불굴의 수호자",
     rarity: "영웅",
-    recruitmentCost: { ambers: 50000 }, // 호박 5만개
+    recruitmentCost: { ambers: 50000, requiredCompanions: 6 }, // 기본 6명 보유 + 호박 5만개
     skill: {
       name: "연의검무",
       description: "2턴 동안 아군 전체가 받는 데미지를 30% 감소시킵니다",
@@ -168,7 +168,7 @@ export const COMPANION_DATA = {
     growthSpeed: 0.5,
     description: "폭풍을 부르는 자",
     rarity: "영웅",
-    recruitmentCost: { ambers: 100000 }, // 호박 10만개
+    recruitmentCost: { ambers: 100000, requiredCompanions: 6 }, // 기본 6명 보유 + 호박 10만개
     skill: {
       name: "폭풍해일",
       description: "랜덤한 적 3명에게 70% 데미지를 입히고 처치시 사기 30 증가",
@@ -189,7 +189,7 @@ export const COMPANION_DATA = {
     growthSpeed: 0.6,  // 속도 성장 높음
     description: "질풍의 무희",
     rarity: "영웅",
-    recruitmentCost: { ambers: 180000 }, // 호박 18만개
+    recruitmentCost: { ambers: 180000, requiredCompanions: 6 }, // 기본 6명 보유 + 호박 18만개
     skill: {
       name: "계절풍",
       description: "적에게 120% 데미지를 주고 5초간 아군의 속도를 2배로 증가",

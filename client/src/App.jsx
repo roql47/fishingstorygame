@@ -9937,8 +9937,8 @@ function App() {
                           
                           // 조합/분해 비용 계산
                           const sourceFish = getMaterialToFish(item.material);
-                          const craftCost = sourceFish ? getFishPrice(sourceFish.name) : 0;
-                          const decomposeCost = sourceFish ? getFishPrice(sourceFish.name) : 0;
+                          const craftCost = sourceFish ? getFishPrice(sourceFish.name) * 0.5 : 0;
+                          const decomposeCost = sourceFish ? getFishPrice(sourceFish.name) * 0.5 : 0;
                           
                           // 골드 체크 포함
                           const hasEnoughMaterialsForCraft = craftRecipe && item.count >= craftRecipe.inputCount;
@@ -13224,7 +13224,7 @@ function App() {
                           // 각 단계별 비용을 합산 (분해는 개수 그대로)
                           const totalCost = chain.steps.reduce((sum, step) => {
                             const stepFish = getMaterialToFish(step.fromMaterial);
-                            const stepCost = stepFish ? getFishPrice(stepFish.name) * step.fromAmount : 0;
+                            const stepCost = stepFish ? getFishPrice(stepFish.name) * 0.5 * step.fromAmount : 0;
                             return sum + stepCost;
                           }, 0);
                           
@@ -13290,7 +13290,7 @@ function App() {
                             }`}>
                               {(() => {
                                 const sourceFish = getMaterialToFish(quantityModalData.materialName);
-                                const cost = sourceFish ? getFishPrice(sourceFish.name) * inputQuantity : 0;
+                                const cost = sourceFish ? getFishPrice(sourceFish.name) * 0.5 * inputQuantity : 0;
                                 return cost.toLocaleString();
                               })()}G
                             </span>
@@ -13450,7 +13450,7 @@ function App() {
                           // 각 단계별 비용을 합산 (조합은 3개씩 묶어서 계산)
                           const totalCost = chain.steps.reduce((sum, step) => {
                             const stepFish = getMaterialToFish(step.fromMaterial);
-                            const stepCost = stepFish ? getFishPrice(stepFish.name) * (step.fromAmount / 3) : 0;
+                            const stepCost = stepFish ? getFishPrice(stepFish.name) * 0.5 * (step.fromAmount / 3) : 0;
                             return sum + stepCost;
                           }, 0);
                           
@@ -13526,7 +13526,7 @@ function App() {
                             }`}>
                               {(() => {
                                 const sourceFish = getMaterialToFish(quantityModalData.materialName);
-                                const cost = sourceFish ? getFishPrice(sourceFish.name) * inputQuantity : 0;
+                                const cost = sourceFish ? getFishPrice(sourceFish.name) * 0.5 * inputQuantity : 0;
                                 return cost.toLocaleString();
                               })()}G
                             </span>

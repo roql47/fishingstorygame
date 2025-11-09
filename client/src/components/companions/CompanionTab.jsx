@@ -388,7 +388,7 @@ const CompanionTab = ({
         )}
 
         {/* 영웅 동료 구매 섹션 - 아이란 */}
-        {!companions.includes("아이란") && (
+        {companions.length >= 6 && !companions.includes("아이란") && (
           <div className={`p-4 rounded-xl mb-4 border ${
             isDarkMode 
               ? "glass-input border-orange-500/30" 
@@ -417,11 +417,16 @@ const CompanionTab = ({
                 : "아이란 영입 (호박 50,000개)"
               }
             </button>
+            <p className={`text-xs mt-2 ${
+              isDarkMode ? "text-gray-400" : "text-gray-600"
+            }`}>
+              기본 동료 6명 보유 필요
+            </p>
           </div>
         )}
 
         {/* 영웅 동료 구매 섹션 - 리무 */}
-        {!companions.includes("리무") && (
+        {companions.length >= 6 && !companions.includes("리무") && (
           <div className={`p-4 rounded-xl mb-4 border ${
             isDarkMode 
               ? "glass-input border-cyan-500/30" 
@@ -450,11 +455,16 @@ const CompanionTab = ({
                 : "리무 영입 (호박 100,000개)"
               }
             </button>
+            <p className={`text-xs mt-2 ${
+              isDarkMode ? "text-gray-400" : "text-gray-600"
+            }`}>
+              기본 동료 6명 보유 필요
+            </p>
           </div>
         )}
 
         {/* 영웅 동료 구매 섹션 - 셰리 */}
-        {!companions.includes("셰리") && (
+        {companions.length >= 6 && !companions.includes("셰리") && (
           <div className={`p-4 rounded-xl mb-4 border ${
             isDarkMode 
               ? "glass-input border-emerald-500/30" 
@@ -483,6 +493,11 @@ const CompanionTab = ({
                 : "셰리 영입 (호박 180,000개)"
               }
             </button>
+            <p className={`text-xs mt-2 ${
+              isDarkMode ? "text-gray-400" : "text-gray-600"
+            }`}>
+              기본 동료 6명 보유 필요
+            </p>
           </div>
         )}
         

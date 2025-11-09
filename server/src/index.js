@@ -6740,7 +6740,20 @@ app.post("/api/recruit-hero-companion", authenticateJWT, async (req, res) => {
     
     // 아이란 구매 조건 확인
     if (companionName === "아이란") {
-      // 호박 5만개 확인
+      // 1. 기본 동료 6명 보유 확인
+      const hasAllBasicCompanions = COMPANION_LIST.every(
+        companion => userCompanions?.companions.includes(companion)
+      );
+      
+      if (!hasAllBasicCompanions) {
+        return res.status(400).json({ 
+          error: "아이란을 영입하려면 기본 동료 6명을 모두 보유해야 합니다.",
+          requiredCompanions: COMPANION_LIST.length,
+          currentCompanions: userCompanions?.companions.length || 0
+        });
+      }
+      
+      // 2. 호박 5만개 확인
       const requiredAmbers = 50000;
       if (!userAmbers || userAmbers.amber < requiredAmbers) {
         return res.status(400).json({ 
@@ -6788,7 +6801,20 @@ app.post("/api/recruit-hero-companion", authenticateJWT, async (req, res) => {
     
     // 리무 구매 조건 확인
     if (companionName === "리무") {
-      // 호박 10만개 확인
+      // 1. 기본 동료 6명 보유 확인
+      const hasAllBasicCompanions = COMPANION_LIST.every(
+        companion => userCompanions?.companions.includes(companion)
+      );
+      
+      if (!hasAllBasicCompanions) {
+        return res.status(400).json({ 
+          error: "리무를 영입하려면 기본 동료 6명을 모두 보유해야 합니다.",
+          requiredCompanions: COMPANION_LIST.length,
+          currentCompanions: userCompanions?.companions.length || 0
+        });
+      }
+      
+      // 2. 호박 10만개 확인
       const requiredAmbers = 100000;
       if (!userAmbers || userAmbers.amber < requiredAmbers) {
         return res.status(400).json({ 
@@ -6836,7 +6862,20 @@ app.post("/api/recruit-hero-companion", authenticateJWT, async (req, res) => {
     
     // 셰리 구매 조건 확인
     if (companionName === "셰리") {
-      // 호박 18만개 확인
+      // 1. 기본 동료 6명 보유 확인
+      const hasAllBasicCompanions = COMPANION_LIST.every(
+        companion => userCompanions?.companions.includes(companion)
+      );
+      
+      if (!hasAllBasicCompanions) {
+        return res.status(400).json({ 
+          error: "셰리를 영입하려면 기본 동료 6명을 모두 보유해야 합니다.",
+          requiredCompanions: COMPANION_LIST.length,
+          currentCompanions: userCompanions?.companions.length || 0
+        });
+      }
+      
+      // 2. 호박 18만개 확인
       const requiredAmbers = 180000;
       if (!userAmbers || userAmbers.amber < requiredAmbers) {
         return res.status(400).json({ 
@@ -11600,7 +11639,7 @@ app.post("/api/craft-material", authenticateJWT, async (req, res) => {
       console.log(`Warning: No source fish found for material ${inputMaterial}`);
     }
     
-    const craftingCostPerCraft = sourceFish ? sourceFish.price : 0;
+    const craftingCostPerCraft = sourceFish ? sourceFish.price * 0.5 : 0;
     const totalCraftingCost = craftingCostPerCraft * quantity;
     
     if (totalCraftingCost > 0) {
@@ -11742,7 +11781,7 @@ app.post("/api/decompose-material", authenticateJWT, async (req, res) => {
       console.log(`Warning: No source fish found for material ${inputMaterial}`);
     }
     
-    const decomposeCost = sourceFish ? sourceFish.price * quantity : 0;
+    const decomposeCost = sourceFish ? sourceFish.price * 0.5 * quantity : 0;
     
     if (decomposeCost > 0) {
       // 사용자 정보 조회 (골드 확인)
