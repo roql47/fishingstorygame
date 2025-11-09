@@ -35,33 +35,36 @@ const VoyageTab = ({
   const combatIntervalRef = useRef(null);
   const logRef = useRef(null);
 
-  // 물고기 데이터 (rank 1-25) - speed: 50부터 5씩 증가
+  // 물고기 데이터 (rank 1-25) - speed: 50부터 5씩 증가 (30% 난이도 하향 적용)
   const voyageFishes = [
-    { rank: 1, name: '타코문어', image: '/assets/images/monster1.jpeg', hp: 50, attack: 5, speed: 50, gold: 500 },
-    { rank: 2, name: '풀고등어', image: '/assets/images/monster2.jpeg', hp: 90, attack: 8, speed: 55, gold: 800 },
-    { rank: 3, name: '경단붕어', image: '/assets/images/monster3.jpeg', hp: 140, attack: 11, speed: 60, gold: 1200, imagePosition: 'center 80%' },
-    { rank: 4, name: '버터오징어', image: '/assets/images/monster4.jpeg', hp: 200, attack: 15, speed: 65, gold: 1800 },
-    { rank: 5, name: '간장새우', image: '/assets/images/monster5.jpeg', hp: 275, attack: 20, speed: 70, gold: 2500 },
-    { rank: 6, name: '물수수', image: '/assets/images/monster6.jpeg', hp: 375, attack: 28, speed: 75, gold: 3500 },
-    { rank: 7, name: '정어리파이', image: '/assets/images/monster7.jpeg', hp: 500, attack: 35, speed: 80, gold: 4500 },
-    { rank: 8, name: '얼음상어', image: '/assets/images/monster8.jpeg', hp: 650, attack: 45, speed: 85, gold: 6000, imagePosition: 'center 35%' },
-    { rank: 9, name: '스퀄스퀴드', image: '/assets/images/monster9.jpeg', hp: 850, attack: 58, speed: 90, gold: 8000, imagePosition: 'center 60%' },
-    { rank: 10, name: '백년송거북', image: '/assets/images/monster10.jpeg', hp: 1100, attack: 73, speed: 95, gold: 10500, imagePosition: 'center 80%' },
-    { rank: 11, name: '고스피쉬', image: '/assets/images/monster11.jpeg', hp: 1450, attack: 95, speed: 100, gold: 13500, imagePosition: 'center 37%' },
-    { rank: 12, name: '유령치', image: '/assets/images/monster12.jpeg', hp: 1850, attack: 120, speed: 105, gold: 17000 },
-    { rank: 13, name: '바이트독', image: '/assets/images/monster13.jpeg', hp: 2350, attack: 155, speed: 110, gold: 21500 },
-    { rank: 14, name: '호박고래', image: '/assets/images/monster14.jpeg', hp: 3000, attack: 200, speed: 115, gold: 27000, imagePosition: 'center 40%' },
-    { rank: 15, name: '바이킹조개', image: '/assets/images/monster15-1.jpeg', hp: 3800, attack: 250, speed: 120, gold: 34000, imagePosition: 'center 50%' },
-    { rank: 16, name: '천사해파리', image: '/assets/images/monster16.jpeg', hp: 4800, attack: 320, speed: 125, gold: 43000, imagePosition: 'center 38%' },
-    { rank: 17, name: '악마복어', image: '/assets/images/monster17.jpeg', hp: 6100, attack: 410, speed: 130, gold: 54000, imagePosition: 'center 45%' },
-    { rank: 18, name: '칠성장어', image: '/assets/images/monster18.jpeg', hp: 7700, attack: 520, speed: 135, gold: 68000 },
-    { rank: 19, name: '닥터블랙', image: '/assets/images/monster19.jpeg', hp: 9700, attack: 660, speed: 140, gold: 86000, imagePosition: 'center 65%' },
-    { rank: 20, name: '해룡', image: '/assets/images/monster20.jpeg', hp: 12200, attack: 840, speed: 145, gold: 108000, imagePosition: 'center 12%' },
-    { rank: 21, name: '메카핫킹크랩', image: '/assets/images/monster21.jpeg', hp: 15400, attack: 1070, speed: 150, gold: 136000, imagePosition: 'center 55%' },
-    { rank: 22, name: '램프리', image: '/assets/images/monster22.jpeg', hp: 19400, attack: 1360, speed: 155, gold: 172000 },
-    { rank: 23, name: '마지막잎새', image: '/assets/images/monster23.jpeg', hp: 24500, attack: 1730, speed: 160, gold: 217000, imagePosition: 'center 48%' },
-    { rank: 24, name: '아이스브리더', image: '/assets/images/monster24.jpeg', hp: 30900, attack: 2200, speed: 165, gold: 274000, imagePosition: 'center 40%' },
-    { rank: 25, name: '해신', image: '/assets/images/monster25.jpeg', hp: 39000, attack: 2800, speed: 170, gold: 345000, imagePosition: 'center 35%'  }
+    { rank: 1, name: '타코문어', image: '/assets/images/monster1.jpeg', hp: 35, attack: 4, speed: 50, gold: 500 },
+    { rank: 2, name: '풀고등어', image: '/assets/images/monster2.jpeg', hp: 63, attack: 6, speed: 55, gold: 800 },
+    { rank: 3, name: '경단붕어', image: '/assets/images/monster3.jpeg', hp: 98, attack: 8, speed: 60, gold: 1200, imagePosition: 'center 80%' },
+    { rank: 4, name: '버터오징어', image: '/assets/images/monster4.jpeg', hp: 140, attack: 11, speed: 65, gold: 1800 },
+    { rank: 5, name: '간장새우', image: '/assets/images/monster5.jpeg', hp: 193, attack: 14, speed: 70, gold: 2500 },
+    { rank: 6, name: '물수수', image: '/assets/images/monster6.jpeg', hp: 263, attack: 20, speed: 75, gold: 3500 },
+    { rank: 7, name: '정어리파이', image: '/assets/images/monster7.jpeg', hp: 350, attack: 25, speed: 80, gold: 4500 },
+    { rank: 8, name: '얼음상어', image: '/assets/images/monster8.jpeg', hp: 455, attack: 32, speed: 85, gold: 6000, imagePosition: 'center 35%' },
+    { rank: 9, name: '스퀄스퀴드', image: '/assets/images/monster9.jpeg', hp: 595, attack: 41, speed: 90, gold: 8000, imagePosition: 'center 60%' },
+    { rank: 10, name: '백년송거북', image: '/assets/images/monster10.jpeg', hp: 770, attack: 51, speed: 95, gold: 10500, imagePosition: 'center 80%' },
+    { rank: 11, name: '고스피쉬', image: '/assets/images/monster11.jpeg', hp: 1015, attack: 67, speed: 100, gold: 13500, imagePosition: 'center 37%' },
+    { rank: 12, name: '유령치', image: '/assets/images/monster12.jpeg', hp: 1295, attack: 84, speed: 105, gold: 17000 },
+    { rank: 13, name: '바이트독', image: '/assets/images/monster13.jpeg', hp: 1645, attack: 109, speed: 110, gold: 21500 },
+    { rank: 14, name: '호박고래', image: '/assets/images/monster14.jpeg', hp: 2100, attack: 140, speed: 115, gold: 27000, imagePosition: 'center 40%' },
+    { rank: 15, name: '바이킹조개', image: '/assets/images/monster15-1.jpeg', hp: 2660, attack: 175, speed: 120, gold: 34000, imagePosition: 'center 50%' },
+    { rank: 16, name: '천사해파리', image: '/assets/images/monster16.jpeg', hp: 3360, attack: 224, speed: 125, gold: 43000, imagePosition: 'center 38%' },
+    { rank: 17, name: '악마복어', image: '/assets/images/monster17.jpeg', hp: 4270, attack: 287, speed: 130, gold: 54000, imagePosition: 'center 45%' },
+    { rank: 18, name: '칠성장어', image: '/assets/images/monster18.jpeg', hp: 5390, attack: 364, speed: 135, gold: 68000 },
+    { rank: 19, name: '닥터블랙', image: '/assets/images/monster19.jpeg', hp: 6790, attack: 462, speed: 140, gold: 86000, imagePosition: 'center 65%' },
+    { rank: 20, name: '해룡', image: '/assets/images/monster20.jpeg', hp: 8540, attack: 588, speed: 145, gold: 108000, imagePosition: 'center 12%' },
+    { rank: 21, name: '메카핫킹크랩', image: '/assets/images/monster21.jpeg', hp: 10780, attack: 749, speed: 150, gold: 136000, imagePosition: 'center 55%' },
+    { rank: 22, name: '램프리', image: '/assets/images/monster22.jpeg', hp: 13580, attack: 952, speed: 155, gold: 172000 },
+    { rank: 23, name: '마지막잎새', image: '/assets/images/monster23.jpeg', hp: 17150, attack: 1211, speed: 160, gold: 217000, imagePosition: 'center 48%' },
+    { rank: 24, name: '아이스브리더', image: '/assets/images/monster24.jpeg', hp: 21630, attack: 1540, speed: 165, gold: 274000, imagePosition: 'center 40%' },
+    { rank: 25, name: '해신', image: '/assets/images/monster25.jpeg', hp: 27300, attack: 1960, speed: 170, gold: 345000, imagePosition: 'center 35%'  },
+    { rank: 26, name: '핑키피쉬', image: '/assets/images/monster26.jpg', hp: 34400, attack: 2490, speed: 175, gold: 435000, imagePosition: 'center 37%' },
+    { rank: 27, name: '콘토퍼스', image: '/assets/images/monster27.jpeg', hp: 43400, attack: 3160, speed: 180, gold: 548000, imagePosition: 'center 24%' },
+    { rank: 28, name: '딥원', image: '/assets/images/monster28.jpeg', hp: 54700, attack: 4010, speed: 185, gold: 690000, imagePosition: 'center 45%' }
   ];
   
   // 페이지네이션 설정
@@ -95,7 +98,8 @@ const VoyageTab = ({
       '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대', '레드다이아몬드낚시대',
       '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산호등낚시대', '피크닉', '마녀빗자루',
       '에테르낚시대', '별조각낚시대', '여우꼬리낚시대', '초콜릿롤낚시대', '호박유령낚시대',
-      '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
+      '핑크버니낚시대', '할로우낚시대', '여우불낚시대', '네오더스트낚시대', '드림캐쳐',
+      '아포카토낚시대', '스윗슈터', '인도하는별빛'
     ];
     const fishingRodIndex = fishingRods.indexOf(userEquipment.fishingRod) >= 0 ? fishingRods.indexOf(userEquipment.fishingRod) : 0;
     const attackStatBonus = fishingRodIndex * (userStats?.attack || 0); // 🌟 낚시대 index × 성장 레벨

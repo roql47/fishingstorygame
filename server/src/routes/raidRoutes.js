@@ -202,13 +202,22 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       
       console.log(`[Raid][${bossType}] ${user.displayName} 낚시실력: ${fishingSkill} - 참여 허용`);
       
-      // 동료 정보 가져오기 (캐시 사용하지 않고 매번 DB에서 최신 데이터 조회)
+      // 동료 정보 가져오기 (최대 3명 제한 + 레이드 중 캐시 사용)
       let companions = [];
       
       if (battleCompanions && Array.isArray(battleCompanions) && battleCompanions.length > 0) {
-        // 동료 데이터는 매번 DB에서 가져오기 (전투 상태가 자주 변경되므로)
-        const allCompanions = await CompanionStatsModel.find({ userUuid }).lean();
-        companions = allCompanions?.filter(c => battleCompanions.includes(c.companionName)) || [];
+        // 레이드 중에는 캐시 사용 (동일 보스 전투 중에는 동료 데이터 변경 없음)
+        const cacheKey = `raid_companions_${bossType}_${userUuid}`;
+        let cachedCompanions = cacheSystem.getCachedData('raidCompanionsBattle', cacheKey, userUuid);
+        
+        if (!cachedCompanions) {
+          // 첫 타격 시 DB에서 가져와서 캐시
+          const allCompanions = await CompanionStatsModel.find({ userUuid }).lean();
+          const filteredCompanions = allCompanions?.filter(c => battleCompanions.includes(c.companionName)) || [];
+          cachedCompanions = filteredCompanions.slice(0, 3);
+          cacheSystem.setCachedData('raidCompanionsBattle', cacheKey, cachedCompanions, userUuid);
+        }
+        companions = cachedCompanions;
       }
       
       // 캐시에서 장비 정보 가져오기
@@ -265,89 +274,103 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       // 낚시대 강화 보너스 계산
       const fishingRodEnhancementBonus = calculateTotalEnhancementBonus(userEquipment?.fishingRodEnhancement || 0);
       
-      // 🌟 낚시대 인덱스 계산
-      const fishingRods = [
-        '나무낚시대', '낡은낚시대', '기본낚시대', '단단한낚시대', '은낚시대', '금낚시대',
-        '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대', '레드다이아몬드낚시대',
-        '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산호등낚시대', '피크닉', '마녀빗자루',
-        '에테르낚시대', '별조각낚시대', '여우꼬리낚시대', '초콜릿롤낚시대', '호박유령낚시대',
-        '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
-      ];
-      const fishingRodIndex = fishingRods.indexOf(userEquipment?.fishingRod) >= 0 ? fishingRods.indexOf(userEquipment?.fishingRod) : 0;
+      // 플레이어 공격력 계산 (레이드 중 캐시 사용)
+      const playerCacheKey = `raid_player_attack_${bossType}_${userUuid}`;
+      let playerDamage = cacheSystem.getCachedData('raidPlayerAttack', playerCacheKey, userUuid);
       
-      // 🌟 유저 스탯 공격력 보너스 계산 (낚시대 index × 성장 레벨)
-      const attackStatBonus = fishingRodIndex * (userStats?.attack || 0);
-      const playerDamage = calculatePlayerAttack(fishingSkill, fishingRodEnhancementBonus, attackStatBonus);
+      if (!playerDamage) {
+        // 첫 타격 시 계산하고 캐시
+        const fishingRods = [
+          '나무낚시대', '낡은낚시대', '기본낚시대', '단단한낚시대', '은낚시대', '금낚시대',
+          '강철낚시대', '사파이어낚시대', '루비낚시대', '다이아몬드낚시대', '레드다이아몬드낚시대',
+          '벚꽃낚시대', '꽃망울낚시대', '호롱불낚시대', '산호등낚시대', '피크닉', '마녀빗자루',
+          '에테르낚시대', '별조각낚시대', '여우꼬리낚시대', '초콜릿롤낚시대', '호박유령낚시대',
+          '핑크버니낚시대', '할로우낚시대', '여우불낚시대'
+        ];
+        const fishingRodIndex = fishingRods.indexOf(userEquipment?.fishingRod) >= 0 ? fishingRods.indexOf(userEquipment?.fishingRod) : 0;
+        const attackStatBonus = fishingRodIndex * (userStats?.attack || 0);
+        
+        // 기본 공격력 계산 (랜덤 제외한 고정값)
+        const baseAttack = 0.00225 * Math.pow(fishingSkill, 3) + 0.165 * Math.pow(fishingSkill, 2) + 2 * fishingSkill + 3;
+        const totalAttack = baseAttack + (baseAttack * fishingRodEnhancementBonus / 100);
+        playerDamage = totalAttack + attackStatBonus;
+        
+        cacheSystem.setCachedData('raidPlayerAttack', playerCacheKey, playerDamage, userUuid);
+      }
       
-      // 동료 공격력 계산 (탐사와 동일한 방식)
+      // 랜덤 요소는 매번 새로 적용 (±20%)
+      const randomFactor = 0.8 + Math.random() * 0.4;
+      const finalPlayerDamage = Math.floor(playerDamage * randomFactor);
+      
+      // 동료 공격력 계산 (레이드 중 캐시 사용)
+      const companionCacheKey = `raid_companion_attacks_${bossType}_${userUuid}`;
+      let cachedCompanionAttacks = cacheSystem.getCachedData('raidCompanionAttacks', companionCacheKey, userUuid);
+      
       let companionDamage = 0;
       const companionAttacks = [];
       
-      // 동료 기본 데이터 (탐사와 동일)
-      const COMPANION_DATA = {
-        "실": {
-          name: "실",
-          baseAttack: 9,
-          growthAttack: 2,
-          description: "민첩한 검사"
-        },
-        "피에나": {
-          name: "피에나", 
-          baseAttack: 8,
-          growthAttack: 2,
-          description: "강인한 방패병"
-        },
-        "애비게일": {
-          name: "애비게일",
-          baseAttack: 12,
-          growthAttack: 3,
-          description: "화염 마법사"
-        },
-        "클로에": {
-          name: "클로에",
-          baseAttack: 14,
-          growthAttack: 3,
-          description: "암살자"
-        },
-        "나하트라": {
-          name: "나하트라",
-          baseAttack: 11,
-          growthAttack: 3,
-          description: "용족 전사"
-        },
-        "림스&베리": {
-          name: "림스&베리",
-          baseAttack: 9,
-          growthAttack: 2,
-          description: "쌍둥이 궁수"
-        }
-      };
-      
-      for (const companion of companions) {
-        const companionLevel = companion.level || 1;
-        const companionName = companion.companionName;
+      if (!cachedCompanionAttacks && companions.length > 0) {
+        // 첫 타격 시 동료 공격력 계산하고 캐시
+        const COMPANION_DATA = {
+          "실": { baseAttack: 9, growthAttack: 2 },
+          "피에나": { baseAttack: 8, growthAttack: 2 },
+          "애비게일": { baseAttack: 12, growthAttack: 3 },
+          "클로에": { baseAttack: 14, growthAttack: 3 },
+          "나하트라": { baseAttack: 11, growthAttack: 3 },
+          "림스&베리": { baseAttack: 9, growthAttack: 2 },
+          "메이델": { baseAttack: 12, growthAttack: 3 },
+          "아이란": { baseAttack: 10, growthAttack: 2.5 },
+          "리무": { baseAttack: 13, growthAttack: 3.2 },
+          "셰리": { baseAttack: 13, growthAttack: 3.1 }
+        };
         
-        // 동료별 기본 공격력과 성장률 적용 (탐사와 동일)
-        const baseData = COMPANION_DATA[companionName];
-        if (baseData) {
-          const baseAttack = baseData.baseAttack + (baseData.growthAttack * (companionLevel - 1));
-          // 랜덤 요소 추가 (±20%)
+        cachedCompanionAttacks = [];
+        
+        for (const companion of companions) {
+          const companionLevel = companion.level || 1;
+          const companionName = companion.companionName;
+          const tier = companion.tier || 0;
+          const breakthroughStats = companion.breakthroughStats || { bonusGrowthHp: 0, bonusGrowthAttack: 0, bonusGrowthSpeed: 0 };
+          
+          const baseData = COMPANION_DATA[companionName];
+          if (baseData) {
+            const bonusGrowthAttack = breakthroughStats.bonusGrowthAttack || 0;
+            const enhancedGrowthAttack = baseData.growthAttack + bonusGrowthAttack;
+            let attack = baseData.baseAttack + (enhancedGrowthAttack * (companionLevel - 1));
+            
+            const TIER_MULTIPLIERS = { 0: 1.0, 1: 1.3, 2: 1.6 };
+            const tierMultiplier = TIER_MULTIPLIERS[tier] || 1.0;
+            attack = Math.floor(attack * tierMultiplier);
+            
+            cachedCompanionAttacks.push({
+              name: companionName,
+              baseAttack: attack
+            });
+          }
+        }
+        
+        cacheSystem.setCachedData('raidCompanionAttacks', companionCacheKey, cachedCompanionAttacks, userUuid);
+      }
+      
+      // 캐시된 동료 공격력에 매번 랜덤 적용
+      if (cachedCompanionAttacks) {
+        for (const companionData of cachedCompanionAttacks) {
           const randomFactor = 0.8 + Math.random() * 0.4;
-          const companionAttack = Math.floor(baseAttack * randomFactor);
+          const companionAttack = Math.floor(companionData.baseAttack * randomFactor);
           
           companionDamage += companionAttack;
           companionAttacks.push({
-            name: companionName,
+            name: companionData.name,
             attack: companionAttack
           });
         }
       }
       
-      const finalDamage = playerDamage + companionDamage;
+      const finalDamage = finalPlayerDamage + companionDamage;
       
       console.log(`[Raid] ${user.displayName} 데미지 계산:`, { 
-        fishingSkill: fishingSkill,  // 올바른 변수 사용
-        플레이어_데미지: playerDamage,
+        fishingSkill: fishingSkill,
+        플레이어_데미지: finalPlayerDamage,
         동료_데미지: companionDamage,
         동료_공격: companionAttacks,
         최종_데미지: finalDamage
@@ -415,9 +438,19 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
       
       // 보스가 죽었는지 확인
       if (attackResult.isDefeated) {
-        // 보스 처치 시 캐시 무효화 (보상 지급으로 데이터 변경)
+        // 보스 처치 시 캐시 무효화
         cacheSystem.invalidateCache('user', userUuid);
         cacheSystem.invalidateCache('achievement', userUuid);
+        
+        // 레이드 전투 캐시 무효화 (모든 참가자의 캐시 삭제)
+        const boss = raidSystem.getBoss(bossType);
+        if (boss && boss.participants) {
+          for (const participantUuid of boss.participants.keys()) {
+            cacheSystem.invalidateCache('raidCompanionsBattle', participantUuid);
+            cacheSystem.invalidateCache('raidPlayerAttack', participantUuid);
+            cacheSystem.invalidateCache('raidCompanionAttacks', participantUuid);
+          }
+        }
         
         await handleRaidBossDefeated(io, UserUuidModel, bossType);
       }
@@ -427,7 +460,7 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         success: true, 
         damage: attackResult.damage,
         damageBreakdown: {
-          playerDamage,
+          playerDamage: finalPlayerDamage,
           companionDamage,
           companionAttacks,
           totalDamage: finalDamage

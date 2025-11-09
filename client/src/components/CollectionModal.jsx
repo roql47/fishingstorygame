@@ -601,22 +601,22 @@ const CollectionModal = ({
                         
                         {/* 레벨 & 돌파 표시 (이미지 위 오른쪽 상단) */}
                         {collected && (
-                          <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
+                          <div className="absolute top-2 right-2 flex flex-col gap-0.5 items-end">
                             {companionInfo?.level && (
-                              <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                              <span className={`px-1.5 py-0.5 rounded-full font-bold ${
                                 isDarkMode 
                                   ? "bg-black/70 text-amber-300" 
                                   : "bg-white/90 text-amber-700 shadow-md"
-                              }`}>
+                              }`} style={{ fontSize: '10px' }}>
                                 Lv.{companionInfo.level}
                               </span>
                             )}
                             {companionInfo?.breakthrough > 0 && (
-                              <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                              <span className={`px-1.5 py-0.5 rounded-full font-bold ${
                                 isDarkMode 
                                   ? "bg-black/70 text-cyan-300" 
                                   : "bg-white/90 text-cyan-700 shadow-md"
-                              }`}>
+                              }`} style={{ fontSize: '10px' }}>
                                 돌파 {companionInfo.breakthrough}
                               </span>
                             )}
