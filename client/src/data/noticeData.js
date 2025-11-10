@@ -1,6 +1,19 @@
 // 공지사항 데이터 (ID 내림차순 정렬 - 최신이 가장 높은 ID)
 export const NOTICE_DATA = [
   {
+    id: 55,
+    date: "2025.11.10",
+    title: "[v1.417] ⚔️ 신규 영웅 동료 '엘리시아' 추가",
+    content: [
+      "신규 영웅 동료 추가:",
+      "  엘리시아 (호박석 320,000개)",
+      "임포머스 막타 보상 상향 별조각 2개->3개",
+      "동료 경험치 계승 시스템 추가"
+    ],
+    isNew: true,
+    type: "major_update"
+  },
+  {
     id: 54,
     date: "2025.11.10",
     title: "[v1.416] ⚔️ 레이드 시스템 개선",
@@ -13,7 +26,7 @@ export const NOTICE_DATA = [
       "  동료가 레이드에서 제대로 공격하지 않던 문제 해결",
       "  임포머스에서 동료 데미지가 적용 안 되던 문제 해결"
     ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
@@ -982,5 +995,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.416"
+  version: "v1.417"
 };

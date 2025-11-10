@@ -8,7 +8,6 @@ export const COMPANION_DATA = {
     growthHp: 10,      // 5 * 2 = 10
     growthAttack: 2,   // 1 * 1.5 = 1.5 → 2
     growthSpeed: 0.5,    // 레벨당 속도 증가량
-    description: "민첩한 검사",
     rarity: "일반",
     skill: {
       name: "폭격",
@@ -25,7 +24,6 @@ export const COMPANION_DATA = {
     growthHp: 12,      // 6 * 2 = 12
     growthAttack: 2,   // 1 * 1.5 = 1.5 → 2
     growthSpeed: 0.5,    // 레벨당 속도 증가량
-    description: "강인한 방패병",
     rarity: "일반",
     skill: {
       name: "무의태세",
@@ -45,7 +43,6 @@ export const COMPANION_DATA = {
     growthHp: 8,       // 4 * 2 = 8
     growthAttack: 3,   // 2 * 1.5 = 3
     growthSpeed: 0.5,    // 레벨당 속도 증가량
-    description: "화염 마법사",
     rarity: "일반",
     skill: {
       name: "집중포화",
@@ -65,7 +62,6 @@ export const COMPANION_DATA = {
     growthHp: 10,      // 5 * 2 = 10
     growthAttack: 2,   // 1 * 1.5 = 1.5 → 2
     growthSpeed: 0.5,    // 레벨당 속도 증가량
-    description: "쌍둥이 궁수",
     rarity: "일반",
     skill: {
       name: "마탄 발사",
@@ -84,7 +80,6 @@ export const COMPANION_DATA = {
     growthHp: 6,       // 3 * 2 = 6
     growthAttack: 3,   // 2 * 1.5 = 3
     growthSpeed: 0.5,    // 레벨당 속도 증가량
-    description: "암살자",
     rarity: "일반",
     skill: {
       name: "에테르축복",
@@ -103,7 +98,6 @@ export const COMPANION_DATA = {
     growthHp: 14,      // 7 * 2 = 14
     growthAttack: 3,   // 2 * 1.5 = 3
     growthSpeed: 0.5,    // 레벨당 속도 증가량
-    description: "용족 전사",
     rarity: "일반",
     skill: {
       name: "악몽의 정원",
@@ -122,7 +116,6 @@ export const COMPANION_DATA = {
     growthHp: 13,
     growthAttack: 3,
     growthSpeed: 0.5,
-    description: "별을 인도하는 자",
     rarity: "영웅",
     recruitmentCost: { ambers: 10000, requiredCompanions: 6 }, // 기본 6명 보유 + 호박 1만개
     skill: {
@@ -144,7 +137,6 @@ export const COMPANION_DATA = {
     growthHp: 15,      // 높은 체력 성장
     growthAttack: 2.5, // 낮은 공격력 성장
     growthSpeed: 0.5,
-    description: "불굴의 수호자",
     rarity: "영웅",
     recruitmentCost: { ambers: 50000, requiredCompanions: 6 }, // 기본 6명 보유 + 호박 5만개
     skill: {
@@ -166,7 +158,6 @@ export const COMPANION_DATA = {
     growthHp: 14,      // 메이델보다 높음 (메이델 13)
     growthAttack: 3.2, // 메이델보다 높음 (메이델 3)
     growthSpeed: 0.5,
-    description: "폭풍을 부르는 자",
     rarity: "영웅",
     recruitmentCost: { ambers: 100000, requiredCompanions: 6 }, // 기본 6명 보유 + 호박 10만개
     skill: {
@@ -187,7 +178,6 @@ export const COMPANION_DATA = {
     growthHp: 13.5,
     growthAttack: 3.1,
     growthSpeed: 0.6,  // 속도 성장 높음
-    description: "질풍의 무희",
     rarity: "영웅",
     recruitmentCost: { ambers: 180000, requiredCompanions: 6 }, // 기본 6명 보유 + 호박 18만개
     skill: {
@@ -200,6 +190,23 @@ export const COMPANION_DATA = {
       buffDuration: 5000, // 5초 (밀리초)
       isPartyBuff: true, // 아군 전체 (자신 제외)
       excludeSelf: true // 자신은 제외
+    }
+  },
+  "엘리시아": {
+    name: "엘리시아",
+    baseHp: 80,        // 공격형 - 낮은 체력
+    baseAttack: 15,    // 강한 공격형 - 높은 공격력
+    baseSpeed: 45,     // 중간 속도
+    growthHp: 12,      // 낮은 체력 성장
+    growthAttack: 3.5, // 높은 공격력 성장
+    growthSpeed: 0.4,
+    rarity: "영웅",
+    recruitmentCost: { ambers: 320000, requiredCompanions: 6 }, // 기본 6명 보유 + 호박 32만개
+    skill: {
+      name: "화염 유린",
+      description: "랜덤한 적 1명에게 강력한 260% 데미지를 가합니다",
+      damageMultiplier: 2.6, // 기본 공격력의 260%
+      moraleRequired: 100
     }
   }
 };
@@ -296,7 +303,8 @@ export const COMPANION_ESSENCE = {
   "메이델": "영혼의정수",
   "아이란": "땅의정수",
   "리무": "물의정수",
-  "셰리": "바람의정수"
+  "셰리": "바람의정수",
+  "엘리시아": "불의정수"
 };
 
 // 정수별 이모지
@@ -369,6 +377,16 @@ export const BREAKTHROUGH_BONUS_SHERRY = {
   3: { growthHp: 5.9, growthAttack: 1.7, growthSpeed: 0.3 }, // 4차 돌파
   4: { growthHp: 8.4, growthAttack: 2.4, growthSpeed: 0.4 }, // 5차 돌파
   5: { growthHp: 12.4, growthAttack: 3.2, growthSpeed: 0.6 } // 6차 돌파 - 속도 높음
+};
+
+// 엘리시아 전용 돌파 보너스 성장률 (영웅 등급 - 공격형)
+export const BREAKTHROUGH_BONUS_ELISIA = {
+  0: { growthHp: 2.5, growthAttack: 0.8, growthSpeed: 0.1 }, // 1차 돌파
+  1: { growthHp: 3.5, growthAttack: 1.0, growthSpeed: 0.15 }, // 2차 돌파
+  2: { growthHp: 4.5, growthAttack: 1.5, growthSpeed: 0.2 }, // 3차 돌파
+  3: { growthHp: 5.5, growthAttack: 2.0, growthSpeed: 0.25 }, // 4차 돌파
+  4: { growthHp: 8, growthAttack: 3.0, growthSpeed: 0.3 }, // 5차 돌파
+  5: { growthHp: 12, growthAttack: 4.0, growthSpeed: 0.5 } // 6차 돌파 - 공격력 높음
 };
 
 // 등급별 색상 가져오기 (tier 기반)

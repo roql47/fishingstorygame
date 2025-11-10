@@ -224,7 +224,7 @@ function App() {
 
   // 🔄 버전 업데이트 시 캐시 초기화 (v1.405)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.416";
+    const CURRENT_VERSION = "v1.417";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -8465,7 +8465,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.416
+                여우이야기 v1.417
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -10782,6 +10782,7 @@ function App() {
               refreshAllData={refreshAllData}
               onGrowth={growthCompanion}
               onBreakthrough={breakthroughCompanion}
+              setCompanionStats={setCompanionStats}
             />
           )}
 

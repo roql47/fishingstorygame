@@ -543,12 +543,12 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         console.log(`[Raid][${bossType}] 보상 지급: ${userUuid} - 순위 ${rank}, 데미지 ${damage}, 보상 ${rewardAmount}${isLastAttacker ? ' (막타 보너스 포함)' : ''}`);
       }
       
-      // 마지막 공격자에게 별조각 추가 지급 (폭주하는 해신, 임포머스: 2개 / 나머지: 1개)
+      // 마지막 공격자에게 별조각 추가 지급 (임포머스: 3개, 폭주하는 해신: 2개 / 나머지: 1개)
       if (rewards.length > 0) {
         const lastAttacker = rewards.find(r => r.isLastAttacker);
         if (lastAttacker) {
           // 보스 타입에 따른 별조각 보상 개수 결정
-          const starPieceReward = (bossType === 'advanced' || bossType === 'legendary') ? 2 : 1;
+          const starPieceReward = bossType === 'legendary' ? 3 : (bossType === 'advanced' ? 2 : 1);
           
           // StarPieceModel을 사용하여 별조각 지급
           let userStarPieces = await StarPieceModel.findOne({ userUuid: lastAttacker.userUuid });

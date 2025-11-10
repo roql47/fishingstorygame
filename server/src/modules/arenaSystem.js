@@ -292,6 +292,12 @@ class ArenaSystem {
                 buffMultiplier: 2.0,
                 buffDuration: 5000,
                 moraleRequired: 100
+            },
+            '엘리시아': {
+                name: '화염 유린',
+                damageMultiplier: 2.6,
+                skillType: 'attack',
+                moraleRequired: 100
             }
         };
         

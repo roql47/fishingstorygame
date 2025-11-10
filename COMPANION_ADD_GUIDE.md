@@ -738,7 +738,99 @@ const bonus = bonusTable[currentBreakthrough];
 
 ---
 
+## 11. 실제 추가 사례: 엘리시아
+
+최근 추가된 **엘리시아** 동료를 예시로 전체 프로세스를 정리합니다.
+
+### 📌 기본 설정
+- **이름**: 엘리시아
+- **등급**: 영웅
+- **타입**: 강한 공격형
+- **설명**: 화염의 파괴자
+- **구매 비용**: 호박 32만개 + 기본 동료 6명 보유
+- **돌파 재료**: 불의정수 🔥
+
+### 📊 스탯 설정
+```javascript
+baseHp: 80,        // 공격형 - 낮은 체력
+baseAttack: 15,    // 강한 공격형 - 높은 공격력
+baseSpeed: 55,     // 중간 속도
+growthHp: 12,      // 낮은 체력 성장
+growthAttack: 3.5, // 높은 공격력 성장
+growthSpeed: 0.5
+```
+
+### ⚔️ 스킬 설정
+```javascript
+skill: {
+  name: "화염 유린",
+  description: "랜덤한 적 1명에게 강력한 260% 데미지를 가합니다",
+  damageMultiplier: 2.6, // 기본 공격력의 260%
+  moraleRequired: 100
+}
+```
+
+### 💎 돌파 보너스 (공격형 특화)
+```javascript
+export const BREAKTHROUGH_BONUS_ELISIA = {
+  0: { growthHp: 2.5, growthAttack: 0.8, growthSpeed: 0.1 },
+  1: { growthHp: 3.5, growthAttack: 1.0, growthSpeed: 0.15 },
+  2: { growthHp: 4.5, growthAttack: 1.5, growthSpeed: 0.2 },
+  3: { growthHp: 5.5, growthAttack: 2.0, growthSpeed: 0.25 },
+  4: { growthHp: 8, growthAttack: 3.0, growthSpeed: 0.3 },
+  5: { growthHp: 12, growthAttack: 4.0, growthSpeed: 0.5 } // 6차 돌파 - 공격력 높음
+};
+```
+
+### 🔧 수정한 파일 목록
+
+#### 1. `client/src/data/companionData.js`
+- ✅ COMPANION_DATA에 엘리시아 추가
+- ✅ COMPANION_ESSENCE에 "엘리시아": "불의정수" 추가
+- ✅ BREAKTHROUGH_BONUS_ELISIA 테이블 추가
+
+#### 2. `client/src/components/companions/CompanionTab.jsx`
+- ✅ BREAKTHROUGH_BONUS_ELISIA import 추가
+- ✅ character11 이미지 import 추가
+- ✅ allCompanions 배열에 "엘리시아" 추가
+- ✅ companionImages에 "엘리시아": character11 추가
+- ✅ 영웅 구매 UI 섹션 추가 (호박 32만개)
+- ✅ 돌파 로직에 엘리시아 보너스 테이블 적용
+
+#### 3. `server/src/index.js`
+- ✅ HERO_COMPANION_LIST에 "엘리시아" 추가
+- ✅ `/api/recruit-hero-companion` 엔드포인트에 구매 로직 추가
+- ✅ COMPANION_ESSENCE 매핑 2곳에 추가
+- ✅ BREAKTHROUGH_BONUS_ELISIA 테이블 추가
+- ✅ 돌파 로직에 엘리시아 보너스 테이블 적용
+
+#### 4. `server/src/modules/arenaSystem.js`
+- ✅ companionSkills 객체에 엘리시아 스킬 추가
+
+#### 5. 이미지 파일
+- ✅ `character11.jpg` 3곳에 배치
+  - `fishing_version1/assets/images/`
+  - `fishing_version1/client/public/assets/images/`
+  - `fishing_version1/client/src/assets/`
+
+### ⚠️ 특이사항
+- 엘리시아는 **단일 타겟 고데미지** 스킬이므로 별도의 버프/디버프 로직 불필요
+- 레이드는 동료 공격력만 합산하므로 **자동 적용됨** (별도 수정 불필요)
+- 탐사/항해 전투는 companionData.js 기반이므로 **자동 적용됨**
+- 아레나만 스킬 하드코딩되어 있어서 수동 추가 필요
+
+### ✅ 테스트 완료 항목
+- [x] 동료 구매 (호박 32만개)
+- [x] 레벨업 / 성장 / 돌파
+- [x] 레이드 전투 참여
+- [x] 아레나 PvP 전투
+- [x] 일반 탐사 전투
+- [x] 항해 전투
+- [x] 스킬 "화염 유린" 발동 (260% 데미지)
+
+---
+
 **작성일**: 2025-11-09  
-**최종 수정**: 아이란 동료 추가 기준  
+**최종 수정**: 엘리시아 동료 추가 (2025-11-10)  
 **다음 업데이트**: 새로운 스킬 타입 추가 시
 

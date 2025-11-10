@@ -13,6 +13,7 @@ import character7 from '../assets/character7.jpg';
 import character8 from '../assets/character8.jpg';
 import character9 from '../assets/character9.jpg';
 import character10 from '../assets/character10.jpg';
+import character11 from '../assets/character11.jpg';
 
 const CollectionModal = ({ 
   showCollectionModal, 
@@ -39,7 +40,8 @@ const CollectionModal = ({
     "메이델": character7,
     "아이란": character8,
     "리무": character9,
-    "셰리": character10
+    "셰리": character10,
+    "엘리시아": character11
   };
 
   // 발견한 물고기 목록 가져오기
@@ -136,7 +138,7 @@ const CollectionModal = ({
     { name: '토파즈이어링', price: 180000, description: '토파즈의 빛이 아름다운 이어링입니다', currency: 'gold' },
     { name: '자수정팔찌', price: 329000, description: '자수정으로 만든 우아한 팔찌입니다', currency: 'gold' },
     { name: '백금티아라', price: 576000, description: '백금으로 제작된 고귀한 티아라입니다', currency: 'gold' },
-    { name: '만드라고라허브', price: 882000, description: '신비한 만드라고라 허브입니다', currency: 'gold' },
+    { name: '만드라고라허브', price: 882000, description: '신비한 만드라고라허브입니다', currency: 'gold' },
     { name: '에테르나무묘목', price: 1330000, description: '에테르 나무의 신비한 묘목입니다', currency: 'gold' },
     { name: '몽마의조각상', price: 1936000, description: '몽마의 힘이 깃든 신비한 조각상입니다', currency: 'gold' },
     { name: '마카롱훈장', price: 2868000, description: '달콤한 마카롱 모양의 특별한 훈장입니다', currency: 'gold' },
@@ -711,4 +713,3 @@ const CollectionModal = ({
 };
 
 export default CollectionModal;
-

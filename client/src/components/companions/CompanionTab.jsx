@@ -12,6 +12,7 @@ import {
   BREAKTHROUGH_BONUS_AIRAN,
   BREAKTHROUGH_BONUS_RIMU,
   BREAKTHROUGH_BONUS_SHERRY,
+  BREAKTHROUGH_BONUS_ELISIA,
   COMPANION_ESSENCE,
   ESSENCE_EMOJI,
   getTierColor,
@@ -28,6 +29,7 @@ import character7 from '../../assets/character7.jpg';
 import character8 from '../../assets/character8.jpg';
 import character9 from '../../assets/character9.jpg';
 import character10 from '../../assets/character10.jpg';
+import character11 from '../../assets/character11.jpg';
 
 const CompanionTab = ({
   // 상태
@@ -46,7 +48,8 @@ const CompanionTab = ({
   toggleBattleCompanion,
   refreshAllData,
   onGrowth,
-  onBreakthrough
+  onBreakthrough,
+  setCompanionStats
 }) => {
   // 탭 상태 추가 (recruit / enhance)
   const [activeTab, setActiveTab] = useState('recruit');
@@ -60,6 +63,13 @@ const CompanionTab = ({
   const [enhanceSubTab, setEnhanceSubTab] = useState('growth'); // 'growth' or 'breakthrough'
   const [loading, setLoading] = useState(false);
   
+  // 계승 관련 상태
+  const [showSuccessionModal, setShowSuccessionModal] = useState(false);
+  const [successionSourceCompanion, setSuccessionSourceCompanion] = useState(null);
+  const [successionTargetCompanion, setSuccessionTargetCompanion] = useState(null);
+  const [showSuccessionConfirm, setShowSuccessionConfirm] = useState(false);
+  const [isSuccessionProcessing, setIsSuccessionProcessing] = useState(false);
+  
   // 동료 클릭 핸들러
   const handleCompanionClick = (companionName) => {
     setSelectedCompanion(companionName);
@@ -72,7 +82,103 @@ const CompanionTab = ({
     setSelectedCompanion(null);
   };
 
-  const allCompanions = ["실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라", "메이델", "아이란", "리무", "셰리"];
+  // 계승 관련 함수
+  const calculateExpToNextLevel = (level) => {
+    return Math.floor(100 + Math.pow(level, 2.1) * 25);
+  };
+
+  const calculateTotalExp = (level, currentExp) => {
+    let total = currentExp;
+    for (let lv = 1; lv < level; lv++) {
+      total += calculateExpToNextLevel(lv + 1);
+    }
+    return total;
+  };
+
+  const handleSuccessionClick = (companionName) => {
+    const companionInfo = companionStats?.[companionName];
+    if (!companionInfo || companionInfo.level <= 1) {
+      alert('레벨 1 동료는 계승할 수 없습니다.');
+      return;
+    }
+    setSuccessionSourceCompanion(companionName);
+    setShowSuccessionModal(true);
+    setShowCompanionModal(false); // 동료 상세 모달 닫기
+  };
+
+  const handleTargetSelect = (targetName) => {
+    setSuccessionTargetCompanion(targetName);
+    setShowSuccessionConfirm(true);
+  };
+
+  const handleSuccessionConfirm = async () => {
+    if (!successionSourceCompanion || !successionTargetCompanion) return;
+    
+    setIsSuccessionProcessing(true);
+    try {
+      const serverUrl = import.meta.env.VITE_SERVER_URL || 
+        (typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
+          ? window.location.origin 
+          : 'http://localhost:4000');
+      
+      const token = localStorage.getItem('jwtToken');
+      
+      const response = await fetch(`${serverUrl}/api/companion-succession`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          sourceCompanion: successionSourceCompanion,
+          targetCompanion: successionTargetCompanion
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // companionStats 업데이트
+        if (setCompanionStats) {
+          setCompanionStats(prev => ({
+            ...prev,
+            [successionSourceCompanion]: {
+              ...prev[successionSourceCompanion],
+              level: data.sourceStats.level,
+              experience: data.sourceStats.experience
+            },
+            [successionTargetCompanion]: {
+              ...prev[successionTargetCompanion],
+              level: data.targetStats.level,
+              experience: data.targetStats.experience
+            }
+          }));
+        }
+
+        alert(`✨ 계승 성공!\n경험치 ${data.transferredExp.toLocaleString()}을(를) 전달했습니다.\n\n${successionSourceCompanion}: 레벨 1로 초기화\n${successionTargetCompanion}: 레벨 1 → 레벨 ${data.targetStats.level}${data.levelUps.length > 0 ? ' (레벨업!)' : ''}`);
+        
+        // 모달 닫기
+        setShowSuccessionModal(false);
+        setShowSuccessionConfirm(false);
+        setSuccessionSourceCompanion(null);
+        setSuccessionTargetCompanion(null);
+        
+        // 데이터 새로고침
+        if (refreshAllData) {
+          await refreshAllData();
+        }
+      } else {
+        alert(`❌ 계승 실패: ${data.error || '알 수 없는 오류가 발생했습니다.'}`);
+      }
+    } catch (error) {
+      console.error('Succession error:', error);
+      alert('❌ 계승 중 오류가 발생했습니다.');
+    } finally {
+      setIsSuccessionProcessing(false);
+    }
+  };
+
+  const allCompanions = ["실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라", "메이델", "아이란", "리무", "셰리", "엘리시아"];
   const basicCompanions = ["실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라"];
   const maxBattleCompanions = 3;
 
@@ -87,7 +193,8 @@ const CompanionTab = ({
     "메이델": character7,
     "아이란": character8,
     "리무": character9,
-    "셰리": character10
+    "셰리": character10,
+    "엘리시아": character11
   };
 
   // 강화 헬퍼 함수들
@@ -207,6 +314,8 @@ const CompanionTab = ({
       bonusTable = BREAKTHROUGH_BONUS_RIMU;
     } else if (selectedEnhanceCompanion === "셰리") {
       bonusTable = BREAKTHROUGH_BONUS_SHERRY;
+    } else if (selectedEnhanceCompanion === "엘리시아") {
+      bonusTable = BREAKTHROUGH_BONUS_ELISIA;
     }
     const bonus = bonusTable[currentBreakthrough];
     
@@ -491,6 +600,44 @@ const CompanionTab = ({
               {(userAmber || 0) < 180000
                 ? `호박 부족 (${(userAmber || 0).toLocaleString()}/180,000)`
                 : "셰리 영입 (호박 180,000개)"
+              }
+            </button>
+            <p className={`text-xs mt-2 ${
+              isDarkMode ? "text-gray-400" : "text-gray-600"
+            }`}>
+              기본 동료 6명 보유 필요
+            </p>
+          </div>
+        )}
+
+        {/* 영웅 동료 구매 섹션 - 엘리시아 */}
+        {!companions.includes("엘리시아") && (
+          <div className={`p-4 rounded-xl mb-4 border ${
+            isDarkMode 
+              ? "glass-input border-red-500/30" 
+              : "bg-white/60 backdrop-blur-sm border-red-500/40"
+          }`}>
+            <h3 className={`text-lg font-bold mb-3 ${
+              isDarkMode ? "text-red-300" : "text-red-700"
+            }`}>
+              영웅 동료: 엘리시아
+            </h3>
+            <button
+              onClick={() => recruitHeroCompanion("엘리시아")}
+              disabled={(userAmber || 0) < 320000}
+              className={`w-full px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
+                (userAmber || 0) >= 320000
+                  ? isDarkMode
+                    ? "bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-400/40"
+                    : "bg-red-500/10 text-red-700 hover:bg-red-500/20 border border-red-500/40"
+                  : isDarkMode
+                    ? "bg-gray-500/20 text-gray-500 cursor-not-allowed border border-gray-500/20"
+                    : "bg-gray-300/30 text-gray-400 cursor-not-allowed border border-gray-300/30"
+              }`}
+            >
+              {(userAmber || 0) < 320000
+                ? `호박 부족 (${(userAmber || 0).toLocaleString()}/320,000)`
+                : "엘리시아 영입 (호박 320,000개)"
               }
             </button>
             <p className={`text-xs mt-2 ${
@@ -1449,17 +1596,278 @@ const CompanionTab = ({
             </div>
 
             {/* 모달 푸터 */}
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-300/20">
+            <div className="flex justify-between gap-3 p-6 border-t border-gray-300/20">
+              <button
+                onClick={() => handleSuccessionClick(selectedCompanion)}
+                disabled={!companionStats[selectedCompanion] || companionStats[selectedCompanion].level <= 1}
+                className={`px-6 py-2.5 rounded-lg font-semibold transition-all duration-200 shadow-sm ${
+                  companionStats[selectedCompanion] && companionStats[selectedCompanion].level > 1
+                    ? isDarkMode
+                      ? "bg-orange-600 hover:bg-orange-500 text-white shadow-orange-500/25 hover:shadow-orange-500/40"
+                      : "bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/30 hover:shadow-orange-500/50"
+                    : isDarkMode
+                      ? "bg-gray-700 text-gray-500 cursor-not-allowed opacity-50"
+                      : "bg-gray-200 text-gray-400 cursor-not-allowed opacity-50"
+                }`}
+              >
+                계승
+              </button>
               <button
                 onClick={closeCompanionModal}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                className={`px-6 py-2.5 rounded-lg font-medium transition-all duration-200 ${
                   isDarkMode 
-                    ? "bg-gray-700/50 text-gray-300 hover:bg-gray-700" 
-                    : "bg-gray-200/50 text-gray-700 hover:bg-gray-200"
+                    ? "bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white" 
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300 hover:text-gray-900"
                 }`}
               >
                 닫기
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 계승 대상 선택 모달 */}
+      {showSuccessionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className={`max-w-3xl w-full max-h-[80vh] rounded-2xl overflow-hidden ${
+            isDarkMode 
+              ? "glass-card border border-white/10" 
+              : "bg-white/95 backdrop-blur-md border border-gray-300/30"
+          }`}>
+            {/* 헤더 */}
+            <div className={`p-6 border-b ${
+              isDarkMode ? "border-white/10" : "border-gray-300/20"
+            }`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className={`text-2xl font-bold ${
+                    isDarkMode ? "text-white" : "text-gray-800"
+                  }`}>동료 계승</h2>
+                  <p className={`text-sm mt-1 ${
+                    isDarkMode ? "text-gray-400" : "text-gray-600"
+                  }`}>
+                    <span className="font-bold text-orange-500">{successionSourceCompanion}</span>의 경험치를 전달할 동료를 선택하세요
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowSuccessionModal(false);
+                    setSuccessionSourceCompanion(null);
+                  }}
+                  className={`p-2 rounded-full transition-all duration-300 ${
+                    isDarkMode 
+                      ? "hover:bg-white/10 text-gray-400 hover:text-white" 
+                      : "hover:bg-gray-100 text-gray-600 hover:text-gray-800"
+                  }`}
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* 경고 메시지 */}
+            <div className={`mx-6 mt-4 p-4 rounded-lg border ${
+              isDarkMode 
+                ? "bg-red-500/10 border-red-400/30 text-red-300" 
+                : "bg-red-50 border-red-300/50 text-red-700"
+            }`}>
+              <p className="text-sm font-semibold">⚠️ 주의사항</p>
+              <ul className="text-xs mt-2 space-y-1 list-disc list-inside">
+                <li><span className="font-bold">{successionSourceCompanion}</span>은(는) 레벨 1로 초기화됩니다</li>
+                <li>경험치를 받는 동료도 레벨 1로 초기화된 후 경험치를 받습니다</li>
+                <li>총 경험치의 70%만 전달됩니다 (30%는 손실)</li>
+                <li>이 작업은 되돌릴 수 없습니다</li>
+              </ul>
+            </div>
+
+            {/* 원본 동료 정보 */}
+            {successionSourceCompanion && companionStats?.[successionSourceCompanion] && (
+              <div className={`mx-6 mt-4 p-4 rounded-lg ${
+                isDarkMode ? "bg-gray-800/50" : "bg-gray-100/50"
+              }`}>
+                <p className={`text-sm font-semibold mb-2 ${
+                  isDarkMode ? "text-gray-300" : "text-gray-700"
+                }`}>
+                  📊 {successionSourceCompanion} 현재 상태
+                </p>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
+                    레벨: <span className="font-bold text-amber-500">
+                      {companionStats[successionSourceCompanion].level}
+                    </span>
+                  </div>
+                  <div className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
+                    현재 경험치: <span className="font-bold text-blue-500">
+                      {companionStats[successionSourceCompanion].experience?.toLocaleString() || 0}
+                    </span>
+                  </div>
+                  <div className={isDarkMode ? "text-gray-400" : "text-gray-600"}>
+                    총 경험치: <span className="font-bold text-green-500">
+                      {calculateTotalExp(
+                        companionStats[successionSourceCompanion].level,
+                        companionStats[successionSourceCompanion].experience || 0
+                      ).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+                <div className={`mt-2 text-xs ${isDarkMode ? "text-orange-400" : "text-orange-600"}`}>
+                  💫 전달할 경험치: <span className="font-bold">
+                    {Math.floor(calculateTotalExp(
+                      companionStats[successionSourceCompanion].level,
+                      companionStats[successionSourceCompanion].experience || 0
+                    ) * 0.7).toLocaleString()}
+                  </span> (70%)
+                </div>
+              </div>
+            )}
+
+            {/* 동료 목록 */}
+            <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(80vh - 360px)' }}>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {Object.keys(COMPANION_DATA)
+                  .filter((name) => {
+                    // 원본 동료 제외, 보유한 동료만 표시
+                    return name !== successionSourceCompanion && companions?.includes(name);
+                  })
+                  .map((name) => {
+                    const companionInfo = companionStats?.[name];
+                    const companionImage = companionImages[name];
+                    const tier = companionInfo?.tier || 0;
+                    
+                    return (
+                      <button
+                        key={name}
+                        onClick={() => handleTargetSelect(name)}
+                        className={`relative overflow-hidden rounded-xl transition-all duration-300 hover:scale-105 hover:shadow-xl ${
+                          isDarkMode 
+                            ? "bg-gray-800/50 hover:bg-gray-700/60" 
+                            : "bg-gray-100/50 hover:bg-gray-200/60"
+                        }`}
+                      >
+                        <div className="p-3">
+                          {/* 동료 이미지 */}
+                          {companionImage && (
+                            <img 
+                              src={companionImage} 
+                              alt={name}
+                              className="w-full h-32 object-contain rounded-lg mb-2"
+                              style={{ imageRendering: 'crisp-edges' }}
+                            />
+                          )}
+                          
+                          {/* 동료 이름 */}
+                          <h3 className={`font-bold text-sm text-center truncate ${
+                            tier === 2
+                              ? isDarkMode ? "text-purple-300" : "text-purple-700"
+                              : tier === 1
+                                ? isDarkMode ? "text-blue-300" : "text-blue-700"
+                                : isDarkMode ? "text-white" : "text-gray-800"
+                          }`}>
+                            {name}
+                          </h3>
+                          
+                          {/* 레벨 정보 */}
+                          {companionInfo && (
+                            <p className={`text-xs mt-1 ${
+                              isDarkMode ? "text-gray-400" : "text-gray-600"
+                            }`}>
+                              Lv.{companionInfo.level} • 경험치 {companionInfo.experience?.toLocaleString() || 0}
+                            </p>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 계승 확인 모달 */}
+      {showSuccessionConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className={`max-w-md w-full rounded-2xl overflow-hidden mx-4 ${
+            isDarkMode 
+              ? "glass-card border border-white/10" 
+              : "bg-white/95 backdrop-blur-md border border-gray-300/30"
+          }`}>
+            <div className="p-6">
+              <h2 className={`text-xl font-bold mb-4 ${
+                isDarkMode ? "text-white" : "text-gray-800"
+              }`}>계승 확인</h2>
+              
+              <div className={`p-4 rounded-lg mb-4 ${
+                isDarkMode ? "bg-gray-800/50" : "bg-gray-100/50"
+              }`}>
+                <p className={`text-sm mb-3 ${
+                  isDarkMode ? "text-gray-300" : "text-gray-700"
+                }`}>
+                  다음 계승을 진행하시겠습니까?
+                </p>
+                
+                <div className="space-y-2 text-sm">
+                  <div className={`flex items-center gap-2 ${
+                    isDarkMode ? "text-red-400" : "text-red-600"
+                  }`}>
+                    <span className="font-bold">계승 동료:</span>
+                    <span>{successionSourceCompanion}</span>
+                    <span className="text-xs">(→ Lv.1로 초기화)</span>
+                  </div>
+                  
+                  <div className={`flex items-center gap-2 ${
+                    isDarkMode ? "text-green-400" : "text-green-600"
+                  }`}>
+                    <span className="font-bold">대상 동료:</span>
+                    <span>{successionTargetCompanion}</span>
+                    <span className="text-xs">(→ Lv.1 초기화 후 경험치 적용)</span>
+                  </div>
+                  
+                  {successionSourceCompanion && companionStats?.[successionSourceCompanion] && (
+                    <div className={`flex items-center gap-2 ${
+                      isDarkMode ? "text-orange-400" : "text-orange-600"
+                    }`}>
+                      <span className="font-bold">전달 경험치:</span>
+                      <span>
+                        {Math.floor(calculateTotalExp(
+                          companionStats[successionSourceCompanion].level,
+                          companionStats[successionSourceCompanion].experience || 0
+                        ) * 0.7).toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowSuccessionConfirm(false);
+                    setSuccessionTargetCompanion(null);
+                  }}
+                  disabled={isSuccessionProcessing}
+                  className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all duration-200 ${
+                    isDarkMode
+                      ? "bg-gray-700 hover:bg-gray-600 text-white"
+                      : "bg-gray-300 hover:bg-gray-400 text-gray-800"
+                  } ${isSuccessionProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  취소
+                </button>
+                
+                <button
+                  onClick={handleSuccessionConfirm}
+                  disabled={isSuccessionProcessing}
+                  className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all duration-200 shadow-md ${
+                    isDarkMode
+                      ? "bg-orange-600 hover:bg-orange-500 text-white shadow-orange-500/30 hover:shadow-orange-500/50"
+                      : "bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/40 hover:shadow-orange-500/60"
+                  } ${isSuccessionProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {isSuccessionProcessing ? '처리 중...' : '계승하기'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

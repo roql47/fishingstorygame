@@ -1304,7 +1304,8 @@ const HERO_COMPANION_LIST = [
   "메이델",
   "아이란",
   "리무",
-  "셰리"
+  "셰리",
+  "엘리시아"
 ];
 
 // User UUID Schema (사용자 고유 ID 관리)
@@ -6533,6 +6534,141 @@ app.post("/api/add-companion-exp", authenticateJWT, async (req, res) => {
   }
 });
 
+// 동료 계승 API - 한 동료의 경험치 75%를 다른 동료에게 전달
+app.post("/api/companion-succession", authenticateJWT, async (req, res) => {
+  try {
+    const { sourceCompanion, targetCompanion } = req.body;
+    const { userUuid, username } = req.user;
+    
+    console.log(`🔄 동료 계승 요청: ${sourceCompanion} → ${targetCompanion}`);
+    
+    // 🔧 입력값 검증
+    if (!sourceCompanion || typeof sourceCompanion !== 'string') {
+      return res.status(400).json({ error: "계승할 동료 이름이 필요합니다." });
+    }
+    
+    if (!targetCompanion || typeof targetCompanion !== 'string') {
+      return res.status(400).json({ error: "계승받을 동료 이름이 필요합니다." });
+    }
+    
+    if (sourceCompanion === targetCompanion) {
+      return res.status(400).json({ error: "같은 동료끼리는 계승할 수 없습니다." });
+    }
+    
+    const queryResult = await getUserQuery('user', username, userUuid);
+    let query;
+    if (queryResult.userUuid) {
+      query = { userUuid: queryResult.userUuid };
+    } else {
+      query = queryResult;
+    }
+    
+    // 🔧 두 동료의 능력치 조회
+    const [sourceStats, targetStats] = await Promise.all([
+      CompanionStatsModel.findOne({
+        ...query,
+        companionName: sourceCompanion
+      }),
+      CompanionStatsModel.findOne({
+        ...query,
+        companionName: targetCompanion
+      })
+    ]);
+    
+    // 동료 존재 여부 확인
+    if (!sourceStats) {
+      return res.status(404).json({ error: `${sourceCompanion}을(를) 찾을 수 없습니다.` });
+    }
+    
+    if (!targetStats) {
+      return res.status(404).json({ error: `${targetCompanion}을(를) 찾을 수 없습니다.` });
+    }
+    
+    // 계승하는 동료가 레벨 1이면 안됨
+    if (sourceStats.level <= 1) {
+      return res.status(400).json({ error: "레벨 1 동료는 계승할 수 없습니다." });
+    }
+    
+    // 경험치 계산 함수
+    const calculateExpToNextLevel = (level) => {
+      return Math.floor(100 + Math.pow(level, 2.1) * 25);
+    };
+    
+    // 총 경험치 계산 함수 (레벨 1부터 현재 레벨까지 사용된 모든 경험치 + 현재 보유 경험치)
+    const calculateTotalExp = (level, currentExp) => {
+      let total = currentExp;
+      for (let lv = 1; lv < level; lv++) {
+        total += calculateExpToNextLevel(lv + 1);
+      }
+      return total;
+    };
+    
+    // 계승하는 동료의 총 경험치 계산
+    const sourceTotalExp = calculateTotalExp(sourceStats.level, sourceStats.experience);
+    console.log(`📊 ${sourceCompanion} 총 경험치: ${sourceTotalExp} (Lv.${sourceStats.level}, 현재 경험치: ${sourceStats.experience})`);
+    
+    // 70% 계산
+    const transferExp = Math.floor(sourceTotalExp * 0.7);
+    console.log(`💫 전달할 경험치: ${transferExp} (70%)`);
+    
+    // 계승받을 동료를 초기화 후 경험치 적용
+    let newTargetExp = transferExp;  // 현재 경험치 무시하고 전달받는 경험치만
+    let newTargetLevel = 1;  // 레벨 1부터 시작
+    
+    const levelUps = [];
+    let expToNextLevel = calculateExpToNextLevel(newTargetLevel + 1);
+    
+    while (newTargetExp >= expToNextLevel) {
+      newTargetExp -= expToNextLevel;
+      newTargetLevel++;
+      levelUps.push(newTargetLevel);
+      expToNextLevel = calculateExpToNextLevel(newTargetLevel + 1);
+    }
+    
+    // 동료 능력치 업데이트
+    targetStats.level = newTargetLevel;
+    targetStats.experience = newTargetExp;
+    
+    // 계승한 동료는 레벨 1, 경험치 0으로 초기화
+    sourceStats.level = 1;
+    sourceStats.experience = 0;
+    
+    // 데이터베이스 저장
+    await Promise.all([
+      sourceStats.save(),
+      targetStats.save()
+    ]);
+    
+    console.log(`✅ 계승 완료!`);
+    console.log(`   ${sourceCompanion}: 레벨 1로 초기화`);
+    console.log(`   ${targetCompanion}: 레벨 1로 초기화 후 → Lv.${targetStats.level} (경험치: ${targetStats.experience})`);
+    
+    if (levelUps.length > 0) {
+      console.log(`   🎉 ${targetCompanion} 레벨업! 1 → ${levelUps.join(' → ')}`);
+    }
+    
+    res.json({
+      success: true,
+      sourceStats: {
+        level: sourceStats.level,
+        experience: sourceStats.experience,
+        expToNextLevel: calculateExpToNextLevel(2)
+      },
+      targetStats: {
+        level: targetStats.level,
+        experience: targetStats.experience,
+        expToNextLevel: calculateExpToNextLevel(targetStats.level + 1)
+      },
+      transferredExp: transferExp,
+      levelUps: levelUps
+    });
+    
+  } catch (error) {
+    console.error("Failed to perform companion succession:", error);
+    res.status(500).json({ error: "동료 계승에 실패했습니다." });
+  }
+});
+
 // 동료 뽑기 API
 app.post("/api/recruit-companion", authenticateJWT, async (req, res) => {
   try {
@@ -6921,6 +7057,67 @@ app.post("/api/recruit-hero-companion", authenticateJWT, async (req, res) => {
       });
     }
     
+    // 엘리시아 구매 조건 확인
+    if (companionName === "엘리시아") {
+      // 1. 기본 동료 6명 보유 확인
+      const hasAllBasicCompanions = COMPANION_LIST.every(
+        companion => userCompanions?.companions.includes(companion)
+      );
+      
+      if (!hasAllBasicCompanions) {
+        return res.status(400).json({ 
+          error: "엘리시아를 영입하려면 기본 동료 6명을 모두 보유해야 합니다.",
+          requiredCompanions: COMPANION_LIST.length,
+          currentCompanions: userCompanions?.companions.length || 0
+        });
+      }
+      
+      // 2. 호박 32만개 확인
+      const requiredAmbers = 320000;
+      if (!userAmbers || userAmbers.amber < requiredAmbers) {
+        return res.status(400).json({ 
+          error: `호박이 부족합니다. (필요: ${requiredAmbers.toLocaleString()}개)`,
+          required: requiredAmbers,
+          current: userAmbers?.amber || 0
+        });
+      }
+      
+      // 호박 차감
+      userAmbers.amber -= requiredAmbers;
+      await userAmbers.save();
+      
+      // 동료 추가
+      if (!userCompanions) {
+        const createData = {
+          userId: query.userId || 'user',
+          username: query.username || username,
+          userUuid: query.userUuid || userUuid,
+          companions: [companionName]
+        };
+        await CompanionModel.create(createData);
+      } else {
+        userCompanions.companions.push(companionName);
+        await userCompanions.save();
+      }
+      
+      // 실시간 브로드캐스트
+      broadcastUserDataUpdate(userUuid, username, 'companions', { 
+        companions: userCompanions?.companions || [companionName]
+      });
+      broadcastUserDataUpdate(userUuid, username, 'amber', { 
+        amber: userAmbers.amber 
+      });
+      
+      console.log(`✨ ${username}이(가) ${companionName}을(를) 영입했습니다!`);
+      
+      return res.json({
+        success: true,
+        companion: companionName,
+        remainingAmbers: userAmbers.amber,
+        totalCompanions: (userCompanions?.companions.length || 0) + 1
+      });
+    }
+    
     return res.status(400).json({ error: "알 수 없는 영웅 동료입니다." });
     
   } catch (error) {
@@ -7058,7 +7255,8 @@ app.post("/api/companion/breakthrough", authenticateJWT, async (req, res) => {
       "메이델": "영혼의정수",
       "아이란": "땅의정수",
       "리무": "물의정수",
-      "셰리": "바람의정수"
+      "셰리": "바람의정수",
+      "엘리시아": "불의정수"
     };
     
     const essenceName = COMPANION_ESSENCE[companionName];
@@ -7159,6 +7357,16 @@ app.post("/api/companion/breakthrough", authenticateJWT, async (req, res) => {
       5: { growthHp: 12.4, growthAttack: 3.2, growthSpeed: 0.6 }
     };
     
+    // 엘리시아 전용 돌파 보너스 (공격형)
+    const BREAKTHROUGH_BONUS_ELISIA = {
+      0: { growthHp: 2.5, growthAttack: 0.8, growthSpeed: 0.1 },
+      1: { growthHp: 3.5, growthAttack: 1.0, growthSpeed: 0.15 },
+      2: { growthHp: 4.5, growthAttack: 1.5, growthSpeed: 0.2 },
+      3: { growthHp: 5.5, growthAttack: 2.0, growthSpeed: 0.25 },
+      4: { growthHp: 8, growthAttack: 3.0, growthSpeed: 0.3 },
+      5: { growthHp: 12, growthAttack: 4.0, growthSpeed: 0.5 }
+    };
+    
     const cost = BREAKTHROUGH_COSTS[currentBreakthrough];
     // 영웅 동료별 전용 보너스 사용
     let bonusTable = BREAKTHROUGH_BONUS;
@@ -7170,6 +7378,8 @@ app.post("/api/companion/breakthrough", authenticateJWT, async (req, res) => {
       bonusTable = BREAKTHROUGH_BONUS_RIMU;
     } else if (companionName === "셰리") {
       bonusTable = BREAKTHROUGH_BONUS_SHERRY;
+    } else if (companionName === "엘리시아") {
+      bonusTable = BREAKTHROUGH_BONUS_ELISIA;
     }
     const bonus = bonusTable[currentBreakthrough];
     
@@ -7321,7 +7531,8 @@ app.get("/api/companion/breakthrough-cost/:companionName", authenticateJWT, asyn
       "메이델": "영혼의정수",
       "아이란": "땅의정수",
       "리무": "물의정수",
-      "셰리": "바람의정수"
+      "셰리": "바람의정수",
+      "엘리시아": "불의정수"
     };
     
     const essenceName = COMPANION_ESSENCE[companionName];
@@ -12507,14 +12718,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.416"
+    version: "v1.417"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.416",
+    version: "v1.417",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
