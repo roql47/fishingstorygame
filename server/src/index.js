@@ -10684,7 +10684,7 @@ app.post("/api/enhance-equipment", authenticateJWT, async (req, res) => {
     // 호박석 비용 계산용 공식: f(x) = 0.45x³ - 0.65x² + 1.3x
     const calculateEnhancementBonus = (level) => {
       if (level <= 0) return 0;
-      return 0.45 * Math.pow(level, 3) - 0.65 * Math.pow(level, 2) + 1.3 * level;
+      return 0.35 * Math.pow(level, 3) - 0.65 * Math.pow(level, 2) + 1.3 * level;
     };
     
     // 장비 등급별 강화 비용 배율 (3차방정식: f(x) = 0.1x³ - 0.5x² + 2x + 0.4)
