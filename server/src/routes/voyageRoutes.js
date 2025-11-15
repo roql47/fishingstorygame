@@ -6,13 +6,13 @@ const router = express.Router();
 const recentClaims = new Map(); // userUuid -> timestamp
 
 // 항해 보상 지급 API
-const setupVoyageRoutes = (app, UserMoneyModel, CatchModel, DailyQuestModel, getKSTDate, authenticateJWT) => {
+const setupVoyageRoutes = (app, UserMoneyModel, CatchModel, DailyQuestModel, getKSTDate, authenticateJWT, AutoBaitModel) => {
   // 항해 보상 지급
   app.post('/api/voyage/reward', authenticateJWT, async (req, res) => {
     try {
       // 🔐 JWT에서 사용자 정보 추출 (보안 강화)
       const { userUuid, username } = req.user;
-      const { fishName, gold, rank } = req.body;
+      const { fishName, gold, rank, autoVoyage } = req.body;
 
       if (!fishName || !gold) {
         return res.status(400).json({
@@ -21,23 +21,75 @@ const setupVoyageRoutes = (app, UserMoneyModel, CatchModel, DailyQuestModel, get
         });
       }
 
-      // 🔒 레이어 3: 서버 측 중복 요청 차단 (3초 이내 재요청 차단)
-      const now = Date.now();
-      const lastClaimTime = recentClaims.get(userUuid);
-      if (lastClaimTime && now - lastClaimTime < 3000) {
-        console.log(`[VOYAGE] 중복 요청 차단: ${username} (${now - lastClaimTime}ms 전 요청)`);
-        return res.status(429).json({
-          success: false,
-          error: '보상은 3초에 한 번만 받을 수 있습니다. 잠시 후 다시 시도해주세요.'
-        });
+      // 🎣 자동항해 모드일 경우 자동미끼 차감
+      if (autoVoyage) {
+        console.log(`[VOYAGE] 자동항해 모드 - 자동미끼 체크 시작 (userUuid: ${userUuid})`);
+        
+        if (!AutoBaitModel) {
+          console.error('[VOYAGE] ❌ AutoBaitModel이 없습니다!');
+          return res.status(500).json({
+            success: false,
+            error: 'AutoBaitModel 초기화 오류'
+          });
+        }
+        
+        const baitDoc = await AutoBaitModel.findOne({ userUuid });
+        console.log(`[VOYAGE] 자동미끼 문서 조회 결과:`, baitDoc);
+        
+        if (!baitDoc) {
+          console.warn(`[VOYAGE] ⚠️ ${username}의 자동미끼 문서가 없습니다. 생성합니다.`);
+          // 자동미끼 문서가 없으면 생성
+          const newBaitDoc = new AutoBaitModel({
+            userUuid,
+            username,
+            autoBaitCount: 0
+          });
+          await newBaitDoc.save();
+          
+          return res.status(400).json({
+            success: false,
+            error: '자동미끼가 부족합니다.',
+            autoBaitCount: 0
+          });
+        }
+        
+        if (baitDoc.autoBaitCount <= 0) {
+          console.warn(`[VOYAGE] ⚠️ ${username}의 자동미끼가 부족합니다 (현재: ${baitDoc.autoBaitCount}개)`);
+          return res.status(400).json({
+            success: false,
+            error: '자동미끼가 부족합니다.',
+            autoBaitCount: 0
+          });
+        }
+
+        // 자동미끼 1개 차감
+        baitDoc.autoBaitCount = Math.max(0, baitDoc.autoBaitCount - 1);
+        await baitDoc.save();
+        console.log(`[VOYAGE] 🎣 자동미끼 차감 성공: ${username} (${baitDoc.autoBaitCount + 1} → ${baitDoc.autoBaitCount}개)`);
       }
-      
-      recentClaims.set(userUuid, now);
-      
-      // 5분 후 자동 정리 (메모리 누수 방지)
-      setTimeout(() => {
-        recentClaims.delete(userUuid);
-      }, 300000);
+
+      // 🔒 레이어 3: 서버 측 중복 요청 차단 (자동항해 모드에서는 무시)
+      if (!autoVoyage) {
+        // 일반 모드에서만 1초 중복 차단 적용
+        const now = Date.now();
+        const lastClaimTime = recentClaims.get(userUuid);
+        if (lastClaimTime && now - lastClaimTime < 1000) {
+          console.log(`[VOYAGE] 중복 요청 차단 (일반 모드): ${username} (${now - lastClaimTime}ms 전 요청)`);
+          return res.status(429).json({
+            success: false,
+            error: '보상은 1초에 한 번만 받을 수 있습니다. 잠시 후 다시 시도해주세요.'
+          });
+        }
+        
+        recentClaims.set(userUuid, now);
+        
+        // 5분 후 자동 정리 (메모리 누수 방지)
+        setTimeout(() => {
+          recentClaims.delete(userUuid);
+        }, 300000);
+      } else {
+        console.log(`[VOYAGE] 자동항해 모드 - 중복 차단 무시`);
+      }
 
       // 🎯 골드 지급 (원자적 연산으로 race condition 방지)
       const moneyDoc = await UserMoneyModel.findOneAndUpdate(
@@ -118,11 +170,19 @@ const setupVoyageRoutes = (app, UserMoneyModel, CatchModel, DailyQuestModel, get
         }
       }
 
+      // 현재 자동미끼 개수 조회
+      let autoBaitCount = null;
+      if (AutoBaitModel) {
+        const baitDoc = await AutoBaitModel.findOne({ userUuid });
+        autoBaitCount = baitDoc?.autoBaitCount || 0;
+      }
+
       res.json({
         success: true,
         gold: moneyDoc.money,
         fishName,
-        count: fishDoc.count
+        count: fishDoc.count,
+        autoBaitCount
       });
     } catch (error) {
       console.error('[VOYAGE] 보상 지급 오류:', error);

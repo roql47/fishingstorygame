@@ -1305,7 +1305,8 @@ const HERO_COMPANION_LIST = [
   "아이란",
   "리무",
   "셰리",
-  "엘리시아"
+  "엘리시아",
+  "에블린"
 ];
 
 // User UUID Schema (사용자 고유 ID 관리)
@@ -3956,6 +3957,118 @@ io.on("connection", (socket) => {
 
       } catch (error) {
         console.error("6성장군 페이커 쿠폰 처리 중 오류:", error);
+        socket.emit("chat:message", {
+          system: true,
+          username: "system",
+          content: "🚫 쿠폰 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+    }
+
+    // 🎁 여우는 어떻게울어요? 쿠폰 코드 처리
+    if (trimmed === "여우는 어떻게울어요?") {
+      try {
+        // 쿠폰 만료일 체크 (한국시간 기준 2025년 11월 22일 오후 2시)
+        const now = new Date();
+        const kstOffset = 9 * 60 * 60 * 1000; // 9시간을 밀리초로
+        const kstNow = new Date(now.getTime() + kstOffset);
+        const expiryDate = new Date('2025-11-22T14:00:00+09:00'); // 한국시간 기준
+        
+        if (kstNow > expiryDate) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 이 쿠폰은 만료되었습니다. (유효기간: 2025년 11월 22일 오후 2시까지)",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // Guest 사용자 체크 - DB에서 사용자 정보 조회
+        const dbUser = await UserUuidModel.findOne({ userUuid: user.userUuid });
+        
+        if (!dbUser || (!dbUser.originalGoogleId && !dbUser.originalKakaoId)) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 쿠폰은 구글 또는 카카오 소셜 로그인 후에만 사용할 수 있습니다.",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        // 이미 사용한 쿠폰인지 확인
+        const existingUsage = await CouponUsageModel.findOne({
+          userUuid: user.userUuid,
+          couponCode: "여우는 어떻게울어요?"
+        });
+
+        if (existingUsage) {
+          socket.emit("chat:message", {
+            system: true,
+            username: "system",
+            content: "🚫 이미 사용한 쿠폰입니다. 쿠폰은 계정당 한 번만 사용할 수 있습니다.",
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+
+        const queryResult = await getUserQuery('user', user.username, user.userUuid);
+        let query;
+        if (queryResult.userUuid) {
+          query = { userUuid: queryResult.userUuid };
+        } else {
+          query = queryResult;
+        }
+
+        // 먼저 쿠폰 사용 기록을 저장하여 중복 사용 방지
+        const couponUsage = new CouponUsageModel({
+          userUuid: user.userUuid,
+          username: user.username,
+          couponCode: "여우는 어떻게울어요?",
+          reward: "autoBait:50"
+        });
+        await couponUsage.save();
+
+        // 자동미끼 50개 지급
+        const autoBaitRewardAmount = 50;
+        let userBaits = await AutoBaitModel.findOne(query);
+        
+        if (!userBaits) {
+          const createData = {
+            userId: query.userId || 'user',
+            username: query.username || user.username,
+            userUuid: query.userUuid || user.userUuid,
+            autoBaitCount: autoBaitRewardAmount
+          };
+          userBaits = new AutoBaitModel(createData);
+        } else {
+          userBaits.autoBaitCount = (userBaits.autoBaitCount || 0) + autoBaitRewardAmount;
+        }
+        await userBaits.save();
+
+        // 캐시 무효화
+        invalidateCache('autoBait', user.userUuid);
+
+        // 성공 메시지 전송
+        socket.emit("chat:message", {
+          system: true,
+          username: "system",
+          content: `🎉 축하합니다! 여우는 어떻게울어요? 쿠폰이 성공적으로 사용되었습니다!\n🎣 자동미끼 ${autoBaitRewardAmount}개를 받았습니다! (총 ${userBaits.autoBaitCount}개)`,
+          timestamp: new Date().toISOString()
+        });
+
+        // 사용자 데이터 업데이트 전송
+        console.log(`🔄 Calling sendUserDataUpdate with userUuid: ${user.userUuid}, username: ${user.username}`);
+        sendUserDataUpdate(socket, user.userUuid, user.username);
+
+        console.log(`🎁 여우는 어떻게울어요? 쿠폰 사용: ${user.username} (${user.userUuid}) - autoBait +${autoBaitRewardAmount}`);
+        return;
+
+      } catch (error) {
+        console.error("여우는 어떻게울어요? 쿠폰 처리 중 오류:", error);
         socket.emit("chat:message", {
           system: true,
           username: "system",
@@ -7074,6 +7187,67 @@ app.post("/api/recruit-hero-companion", authenticateJWT, async (req, res) => {
       
       // 2. 호박 32만개 확인
       const requiredAmbers = 320000;
+      if (!userAmbers || userAmbers.amber < requiredAmbers) {
+        return res.status(400).json({ 
+          error: `호박이 부족합니다. (필요: ${requiredAmbers.toLocaleString()}개)`,
+          required: requiredAmbers,
+          current: userAmbers?.amber || 0
+        });
+      }
+      
+      // 호박 차감
+      userAmbers.amber -= requiredAmbers;
+      await userAmbers.save();
+      
+      // 동료 추가
+      if (!userCompanions) {
+        const createData = {
+          userId: query.userId || 'user',
+          username: query.username || username,
+          userUuid: query.userUuid || userUuid,
+          companions: [companionName]
+        };
+        await CompanionModel.create(createData);
+      } else {
+        userCompanions.companions.push(companionName);
+        await userCompanions.save();
+      }
+      
+      // 실시간 브로드캐스트
+      broadcastUserDataUpdate(userUuid, username, 'companions', { 
+        companions: userCompanions?.companions || [companionName]
+      });
+      broadcastUserDataUpdate(userUuid, username, 'amber', { 
+        amber: userAmbers.amber 
+      });
+      
+      console.log(`✨ ${username}이(가) ${companionName}을(를) 영입했습니다!`);
+      
+      return res.json({
+        success: true,
+        companion: companionName,
+        remainingAmbers: userAmbers.amber,
+        totalCompanions: (userCompanions?.companions.length || 0) + 1
+      });
+    }
+    
+    // 에블린 구매 조건 확인
+    if (companionName === "에블린") {
+      // 1. 기본 동료 6명 보유 확인
+      const hasAllBasicCompanions = COMPANION_LIST.every(
+        companion => userCompanions?.companions.includes(companion)
+      );
+      
+      if (!hasAllBasicCompanions) {
+        return res.status(400).json({ 
+          error: "에블린을 영입하려면 기본 동료 6명을 모두 보유해야 합니다.",
+          requiredCompanions: COMPANION_LIST.length,
+          currentCompanions: userCompanions?.companions.length || 0
+        });
+      }
+      
+      // 2. 호박 48만개 확인
+      const requiredAmbers = 480000;
       if (!userAmbers || userAmbers.amber < requiredAmbers) {
         return res.status(400).json({ 
           error: `호박이 부족합니다. (필요: ${requiredAmbers.toLocaleString()}개)`,
@@ -14268,7 +14442,7 @@ const { router: expeditionRouter, expeditionSystem } = setupExpeditionRoutes(aut
 app.use("/api/expedition", expeditionRouter);
 
 // 항해 라우터 등록
-setupVoyageRoutes(app, UserMoneyModel, CatchModel, DailyQuestModel, getKSTDate, authenticateJWT);
+setupVoyageRoutes(app, UserMoneyModel, CatchModel, DailyQuestModel, getKSTDate, authenticateJWT, AutoBaitModel);
 
 // 업적 라우터 등록
 const { router: achievementRouter } = setupAchievementRoutes(authenticateJWT, UserUuidModel, CatchModel, FishingSkillModel, RaidDamageModel, RareFishCountModel);

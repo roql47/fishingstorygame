@@ -208,6 +208,26 @@ export const COMPANION_DATA = {
       damageMultiplier: 2.6, // 기본 공격력의 260%
       moraleRequired: 100
     }
+  },
+  "에블린": {
+    name: "에블린",
+    baseHp: 95,        // 힐러형 - 중간 체력
+    baseAttack: 15,    // 회복량에 영향
+    baseSpeed: 60,     // 힐러는 빠른 속도
+    growthHp: 13,
+    growthAttack: 3.2,
+    growthSpeed: 0.5,
+    rarity: "영웅",
+    recruitmentCost: { ambers: 480000, requiredCompanions: 6 }, // 기본 6명 보유 + 호박 48만개
+    skill: {
+      name: "마력정화",
+      description: "랜덤한 아군 2명의 체력을 회복시킵니다",
+      damageMultiplier: 0, // 데미지 없음
+      healMultiplier: 1.2, // 공격력의 120%
+      moraleRequired: 100,
+      targetCount: 2, // 2명 회복
+      skillType: "heal_random" // 랜덤 회복
+    }
   }
 };
 
@@ -304,7 +324,8 @@ export const COMPANION_ESSENCE = {
   "아이란": "땅의정수",
   "리무": "물의정수",
   "셰리": "바람의정수",
-  "엘리시아": "불의정수"
+  "엘리시아": "불의정수",
+  "에블린": "빛의정수"
 };
 
 // 정수별 이모지
@@ -387,6 +408,16 @@ export const BREAKTHROUGH_BONUS_ELISIA = {
   3: { growthHp: 5.5, growthAttack: 2.0, growthSpeed: 0.25 }, // 4차 돌파
   4: { growthHp: 8, growthAttack: 3.0, growthSpeed: 0.3 }, // 5차 돌파
   5: { growthHp: 12, growthAttack: 4.0, growthSpeed: 0.5 } // 6차 돌파 - 공격력 높음
+};
+
+// 에블린 전용 돌파 보너스 성장률 (영웅 등급 - 힐러형)
+export const BREAKTHROUGH_BONUS_EVELYN = {
+  0: { growthHp: 3.5, growthAttack: 0.6, growthSpeed: 0.1 }, // 1차 돌파
+  1: { growthHp: 5, growthAttack: 0.8, growthSpeed: 0.15 }, // 2차 돌파
+  2: { growthHp: 6.5, growthAttack: 1.2, growthSpeed: 0.2 }, // 3차 돌파
+  3: { growthHp: 8, growthAttack: 1.8, growthSpeed: 0.25 }, // 4차 돌파
+  4: { growthHp: 10, growthAttack: 2.5, growthSpeed: 0.3 }, // 5차 돌파
+  5: { growthHp: 14, growthAttack: 3.5, growthSpeed: 0.5 } // 6차 돌파
 };
 
 // 등급별 색상 가져오기 (tier 기반)

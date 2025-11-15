@@ -674,6 +674,26 @@ class ExpeditionSystem {
                     isPartyBuff: true,
                     excludeSelf: true
                 }
+            },
+            "에블린": {
+                name: "에블린",
+                baseHp: 85,
+                baseAttack: 13,
+                baseSpeed: 60,
+                growthHp: 13,
+                growthAttack: 3.2,
+                growthSpeed: 0.5,
+                description: "빛의 정화자",
+                rarity: "영웅",
+                skill: {
+                    name: "마력정화",
+                    description: "랜덤한 아군 2명의 체력을 회복시킵니다",
+                    damageMultiplier: 0,
+                    healMultiplier: 1.2,
+                    moraleRequired: 100,
+                    targetCount: 2,
+                    skillType: "heal_random"
+                }
             }
         };
 
@@ -774,7 +794,8 @@ class ExpeditionSystem {
             "림스&베리": { baseHp: 60, baseAttack: 9, baseSpeed: 50, growthHp: 10, growthAttack: 2, growthSpeed: 0.5 },
             "클로에": { baseHp: 40, baseAttack: 14, baseSpeed: 65, growthHp: 6, growthAttack: 3, growthSpeed: 0.5 },
             "나하트라": { baseHp: 80, baseAttack: 11, baseSpeed: 30, growthHp: 14, growthAttack: 3, growthSpeed: 0.5 },
-            "메이델": { baseHp: 85, baseAttack: 12, baseSpeed: 50, growthHp: 13, growthAttack: 3, growthSpeed: 0.5 }
+            "메이델": { baseHp: 85, baseAttack: 12, baseSpeed: 50, growthHp: 13, growthAttack: 3, growthSpeed: 0.5 },
+            "에블린": { baseHp: 85, baseAttack: 13, baseSpeed: 60, growthHp: 13, growthAttack: 3.2, growthSpeed: 0.5 }
         };
         return COMPANION_DATA[companionName];
     }
@@ -1151,7 +1172,7 @@ class ExpeditionSystem {
                 // 힐 스킬 - 체력이 가장 낮은 아군 회복
                 const healAmount = Math.floor(companionStats.attack * skill.healMultiplier);
                 
-                // 체력이 가장 낮은 플레이어 찾기
+                // 체력이 가장 낮은 플레이어 찾기 (체력이 100%인 경우 제외)
                 let lowestHpTarget = null;
                 let lowestHpRatio = 1;
                 
@@ -1166,13 +1187,13 @@ class ExpeditionSystem {
                     const maxHp = baseMaxHp + healthStatBonus;
                     const hpRatio = currentHp / maxHp;
                     
-                    if (currentHp > 0 && hpRatio < lowestHpRatio) {
+                    if (currentHp > 0 && hpRatio < lowestHpRatio && hpRatio < 1.0) {
                         lowestHpRatio = hpRatio;
                         lowestHpTarget = { type: 'player', id: player.id, name: player.name, currentHp, maxHp };
                     }
                 });
                 
-                // 동료들도 체크
+                // 동료들도 체크 (체력이 100%인 경우 제외)
                 Object.entries(room.playerData || {}).forEach(([pId, playerData]) => {
                     playerData.companions?.forEach(comp => {
                         const compKey = `${pId}_${comp.companionName}`;
@@ -1187,7 +1208,7 @@ class ExpeditionSystem {
                         const maxHp = compStats.hp;
                         const hpRatio = currentHp / maxHp;
                         
-                        if (currentHp > 0 && hpRatio < lowestHpRatio) {
+                        if (currentHp > 0 && hpRatio < lowestHpRatio && hpRatio < 1.0) {
                             lowestHpRatio = hpRatio;
                             lowestHpTarget = { type: 'companion', id: compKey, name: comp.companionName, currentHp, maxHp };
                         }
@@ -1204,6 +1225,78 @@ class ExpeditionSystem {
                     }
                     
                     battleState.battleLog.push(`${companion.companionName}이(가) ${skill.name}을(를) 사용하여 ${lowestHpTarget.name}을(를) ${healAmount} 회복시켰습니다!`);
+                }
+                
+                finalDamage = 0; // 힐 스킬은 데미지 없음
+            } else if (skill.skillType === 'heal_random') {
+                // 랜덤 힐 스킬 - 랜덤한 아군 회복 (다중 타겟 지원)
+                const healAmount = Math.floor(companionStats.attack * skill.healMultiplier);
+                
+                // 회복 가능한 모든 타겟 수집
+                const healableTargets = [];
+                
+                room.players.forEach(player => {
+                    const currentHp = battleState.playerHp[player.id] || 0;
+                    const playerData = room.playerData[player.id];
+                    const accessoryLevel = playerData?.accessoryLevel || 0;
+                    const accessoryEnhancement = playerData?.accessoryEnhancement || 0;
+                    const accessoryEnhancementBonus = this.calculateTotalEnhancementBonus(accessoryEnhancement);
+                    const baseMaxHp = this.calculatePlayerMaxHp(accessoryLevel, accessoryEnhancementBonus);
+                    const healthStatBonus = accessoryLevel * (playerData?.healthStat || 0) * 5;
+                    const maxHp = baseMaxHp + healthStatBonus;
+                    
+                    if (currentHp > 0 && currentHp < maxHp) {
+                        healableTargets.push({ type: 'player', id: player.id, name: player.name, currentHp, maxHp });
+                    }
+                });
+                
+                // 동료들도 수집
+                Object.entries(room.playerData || {}).forEach(([pId, playerData]) => {
+                    playerData.companions?.forEach(comp => {
+                        const compKey = `${pId}_${comp.companionName}`;
+                        const currentHp = battleState.companionHp[compKey] || 0;
+                        const compStats = this.calculateCompanionStats(
+                            comp.companionName, 
+                            comp.level,
+                            comp.tier || 0,
+                            comp.breakthrough || 0,
+                            comp.breakthroughStats || null
+                        );
+                        const maxHp = compStats.hp;
+                        
+                        if (currentHp > 0 && currentHp < maxHp) {
+                            healableTargets.push({ type: 'companion', id: compKey, name: comp.companionName, currentHp, maxHp });
+                        }
+                    });
+                });
+                
+                // 랜덤 타겟 선택 (다중 타겟 지원)
+                const targetCount = skill.targetCount || 1;
+                if (healableTargets.length > 0) {
+                    const actualTargetCount = Math.min(targetCount, healableTargets.length);
+                    const selectedTargets = [];
+                    
+                    // 중복 없이 랜덤 타겟 선택
+                    for (let i = 0; i < actualTargetCount; i++) {
+                        const availableTargets = healableTargets.filter(t => !selectedTargets.find(st => st.id === t.id));
+                        if (availableTargets.length > 0) {
+                            const randomTarget = availableTargets[Math.floor(Math.random() * availableTargets.length)];
+                            selectedTargets.push(randomTarget);
+                        }
+                    }
+                    
+                    // 각 타겟에 힐링 적용
+                    selectedTargets.forEach(randomTarget => {
+                        const newHp = Math.min(randomTarget.maxHp, randomTarget.currentHp + healAmount);
+                        
+                        if (randomTarget.type === 'player') {
+                            battleState.playerHp[randomTarget.id] = newHp;
+                        } else {
+                            battleState.companionHp[randomTarget.id] = newHp;
+                        }
+                        
+                        battleState.battleLog.push(`${companion.companionName}이(가) ${skill.name}으로 ${randomTarget.name}을(를) ${healAmount} 회복시켰습니다!`);
+                    });
                 }
                 
                 finalDamage = 0; // 힐 스킬은 데미지 없음
@@ -2162,7 +2255,7 @@ class ExpeditionSystem {
                 // 힐 스킬 - 체력이 가장 낮은 아군 회복
                 const healAmount = Math.floor(companionStats.attack * skill.healMultiplier);
                 
-                // 체력이 가장 낮은 플레이어 찾기
+                // 체력이 가장 낮은 플레이어 찾기 (체력이 100%인 경우 제외)
                 let lowestHpTarget = null;
                 let lowestHpRatio = 1;
                 
@@ -2177,13 +2270,13 @@ class ExpeditionSystem {
                     const maxHp = baseMaxHp + healthStatBonus;
                     const hpRatio = currentHp / maxHp;
                     
-                    if (currentHp > 0 && hpRatio < lowestHpRatio) {
+                    if (currentHp > 0 && hpRatio < lowestHpRatio && hpRatio < 1.0) {
                         lowestHpRatio = hpRatio;
                         lowestHpTarget = { type: 'player', id: player.id, name: player.name, currentHp, maxHp };
                     }
                 });
                 
-                // 동료들도 체크
+                // 동료들도 체크 (체력이 100%인 경우 제외)
                 Object.entries(room.playerData || {}).forEach(([pId, pData]) => {
                     pData.companions?.forEach(comp => {
                         const compKey = `${pId}_${comp.companionName}`;
@@ -2198,7 +2291,7 @@ class ExpeditionSystem {
                         const maxHp = compStats.hp;
                         const hpRatio = currentHp / maxHp;
                         
-                        if (currentHp > 0 && hpRatio < lowestHpRatio) {
+                        if (currentHp > 0 && hpRatio < lowestHpRatio && hpRatio < 1.0) {
                             lowestHpRatio = hpRatio;
                             lowestHpTarget = { type: 'companion', id: compKey, name: comp.companionName, currentHp, maxHp };
                         }
@@ -2468,30 +2561,30 @@ class ExpeditionSystem {
         return Math.floor(baseAttack * buffs.attack.multiplier);
     }
 
-    // 가장 체력이 낮은 아군 힐
+    // 가장 체력이 낮은 아군 힐 (체력이 100%인 경우 제외)
     healLowestAlly(room, playerId, healerName, healAmount, battleState) {
         let lowestHpTarget = null;
         let lowestHpPercentage = 1.0;
         
-        // 플레이어 체력 확인
+        // 플레이어 체력 확인 (체력이 100%인 경우 제외)
         room.players.forEach(player => {
             const currentHp = battleState.playerHp[player.id] || 0;
             const maxHp = battleState.playerMaxHp[player.id] || 100;
             const hpPercentage = currentHp / maxHp;
             
-            if (currentHp > 0 && hpPercentage < lowestHpPercentage) {
+            if (currentHp > 0 && hpPercentage < lowestHpPercentage && hpPercentage < 1.0) {
                 lowestHpPercentage = hpPercentage;
                 lowestHpTarget = { type: 'player', id: player.id, name: player.name };
             }
         });
         
-        // 동료 체력 확인
+        // 동료 체력 확인 (체력이 100%인 경우 제외)
         Object.keys(battleState.companionHp).forEach(companionKey => {
             const currentHp = battleState.companionHp[companionKey] || 0;
             const maxHp = battleState.companionMaxHp[companionKey] || 100;
             const hpPercentage = currentHp / maxHp;
             
-            if (currentHp > 0 && hpPercentage < lowestHpPercentage) {
+            if (currentHp > 0 && hpPercentage < lowestHpPercentage && hpPercentage < 1.0) {
                 lowestHpPercentage = hpPercentage;
                 const companionName = companionKey.split('_')[1];
                 lowestHpTarget = { type: 'companion', id: companionKey, name: companionName };

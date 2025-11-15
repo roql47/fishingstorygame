@@ -13,6 +13,7 @@ import {
   BREAKTHROUGH_BONUS_RIMU,
   BREAKTHROUGH_BONUS_SHERRY,
   BREAKTHROUGH_BONUS_ELISIA,
+  BREAKTHROUGH_BONUS_EVELYN,
   COMPANION_ESSENCE,
   ESSENCE_EMOJI,
   getTierColor,
@@ -30,6 +31,7 @@ import character8 from '../../assets/character8.jpg';
 import character9 from '../../assets/character9.jpg';
 import character10 from '../../assets/character10.jpg';
 import character11 from '../../assets/character11.jpg';
+import character12 from '../../assets/character12.jpeg';
 
 const CompanionTab = ({
   // 상태
@@ -178,7 +180,7 @@ const CompanionTab = ({
     }
   };
 
-  const allCompanions = ["실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라", "메이델", "아이란", "리무", "셰리", "엘리시아"];
+  const allCompanions = ["실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라", "메이델", "아이란", "리무", "셰리", "엘리시아", "에블린"];
   const basicCompanions = ["실", "피에나", "애비게일", "림스&베리", "클로에", "나하트라"];
   const maxBattleCompanions = 3;
 
@@ -194,7 +196,8 @@ const CompanionTab = ({
     "아이란": character8,
     "리무": character9,
     "셰리": character10,
-    "엘리시아": character11
+    "엘리시아": character11,
+    "에블린": character12
   };
 
   // 강화 헬퍼 함수들
@@ -316,6 +319,8 @@ const CompanionTab = ({
       bonusTable = BREAKTHROUGH_BONUS_SHERRY;
     } else if (selectedEnhanceCompanion === "엘리시아") {
       bonusTable = BREAKTHROUGH_BONUS_ELISIA;
+    } else if (selectedEnhanceCompanion === "에블린") {
+      bonusTable = BREAKTHROUGH_BONUS_EVELYN;
     }
     const bonus = bonusTable[currentBreakthrough];
     
@@ -638,6 +643,44 @@ const CompanionTab = ({
               {(userAmber || 0) < 320000
                 ? `호박 부족 (${(userAmber || 0).toLocaleString()}/320,000)`
                 : "엘리시아 영입 (호박 320,000개)"
+              }
+            </button>
+            <p className={`text-xs mt-2 ${
+              isDarkMode ? "text-gray-400" : "text-gray-600"
+            }`}>
+              기본 동료 6명 보유 필요
+            </p>
+          </div>
+        )}
+
+        {/* 영웅 동료 구매 섹션 - 에블린 */}
+        {!companions.includes("에블린") && (
+          <div className={`p-4 rounded-xl mb-4 border ${
+            isDarkMode 
+              ? "glass-input border-yellow-500/30" 
+              : "bg-white/60 backdrop-blur-sm border-yellow-500/40"
+          }`}>
+            <h3 className={`text-lg font-bold mb-3 ${
+              isDarkMode ? "text-yellow-300" : "text-yellow-700"
+            }`}>
+              영웅 동료: 에블린
+            </h3>
+            <button
+              onClick={() => recruitHeroCompanion("에블린")}
+              disabled={(userAmber || 0) < 480000}
+              className={`w-full px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
+                (userAmber || 0) >= 480000
+                  ? isDarkMode
+                    ? "bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30 border border-yellow-400/40"
+                    : "bg-yellow-500/10 text-yellow-700 hover:bg-yellow-500/20 border border-yellow-500/40"
+                  : isDarkMode
+                    ? "bg-gray-500/20 text-gray-500 cursor-not-allowed border border-gray-500/20"
+                    : "bg-gray-300/30 text-gray-400 cursor-not-allowed border border-gray-300/30"
+              }`}
+            >
+              {(userAmber || 0) < 480000
+                ? `호박 부족 (${(userAmber || 0).toLocaleString()}/480,000)`
+                : "에블린 영입 (호박 480,000개)"
               }
             </button>
             <p className={`text-xs mt-2 ${
@@ -1504,8 +1547,8 @@ const CompanionTab = ({
                               {baseData.skill.description}
                             </p>
                             <div className="grid grid-cols-1 gap-2 text-sm">
-                              {baseData.skill.skillType === 'heal' ? (
-                                // 힐링 스킬 (클로에의 에테르축복)
+                              {baseData.skill.skillType === 'heal' || baseData.skill.skillType === 'heal_random' ? (
+                                // 힐링 스킬 (클로에의 에테르축복, 에블린의 마력정화)
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-1">
                                     <Plus className="w-3 h-3 text-green-400" />
@@ -1517,7 +1560,10 @@ const CompanionTab = ({
                                       const healMultiplier = companionData?.skill?.healMultiplier || baseData.skill?.healMultiplier || 1;
                                       const healAmount = Math.floor(currentAttack * healMultiplier);
                                       const percentage = Math.floor(healMultiplier * 100);
-                                      return `${healAmount} (${percentage}%)`;
+                                      const targetCount = baseData.skill?.targetCount || 1;
+                                      return targetCount > 1 
+                                        ? `${healAmount} × ${targetCount}명 (${percentage}%)`
+                                        : `${healAmount} (${percentage}%)`;
                                     })()}
                                   </span>
                                 </div>

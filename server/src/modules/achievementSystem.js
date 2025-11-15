@@ -83,7 +83,9 @@ class AchievementSystem {
       let achievementGranted = false;
       
       // 1. 보유 물고기 수 체크 (기존 업적)
-      const totalFish = await this.CatchModel.countDocuments({ userUuid });
+      // 🎣 실제 보유한 물고기 총 개수 계산 (각 문서의 count 필드 합산)
+      const fishDocs = await this.CatchModel.find({ userUuid }, { count: 1 }).lean();
+      const totalFish = fishDocs.reduce((sum, doc) => sum + (doc.count || 0), 0);
       console.log(`🐟 Total fish for ${username}: ${totalFish}`);
       
       if (totalFish >= 1000) {
@@ -374,11 +376,14 @@ class AchievementSystem {
       }).lean();
       
       // 진행상황 데이터 조회
-      const [totalFish, rareFishRecord, raidDamageRecord] = await Promise.all([
-        this.CatchModel.countDocuments({ userUuid }),
+      const [fishDocs, rareFishRecord, raidDamageRecord] = await Promise.all([
+        this.CatchModel.find({ userUuid }, { count: 1 }).lean(), // count 필드만 조회
         this.RareFishCountModel.findOne({ userUuid }).lean(),
         this.RaidDamageModel.findOne({ userUuid }).lean()
       ]);
+      
+      // 🎣 실제 보유한 물고기 총 개수 계산 (각 문서의 count 필드 합산)
+      const totalFish = fishDocs.reduce((sum, doc) => sum + (doc.count || 0), 0);
       
       const rareFishCount = rareFishRecord?.rareFishCount || 0;
       const totalRaidDamage = raidDamageRecord?.totalDamage || 0;

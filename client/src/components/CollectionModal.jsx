@@ -14,6 +14,7 @@ import character8 from '../assets/character8.jpg';
 import character9 from '../assets/character9.jpg';
 import character10 from '../assets/character10.jpg';
 import character11 from '../assets/character11.jpg';
+import character12 from '../assets/character12.jpeg';
 
 const CollectionModal = ({ 
   showCollectionModal, 
@@ -41,7 +42,8 @@ const CollectionModal = ({
     "아이란": character8,
     "리무": character9,
     "셰리": character10,
-    "엘리시아": character11
+    "엘리시아": character11,
+    "에블린": character12
   };
 
   // 발견한 물고기 목록 가져오기

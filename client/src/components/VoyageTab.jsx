@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Anchor, Heart, Sword, Zap, Trophy, Coins, ArrowLeft, Users } from 'lucide-react';
 import { calculateCompanionStats } from '../data/companionData';
 
@@ -19,7 +19,9 @@ const VoyageTab = ({
   updateQuestProgress,
   setUserMoney,
   refreshInventory,
-  idToken
+  idToken,
+  autoBaitCount,
+  setAutoBaitCount
 }) => {
   const [currentView, setCurrentView] = useState('select'); // 'select', 'battle', 'result'
   const [selectedFish, setSelectedFish] = useState(null);
@@ -31,9 +33,14 @@ const VoyageTab = ({
   const [currentPage, setCurrentPage] = useState(1); // 페이지네이션
   const [rewardGold, setRewardGold] = useState(0); // 실제 보상 골드 (5~10배 랜덤)
   const [isClaiming, setIsClaiming] = useState(false); // 보상 수령 중복 방지
+  const [autoVoyageEnabled, setAutoVoyageEnabled] = useState(false); // 자동항해 상태
+  const [autoVoyageTargetFish, setAutoVoyageTargetFish] = useState(null); // 자동항해 대상 물고기 저장
+  const [autoVoyageCountdown, setAutoVoyageCountdown] = useState(0); // 자동항해 카운트다운
   
   const combatIntervalRef = useRef(null);
   const logRef = useRef(null);
+  const autoVoyageTimeoutRef = useRef(null); // 자동항해 타이머
+  const countdownIntervalRef = useRef(null); // 카운트다운 타이머
 
   // 물고기 데이터 (rank 1-25) - speed: 50부터 5씩 증가 (30% 난이도 하향 적용)
   const voyageFishes = [
@@ -75,10 +82,30 @@ const VoyageTab = ({
   const currentFishes = voyageFishes.slice(startIndex, endIndex);
 
   // 전투 시작
-  const startBattle = (fish) => {
+  const startBattle = useCallback((fish) => {
+    console.log('[VOYAGE] 🔵 startBattle 호출됨 - 물고기:', fish?.name);
+    console.log('[VOYAGE] 현재 상태 - autoVoyageEnabled:', autoVoyageEnabled, 'autoBaitCount:', autoBaitCount);
+    
     setSelectedFish(fish);
+    
+    // 🎯 자동항해를 위해 선택한 물고기 저장
+    if (autoVoyageEnabled) {
+      setAutoVoyageTargetFish(fish);
+      
+      // 자동미끼 확인 (서버에서 차감)
+      if (!autoBaitCount || autoBaitCount <= 0) {
+        console.warn('[VOYAGE] ❌ 자동미끼 부족!');
+        alert('자동미끼가 필요합니다!');
+        setAutoVoyageEnabled(false);
+        setAutoVoyageTargetFish(null);
+        return;
+      }
+    }
+    
     setRewardGold(0); // 보상 골드 초기화
     setIsClaiming(false); // 보상 수령 상태 초기화
+    
+    console.log('[VOYAGE] 🟢 전투 초기화 완료, 스탯 계산 시작...');
     
     // 실제 플레이어 스탯 계산
     // 1. 체력: 악세사리 레벨 + 강화 보너스 + 🌟 유저 스탯
@@ -163,20 +190,48 @@ const VoyageTab = ({
       status: 'fighting' // 'fighting', 'victory', 'defeat'
     };
 
+    console.log('[VOYAGE] 🟣 전투 상태 설정 중...');
     setBattleState(initialState);
     setCombatLog([`${fish.name}와(과)의 전투가 시작되었습니다!`]);
     setCurrentView('battle');
-  };
+    console.log('[VOYAGE] ✅ 전투 화면으로 전환 완료!');
+  }, [
+    autoVoyageEnabled,
+    autoBaitCount,
+    setSelectedFish,
+    setAutoVoyageTargetFish,
+    setAutoVoyageEnabled,
+    setAutoBaitCount,
+    setRewardGold,
+    setIsClaiming,
+    getAccessoryLevel,
+    userEquipment,
+    calculateTotalEnhancementBonus,
+    calculatePlayerMaxHp,
+    userStats,
+    calculatePlayerAttack,
+    fishingSkill,
+    battleCompanions,
+    companionStats,
+    setBattleState,
+    setCombatLog,
+    setCurrentView
+  ]);
 
   // 전투 로직 (실시간)
   useEffect(() => {
+    console.log('[VOYAGE] 전투 로직 useEffect 실행 - currentView:', currentView, 'battleState:', battleState?.status);
+    
     if (currentView !== 'battle' || !battleState || battleState.status !== 'fighting') {
       if (combatIntervalRef.current) {
+        console.log('[VOYAGE] 전투 종료, interval 정리');
         clearInterval(combatIntervalRef.current);
         combatIntervalRef.current = null;
       }
       return;
     }
+    
+    console.log('[VOYAGE] ⚔️ 전투 시작! interval 시작...');
 
     // 50ms마다 업데이트 (부드러운 애니메이션, 2배 느린 속도)
     combatIntervalRef.current = setInterval(() => {
@@ -264,13 +319,13 @@ const VoyageTab = ({
                 // 힐 스킬: 플레이어 + 다른 동료 중 랜덤 선택
                 damage = 0;
                 
-                // 치유 가능한 대상 수집 (자기 자신 제외)
+                // 치유 가능한 대상 수집 (자기 자신 제외, 체력이 100%인 대상 제외)
                 const healTargets = [
                   { type: 'player', data: newState.player },
                   ...newState.companions
                     .map((c, idx) => ({ type: 'companion', data: c, index: idx }))
                     .filter(t => t.data.name !== updatedCompanion.name && t.data.hp > 0)
-                ].filter(t => t.data.hp > 0);
+                ].filter(t => t.data.hp > 0 && t.data.hp < t.data.maxHp);
                 
                 if (healTargets.length > 0) {
                   // 랜덤 타겟 선택
@@ -489,7 +544,7 @@ const VoyageTab = ({
   }, [combatLog]);
 
   // 보상 수령
-  const claimReward = async () => {
+  const claimReward = useCallback(async () => {
     // 🔒 레이어 1: 중복 실행 방지 (UI 상태 체크)
     if (battleState?.status !== 'victory') return;
     if (isClaiming) {
@@ -509,7 +564,19 @@ const VoyageTab = ({
         return;
       }
 
-      console.log('[VOYAGE] 보상 요청 시작 - 토큰:', token ? '있음' : '없음');
+      const requestData = {
+        username,
+        userUuid,
+        fishName: selectedFish.name,
+        gold: rewardGold, // 랜덤 골드 사용 (5~10배)
+        rank: selectedFish.rank,
+        autoVoyage: autoVoyageEnabled // 🎣 자동항해 모드 여부
+      };
+      
+      console.log('[VOYAGE] 보상 요청 시작');
+      console.log('[VOYAGE] 토큰:', token ? '있음' : '없음');
+      console.log('[VOYAGE] 요청 데이터:', requestData);
+      console.log('[VOYAGE] 현재 자동미끼 (클라이언트):', autoBaitCount);
 
       const response = await fetch(`${import.meta.env.VITE_SERVER_URL || window.location.origin}/api/voyage/reward`, {
         method: 'POST',
@@ -517,13 +584,7 @@ const VoyageTab = ({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          username,
-          userUuid,
-          fishName: selectedFish.name,
-          gold: rewardGold, // 랜덤 골드 사용 (5~10배)
-          rank: selectedFish.rank
-        })
+        body: JSON.stringify(requestData)
       });
 
       console.log('[VOYAGE] 응답 상태:', response.status);
@@ -537,8 +598,30 @@ const VoyageTab = ({
         return;
       }
 
+      // 🔒 429 Too Many Requests 에러 처리
+      if (response.status === 429) {
+        const errorData = await response.json();
+        console.warn('[VOYAGE] 중복 요청 차단:', errorData.error);
+        alert(errorData.error || '잠시 후 다시 시도해주세요.');
+        setIsClaiming(false);
+        return;
+      }
+
       const data = await response.json();
       console.log('[VOYAGE] 응답 데이터:', data);
+      console.log('[VOYAGE] 응답 상태 코드:', response.status);
+      console.log('[VOYAGE] 응답 성공 여부:', data.success);
+      
+      // 400대 에러 상세 로깅
+      if (!response.ok) {
+        console.error('[VOYAGE] ❌ 에러 발생!');
+        console.error('[VOYAGE] 상태 코드:', response.status);
+        console.error('[VOYAGE] 에러 메시지:', data.error);
+        console.error('[VOYAGE] 전체 응답:', data);
+        alert(`보상 수령 실패: ${data.error || '알 수 없는 오류'}`);
+        setIsClaiming(false);
+        return;
+      }
       
       if (data.success) {
         // 🎯 항해 승리 퀘스트 진행도 업데이트
@@ -552,6 +635,22 @@ const VoyageTab = ({
           console.log(`✅ 항해 보상: 골드 ${data.gold}, 물고기 ${selectedFish.name}`);
         }
         
+        // 🎣 자동미끼 개수 업데이트 (서버에서 받은 값으로)
+        if (data.autoBaitCount !== undefined && data.autoBaitCount !== null) {
+          setAutoBaitCount(data.autoBaitCount);
+          console.log(`✅ 자동미끼 업데이트: ${data.autoBaitCount}개`);
+          
+          // 자동미끼가 0이 되면 자동항해 비활성화
+          if (data.autoBaitCount === 0) {
+            setTimeout(() => {
+              setAutoVoyageEnabled(false);
+              setAutoVoyageTargetFish(null);
+              setAutoVoyageCountdown(0);
+              alert('자동미끼가 모두 소진되어 자동항해가 비활성화되었습니다.');
+            }, 100);
+          }
+        }
+        
         // 🐟 인벤토리 즉시 새로고침
         console.log('🔄 [항해 보상] 인벤토리 새로고침 시작...');
         if (refreshInventory) {
@@ -561,12 +660,90 @@ const VoyageTab = ({
           console.warn('⚠️ [항해 보상] refreshInventory 함수가 전달되지 않았습니다!');
         }
 
-        alert(`보상 획득!\n골드: +${rewardGold.toLocaleString()}G\n물고기: ${selectedFish.name} +1마리`);
-        setCurrentView('select');
-        setBattleState(null);
-        setSelectedFish(null);
-        setCombatLog([]);
-        setRewardGold(0);
+        // 자동항해 활성화 시 알림 없이 다음 전투 시작
+        if (autoVoyageEnabled && data.autoBaitCount > 0) {
+          console.log('[VOYAGE] ========== 자동항해 다음 전투 준비 시작 ==========');
+          console.log('[VOYAGE] 남은 자동미끼:', data.autoBaitCount);
+          console.log('[VOYAGE] 저장된 대상 물고기:', autoVoyageTargetFish);
+          
+          // 🎯 저장된 대상 물고기 확인
+          if (!autoVoyageTargetFish) {
+            console.error('[VOYAGE] ❌ 자동항해 대상 물고기가 없습니다!');
+            alert('자동항해 대상 물고기가 없습니다. 자동항해를 종료합니다.');
+            setAutoVoyageEnabled(false);
+            setAutoVoyageTargetFish(null);
+            setCurrentView('select');
+            setBattleState(null);
+            setCombatLog([]);
+            setRewardGold(0);
+            return;
+          }
+          
+          // ⚠️ 중요: 클로저 문제 해결 - 물고기 정보를 미리 캡처
+          const capturedFish = { ...autoVoyageTargetFish };
+          console.log('[VOYAGE] ✅ 물고기 정보 캡처:', capturedFish.name);
+          console.log('[VOYAGE] ⏰ 3초 카운트다운 시작 - 대상:', capturedFish.name);
+          
+          // 카운트다운 시작 (3초) - 결과 화면 유지하면서 카운트다운 표시
+          setAutoVoyageCountdown(3);
+          let countdown = 3;
+          
+          // 이전 카운트다운 타이머 정리
+          if (countdownIntervalRef.current) {
+            console.log('[VOYAGE] 이전 카운트다운 타이머 정리');
+            clearInterval(countdownIntervalRef.current);
+            countdownIntervalRef.current = null;
+          }
+          
+          if (autoVoyageTimeoutRef.current) {
+            console.log('[VOYAGE] 이전 전투 시작 타이머 정리');
+            clearTimeout(autoVoyageTimeoutRef.current);
+            autoVoyageTimeoutRef.current = null;
+          }
+          
+          countdownIntervalRef.current = setInterval(() => {
+            countdown--;
+            console.log('[VOYAGE] ⏰ 카운트다운:', countdown);
+            setAutoVoyageCountdown(countdown);
+            
+            if (countdown <= 0) {
+              console.log('[VOYAGE] ⏰ 카운트다운 0 도달, interval 정리');
+              clearInterval(countdownIntervalRef.current);
+              countdownIntervalRef.current = null;
+            }
+          }, 1000);
+          
+          // 3초 후 화면 전환 및 전투 시작
+          console.log('[VOYAGE] ⏲️ 3초 타이머 시작...');
+          autoVoyageTimeoutRef.current = setTimeout(() => {
+            console.log('[VOYAGE] ========== 타이머 콜백 실행! ==========');
+            console.log('[VOYAGE] capturedFish:', capturedFish);
+            
+            // 상태 초기화 및 화면 전환
+            console.log('[VOYAGE] 상태 초기화 및 화면 전환...');
+            setAutoVoyageCountdown(0);
+            setCurrentView('select');
+            setBattleState(null);
+            setCombatLog([]);
+            setRewardGold(0);
+            
+            // 전투 시작
+            console.log('[VOYAGE] 🚀 startBattle 호출 - 물고기:', capturedFish.name);
+            startBattle(capturedFish);
+            console.log('[VOYAGE] ========== startBattle 호출 완료 ==========');
+          }, 3000);
+          
+          console.log('[VOYAGE] ✅ 타이머 설정 완료 (결과 화면 유지)');
+        } else {
+          // 일반 모드: 알림 표시
+          alert(`보상 획득!\n골드: +${rewardGold.toLocaleString()}G\n물고기: ${selectedFish.name} +1마리`);
+          setCurrentView('select');
+          setBattleState(null);
+          setSelectedFish(null);
+          setAutoVoyageTargetFish(null); // 자동항해 대상도 초기화
+          setCombatLog([]);
+          setRewardGold(0);
+        }
       } else {
         alert('보상 수령에 실패했습니다: ' + (data.error || '알 수 없는 오류'));
       }
@@ -576,7 +753,79 @@ const VoyageTab = ({
     } finally {
       setIsClaiming(false); // 🔓 항상 잠금 해제
     }
-  };
+  }, [
+    battleState?.status, 
+    isClaiming, 
+    idToken, 
+    username, 
+    userUuid, 
+    selectedFish, 
+    rewardGold, 
+    updateQuestProgress, 
+    setUserMoney, 
+    refreshInventory, 
+    autoVoyageEnabled, 
+    autoBaitCount, 
+    autoVoyageTargetFish,
+    setAutoBaitCount,
+    setAutoVoyageEnabled,
+    setAutoVoyageTargetFish,
+    setAutoVoyageCountdown,
+    setCurrentView,
+    setBattleState,
+    setCombatLog,
+    setRewardGold,
+    setSelectedFish,
+    startBattle
+  ]);
+
+
+  // 자동항해: 승리 시 즉시 보상 수령
+  useEffect(() => {
+    console.log('[VOYAGE] useEffect 체크:', {
+      currentView,
+      battleStatus: battleState?.status,
+      autoVoyageEnabled,
+      autoBaitCount,
+      isClaiming,
+      autoVoyageCountdown
+    });
+    
+    // 카운트다운 진행 중이면 실행 안 함 (무한 루프 방지)
+    if (autoVoyageCountdown > 0) {
+      console.log('[VOYAGE] ⏸️ 카운트다운 진행 중 - useEffect 스킵 (타이머 유지)');
+      return () => {
+        // 카운트다운 진행 중에는 타이머를 취소하지 않음
+        console.log('[VOYAGE] ⏸️ 카운트다운 진행 중 - cleanup 스킵');
+      };
+    }
+    
+    if (currentView === 'result' && battleState?.status === 'victory' && autoVoyageEnabled && autoBaitCount > 0 && !isClaiming) {
+      console.log('[VOYAGE] ✅ 조건 충족! 즉시 보상 수령 (자동항해 모드)');
+      
+      // 자동항해 모드일 때는 즉시 보상 수령 (대기 시간 없음)
+      claimReward();
+    } else {
+      console.log('[VOYAGE] ❌ 조건 미충족 - 자동 보상 수령 안 함');
+    }
+
+    return () => {
+      // cleanup
+      console.log('[VOYAGE] cleanup 실행');
+    };
+  }, [currentView, battleState?.status, autoVoyageEnabled, autoBaitCount, isClaiming, autoVoyageCountdown, claimReward]);
+
+  // 컴포넌트 언마운트 시 타이머 정리
+  useEffect(() => {
+    return () => {
+      if (autoVoyageTimeoutRef.current) {
+        clearTimeout(autoVoyageTimeoutRef.current);
+      }
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+    };
+  }, []);
 
   // HP 바 색상
   const getHPBarColor = (hp, maxHp) => {
@@ -617,7 +866,7 @@ const VoyageTab = ({
       <div className={`border-b p-4 ${
         isDarkMode ? "border-white/10" : "border-gray-300/20"
       }`}>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             <Anchor className={`w-6 h-6 ${isDarkMode ? "text-blue-400" : "text-blue-600"}`} />
             <div>
@@ -629,25 +878,88 @@ const VoyageTab = ({
               }`}>물고기를 선택하여 전투를 시작하세요</p>
             </div>
           </div>
-          {currentView !== 'select' && (
-            <button
-              onClick={() => {
-                setCurrentView('select');
-                setBattleState(null);
-                setSelectedFish(null);
-                setCombatLog([]);
-              }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                isDarkMode
-                  ? "bg-gray-700/50 hover:bg-gray-700 text-gray-300"
-                  : "bg-gray-200 hover:bg-gray-300 text-gray-700"
-              }`}
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>돌아가기</span>
-            </button>
-          )}
+          
+          <div className="flex items-center gap-2">
+            {/* 자동미끼 개수 표시 */}
+            {currentView === 'select' && autoBaitCount !== undefined && (
+              <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                isDarkMode ? "bg-blue-500/20 text-blue-400 border border-blue-400/30" : "bg-blue-500/10 text-blue-600 border border-blue-500/30"
+              }`}>
+                자동미끼: {autoBaitCount}개
+              </div>
+            )}
+            
+            {/* 자동항해 토글 버튼 */}
+            {currentView === 'select' && (
+              <button
+                onClick={() => {
+                  if (!autoBaitCount || autoBaitCount <= 0) {
+                    alert('자동미끼가 필요합니다!');
+                    return;
+                  }
+                  const newState = !autoVoyageEnabled;
+                  setAutoVoyageEnabled(newState);
+                  
+                  // 자동항해를 끄면 저장된 대상 물고기도 초기화
+                  if (!newState) {
+                    setAutoVoyageTargetFish(null);
+                    setAutoVoyageCountdown(0);
+                  }
+                }}
+                disabled={!autoBaitCount || autoBaitCount <= 0}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-300 ${
+                  autoVoyageEnabled
+                    ? isDarkMode
+                      ? 'bg-green-500/30 text-green-400 border border-green-400/50'
+                      : 'bg-green-500/20 text-green-600 border border-green-500/50'
+                    : (!autoBaitCount || autoBaitCount <= 0)
+                      ? 'bg-gray-500/20 text-gray-500 cursor-not-allowed'
+                      : isDarkMode
+                        ? 'bg-gray-500/20 text-gray-400 hover:bg-gray-500/30 border border-gray-400/30'
+                        : 'bg-gray-500/10 text-gray-600 hover:bg-gray-500/20 border border-gray-500/30'
+                }`}>
+                자동항해 {autoVoyageEnabled ? 'ON' : 'OFF'}
+              </button>
+            )}
+            
+            {currentView !== 'select' && (
+              <button
+                onClick={() => {
+                  if (autoVoyageTimeoutRef.current) {
+                    clearTimeout(autoVoyageTimeoutRef.current);
+                  }
+                  setCurrentView('select');
+                  setBattleState(null);
+                  setSelectedFish(null);
+                  setAutoVoyageTargetFish(null); // 자동항해 대상 초기화
+                  setCombatLog([]);
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                  isDarkMode
+                    ? "bg-gray-700/50 hover:bg-gray-700 text-gray-300"
+                    : "bg-gray-200 hover:bg-gray-300 text-gray-700"
+                }`}
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>돌아가기</span>
+              </button>
+            )}
+          </div>
         </div>
+        
+        {/* 자동항해 활성화 안내 */}
+        {currentView === 'select' && autoVoyageEnabled && autoBaitCount > 0 && (
+          <div className={`px-3 py-2 rounded-lg text-xs ${
+            isDarkMode ? 'bg-green-500/20 text-green-400 border border-green-400/30' : 'bg-green-500/10 text-green-600 border border-green-500/30'
+          }`}>
+            <div>
+              <div className="font-semibold mb-1">🚢 자동항해 모드 활성화됨</div>
+              <div>• 물고기를 클릭하면 전투를 시작합니다</div>
+              <div>• 승리 시 자동으로 보상을 받고 다음 전투를 시작합니다</div>
+              <div className="mt-1 opacity-80">남은 자동미끼: {autoBaitCount}개</div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 물고기 선택 화면 */}
@@ -1086,30 +1398,87 @@ const VoyageTab = ({
                   <Trophy className="w-6 h-6 text-blue-500" />
                   <span className="font-bold">{selectedFish.name} 1마리</span>
                 </div>
+                
+                {/* 자동항해 카운트다운 */}
+                {autoVoyageEnabled && autoBaitCount > 0 && autoVoyageCountdown > 0 && (
+                  <div className={`mt-4 p-4 rounded-lg ${
+                    isDarkMode ? 'bg-green-500/20 text-green-400 border-2 border-green-400/50' : 'bg-green-500/10 text-green-600 border-2 border-green-500/50'
+                  }`}>
+                    <div className="text-center">
+                      <div className="text-5xl font-black mb-2 animate-pulse" style={{ color: '#FFD700' }}>
+                        {autoVoyageCountdown}
+                      </div>
+                      <div className="text-lg font-bold mb-1">
+                        초 후 다음 전투 시작...
+                      </div>
+                      <div className="text-sm opacity-80">
+                        남은 자동미끼: {autoBaitCount}개
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
             <div className="space-y-2">
               {battleState.status === 'victory' ? (
-                <button
-                  onClick={claimReward}
-                  disabled={isClaiming}
-                  className={`w-full py-3 rounded-xl font-bold transition-all ${
-                    isClaiming
-                      ? "opacity-50 cursor-not-allowed bg-gray-500 text-gray-300"
-                      : isDarkMode
-                        ? "bg-green-600 hover:bg-green-700 text-white"
-                        : "bg-green-500 hover:bg-green-600 text-white"
-                  }`}
-                >
-                  {isClaiming ? "처리 중..." : "보상 받기"}
-                </button>
+                // 자동항해 모드일 때는 메인으로 돌아가기 버튼 표시
+                autoVoyageEnabled && autoBaitCount > 0 ? (
+                  <button
+                    onClick={() => {
+                      console.log('[VOYAGE] 자동항해 중단 - 메인으로 돌아가기');
+                      // 타이머 모두 정리
+                      if (autoVoyageTimeoutRef.current) {
+                        clearTimeout(autoVoyageTimeoutRef.current);
+                        autoVoyageTimeoutRef.current = null;
+                      }
+                      if (countdownIntervalRef.current) {
+                        clearInterval(countdownIntervalRef.current);
+                        countdownIntervalRef.current = null;
+                      }
+                      
+                      // 자동항해 중지
+                      setAutoVoyageEnabled(false);
+                      setAutoVoyageTargetFish(null);
+                      setAutoVoyageCountdown(0);
+                      
+                      // 메인으로 이동
+                      setCurrentView('select');
+                      setBattleState(null);
+                      setSelectedFish(null);
+                      setCombatLog([]);
+                      setRewardGold(0);
+                    }}
+                    className={`w-full py-3 rounded-xl font-bold transition-all ${
+                      isDarkMode
+                        ? "bg-gray-600 hover:bg-gray-700 text-white"
+                        : "bg-gray-500 hover:bg-gray-600 text-white"
+                    }`}
+                  >
+                    자동항해 중단하고 메인으로
+                  </button>
+                ) : (
+                  <button
+                    onClick={claimReward}
+                    disabled={isClaiming}
+                    className={`w-full py-3 rounded-xl font-bold transition-all ${
+                      isClaiming
+                        ? "opacity-50 cursor-not-allowed bg-gray-500 text-gray-300"
+                        : isDarkMode
+                          ? "bg-green-600 hover:bg-green-700 text-white"
+                          : "bg-green-500 hover:bg-green-600 text-white"
+                    }`}
+                  >
+                    {isClaiming ? "처리 중..." : "보상 받기"}
+                  </button>
+                )
               ) : (
                 <button
                   onClick={() => {
                     setCurrentView('select');
                     setBattleState(null);
                     setSelectedFish(null);
+                    setAutoVoyageTargetFish(null); // 자동항해 대상 초기화
                     setCombatLog([]);
                   }}
                   className={`w-full py-3 rounded-xl font-bold transition-all ${

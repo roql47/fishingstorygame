@@ -10334,6 +10334,8 @@ function App() {
               setUserMoney={setUserMoney}
               refreshInventory={refreshInventory}
               idToken={idToken}
+              autoBaitCount={autoBaitCount}
+              setAutoBaitCount={setAutoBaitCount}
             />
           )}
 

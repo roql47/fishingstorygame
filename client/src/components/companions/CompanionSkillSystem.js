@@ -10,19 +10,19 @@ export const findLowestHpTarget = (battleState) => {
   let lowestHpTarget = null;
   let lowestHpPercentage = 1.0;
   
-  // 플레이어 체력 확인
+  // 플레이어 체력 확인 (체력이 100%인 경우 제외)
   const playerHpPercentage = battleState.playerHp / battleState.playerMaxHp;
-  if (playerHpPercentage < lowestHpPercentage) {
+  if (playerHpPercentage < lowestHpPercentage && playerHpPercentage < 1.0) {
     lowestHpPercentage = playerHpPercentage;
     lowestHpTarget = 'player';
   }
   
-  // 동료들 체력 확인
+  // 동료들 체력 확인 (체력이 100%인 경우 제외)
   if (battleState.companions) {
     battleState.companions.forEach(companion => {
       if (battleState.companionHp?.[companion] && battleState.companionHp[companion].hp > 0) {
         const companionHpPercentage = battleState.companionHp[companion].hp / battleState.companionHp[companion].maxHp;
-        if (companionHpPercentage < lowestHpPercentage) {
+        if (companionHpPercentage < lowestHpPercentage && companionHpPercentage < 1.0) {
           lowestHpPercentage = companionHpPercentage;
           lowestHpTarget = companion;
         }
@@ -77,6 +77,93 @@ export const processHealingSkill = ({
     newLog.push(`💚 ${lowestHpTarget}이(가) ${healedAmount} 체력을 회복했습니다! (${newCompanionHp[lowestHpTarget].hp}/${maxHp})`);
   } else {
     newLog.push(`${companionName}(Lv.${companionLevel})이(가) 스킬 '${skill.name}'을(를) 사용했습니다!`);
+    newLog.push(`💚 모든 아군의 체력이 가득합니다!`);
+  }
+  
+  return {
+    playerHp: newPlayerHp,
+    companionHp: newCompanionHp,
+    log: newLog,
+    companionMorale: newCompanionMorale,
+    companionBuffs
+  };
+};
+
+/**
+ * 랜덤 힐링 스킬을 처리하는 함수 (다중 타겟 가능)
+ * @param {Object} params - 힐링 파라미터
+ * @returns {Object} - 업데이트된 전투 상태
+ */
+export const processRandomHealingSkill = ({
+  battleState,
+  companionName,
+  companionLevel,
+  baseAttack,
+  skill,
+  companionMorale,
+  companionBuffs
+}) => {
+  const healAmount = Math.floor(baseAttack * skill.healMultiplier);
+  let newPlayerHp = battleState.playerHp;
+  const newCompanionHp = { ...battleState.companionHp };
+  let newLog = [...battleState.log];
+  
+  // 스킬 사용 후 사기 초기화
+  const newCompanionMorale = { ...companionMorale };
+  newCompanionMorale[companionName].morale = 0;
+  
+  // 회복 가능한 타겟 목록 생성 (플레이어 포함)
+  const healableTargets = [];
+  
+  // 플레이어가 회복 가능하면 추가
+  if (battleState.playerHp < battleState.playerMaxHp) {
+    healableTargets.push({ type: 'player', key: 'player' });
+  }
+  
+  // 동료들 중 회복 가능한 대상 추가
+  Object.keys(newCompanionHp).forEach(key => {
+    const companion = newCompanionHp[key];
+    if (companion.hp > 0 && companion.hp < companion.maxHp) {
+      healableTargets.push({ type: 'companion', key: key });
+    }
+  });
+  
+  newLog.push(`${companionName}(Lv.${companionLevel})이(가) 스킬 '${skill.name}'을(를) 사용했습니다!`);
+  
+  // 랜덤 타겟 선택 (다중 타겟 지원)
+  const targetCount = skill.targetCount || 1;
+  if (healableTargets.length > 0) {
+    const actualTargetCount = Math.min(targetCount, healableTargets.length);
+    const selectedTargets = [];
+    
+    // 중복 없이 랜덤 타겟 선택
+    for (let i = 0; i < actualTargetCount; i++) {
+      const availableTargets = healableTargets.filter(t => !selectedTargets.includes(t));
+      if (availableTargets.length > 0) {
+        const randomTarget = availableTargets[Math.floor(Math.random() * availableTargets.length)];
+        selectedTargets.push(randomTarget);
+      }
+    }
+    
+    // 각 타겟에 힐링 적용
+    selectedTargets.forEach(randomTarget => {
+      if (randomTarget.type === 'player') {
+        const healedAmount = Math.min(healAmount, battleState.playerMaxHp - newPlayerHp);
+        newPlayerHp = Math.min(battleState.playerMaxHp, newPlayerHp + healAmount);
+        newLog.push(`💚 플레이어가 ${healedAmount} 체력을 회복했습니다! (${newPlayerHp}/${battleState.playerMaxHp})`);
+      } else {
+        const targetKey = randomTarget.key;
+        const currentHp = newCompanionHp[targetKey].hp;
+        const maxHp = newCompanionHp[targetKey].maxHp;
+        const healedAmount = Math.min(healAmount, maxHp - currentHp);
+        newCompanionHp[targetKey] = {
+          ...newCompanionHp[targetKey],
+          hp: Math.min(maxHp, currentHp + healAmount)
+        };
+        newLog.push(`💚 ${targetKey}이(가) ${healedAmount} 체력을 회복했습니다! (${newCompanionHp[targetKey].hp}/${maxHp})`);
+      }
+    });
+  } else {
     newLog.push(`💚 모든 아군의 체력이 가득합니다!`);
   }
   
@@ -323,8 +410,28 @@ export const processCompanionSkill = ({
   
   // 스킬 타입에 따른 처리
   if (skill.skillType === 'heal') {
-    // 힐링 스킬 처리
+    // 힐링 스킬 처리 (체력이 가장 낮은 아군)
     const result = processHealingSkill({
+      battleState,
+      companionName,
+      companionLevel,
+      baseAttack,
+      skill,
+      companionMorale,
+      companionBuffs
+    });
+    
+    return nextTurn({
+      ...battleState,
+      playerHp: result.playerHp,
+      companionHp: result.companionHp,
+      log: result.log,
+      companionMorale: result.companionMorale,
+      companionBuffs: result.companionBuffs
+    });
+  } else if (skill.skillType === 'heal_random') {
+    // 랜덤 힐링 스킬 처리
+    const result = processRandomHealingSkill({
       battleState,
       companionName,
       companionLevel,

@@ -322,7 +322,8 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
           "메이델": { baseAttack: 12, growthAttack: 3 },
           "아이란": { baseAttack: 10, growthAttack: 2.5 },
           "리무": { baseAttack: 13, growthAttack: 3.2 },
-          "셰리": { baseAttack: 13, growthAttack: 3.1 }
+          "셰리": { baseAttack: 13, growthAttack: 3.1 },
+          "에블린": { baseAttack: 13, growthAttack: 3.2 }
         };
         
         cachedCompanionAttacks = [];

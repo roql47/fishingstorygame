@@ -524,7 +524,7 @@ const ArenaTab = ({
               updated.morale = 0;
               
               if (updated.skill.skillType === 'heal') {
-                // 힐 스킬
+                // 힐 스킬 (체력이 가장 낮은 아군)
                 const healTargets = newState.player.companions.filter(c => c.hp > 0 && c.hp < c.maxHp);
                 if (healTargets.length > 0) {
                   const target = healTargets.reduce((min, c) => c.hp < min.hp ? c : min);
@@ -532,6 +532,32 @@ const ArenaTab = ({
                   const actualHeal = Math.min(healAmount, target.maxHp - target.hp);
                   target.hp = Math.min(target.maxHp, target.hp + healAmount);
                   newLog.push(`✨ ${updated.name}의 ${updated.skill.name}! ${target.name} +${actualHeal} HP`);
+                }
+                damage = 0;
+              } else if (updated.skill.skillType === 'heal_random') {
+                // 랜덤 힐 스킬 (다중 타겟 지원)
+                const healTargets = newState.player.companions.filter(c => c.hp > 0 && c.hp < c.maxHp);
+                if (healTargets.length > 0) {
+                  const targetCount = updated.skill.targetCount || 1;
+                  const actualTargetCount = Math.min(targetCount, healTargets.length);
+                  const selectedTargets = [];
+                  
+                  // 중복 없이 랜덤 타겟 선택
+                  for (let i = 0; i < actualTargetCount; i++) {
+                    const availableTargets = healTargets.filter(t => !selectedTargets.includes(t));
+                    if (availableTargets.length > 0) {
+                      const randomTarget = availableTargets[Math.floor(Math.random() * availableTargets.length)];
+                      selectedTargets.push(randomTarget);
+                    }
+                  }
+                  
+                  // 각 타겟에 힐링 적용
+                  selectedTargets.forEach(target => {
+                    const healAmount = Math.floor(updated.attack * (updated.skill.healMultiplier || 1.2));
+                    const actualHeal = Math.min(healAmount, target.maxHp - target.hp);
+                    target.hp = Math.min(target.maxHp, target.hp + healAmount);
+                    newLog.push(`✨ ${updated.name}의 ${updated.skill.name}! ${target.name} +${actualHeal} HP`);
+                  });
                 }
                 damage = 0;
               } else if (updated.skill.buffType) {
@@ -708,7 +734,7 @@ const ArenaTab = ({
               updated.morale = 0;
               
               if (updated.skill.skillType === 'heal') {
-                // 상대 힐 스킬
+                // 상대 힐 스킬 (체력이 가장 낮은 아군)
                 const healTargets = newState.opponent.companions.filter(c => c.hp > 0 && c.hp < c.maxHp);
                 if (healTargets.length > 0) {
                   const target = healTargets.reduce((min, c) => c.hp < min.hp ? c : min);
@@ -716,6 +742,32 @@ const ArenaTab = ({
                   const actualHeal = Math.min(healAmount, target.maxHp - target.hp);
                   target.hp = Math.min(target.maxHp, target.hp + healAmount);
                   newLog.push(`✨ ${updated.name}의 ${updated.skill.name}! ${target.name} +${actualHeal} HP`);
+                }
+                damage = 0;
+              } else if (updated.skill.skillType === 'heal_random') {
+                // 상대 랜덤 힐 스킬 (다중 타겟 지원)
+                const healTargets = newState.opponent.companions.filter(c => c.hp > 0 && c.hp < c.maxHp);
+                if (healTargets.length > 0) {
+                  const targetCount = updated.skill.targetCount || 1;
+                  const actualTargetCount = Math.min(targetCount, healTargets.length);
+                  const selectedTargets = [];
+                  
+                  // 중복 없이 랜덤 타겟 선택
+                  for (let i = 0; i < actualTargetCount; i++) {
+                    const availableTargets = healTargets.filter(t => !selectedTargets.includes(t));
+                    if (availableTargets.length > 0) {
+                      const randomTarget = availableTargets[Math.floor(Math.random() * availableTargets.length)];
+                      selectedTargets.push(randomTarget);
+                    }
+                  }
+                  
+                  // 각 타겟에 힐링 적용
+                  selectedTargets.forEach(target => {
+                    const healAmount = Math.floor(updated.attack * (updated.skill.healMultiplier || 1.2));
+                    const actualHeal = Math.min(healAmount, target.maxHp - target.hp);
+                    target.hp = Math.min(target.maxHp, target.hp + healAmount);
+                    newLog.push(`✨ ${updated.name}의 ${updated.skill.name}! ${target.name} +${actualHeal} HP`);
+                  });
                 }
                 damage = 0;
               } else if (updated.skill.buffType) {
