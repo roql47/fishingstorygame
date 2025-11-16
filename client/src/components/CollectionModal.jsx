@@ -1,6 +1,19 @@
 import React, { useState } from 'react';
 import { X, Fish, Zap, Package, Users } from 'lucide-react';
-import { COMPANION_DATA, getTierColor, getTierBgColor } from '../data/companionData';
+import { 
+  COMPANION_DATA, 
+  getTierColor, 
+  getTierBgColor,
+  COMPANION_ESSENCE,
+  BREAKTHROUGH_COSTS,
+  BREAKTHROUGH_BONUS,
+  BREAKTHROUGH_BONUS_MEIDEL,
+  BREAKTHROUGH_BONUS_AIRAN,
+  BREAKTHROUGH_BONUS_RIMU,
+  BREAKTHROUGH_BONUS_SHERRY,
+  BREAKTHROUGH_BONUS_ELISIA,
+  BREAKTHROUGH_BONUS_EVELYN
+} from '../data/companionData';
 
 // 동료 이미지 import
 import character1 from '../assets/character1.jpg';
@@ -29,6 +42,7 @@ const CollectionModal = ({
   const [activeCollectionTab, setActiveCollectionTab] = useState('fish');
   const [discoveredFish, setDiscoveredFish] = useState([]);
   const [hoveredFish, setHoveredFish] = useState(null);
+  const [selectedCompanion, setSelectedCompanion] = useState(null);
 
   // 동료 이미지 매핑
   const companionImages = {
@@ -215,7 +229,28 @@ const CollectionModal = ({
     return { total, collected, percentage: total > 0 ? Math.round((collected / total) * 100) : 0 };
   };
 
+  // 동료별 돌파 보너스 가져오기
+  const getBreakthroughBonus = (companionName) => {
+    switch (companionName) {
+      case '메이델':
+        return BREAKTHROUGH_BONUS_MEIDEL;
+      case '아이란':
+        return BREAKTHROUGH_BONUS_AIRAN;
+      case '리무':
+        return BREAKTHROUGH_BONUS_RIMU;
+      case '셰리':
+        return BREAKTHROUGH_BONUS_SHERRY;
+      case '엘리시아':
+        return BREAKTHROUGH_BONUS_ELISIA;
+      case '에블린':
+        return BREAKTHROUGH_BONUS_EVELYN;
+      default:
+        return BREAKTHROUGH_BONUS;
+    }
+  };
+
   return (
+    <>
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className={`max-w-4xl w-full max-h-[90vh] rounded-2xl overflow-hidden ${
         isDarkMode 
@@ -565,11 +600,12 @@ const CollectionModal = ({
                 return (
                   <div
                     key={name}
-                    className={`group relative overflow-hidden rounded-xl transition-all duration-300 ${
+                    className={`group relative overflow-hidden rounded-xl transition-all duration-300 cursor-pointer ${
                       collected 
-                        ? "hover:scale-105 hover:shadow-2xl cursor-pointer" 
-                        : "opacity-60"
+                        ? "hover:scale-105 hover:shadow-2xl" 
+                        : "opacity-60 hover:opacity-80"
                     }`}
+                    onClick={() => setSelectedCompanion(name)}
                   >
                     {/* 배경 그라데이션 */}
                     <div className={`absolute inset-0 bg-gradient-to-br ${getGradient(tier)} backdrop-blur-sm`} />
@@ -593,7 +629,7 @@ const CollectionModal = ({
                         {companionImage ? (
                           <img 
                             src={companionImage} 
-                            alt={collected ? name : "???"}
+                            alt={name}
                             className="w-full h-48 object-contain"
                             style={{ imageRendering: 'crisp-edges' }}
                           />
@@ -640,7 +676,7 @@ const CollectionModal = ({
                                 : isDarkMode ? "text-white" : "text-gray-800"
                             : isDarkMode ? "text-gray-600" : "text-gray-500"
                         }`}>
-                          {collected ? name : "???"}
+                          {name}
                         </h3>
                         
                         {collected && (
@@ -711,6 +747,334 @@ const CollectionModal = ({
         </div>
       </div>
     </div>
+
+    {/* 동료 상세 정보 모달 */}
+    {selectedCompanion && (
+      <div 
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[60] p-4"
+        onClick={() => setSelectedCompanion(null)}
+      >
+        <div 
+          className={`max-w-2xl w-full max-h-[90vh] rounded-2xl overflow-hidden ${
+            isDarkMode 
+              ? "glass-card border border-white/10" 
+              : "bg-white/95 backdrop-blur-md border border-gray-300/30"
+          }`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {(() => {
+            const companionData = COMPANION_DATA[selectedCompanion];
+            const companionInfo = companionStats?.[selectedCompanion];
+            const tier = companionInfo?.tier || 0;
+            const essence = COMPANION_ESSENCE[selectedCompanion];
+            const breakthroughBonus = getBreakthroughBonus(selectedCompanion);
+
+            return (
+              <>
+                {/* 헤더 */}
+                <div className={`p-6 border-b ${
+                  isDarkMode ? "border-white/10" : "border-gray-300/20"
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className={`text-2xl font-bold ${
+                        tier === 2
+                          ? isDarkMode ? "text-purple-300" : "text-purple-700"
+                          : tier === 1
+                            ? isDarkMode ? "text-blue-300" : "text-blue-700"
+                            : isDarkMode ? "text-white" : "text-gray-800"
+                      }`}>
+                        {selectedCompanion}
+                      </h2>
+                      <p className={`text-sm ${
+                        isDarkMode ? "text-gray-400" : "text-gray-600"
+                      }`}>
+                        {companionData.rarity} 등급
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setSelectedCompanion(null)}
+                      className={`p-2 rounded-full transition-all duration-300 ${
+                        isDarkMode 
+                          ? "hover:bg-white/10 text-gray-400 hover:text-white" 
+                          : "hover:bg-gray-100 text-gray-600 hover:text-gray-800"
+                      }`}
+                    >
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* 컨텐츠 */}
+                <div className="p-6 max-h-[70vh] overflow-y-auto space-y-6">
+                  {/* 스킬 정보 */}
+                  {companionData.skill && (
+                    <div className={`p-5 rounded-xl border ${
+                      isDarkMode 
+                        ? "bg-slate-800/50 border-slate-700/50" 
+                        : "bg-white border-gray-200"
+                    }`}>
+                      <h3 className={`text-lg font-bold mb-3 ${
+                        isDarkMode ? "text-amber-400" : "text-amber-600"
+                      }`}>
+                        스킬 정보
+                      </h3>
+                      
+                      <div className="space-y-3">
+                        <div>
+                          <p className={`font-bold text-base mb-1 ${
+                            isDarkMode ? "text-white" : "text-gray-900"
+                          }`}>
+                            {companionData.skill.name}
+                          </p>
+                          <p className={`text-sm ${
+                            isDarkMode ? "text-gray-400" : "text-gray-600"
+                          }`}>
+                            {companionData.skill.description}
+                          </p>
+                        </div>
+                        
+                        <div className={`flex flex-wrap gap-2 pt-2 border-t ${
+                          isDarkMode ? "border-slate-700" : "border-gray-200"
+                        }`}>
+                          <span className={`text-xs px-2 py-1 rounded ${
+                            isDarkMode 
+                              ? "bg-red-500/20 text-red-400" 
+                              : "bg-red-100 text-red-700"
+                          }`}>
+                            데미지 {(companionData.skill.damageMultiplier * 100).toFixed(0)}%
+                          </span>
+                          
+                          {companionData.skill.targetCount && (
+                            <span className={`text-xs px-2 py-1 rounded ${
+                              isDarkMode 
+                                ? "bg-blue-500/20 text-blue-400" 
+                                : "bg-blue-100 text-blue-700"
+                            }`}>
+                              대상 {companionData.skill.targetCount}명
+                            </span>
+                          )}
+                          
+                          {companionData.skill.healMultiplier && (
+                            <span className={`text-xs px-2 py-1 rounded ${
+                              isDarkMode 
+                                ? "bg-green-500/20 text-green-400" 
+                                : "bg-green-100 text-green-700"
+                            }`}>
+                              회복 {(companionData.skill.healMultiplier * 100).toFixed(0)}%
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 기본 스텟 */}
+                  <div className={`p-5 rounded-xl border ${
+                    isDarkMode 
+                      ? "bg-slate-800/50 border-slate-700/50" 
+                      : "bg-white border-gray-200"
+                  }`}>
+                    <h3 className={`text-lg font-bold mb-4 ${
+                      isDarkMode ? "text-blue-400" : "text-blue-600"
+                    }`}>
+                      기본 스텟
+                    </h3>
+                    
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="text-center">
+                        <p className={`text-xs mb-2 font-medium ${
+                          isDarkMode ? "text-gray-400" : "text-gray-600"
+                        }`}>
+                          체력
+                        </p>
+                        <p className={`text-3xl font-bold mb-1 ${
+                          isDarkMode ? "text-red-400" : "text-red-600"
+                        }`}>
+                          {companionData.baseHp}
+                        </p>
+                        <p className={`text-xs ${
+                          isDarkMode ? "text-gray-500" : "text-gray-500"
+                        }`}>
+                          +{companionData.growthHp} / Lv
+                        </p>
+                      </div>
+                      
+                      <div className="text-center">
+                        <p className={`text-xs mb-2 font-medium ${
+                          isDarkMode ? "text-gray-400" : "text-gray-600"
+                        }`}>
+                          공격력
+                        </p>
+                        <p className={`text-3xl font-bold mb-1 ${
+                          isDarkMode ? "text-orange-400" : "text-orange-600"
+                        }`}>
+                          {companionData.baseAttack}
+                        </p>
+                        <p className={`text-xs ${
+                          isDarkMode ? "text-gray-500" : "text-gray-500"
+                        }`}>
+                          +{companionData.growthAttack} / Lv
+                        </p>
+                      </div>
+                      
+                      <div className="text-center">
+                        <p className={`text-xs mb-2 font-medium ${
+                          isDarkMode ? "text-gray-400" : "text-gray-600"
+                        }`}>
+                          속도
+                        </p>
+                        <p className={`text-3xl font-bold mb-1 ${
+                          isDarkMode ? "text-green-400" : "text-green-600"
+                        }`}>
+                          {companionData.baseSpeed}
+                        </p>
+                        <p className={`text-xs ${
+                          isDarkMode ? "text-gray-500" : "text-gray-500"
+                        }`}>
+                          +{companionData.growthSpeed} / Lv
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 돌파 성장 스텟 */}
+                  <div className={`p-5 rounded-xl border ${
+                    isDarkMode 
+                      ? "bg-slate-800/50 border-slate-700/50" 
+                      : "bg-white border-gray-200"
+                  }`}>
+                    <h3 className={`text-lg font-bold mb-4 ${
+                      isDarkMode ? "text-purple-400" : "text-purple-600"
+                    }`}>
+                      돌파 성장 스텟
+                    </h3>
+                    
+                    <div className="space-y-3">
+                      {Object.entries(breakthroughBonus).map(([breakLevel, bonus]) => (
+                        <div 
+                          key={breakLevel}
+                          className={`p-4 rounded-lg border ${
+                            isDarkMode 
+                              ? "bg-slate-700/30 border-slate-600/50" 
+                              : "bg-gray-50 border-gray-200"
+                          }`}
+                        >
+                          <p className={`text-sm font-bold mb-3 ${
+                            isDarkMode ? "text-cyan-400" : "text-cyan-600"
+                          }`}>
+                            돌파 {parseInt(breakLevel) + 1}단계
+                          </p>
+                          
+                          <div className="grid grid-cols-3 gap-3 text-center">
+                            <div>
+                              <p className={`text-xs mb-1 ${
+                                isDarkMode ? "text-gray-400" : "text-gray-600"
+                              }`}>
+                                체력
+                              </p>
+                              <p className={`text-base font-bold ${
+                                isDarkMode ? "text-red-400" : "text-red-600"
+                              }`}>
+                                +{bonus.growthHp}
+                              </p>
+                            </div>
+                            
+                            <div>
+                              <p className={`text-xs mb-1 ${
+                                isDarkMode ? "text-gray-400" : "text-gray-600"
+                              }`}>
+                                공격
+                              </p>
+                              <p className={`text-base font-bold ${
+                                isDarkMode ? "text-orange-400" : "text-orange-600"
+                              }`}>
+                                +{bonus.growthAttack}
+                              </p>
+                            </div>
+                            
+                            <div>
+                              <p className={`text-xs mb-1 ${
+                                isDarkMode ? "text-gray-400" : "text-gray-600"
+                              }`}>
+                                속도
+                              </p>
+                              <p className={`text-base font-bold ${
+                                isDarkMode ? "text-green-400" : "text-green-600"
+                              }`}>
+                                +{bonus.growthSpeed}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 돌파에 필요한 정수 */}
+                  <div className={`p-5 rounded-xl border ${
+                    isDarkMode 
+                      ? "bg-slate-800/50 border-slate-700/50" 
+                      : "bg-white border-gray-200"
+                  }`}>
+                    <h3 className={`text-lg font-bold mb-3 ${
+                      isDarkMode ? "text-green-400" : "text-green-600"
+                    }`}>
+                      돌파 비용
+                    </h3>
+                    
+                    <p className={`text-sm mb-4 ${
+                      isDarkMode ? "text-gray-400" : "text-gray-600"
+                    }`}>
+                      필요한 정수: <span className={`font-bold ${
+                        isDarkMode ? "text-green-400" : "text-green-600"
+                      }`}>{essence}</span>
+                    </p>
+                    
+                    <div className="space-y-2">
+                      {Object.entries(BREAKTHROUGH_COSTS).map(([breakLevel, cost]) => (
+                        <div 
+                          key={breakLevel}
+                          className={`p-3 rounded-lg border flex items-center justify-between ${
+                            isDarkMode 
+                              ? "bg-slate-700/30 border-slate-600/50" 
+                              : "bg-gray-50 border-gray-200"
+                          }`}
+                        >
+                          <span className={`text-sm font-bold ${
+                            isDarkMode ? "text-cyan-400" : "text-cyan-600"
+                          }`}>
+                            돌파 {parseInt(breakLevel) + 1}단계
+                          </span>
+                          
+                          <div className="flex gap-3">
+                            {cost.gold > 0 && (
+                              <span className={`text-sm ${
+                                isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                              }`}>
+                                골드 {cost.gold.toLocaleString()}
+                              </span>
+                            )}
+                            {cost.essence > 0 && (
+                              <span className={`text-sm ${
+                                isDarkMode ? "text-green-400" : "text-green-600"
+                              }`}>
+                                {essence} {cost.essence}개
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 
