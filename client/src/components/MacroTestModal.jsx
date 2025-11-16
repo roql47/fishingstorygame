@@ -12,10 +12,12 @@ const MacroTestModal = ({
   const [response, setResponse] = useState('');
   const inputRef = useRef(null);
   const timerRef = useRef(null);
+  const initializedRef = useRef(false);
 
   // 모달이 열릴 때 타이머 시작 및 입력창 포커스
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !initializedRef.current) {
+      initializedRef.current = true;
       setTimeLeft(60);
       setResponse('');
       
@@ -35,14 +37,21 @@ const MacroTestModal = ({
           return prev - 1;
         });
       }, 1000);
-      
-      return () => {
-        if (timerRef.current) {
-          clearInterval(timerRef.current);
-        }
-      };
     }
-  }, [isOpen, onTimeout]);
+    
+    if (!isOpen) {
+      initializedRef.current = false;
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    }
+    
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [isOpen]);
 
   // 모달이 닫히지 않도록 ESC 키 방지
   useEffect(() => {
