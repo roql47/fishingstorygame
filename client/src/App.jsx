@@ -290,7 +290,12 @@ function App() {
   const [idToken, setIdToken] = useState(undefined);
   const [usernameInput, setUsernameInput] = useState("");
   const [activeTab, setActiveTab] = useState("chat");
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // 테스트: 기본값 열림
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    // User Agent로 모바일 감지 (더 정확함)
+    const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    // 모바일이거나 화면이 작으면 사이드바 접힘
+    return isMobile || window.innerWidth < 1024;
+  });
   const [dailyQuests, setDailyQuests] = useState({ quests: [], lastResetDate: '' });
   const [isGuest, setIsGuest] = useState(false); // 게스트 여부 추적
   const [jwtToken, setJwtToken] = useState(null); // 🔐 JWT 토큰 상태 (위치 이동)
@@ -621,7 +626,16 @@ function App() {
       
     } catch (error) {
       console.error('❌ 동료 경험치 추가 실패:', error);
-      console.warn(`⚠️ 서버 오류로 경험치 추가 실패. 다음 새로고침 시 서버 데이터로 복구됩니다.`);
+      
+      // 🔒 [SECURITY] Rate Limiting 또는 소유권 검증 에러 처리
+      if (error.response?.status === 429) {
+        console.warn(`⚠️ [RATE LIMIT] ${companionName} 경험치 추가가 너무 빠릅니다. 잠시 후 다시 시도합니다.`);
+        // 사용자에게는 알리지 않음 (전투 중 자동 호출이므로)
+      } else if (error.response?.status === 403) {
+        console.error(`🚫 [SECURITY] ${companionName}은(는) 보유하지 않은 동료입니다.`);
+      } else {
+        console.warn(`⚠️ 서버 오류로 경험치 추가 실패. 다음 새로고침 시 서버 데이터로 복구됩니다.`);
+      }
     }
   };
 
@@ -3180,7 +3194,8 @@ function App() {
     };
     
     const onMacroTestError = (data) => {
-      alert(data.message);
+      setShowMacroTest(false);
+      alert(data.message || '매크로 테스트 처리 중 오류가 발생했습니다.');
     };
     
     const onMacroTestSent = (data) => {
@@ -4376,6 +4391,23 @@ function App() {
   }, [serverUrl, username, userUuid, idToken]);
 
 
+  // 📱 화면 크기 변경 감지하여 사이드바 자동 조정
+  useEffect(() => {
+    const handleResize = () => {
+      // 모바일이거나 화면이 작으면 사이드바 자동 접기
+      if (mobileConfig.isMobile || window.innerWidth < 1024) {
+        setIsSidebarCollapsed(true);
+      }
+    };
+
+    // 초기 실행
+    handleResize();
+
+    // 화면 크기 변경 감지
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [mobileConfig.isMobile]);
+
   const toggleDarkMode = async () => {
     const newDarkMode = !isDarkMode;
     setIsDarkMode(newDarkMode);
@@ -5453,7 +5485,7 @@ function App() {
 
   // 동료 모집 함수
   const recruitCompanion = async () => {
-    const starPieceCost = 1; // 별조각 1개 비용
+    const starPieceCost = 1; // 별조각 1개 비용 (표시용, 서버에서 검증됨)
     
     if (userStarPieces < starPieceCost) {
       alert(`별조각이 부족합니다! (필요: ${starPieceCost}개, 보유: ${userStarPieces}개)`);
@@ -5469,9 +5501,8 @@ function App() {
       const params = { username, userUuid };
       console.log('Recruiting companion with params:', params);
       
-      const response = await authenticatedRequest.post(`${serverUrl}/api/recruit-companion`, {
-        starPieceCost
-      });
+      // 🔒 [SECURITY FIX] 비용은 서버에서 검증되므로 body에 포함하지 않음
+      const response = await authenticatedRequest.post(`${serverUrl}/api/recruit-companion`, {});
       
       console.log('Recruit response:', response.data);
       
@@ -6118,12 +6149,34 @@ function App() {
   // 매크로 테스트 제출 핸들러
   const handleMacroTestSubmit = (response) => {
     const socket = getSocket();
-    if (!socket) return;
-    socket.emit("macro-test:response", {
-      userUuid,
-      username,
-      response
-    });
+    if (!socket) {
+      console.error('[MacroTest] 소켓 연결이 없습니다.');
+      alert('소켓 연결이 없습니다. 페이지를 새로고침해주세요.');
+      setShowMacroTest(false);
+      return;
+    }
+    
+    if (!userUuid || !username) {
+      console.error('[MacroTest] 사용자 정보가 없습니다.', { userUuid, username });
+      alert('사용자 정보가 없습니다. 다시 로그인해주세요.');
+      setShowMacroTest(false);
+      return;
+    }
+    
+    console.log('[MacroTest] 응답 제출:', { userUuid, username, response });
+    
+    try {
+      socket.emit("macro-test:response", {
+        userUuid,
+        username,
+        response
+      });
+      console.log('[MacroTest] 응답 전송 완료');
+    } catch (error) {
+      console.error('[MacroTest] 응답 전송 오류:', error);
+      alert('응답 전송 중 오류가 발생했습니다.');
+      setShowMacroTest(false);
+    }
   };
   
   // 매크로 테스트 타임아웃 핸들러
@@ -8749,8 +8802,10 @@ function App() {
           ? "glass-card-dark border-white/10" 
           : "bg-white/80 backdrop-blur-md border-gray-300/30"
       }`}>
-        <div className="max-w-7xl mx-auto flex items-center justify-end px-6 py-4">
-          <div className="flex items-center gap-4">
+        <div className={`max-w-7xl mx-auto flex items-center justify-end px-3 sm:px-6 py-3 sm:py-4 transition-all duration-300 ${
+          !mobileConfig.isMobile && !isSidebarCollapsed ? 'ml-64' : 'ml-0'
+        }`}>
+          <div className="flex items-center gap-2 sm:gap-4">
             {/* 유틸리티 버튼들 */}
             <div className="flex items-center gap-2">
               {/* 거래소 버튼 */}
@@ -8904,6 +8959,14 @@ function App() {
       </div>
 
       {/* 왼쪽 사이드바 - 탭 네비게이션 */}
+      {/* 모바일 오버레이 (사이드바가 열렸을 때) */}
+      {!isSidebarCollapsed && mobileConfig.isMobile && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40"
+          onClick={() => setIsSidebarCollapsed(true)}
+        />
+      )}
+
       {/* 열기 버튼 (사이드바가 닫혀있을 때만) */}
       {isSidebarCollapsed && (
         <button
@@ -9184,8 +9247,10 @@ function App() {
         </div>
       </div>
       {/* 메인 콘텐츠 */}
-      <div className="relative z-10 max-w-7xl mx-auto p-6">
-        <div className={`grid gap-6 min-h-[75vh] ${
+      <div className={`relative z-10 max-w-7xl mx-auto p-3 sm:p-6 transition-all duration-300 ${
+        !mobileConfig.isMobile && !isSidebarCollapsed ? 'ml-64' : 'ml-0'
+      }`}>
+        <div className={`grid gap-3 sm:gap-6 min-h-[75vh] ${
           activeTab === "ranking" 
             ? "grid-cols-1" // 랭킹 탭일 때는 1열 그리드 (랭킹만 전체 너비)
             : "grid-cols-1 xl:grid-cols-4"  // 다른 탭일 때는 4열 그리드
@@ -9367,7 +9432,7 @@ function App() {
           
           {/* 메인 콘텐츠 영역 - 랭킹 탭에서는 숨김 */}
           {activeTab !== "ranking" && (
-          <div className="xl:col-span-3 h-full">
+          <div className="col-span-1 xl:col-span-3 h-full">
           
           {/* 채팅 탭 */}
           {activeTab === "chat" && (
@@ -12147,9 +12212,9 @@ function App() {
           )}
           </div>
           )}
-          {/* 사이드바 - 접속자 목록 - 랭킹 탭에서는 숨김 */}
+          {/* 사이드바 - 접속자 목록 - 랭킹 탭에서는 숨김, 모바일에서도 숨김 */}
           {activeTab !== "ranking" && (
-          <div className="xl:col-span-1 h-full">
+          <div className="hidden xl:block xl:col-span-1 h-full">
             <div className={`rounded-2xl board-shadow h-full flex flex-col ${
               isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
             }`}>
@@ -15507,6 +15572,16 @@ isDarkMode ? "bg-black/20" : "bg-gray-50/50"
           setShowProfile={setShowProfile}
           serverUrl={serverUrl}
           setShowClickerModal={setShowClickerModal}
+          fishingCooldown={fishingCooldown}
+          setFishingCooldown={setFishingCooldown}
+          cooldownLoaded={cooldownLoaded}
+          setCooldownLoaded={setCooldownLoaded}
+          isProcessingFishing={isProcessingFishing}
+          setIsProcessingFishing={setIsProcessingFishing}
+          formatCooldown={formatCooldown}
+          authenticatedRequest={authenticatedRequest}
+          userUuid={userUuid}
+          cooldownWorkerRef={cooldownWorkerRef}
         />
       )}
     </div>

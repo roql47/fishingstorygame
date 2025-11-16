@@ -106,6 +106,8 @@ const VoyageTab = ({
     setIsClaiming(false); // 보상 수령 상태 초기화
     
     console.log('[VOYAGE] 🟢 전투 초기화 완료, 스탯 계산 시작...');
+    console.log('[VOYAGE] 📊 현재 낚시 실력:', fishingSkill);
+    console.log('[VOYAGE] 📊 유저 스탯:', userStats);
     
     // 실제 플레이어 스탯 계산
     // 1. 체력: 악세사리 레벨 + 강화 보너스 + 🌟 유저 스탯
@@ -118,6 +120,8 @@ const VoyageTab = ({
     // 2. 공격력: 낚시실력 3차방정식 + 낚시대 강화 보너스 + 🌟 유저 스탯
     const rodEnhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
     const baseAttack = calculatePlayerAttack(fishingSkill, rodEnhancementBonus);
+    
+    console.log('[VOYAGE] 💪 계산된 공격력:', baseAttack, '(기본 공격력 from fishingSkill:', fishingSkill, ')');
     
     // 🌟 낚시대 인덱스 계산
     const fishingRods = [
@@ -161,7 +165,11 @@ const VoyageTab = ({
     const playerSpeed = 100 + fishingSkill * 10 + speedStatBonus;
     const playerMaxCooldown = Math.max(500, 5000 - playerSpeed * 5);
     
-    console.log(`[Voyage] Player Speed: ${playerSpeed} → maxCooldown: ${playerMaxCooldown}`);
+    console.log(`[VOYAGE] ⚡ 플레이어 속도 계산:`);
+    console.log(`  - 낚시실력: ${fishingSkill}`);
+    console.log(`  - 속도 스탯 보너스: ${speedStatBonus} (성장 ${userStats?.speed || 0} × 2)`);
+    console.log(`  - 최종 속도: ${playerSpeed} (100 + ${fishingSkill} × 10 + ${speedStatBonus})`);
+    console.log(`  - 쿨다운: ${playerMaxCooldown}ms`);
     
     // 적 속도에 따른 쿨다운 계산
     const enemyMaxCooldown = Math.max(500, 5000 - fish.speed * 20);
@@ -1236,7 +1244,7 @@ const VoyageTab = ({
                 ? "bg-blue-900/20 border-blue-500/30" 
                 : "bg-blue-50 border-blue-200"
             }`}>
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-2">
                 <span className={`font-bold text-lg ${
                   isDarkMode ? "text-blue-300" : "text-blue-700"
                 }`}>⚔️ 플레이어</span>
@@ -1244,6 +1252,19 @@ const VoyageTab = ({
                   isDarkMode ? "text-gray-200" : "text-gray-800"
                 }`}>
                   {Math.max(0, battleState.player.hp)} / {battleState.player.maxHp}
+                </span>
+              </div>
+              
+              {/* 플레이어 스탯 표시 */}
+              <div className={`flex items-center gap-2 mb-3 text-xs ${
+                isDarkMode ? "text-gray-400" : "text-gray-600"
+              }`}>
+                <span>⚔️ 공격력: {battleState.player.attack}</span>
+                <span>•</span>
+                <span>⚡ 속도: {battleState.player.speed}</span>
+                <span>•</span>
+                <span className={isDarkMode ? "text-blue-400" : "text-blue-600"}>
+                  🎣 실력: {fishingSkill}
                 </span>
               </div>
               

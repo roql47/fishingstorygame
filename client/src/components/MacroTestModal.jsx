@@ -10,6 +10,7 @@ const MacroTestModal = ({
 }) => {
   const [timeLeft, setTimeLeft] = useState(60);
   const [response, setResponse] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRef = useRef(null);
   const timerRef = useRef(null);
   const initializedRef = useRef(false);
@@ -20,6 +21,7 @@ const MacroTestModal = ({
       initializedRef.current = true;
       setTimeLeft(60);
       setResponse('');
+      setIsSubmitting(false);
       
       // 입력창 자동 포커스
       setTimeout(() => {
@@ -41,6 +43,7 @@ const MacroTestModal = ({
     
     if (!isOpen) {
       initializedRef.current = false;
+      setIsSubmitting(false);
       if (timerRef.current) {
         clearInterval(timerRef.current);
       }
@@ -68,7 +71,9 @@ const MacroTestModal = ({
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (response.trim()) {
+    if (response.trim() && !isSubmitting) {
+      setIsSubmitting(true);
+      console.log('[MacroTestModal] 제출 중:', response.trim());
       onSubmit?.(response.trim());
     }
   };
@@ -182,20 +187,23 @@ const MacroTestModal = ({
             value={response}
             onChange={(e) => setResponse(e.target.value)}
             placeholder="여기에 단어를 입력하세요"
+            disabled={isSubmitting}
             className={`w-full px-4 py-3 rounded-lg text-lg mb-4 border-2 transition-all ${
               isDarkMode
                 ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-500 focus:border-blue-400 focus:bg-gray-750'
                 : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-blue-500'
-            } focus:outline-none focus:ring-2 focus:ring-blue-500/50`}
+            } focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${
+              isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
             autoComplete="off"
             autoFocus
           />
           
           <button
             type="submit"
-            disabled={!response.trim()}
+            disabled={!response.trim() || isSubmitting}
             className={`w-full py-3 rounded-lg font-bold text-lg transition-all ${
-              response.trim()
+              response.trim() && !isSubmitting
                 ? isDarkMode
                   ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white'
                   : 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white'
@@ -204,7 +212,7 @@ const MacroTestModal = ({
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
             }`}
           >
-            제출하기
+            {isSubmitting ? '제출 중...' : '제출하기'}
           </button>
         </form>
       </div>

@@ -15,7 +15,17 @@ const FloatingChat = ({
   setSelectedUserProfile,
   setShowProfile,
   serverUrl,
-  setShowClickerModal
+  setShowClickerModal,
+  fishingCooldown,
+  setFishingCooldown,
+  cooldownLoaded,
+  setCooldownLoaded,
+  isProcessingFishing,
+  setIsProcessingFishing,
+  formatCooldown,
+  authenticatedRequest,
+  userUuid,
+  cooldownWorkerRef
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -57,6 +67,84 @@ const FloatingChat = ({
       return;
     }
 
+    // 🎮 에테르 던전 명령어 체크
+    if (text === "에테르 던전") {
+      setShowClickerModal(true);
+      setInput("");
+      return;
+    }
+
+    // 🎣 낚시하기 명령어 체크 및 쿨타임 적용
+    if (text === "낚시하기") {
+      // 🛡️ 1. 처리 중 상태 확인 (중복 방지)
+      if (isProcessingFishing) {
+        console.log("이미 낚시 처리 중입니다.");
+        return;
+      }
+      
+      // 🛡️ 2. 쿨타임 확인 (게스트는 쿨타임 로드 대기 생략)
+      if (!isGuest && !cooldownLoaded) {
+        alert("쿨타임 정보를 로딩 중입니다. 잠시 후 다시 시도해주세요.");
+        return;
+      }
+      
+      if (fishingCooldown > 0) {
+        alert(`낚시하기 쿨타임이 ${formatCooldown(fishingCooldown)} 남았습니다!`);
+        return;
+      }
+      
+      // 🛡️ 3. 처리 중 상태 설정
+      setIsProcessingFishing(true);
+      
+      // 서버에 낚시 쿨타임 설정 (게스트 포함)
+      try {
+        const params = { username, userUuid };
+        const response = await authenticatedRequest.post(`${serverUrl}/api/set-fishing-cooldown`, {}, { params });
+        
+        // 🚀 서버에서 계산된 쿨타임으로 클라이언트 설정
+        const serverCooldownTime = response.data.remainingTime || 0;
+        setFishingCooldown(serverCooldownTime);
+        setCooldownLoaded(true); // 쿨타임 로드 완료 상태 설정
+        
+        // localStorage에 쿨타임 종료 시간 저장 및 Worker에 전달
+        if (serverCooldownTime > 0) {
+          const fishingEndTime = new Date(Date.now() + serverCooldownTime);
+          localStorage.setItem('fishingCooldownEnd', fishingEndTime.toISOString());
+          
+          // Worker에 쿨타임 시작 전달
+          if (cooldownWorkerRef && cooldownWorkerRef.current) {
+            cooldownWorkerRef.current.postMessage({
+              action: 'start',
+              cooldownType: 'fishing',
+              endTime: fishingEndTime.toISOString()
+            });
+          }
+        }
+      } catch (error) {
+        console.error("낚시 쿨타임 설정 실패:", error);
+        alert("낚시 쿨타임 설정 중 오류가 발생했습니다.");
+        setIsProcessingFishing(false);
+        return;
+      } finally {
+        // 🛡️ 4. 처리 완료 후 상태 해제 (1초 후)
+        setTimeout(() => {
+          setIsProcessingFishing(false);
+        }, 1000);
+      }
+      
+      // 낚시하기는 소켓으로 메시지를 전송 (서버에서 물고기 처리)
+      const socket = getSocket();
+      const payload = { 
+        username, 
+        content: text, 
+        timestamp: new Date().toISOString(),
+        userUuid: userUuid
+      };
+      socket.emit("chat:message", payload);
+      setInput("");
+      return;
+    }
+
     const socket = getSocket();
     if (!socket) {
       console.error("소켓 연결이 없습니다.");
@@ -66,7 +154,8 @@ const FloatingChat = ({
     socket.emit("chat:message", {
       username: username,
       content: text,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      userUuid: userUuid
     });
 
     setInput("");
@@ -74,7 +163,7 @@ const FloatingChat = ({
 
   // Enter 키로 전송
   const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !isProcessingFishing) {
       e.preventDefault();
       handleSend();
     }
@@ -287,19 +376,30 @@ const FloatingChat = ({
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="메시지를 입력하세요..."
+                  placeholder={
+                    isProcessingFishing 
+                      ? "낚시 처리 중..." 
+                      : !cooldownLoaded
+                        ? "쿨타임 로딩 중..."
+                        : fishingCooldown > 0 
+                          ? `낚시하기 쿨타임: ${formatCooldown(fishingCooldown)}` 
+                          : "메시지 입력... (낚시하기)"
+                  }
                   maxLength={500}
+                  disabled={isProcessingFishing}
                   className={`flex-1 px-3 py-2 rounded-lg border transition-colors ${
                     isDarkMode
                       ? "bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-blue-500"
                       : "bg-white border-gray-300 text-gray-800 placeholder-gray-400 focus:border-blue-500"
-                  } focus:outline-none focus:ring-2 focus:ring-blue-500/20`}
+                  } focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
+                    isProcessingFishing ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
                 />
                 <button
                   onClick={handleSend}
-                  disabled={!input.trim()}
+                  disabled={!input.trim() || isProcessingFishing}
                   className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                    !input.trim()
+                    !input.trim() || isProcessingFishing
                       ? "opacity-50 cursor-not-allowed"
                       : "hover:scale-105"
                   } ${
@@ -311,6 +411,15 @@ const FloatingChat = ({
                   <Send className="w-5 h-5" />
                 </button>
               </div>
+              
+              {/* 쿨타임 상태 표시 */}
+              {fishingCooldown > 0 && (
+                <div className={`mt-2 text-xs text-center ${
+                  isDarkMode ? "text-yellow-400" : "text-yellow-600"
+                }`}>
+                  ⏰ 낚시 쿨타임: {formatCooldown(fishingCooldown)}
+                </div>
+              )}
             </div>
           )}
 

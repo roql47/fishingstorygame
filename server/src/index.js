@@ -6827,6 +6827,9 @@ app.post("/api/update-companion-stats", authenticateJWT, async (req, res) => {
   }
 });
 
+// 🔒 동료 경험치 API Rate Limiting (중복 요청 및 치팅 방지)
+const companionExpRequests = new Map(); // key: `${userUuid}-${companionName}`, value: { timestamp, count, totalExp }
+
 // 동료 경험치 추가 API (서버에서 경험치 계산 관리)
 app.post("/api/add-companion-exp", authenticateJWT, async (req, res) => {
   try {
@@ -6849,12 +6852,68 @@ app.post("/api/add-companion-exp", authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: "한 번에 너무 많은 경험치를 추가할 수 없습니다." });
     }
     
+    // 🔒 [SECURITY] Rate Limiting: 동일 동료에게 1초 이내 중복 요청 차단
+    const rateLimitKey = `${userUuid}-${companionName}`;
+    const now = Date.now();
+    const lastRequest = companionExpRequests.get(rateLimitKey);
+    
+    if (lastRequest) {
+      const timeSinceLastRequest = now - lastRequest.timestamp;
+      
+      // 1초 이내 중복 요청 차단
+      if (timeSinceLastRequest < 1000) {
+        console.warn(`⚠️ [SECURITY] ${username}의 ${companionName} 경험치 요청 차단 (${timeSinceLastRequest}ms 전 요청)`);
+        return res.status(429).json({ 
+          error: "경험치는 1초에 한 번만 추가할 수 있습니다.",
+          retryAfter: Math.ceil((1000 - timeSinceLastRequest) / 1000)
+        });
+      }
+      
+      // 🔒 [SECURITY] 10초 이내 과도한 경험치 추가 감지 (30,000 이상)
+      if (timeSinceLastRequest < 10000) {
+        lastRequest.count++;
+        lastRequest.totalExp += expAmount;
+        
+        if (lastRequest.totalExp > 30000) {
+          console.error(`🚨 [SECURITY] ${username}의 ${companionName} 경험치 치팅 의심! (10초간 ${lastRequest.totalExp} 경험치)`);
+          // 경고만 하고 일단 허용 (false positive 방지)
+        }
+      } else {
+        // 10초 이상 지났으면 초기화
+        lastRequest.timestamp = now;
+        lastRequest.count = 1;
+        lastRequest.totalExp = expAmount;
+      }
+    } else {
+      // 첫 요청
+      companionExpRequests.set(rateLimitKey, {
+        timestamp: now,
+        count: 1,
+        totalExp: expAmount
+      });
+      
+      // 5분 후 자동 정리 (메모리 누수 방지)
+      setTimeout(() => {
+        companionExpRequests.delete(rateLimitKey);
+      }, 300000);
+    }
+    
     const queryResult = await getUserQuery('user', username, userUuid);
     let query;
     if (queryResult.userUuid) {
       query = { userUuid: queryResult.userUuid };
     } else {
       query = queryResult;
+    }
+    
+    // 🔒 [SECURITY] 동료 소유권 검증 (해당 동료를 보유하고 있는지 확인)
+    const userCompanions = await CompanionModel.findOne(query);
+    if (!userCompanions || !userCompanions.companions.includes(companionName)) {
+      console.warn(`⚠️ [SECURITY] ${username}이(가) 보유하지 않은 동료 ${companionName}에게 경험치 추가 시도`);
+      return res.status(403).json({ 
+        error: "보유하지 않은 동료에게는 경험치를 추가할 수 없습니다.",
+        companionName 
+      });
     }
     
     // 🔧 동료 능력치 조회
@@ -7065,11 +7124,12 @@ app.post("/api/companion-succession", authenticateJWT, async (req, res) => {
 // 동료 뽑기 API
 app.post("/api/recruit-companion", authenticateJWT, async (req, res) => {
   try {
-    const { starPieceCost = 1 } = req.body; // 별조각 1개 기본 비용
+    // 🔒 [SECURITY FIX] 클라이언트가 비용을 조작할 수 없도록 서버에서 강제로 정의
+    const STAR_PIECE_COST = 1; // 별조각 1개 고정 비용
     // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
     const { userUuid, username } = req.user;
     
-    console.log("Recruit companion request:", { starPieceCost, username, userUuid });
+    console.log("Recruit companion request:", { starPieceCost: STAR_PIECE_COST, username, userUuid });
     
     // 사용자 별조각 확인
     const queryResult = await getUserQuery('user', username, userUuid);
@@ -7088,8 +7148,8 @@ app.post("/api/recruit-companion", authenticateJWT, async (req, res) => {
       CompanionModel.findOne(query)
     ]);
     
-    if (!userStarPieces || userStarPieces.starPieces < starPieceCost) {
-      console.log(`Not enough star pieces: has ${userStarPieces?.starPieces || 0}, needs ${starPieceCost}`);
+    if (!userStarPieces || userStarPieces.starPieces < STAR_PIECE_COST) {
+      console.log(`Not enough star pieces: has ${userStarPieces?.starPieces || 0}, needs ${STAR_PIECE_COST}`);
       return res.status(400).json({ error: "별조각이 부족합니다." });
     }
     
@@ -7118,9 +7178,9 @@ app.post("/api/recruit-companion", authenticateJWT, async (req, res) => {
     }
     
     // 별조각 차감
-    userStarPieces.starPieces -= starPieceCost;
+    userStarPieces.starPieces -= STAR_PIECE_COST;
     await userStarPieces.save();
-    console.log(`Deducted ${starPieceCost} star pieces. Remaining: ${userStarPieces.starPieces}`);
+    console.log(`Deducted ${STAR_PIECE_COST} star pieces. Remaining: ${userStarPieces.starPieces}`);
     
     // 15% 확률로 동료 획득
     const success = Math.random() < 0.15;
