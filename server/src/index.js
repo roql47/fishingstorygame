@@ -4510,19 +4510,14 @@ io.on("connection", (socket) => {
       }
       
       // 대상 유저의 socketId 찾기
-      console.log(`[MACRO-TEST-DEBUG] Looking for socketId for userUuid: ${targetUserUuid}`);
-      console.log(`[MACRO-TEST-DEBUG] connectedUsersMap size: ${connectedUsersMap.size}`);
-      console.log(`[MACRO-TEST-DEBUG] connectedUsersMap keys:`, Array.from(connectedUsersMap.keys()));
-      
       const targetSocketId = connectedUsersMap.get(targetUserUuid);
       if (!targetSocketId) {
-        console.log(`[MACRO-TEST] Target user not found in connectedUsersMap: ${targetUserUuid}`);
+        console.log(`[MACRO-TEST] Target user not found: ${targetUserUuid}`);
         socket.emit("macro-test:error", { 
           message: "대상 유저가 접속 중이 아닙니다." 
         });
         return;
       }
-      console.log(`[MACRO-TEST-DEBUG] Found socketId: ${targetSocketId}`);
       
       const targetSocket = io.sockets.sockets.get(targetSocketId);
       if (!targetSocket) {
@@ -4568,19 +4563,15 @@ io.on("connection", (socket) => {
       });
       
       // 대상 유저에게 캡챠 전송
-      console.log(`[MACRO-TEST] Emitting to target socket ${targetSocketId}...`);
       targetSocket.emit("macro-test:challenge", {
         word: word.trim(),
         timeLimit: 60
       });
-      console.log(`[MACRO-TEST] Challenge emitted to ${targetUsername}`);
       
       // 관리자에게 전송 완료 알림
       socket.emit("macro-test:sent", {
         message: `${targetUsername}에게 매크로 테스트를 전송했습니다.`
       });
-      
-      console.log(`[MACRO-TEST] 테스트 전송 완료: ${adminUsername} → ${targetUsername} (단어: ${word.trim()})`);
     } catch (error) {
       console.error("Macro test send error:", error);
       socket.emit("macro-test:error", { 

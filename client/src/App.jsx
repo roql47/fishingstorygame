@@ -3139,36 +3139,22 @@ function App() {
     
     // 매크로 테스트 관련 이벤트 핸들러들
     const onMacroTestChallenge = (data) => {
-      console.log("[MACRO-TEST-RECEIVE] 매크로 테스트 수신!", data);
-      console.log("[MACRO-TEST-RECEIVE] Word:", data.word);
-      console.log("[MACRO-TEST-RECEIVE] Time limit:", data.timeLimit);
-      
       setMacroTestWord(data.word);
       setShowMacroTest(true);
-      
-      console.log("[MACRO-TEST-RECEIVE] Modal state set to true");
     };
     
     const onMacroTestResult = (data) => {
-      console.log("[MACRO-TEST] 테스트 결과:", data);
       setShowMacroTest(false);
-      if (data.success) {
-        alert(`${data.message}\n소요 시간: ${data.elapsedTime}초`);
-        // 자동미끼 카운트 업데이트
-        if (data.autoBaitCount !== undefined) {
-          setAutoBaitCount(data.autoBaitCount);
-        }
+      alert(`${data.message}\n소요 시간: ${data.elapsedTime}초`);
+      if (data.autoBaitCount !== undefined) {
+        setAutoBaitCount(data.autoBaitCount);
       }
     };
     
     const onMacroTestFailed = (data) => {
-      console.log("[MACRO-TEST] 테스트 실패:", data);
       setShowMacroTest(false);
-      
-      // 로그아웃 처리
       alert(data.message);
       
-      // 로그아웃 화면으로 이동
       setUsername('');
       setUserUuid('');
       setIdToken(null);
@@ -3178,19 +3164,17 @@ function App() {
       localStorage.removeItem('userUuid');
       localStorage.removeItem('jwtToken');
       
-      // 소켓 연결 종료
+      const socket = getSocket();
       if (socket) {
         socket.disconnect();
       }
     };
     
     const onMacroTestError = (data) => {
-      console.error("[MACRO-TEST] 오류:", data);
       alert(data.message);
     };
     
     const onMacroTestSent = (data) => {
-      console.log("[MACRO-TEST] 전송 완료:", data);
       alert(data.message);
     };
     
@@ -3199,8 +3183,6 @@ function App() {
     socket.on("macro-test:failed", onMacroTestFailed);
     socket.on("macro-test:error", onMacroTestError);
     socket.on("macro-test:sent", onMacroTestSent);
-    
-    console.log("[MACRO-TEST] Event handlers registered. Socket connected:", socket?.connected);
     
     // 레이드 관련 이벤트 핸들러들
     const onRaidBossUpdate = (data) => {
@@ -6083,8 +6065,8 @@ function App() {
   
   // 매크로 테스트 제출 핸들러
   const handleMacroTestSubmit = (response) => {
+    const socket = getSocket();
     if (!socket) return;
-    console.log("[MACRO-TEST] 응답 제출:", response);
     socket.emit("macro-test:response", {
       userUuid,
       username,
@@ -6094,12 +6076,12 @@ function App() {
   
   // 매크로 테스트 타임아웃 핸들러
   const handleMacroTestTimeout = () => {
-    console.log("[MACRO-TEST] 타임아웃");
     setShowMacroTest(false);
   };
   
   // 관리자 - 매크로 테스트 전송 함수
   const sendMacroTest = (targetUserUuid, targetUsername, word) => {
+    const socket = getSocket();
     if (!socket) {
       alert("소켓 연결이 없습니다.");
       return;
@@ -6108,12 +6090,6 @@ function App() {
       alert("캡챠 단어를 입력해주세요.");
       return;
     }
-    console.log("[MACRO-TEST-CLIENT] 매크로 테스트 전송:", { 
-      targetUserUuid, 
-      targetUsername, 
-      word,
-      socketConnected: socket?.connected 
-    });
     socket.emit("admin:macro-test:send", {
       targetUserUuid,
       targetUsername,

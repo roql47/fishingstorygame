@@ -406,33 +406,25 @@ const ChatTab = ({
                       isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
                     }`}
                     onClick={() => {
-                      console.log('[MACRO-TEST-UI] Current connectedUsers:', connectedUsers);
                       const targetUsername = prompt('매크로 테스트를 전송할 유저명을 입력하세요:');
                       if (!targetUsername) return;
                       
-                      console.log('[MACRO-TEST-UI] Searching for username:', targetUsername);
                       const targetUser = connectedUsers?.find(u => 
                         (u.displayName || u.username) === targetUsername || u.username === targetUsername
                       );
                       
                       if (!targetUser) {
-                        const userList = connectedUsers?.map(u => `${u.displayName || u.username} (UUID: ${u.userUuid})`).join(', ');
+                        const userList = connectedUsers?.map(u => u.displayName || u.username).join(', ');
                         alert(`"${targetUsername}" 유저를 찾을 수 없습니다.\n접속 중인 유저: ${userList}`);
                         return;
                       }
                       
-                      console.log('[MACRO-TEST-UI] Found target user:', targetUser);
                       const word = prompt('캡챠 단어를 입력하세요 (대소문자 구분):');
                       if (!word || word.trim().length === 0) {
                         alert('캡챠 단어를 입력해주세요.');
                         return;
                       }
                       
-                      console.log('[MACRO-TEST-UI] Sending macro test:', {
-                        userUuid: targetUser.userUuid,
-                        username: targetUser.displayName || targetUser.username,
-                        word
-                      });
                       sendMacroTest(targetUser.userUuid, targetUser.displayName || targetUser.username, word);
                     }}
                     title="매크로 테스트 전송"
