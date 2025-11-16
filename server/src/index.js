@@ -6715,11 +6715,12 @@ app.post("/api/update-companion-stats", authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: "유효한 동료 이름이 필요합니다." });
     }
     
-    if (level !== undefined && (typeof level !== 'number' || level < 1 || level > 100)) {
+    // level과 experience는 선택적 파라미터 (isInBattle만 업데이트할 수도 있음)
+    if (level !== undefined && level !== null && (typeof level !== 'number' || level < 1 || level > 100)) {
       return res.status(400).json({ error: "레벨은 1-100 사이의 숫자여야 합니다." });
     }
     
-    if (experience !== undefined && (typeof experience !== 'number' || experience < 0)) {
+    if (experience !== undefined && experience !== null && (typeof experience !== 'number' || experience < 0)) {
       return res.status(400).json({ error: "경험치는 0 이상의 숫자여야 합니다." });
     }
     

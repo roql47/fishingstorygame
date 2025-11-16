@@ -422,6 +422,7 @@ function App() {
   const [selectedMaterialQuantity, setSelectedMaterialQuantity] = useState(1); // 재료 소모 수량 (1~5)
   const [battleState, setBattleState] = useState(null); // { enemy, playerHp, enemyHp, turn, log }
   const [explorationSessionToken, setExplorationSessionToken] = useState(null); // 🔒 탐사전투 세션 토큰
+  const explorationSessionTokenRef = useRef(null); // 🔒 세션 토큰 ref (클로저 문제 해결)
   const [showBattleModal, setShowBattleModal] = useState(false);
   const [isProcessingFishing, setIsProcessingFishing] = useState(false); // 🛡️ 낚시 처리 중 상태
   const [showNoticeModal, setShowNoticeModal] = useState(false); // 공지사항 모달
@@ -471,18 +472,32 @@ function App() {
   const [speedBars, setSpeedBars] = useState({}); // 각 캐릭터의 속도바 상태
   const speedBarIntervalsRef = useRef({});
   const battleStateRef = useRef(null); // battleState ref (속도바에서 접근용)
+  const isClaimingExplorationRewardRef = useRef(false); // 🔒 탐사전투 보상 수령 중복 방지
 
   // 호박석 지급 함수 (TDZ 문제 해결을 위해 상단에 선언)
-  const addAmber = async (amount) => {
+  const addAmber = async (amount, sessionTokenParam = null) => {
+    // 🔒 중복 호출 방지 (승리 조건이 여러 번 체크될 수 있음)
+    if (isClaimingExplorationRewardRef.current) {
+      console.log('[EXPLORATION] ⚠️ 이미 보상 처리 중 - 중복 호출 무시');
+      return true; // 이미 처리 중이면 성공으로 간주
+    }
+    
+    isClaimingExplorationRewardRef.current = true;
+    
     try {
       console.log('[EXPLORATION] Adding amber reward:', amount);
       
-      // 🔒 보안: 세션 토큰 확인
-      if (!explorationSessionToken) {
+      // 🔒 보안: 세션 토큰 확인 (매개변수 > ref > 상태 순서로)
+      const tokenToUse = sessionTokenParam || explorationSessionTokenRef.current || explorationSessionToken;
+      if (!tokenToUse) {
         console.error('[EXPLORATION] ❌ 세션 토큰 없음! 보상 지급 불가');
+        console.error('[EXPLORATION] sessionTokenParam:', sessionTokenParam);
+        console.error('[EXPLORATION] explorationSessionTokenRef.current:', explorationSessionTokenRef.current);
+        console.error('[EXPLORATION] explorationSessionToken:', explorationSessionToken);
         alert('유효하지 않은 전투 세션입니다. 전투를 다시 시작해주세요.');
         return false;
       }
+      console.log('[EXPLORATION] 🔐 사용 중인 세션 토큰:', tokenToUse.substring(0, 8) + '...');
       
       // serverUrl 직접 계산 (TDZ 방지)
       const hostname = window.location.hostname;
@@ -494,7 +509,7 @@ function App() {
       const token = jwtToken || localStorage.getItem("jwtToken");
       const response = await axios.post(`${calculatedServerUrl}/api/add-amber`, {
         amount,
-        sessionToken: explorationSessionToken // 🔒 세션 토큰 전송
+        sessionToken: tokenToUse // 🔒 세션 토큰 전송
       }, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
@@ -504,17 +519,26 @@ function App() {
       if (response.data.success) {
         console.log(`[EXPLORATION] ✅ Added ${amount} amber. New total: ${response.data.newAmber}`);
         setUserAmber(response.data.newAmber);
-        // 🔒 세션 토큰 초기화 (사용 완료)
-        setExplorationSessionToken(null);
+        // 🔒 세션 토큰 초기화는 외부에서 처리 (중복 호출 방지)
         return true;
       }
       return false;
     } catch (error) {
       console.error("[EXPLORATION] ❌ Failed to add amber:", error);
       console.error("Error response:", error.response?.data);
-      // 오류 시에도 세션 토큰 초기화
-      setExplorationSessionToken(null);
+      
+      // 403 에러 (이미 사용된 세션)는 조용히 처리
+      if (error.response?.status === 403) {
+        console.warn('[EXPLORATION] ⚠️ 세션이 이미 사용됨 (중복 호출 - 정상)');
+        return true; // 이미 처리된 것으로 간주
+      }
+      
+      // 다른 에러인 경우 사용자에게 알림
+      alert(error.response?.data?.error || '호박석 지급 중 오류가 발생했습니다.');
       return false;
+    } finally {
+      // 🔒 항상 플래그 초기화 (에러 발생 시에도)
+      isClaimingExplorationRewardRef.current = false;
     }
   };
 
@@ -952,11 +976,13 @@ function App() {
                         await addCompanionExp(c, totalExpReward);
                       }
                     }
-                    setTimeout(() => {
-                      setShowBattleModal(false);
-                      setBattleState(null);
-                      alert(`승리! 총 호박석 ${totalAmberReward}개!`);
-                    }, 1000);
+                    
+                    // 모든 보상 처리 완료 후 세션 초기화 및 모달 닫기
+                    setExplorationSessionToken(null);
+                    explorationSessionTokenRef.current = null;
+                    setShowBattleModal(false);
+                    setBattleState(null);
+                    alert(`승리! 총 호박석 ${totalAmberReward}개!`);
                   }, 1000);
                   
                   return { ...currentState, enemies: newEnemies, log: newLog, turn: 'victory', amberReward: totalAmberReward };
@@ -1054,6 +1080,8 @@ function App() {
                 setTimeout(() => {
                   setShowBattleModal(false);
                   setBattleState(null);
+                  setExplorationSessionToken(null); // 🔒 세션 토큰 초기화
+                  explorationSessionTokenRef.current = null;
                   alert("패배했습니다...");
                 }, 2000);
                 return { ...currentState, playerHp: newPlayerHp, companionHp: newCompanionHp, companionMorale: newCompanionMorale, log: newLog, turn: 'defeat' };
@@ -1187,11 +1215,13 @@ function App() {
                       await addCompanionExp(c, totalExpReward);
                     }
                   }
-                  setTimeout(() => {
-                    setShowBattleModal(false);
-                    setBattleState(null);
-                    alert(`승리! 총 호박석 ${totalAmberReward}개!`);
-                  }, 1000);
+                  
+                  // 모든 보상 처리 완료 후 세션 초기화 및 모달 닫기
+                  setExplorationSessionToken(null);
+                  explorationSessionTokenRef.current = null;
+                  setShowBattleModal(false);
+                  setBattleState(null);
+                  alert(`승리! 총 호박석 ${totalAmberReward}개!`);
                 }, 1000);
                 
                 return { ...currentState, enemies: newEnemies, companionMorale: newCompanionMorale, companionBuffs: newCompanionBuffs, log: newLog, turn: 'victory', amberReward: totalAmberReward };
@@ -7108,6 +7138,11 @@ function App() {
       return;
     }
 
+    // 🔒 전투 시작 전 이전 세션 토큰 및 플래그 초기화
+    setExplorationSessionToken(null);
+    explorationSessionTokenRef.current = null;
+    isClaimingExplorationRewardRef.current = false;
+    
     // 재료 소모 성공 후 서버에 전투 시작 요청
     try {
       const response = await authenticatedRequest.post(`${serverUrl}/api/start-battle`, {
@@ -7123,8 +7158,14 @@ function App() {
         
         // 🔒 탐사전투 세션 토큰 저장
         const sessionToken = response.data.sessionToken;
+        if (!sessionToken) {
+          console.error('[EXPLORATION] ❌ 서버에서 세션 토큰을 받지 못했습니다!');
+          alert('전투 세션 생성에 실패했습니다. 다시 시도해주세요.');
+          return;
+        }
         setExplorationSessionToken(sessionToken);
-        console.log('[EXPLORATION] 🔐 전투 세션 토큰 받음:', sessionToken ? sessionToken.substring(0, 8) + '...' : '없음');
+        explorationSessionTokenRef.current = sessionToken; // ref에도 저장 (클로저 문제 해결)
+        console.log('[EXPLORATION] 🔐 전투 세션 토큰 받음:', sessionToken.substring(0, 8) + '...');
     
     // 전투 참여 동료들의 체력 및 사기 초기화
     const companionHpData = {};
@@ -7490,11 +7531,12 @@ function App() {
             }
           }
           
-          setTimeout(() => {
-            setShowBattleModal(false);
-            setBattleState(null);
-            alert(`승리! 호박석 ${amberReward}개를 획득했습니다!${prefixBonus}`);
-          }, 1000);
+          // 모든 보상 처리 완료 후 세션 초기화 및 모달 닫기
+          setExplorationSessionToken(null);
+          explorationSessionTokenRef.current = null;
+          setShowBattleModal(false);
+          setBattleState(null);
+          alert(`승리! 호박석 ${amberReward}개를 획득했습니다!${prefixBonus}`);
         }, 1000);
 
         return {
@@ -7590,11 +7632,12 @@ function App() {
               }
             }
             
-            setTimeout(() => {
-              setShowBattleModal(false);
-              setBattleState(null);
-              alert(`승리! 총 호박석 ${totalAmberReward}개를 획득했습니다!`);
-            }, 1000);
+            // 모든 보상 처리 완료 후 세션 초기화 및 모달 닫기
+            setExplorationSessionToken(null);
+            explorationSessionTokenRef.current = null;
+            setShowBattleModal(false);
+            setBattleState(null);
+            alert(`승리! 총 호박석 ${totalAmberReward}개를 획득했습니다!`);
           }, 1000);
 
           return {
@@ -7649,11 +7692,12 @@ function App() {
             }
           }
           
-            setTimeout(() => {
-            setShowBattleModal(false);
-            setBattleState(null);
-            alert(`승리! 호박석 ${amberReward}개를 획득했습니다!${prefixBonus}`);
-          }, 1000);
+          // 모든 보상 처리 완료 후 세션 초기화 및 모달 닫기
+          setExplorationSessionToken(null);
+          explorationSessionTokenRef.current = null;
+          setShowBattleModal(false);
+          setBattleState(null);
+          alert(`승리! 호박석 ${amberReward}개를 획득했습니다!${prefixBonus}`);
         }, 1000);
 
         return {
@@ -7752,6 +7796,8 @@ function App() {
           
           setShowBattleModal(false);
           setBattleState(null);
+          setExplorationSessionToken(null); // 🔒 세션 토큰 초기화
+          explorationSessionTokenRef.current = null;
           alert("패배했습니다...");
         }, 2000);
 
@@ -14851,6 +14897,8 @@ function App() {
                     onClick={() => {
                       setShowBattleModal(false);
                       setBattleState(null);
+                      setExplorationSessionToken(null); // 🔒 세션 토큰 초기화
+                      explorationSessionTokenRef.current = null;
                     }}
                     className={`flex-1 py-3 px-6 rounded-lg font-bold text-lg transition-all duration-300 hover:scale-105 ${
                       battleState && battleState.turn === 'victory'
