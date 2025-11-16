@@ -675,10 +675,27 @@ class ExpeditionSystem {
                     excludeSelf: true
                 }
             },
+            "엘리시아": {
+                name: "엘리시아",
+                baseHp: 80,
+                baseAttack: 15,
+                baseSpeed: 45,
+                growthHp: 12,
+                growthAttack: 3.5,
+                growthSpeed: 0.4,
+                description: "화염의 파괴자",
+                rarity: "영웅",
+                skill: {
+                    name: "화염 유린",
+                    description: "랜덤한 적 1명에게 강력한 260% 데미지를 가합니다",
+                    damageMultiplier: 2.6,
+                    moraleRequired: 100
+                }
+            },
             "에블린": {
                 name: "에블린",
-                baseHp: 85,
-                baseAttack: 13,
+                baseHp: 95,
+                baseAttack: 15,
                 baseSpeed: 60,
                 growthHp: 13,
                 growthAttack: 3.2,
@@ -795,7 +812,11 @@ class ExpeditionSystem {
             "클로에": { baseHp: 40, baseAttack: 14, baseSpeed: 65, growthHp: 6, growthAttack: 3, growthSpeed: 0.5 },
             "나하트라": { baseHp: 80, baseAttack: 11, baseSpeed: 30, growthHp: 14, growthAttack: 3, growthSpeed: 0.5 },
             "메이델": { baseHp: 85, baseAttack: 12, baseSpeed: 50, growthHp: 13, growthAttack: 3, growthSpeed: 0.5 },
-            "에블린": { baseHp: 85, baseAttack: 13, baseSpeed: 60, growthHp: 13, growthAttack: 3.2, growthSpeed: 0.5 }
+            "아이란": { baseHp: 95, baseAttack: 10, baseSpeed: 40, growthHp: 15, growthAttack: 2.5, growthSpeed: 0.5 },
+            "리무": { baseHp: 90, baseAttack: 13, baseSpeed: 55, growthHp: 14, growthAttack: 3.2, growthSpeed: 0.5 },
+            "셰리": { baseHp: 88, baseAttack: 13, baseSpeed: 65, growthHp: 13.5, growthAttack: 3.1, growthSpeed: 0.6 },
+            "엘리시아": { baseHp: 80, baseAttack: 15, baseSpeed: 45, growthHp: 12, growthAttack: 3.5, growthSpeed: 0.4 },
+            "에블린": { baseHp: 95, baseAttack: 15, baseSpeed: 60, growthHp: 13, growthAttack: 3.2, growthSpeed: 0.5 }
         };
         return COMPANION_DATA[companionName];
     }
