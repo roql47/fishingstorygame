@@ -1,6 +1,20 @@
 // 공지사항 데이터 (ID 내림차순 정렬 - 최신이 가장 높은 ID)
 export const NOTICE_DATA = [
   {
+    id: 57,
+    date: "2025.11.16",
+    title: "[v1.419] 🔍 매크로 테스트 시스템 추가",
+    content: [
+      "매크로 테스트 시스템 추가:",
+      "  관리자가 특정 유저에게 캡챠 테스트 전송 가능",
+      "  1분 내에 정확한 단어 입력 필요 (대소문자 구분)",
+      "  테스트 성공 시 자동미끼 10개 보상",
+      "  테스트 실패 또는 시간 초과 시 자동 로그아웃"
+    ],
+    isNew: true,
+    type: "major_update"
+  },
+  {
     id: 56,
     date: "2025.11.15",
     title: "[v1.418] 💫 신규 영웅 동료 '에블린' 추가",
@@ -13,7 +27,7 @@ export const NOTICE_DATA = [
       "  보유물고기가 업적 카운트에 반영 안되던 점 수정",
       "신규 쿠폰 추가:'여우는 어떻게울어요?'"
         ],
-    isNew: true,
+    isNew: false,
     type: "major_update"
   },
   {
@@ -1011,5 +1025,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.418"
+  version: "v1.419"
 };

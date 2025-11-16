@@ -17,7 +17,7 @@ alwaysApply: false
 **수정 위치:** 16번째 줄 `<title>` 태그
 
 ```html
-<title>여우이야기 v1.418</title>  <!-- ← 여기 수정! -->
+<title>여우이야기 v1.419</title>  <!-- ← 여기 수정! -->
 ```
 
 **목적:** 브라우저 탭에 표시되는 버전 정보
@@ -32,7 +32,7 @@ alwaysApply: false
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.418"  // ← 여기 수정!
+  version: "v1.419"  // ← 여기 수정!
 };
 ```
 
@@ -43,9 +43,9 @@ export const VERSION_INFO = {
 **수정 위치:** 약 212번째 줄 `CURRENT_VERSION` 상수
 
 ```javascript
-// 🔄 버전 업데이트 시 캐시 초기화 (v1.418)
+// 🔄 버전 업데이트 시 캐시 초기화 (v1.419)
 useEffect(() => {
-  const CURRENT_VERSION = "v1.418";  // ← 여기 수정!
+  const CURRENT_VERSION = "v1.419";  // ← 여기 수정!
   const CACHE_VERSION_KEY = "app_cache_version";
 ```
 
@@ -60,7 +60,7 @@ useEffect(() => {
 ```javascript
 {/* 제목 */}
 <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-  여우이야기 v1.418  {/* ← 여기 수정! */}
+  여우이야기 v1.419  {/* ← 여기 수정! */}
 </h1>
 ```
 
@@ -76,7 +76,7 @@ useEffect(() => {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.418"  // ← 여기 수정!
+    version: "v1.419"  // ← 여기 수정!
   });
 });
 ```
@@ -92,7 +92,7 @@ app.get("/api/version", (req, res) => {
 ```javascript
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.418",  // ← 여기 수정!
+    version: "v1.419",  // ← 여기 수정!
     timestamp: new Date().toISOString(),
 ```
 
@@ -128,17 +128,7 @@ curl https://your-domain.com/api/version
 
 ## 📝 버전 업데이트 예시
 
-### 변경 전 (v1.417)
-```
-✅ index.html 브라우저 탭 → "v1.417"
-✅ noticeData.js VERSION_INFO → "v1.417"
-✅ App.jsx CURRENT_VERSION → "v1.417"
-✅ App.jsx 로그인 화면 → "v1.417"
-✅ server index.js /api/version → "v1.417"
-✅ server index.js debug info → "v1.417"
-```
-
-### 변경 후 (v1.418)
+### 변경 전 (v1.418)
 ```
 ✅ index.html 브라우저 탭 → "v1.418"
 ✅ noticeData.js VERSION_INFO → "v1.418"
@@ -148,9 +138,38 @@ curl https://your-domain.com/api/version
 ✅ server index.js debug info → "v1.418"
 ```
 
+### 변경 후 (v1.419)
+```
+✅ index.html 브라우저 탭 → "v1.419"
+✅ noticeData.js VERSION_INFO → "v1.419"
+✅ App.jsx CURRENT_VERSION → "v1.419"
+✅ App.jsx 로그인 화면 → "v1.419"
+✅ server index.js /api/version → "v1.419"
+✅ server index.js debug info → "v1.419"
+```
+
 ---
 
 ## 📜 최근 주요 업데이트 내역
+
+### v1.419 (2025.11.16)
+**🔍 매크로 테스트 시스템**
+- ✨ 관리자 전용 매크로 테스트 기능 추가
+  - 특정 유저에게 캡챠 형식의 테스트 전송
+  - 1분 내에 정확한 단어 입력 필요 (대소문자 구분)
+  - 테스트 성공 시 자동미끼 10개 보상
+  - 테스트 실패 또는 시간 초과 시 자동 로그아웃
+- 🔐 보안 시스템 강화
+  - 관리자 권한 검증 (socket.data.isAdmin)
+  - 실시간 Socket.IO 통신으로 즉시 전송
+  - 세션 종료 및 로그 기록 시스템
+- 🎨 UI 구현
+  - 전체 화면 모달 (닫기 불가)
+  - 60초 카운트다운 타이머
+  - 시간에 따른 색상 변화 (녹색→노란색→빨간색)
+  - 관리자 채팅 탭에 🔍 버튼 추가
+
+---
 
 ### v1.418 (2025.11.15)
 **💫 신규 영웅 동료 시스템**
@@ -226,5 +245,5 @@ curl https://your-domain.com/api/version
 
 ---
 
-**마지막 업데이트:** 2025.11.15 (신규 영웅 동료 에블린 & 자동항해전투)
-**현재 버전:** v1.418
+**마지막 업데이트:** 2025.11.16 (매크로 테스트 시스템 추가)
+**현재 버전:** v1.419

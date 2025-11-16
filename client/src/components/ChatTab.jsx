@@ -55,7 +55,9 @@ const ChatTab = ({
   autoFishingEnabled,
   setAutoFishingEnabled,
   handleExpeditionInviteClick,
-  setShowClickerModal
+  setShowClickerModal,
+  connectedUsers,
+  sendMacroTest
 }) => {
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -389,15 +391,55 @@ const ChatTab = ({
               
               {/* 관리자 버튼 (관리자만 보임) */}
               {isAdmin && (
-                <button
-                  className={`p-2 rounded-lg hover:glow-effect transition-all duration-300 text-orange-400 ${
-                    isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
-                  }`}
-                  onClick={openIPManager}
-                  title="IP 차단 관리"
-                >
-                  🛡️
-                </button>
+                <>
+                  <button
+                    className={`p-2 rounded-lg hover:glow-effect transition-all duration-300 text-orange-400 ${
+                      isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+                    }`}
+                    onClick={openIPManager}
+                    title="IP 차단 관리"
+                  >
+                    🛡️
+                  </button>
+                  <button
+                    className={`p-2 rounded-lg hover:glow-effect transition-all duration-300 text-purple-400 ${
+                      isDarkMode ? "glass-input" : "bg-white/60 backdrop-blur-sm border border-gray-300/40"
+                    }`}
+                    onClick={() => {
+                      console.log('[MACRO-TEST-UI] Current connectedUsers:', connectedUsers);
+                      const targetUsername = prompt('매크로 테스트를 전송할 유저명을 입력하세요:');
+                      if (!targetUsername) return;
+                      
+                      console.log('[MACRO-TEST-UI] Searching for username:', targetUsername);
+                      const targetUser = connectedUsers?.find(u => 
+                        (u.displayName || u.username) === targetUsername || u.username === targetUsername
+                      );
+                      
+                      if (!targetUser) {
+                        const userList = connectedUsers?.map(u => `${u.displayName || u.username} (UUID: ${u.userUuid})`).join(', ');
+                        alert(`"${targetUsername}" 유저를 찾을 수 없습니다.\n접속 중인 유저: ${userList}`);
+                        return;
+                      }
+                      
+                      console.log('[MACRO-TEST-UI] Found target user:', targetUser);
+                      const word = prompt('캡챠 단어를 입력하세요 (대소문자 구분):');
+                      if (!word || word.trim().length === 0) {
+                        alert('캡챠 단어를 입력해주세요.');
+                        return;
+                      }
+                      
+                      console.log('[MACRO-TEST-UI] Sending macro test:', {
+                        userUuid: targetUser.userUuid,
+                        username: targetUser.displayName || targetUser.username,
+                        word
+                      });
+                      sendMacroTest(targetUser.userUuid, targetUser.displayName || targetUser.username, word);
+                    }}
+                    title="매크로 테스트 전송"
+                  >
+                    🔍
+                  </button>
+                </>
               )}
               
               {/* 연금술포션 사용 버튼 */}

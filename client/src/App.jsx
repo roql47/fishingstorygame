@@ -29,6 +29,7 @@ import RoguelikeModal from './components/RoguelikeModal';
 import ClickerModal from './components/ClickerModal';
 import AudioPlayer from './components/AudioPlayer';
 import VoyageTab from './components/VoyageTab';
+import MacroTestModal from './components/MacroTestModal';
 import { VERSION_INFO } from './data/noticeData';
 import { CRAFTING_RECIPES, getCraftingRecipe, getDecomposeRecipe, getMaterialTier, calculateCraftingChain, getAllMaterials } from './data/craftingData';
 import { 
@@ -224,7 +225,7 @@ function App() {
 
   // 🔄 버전 업데이트 시 캐시 초기화 (v1.405)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.418";
+    const CURRENT_VERSION = "v1.419";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -316,6 +317,10 @@ function App() {
   const [userAdminStatus, setUserAdminStatus] = useState({}); // 다른 사용자들의 관리자 상태
   const [connectedUsers, setConnectedUsers] = useState([]); // 접속자 목록
   const [isLoadingUsers, setIsLoadingUsers] = useState(true); // 접속자 목록 로딩 상태
+  // 🔍 매크로 테스트 관련 state
+  const [showMacroTest, setShowMacroTest] = useState(false);
+  const [macroTestWord, setMacroTestWord] = useState('');
+  const [showMacroAdminPanel, setShowMacroAdminPanel] = useState(false);
   const [rankings, setRankings] = useState([]); // 랭킹 데이터
   const [currentRankingPage, setCurrentRankingPage] = useState(1); // 랭킹 페이지네이션
   const rankingsPerPage = 10; // 페이지당 표시할 랭킹 수
@@ -3132,6 +3137,71 @@ function App() {
     
     socket.on("new-mail", onNewMail);
     
+    // 매크로 테스트 관련 이벤트 핸들러들
+    const onMacroTestChallenge = (data) => {
+      console.log("[MACRO-TEST-RECEIVE] 매크로 테스트 수신!", data);
+      console.log("[MACRO-TEST-RECEIVE] Word:", data.word);
+      console.log("[MACRO-TEST-RECEIVE] Time limit:", data.timeLimit);
+      
+      setMacroTestWord(data.word);
+      setShowMacroTest(true);
+      
+      console.log("[MACRO-TEST-RECEIVE] Modal state set to true");
+    };
+    
+    const onMacroTestResult = (data) => {
+      console.log("[MACRO-TEST] 테스트 결과:", data);
+      setShowMacroTest(false);
+      if (data.success) {
+        alert(`${data.message}\n소요 시간: ${data.elapsedTime}초`);
+        // 자동미끼 카운트 업데이트
+        if (data.autoBaitCount !== undefined) {
+          setAutoBaitCount(data.autoBaitCount);
+        }
+      }
+    };
+    
+    const onMacroTestFailed = (data) => {
+      console.log("[MACRO-TEST] 테스트 실패:", data);
+      setShowMacroTest(false);
+      
+      // 로그아웃 처리
+      alert(data.message);
+      
+      // 로그아웃 화면으로 이동
+      setUsername('');
+      setUserUuid('');
+      setIdToken(null);
+      setIsGuest(false);
+      localStorage.removeItem('idToken');
+      localStorage.removeItem('username');
+      localStorage.removeItem('userUuid');
+      localStorage.removeItem('jwtToken');
+      
+      // 소켓 연결 종료
+      if (socket) {
+        socket.disconnect();
+      }
+    };
+    
+    const onMacroTestError = (data) => {
+      console.error("[MACRO-TEST] 오류:", data);
+      alert(data.message);
+    };
+    
+    const onMacroTestSent = (data) => {
+      console.log("[MACRO-TEST] 전송 완료:", data);
+      alert(data.message);
+    };
+    
+    socket.on("macro-test:challenge", onMacroTestChallenge);
+    socket.on("macro-test:result", onMacroTestResult);
+    socket.on("macro-test:failed", onMacroTestFailed);
+    socket.on("macro-test:error", onMacroTestError);
+    socket.on("macro-test:sent", onMacroTestSent);
+    
+    console.log("[MACRO-TEST] Event handlers registered. Socket connected:", socket?.connected);
+    
     // 레이드 관련 이벤트 핸들러들
     const onRaidBossUpdate = (data) => {
       const { bossType, boss } = data;
@@ -3437,6 +3507,11 @@ function App() {
       socket.off("account-blocked", onAccountBlocked);
       socket.off("ip-blocked", onIPBlocked);
       socket.off("new-mail", onNewMail);
+      socket.off("macro-test:challenge", onMacroTestChallenge);
+      socket.off("macro-test:result", onMacroTestResult);
+      socket.off("macro-test:failed", onMacroTestFailed);
+      socket.off("macro-test:error", onMacroTestError);
+      socket.off("macro-test:sent", onMacroTestSent);
       socket.off("profile:image:updated", onProfileImageUpdated);
       
       // 레이드 관련 이벤트 정리
@@ -6005,6 +6080,47 @@ function App() {
       secureToggleAdminRights(adminKey);
     }
   };
+  
+  // 매크로 테스트 제출 핸들러
+  const handleMacroTestSubmit = (response) => {
+    if (!socket) return;
+    console.log("[MACRO-TEST] 응답 제출:", response);
+    socket.emit("macro-test:response", {
+      userUuid,
+      username,
+      response
+    });
+  };
+  
+  // 매크로 테스트 타임아웃 핸들러
+  const handleMacroTestTimeout = () => {
+    console.log("[MACRO-TEST] 타임아웃");
+    setShowMacroTest(false);
+  };
+  
+  // 관리자 - 매크로 테스트 전송 함수
+  const sendMacroTest = (targetUserUuid, targetUsername, word) => {
+    if (!socket) {
+      alert("소켓 연결이 없습니다.");
+      return;
+    }
+    if (!word || word.trim().length === 0) {
+      alert("캡챠 단어를 입력해주세요.");
+      return;
+    }
+    console.log("[MACRO-TEST-CLIENT] 매크로 테스트 전송:", { 
+      targetUserUuid, 
+      targetUsername, 
+      word,
+      socketConnected: socket?.connected 
+    });
+    socket.emit("admin:macro-test:send", {
+      targetUserUuid,
+      targetUsername,
+      word: word.trim()
+    });
+  };
+  
   // 📸 프로필 이미지 업로드 함수 - AWS S3 직접 업로드 (관리자 전용)
   const handleProfileImageUpload = async (event, targetUserUuid = null, targetUsername = null) => {
     const file = event.target.files?.[0];
@@ -8465,7 +8581,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.418
+                여우이야기 v1.419
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -9246,6 +9362,8 @@ function App() {
               setAutoFishingEnabled={setAutoFishingEnabled}
               handleExpeditionInviteClick={handleExpeditionInviteClick}
               setShowClickerModal={setShowClickerModal}
+              connectedUsers={connectedUsers}
+              sendMacroTest={sendMacroTest}
             />
           )}
 
@@ -14859,6 +14977,15 @@ function App() {
       <NoticeModal 
         showNoticeModal={showNoticeModal}
         setShowNoticeModal={setShowNoticeModal}
+        isDarkMode={isDarkMode}
+      />
+
+      {/* 🔍 매크로 테스트 모달 */}
+      <MacroTestModal
+        isOpen={showMacroTest}
+        word={macroTestWord}
+        onSubmit={handleMacroTestSubmit}
+        onTimeout={handleMacroTestTimeout}
         isDarkMode={isDarkMode}
       />
 

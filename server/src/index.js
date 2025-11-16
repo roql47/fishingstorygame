@@ -670,6 +670,10 @@ io.use((socket, next) => {
 // 🌐 Socket.IO 연결 핸들러 (IP 수집용)
 global.io = io; // 전역 접근을 위한 설정
 
+// 🔍 매크로 테스트 세션 관리 시스템
+const macroTestSessions = new Map(); 
+// userUuid -> { word, adminUsername, timeoutId, startTime, socketId }
+
 // 🔄 앱 버전 관리 시스템
 let currentBuildVersion = process.env.BUILD_VERSION || Date.now().toString();
 console.log(`📱 현재 앱 버전: ${currentBuildVersion}`);
@@ -4475,6 +4479,214 @@ io.on("connection", (socket) => {
       console.log(`🎮 Roguelike abandoned: ${user.username}`);
     } catch (error) {
       console.error("Roguelike abandon error:", error);
+    }
+  });
+
+  // 🔍 매크로 테스트 - 관리자가 특정 유저에게 캡챠 전송
+  socket.on("admin:macro-test:send", async (data) => {
+    try {
+      const { targetUserUuid, targetUsername, word } = data;
+      
+      // 🛡️ 관리자 권한 확인
+      if (!socket.data.isAdmin) {
+        console.log(`🚨 [SECURITY] Non-admin macro test attempt by ${socket.data.username}`);
+        return;
+      }
+      
+      // 입력값 검증
+      if (!targetUserUuid || !word || word.trim().length === 0) {
+        socket.emit("macro-test:error", { 
+          message: "대상 유저 또는 캡챠 단어가 유효하지 않습니다." 
+        });
+        return;
+      }
+      
+      // 이미 테스트 중인 유저인지 확인
+      if (macroTestSessions.has(targetUserUuid)) {
+        socket.emit("macro-test:error", { 
+          message: "해당 유저는 이미 매크로 테스트를 진행 중입니다." 
+        });
+        return;
+      }
+      
+      // 대상 유저의 socketId 찾기
+      console.log(`[MACRO-TEST-DEBUG] Looking for socketId for userUuid: ${targetUserUuid}`);
+      console.log(`[MACRO-TEST-DEBUG] connectedUsersMap size: ${connectedUsersMap.size}`);
+      console.log(`[MACRO-TEST-DEBUG] connectedUsersMap keys:`, Array.from(connectedUsersMap.keys()));
+      
+      const targetSocketId = connectedUsersMap.get(targetUserUuid);
+      if (!targetSocketId) {
+        console.log(`[MACRO-TEST] Target user not found in connectedUsersMap: ${targetUserUuid}`);
+        socket.emit("macro-test:error", { 
+          message: "대상 유저가 접속 중이 아닙니다." 
+        });
+        return;
+      }
+      console.log(`[MACRO-TEST-DEBUG] Found socketId: ${targetSocketId}`);
+      
+      const targetSocket = io.sockets.sockets.get(targetSocketId);
+      if (!targetSocket) {
+        socket.emit("macro-test:error", { 
+          message: "대상 유저의 연결을 찾을 수 없습니다." 
+        });
+        return;
+      }
+      
+      const adminUsername = socket.data.username || 'Admin';
+      const startTime = Date.now();
+      
+      // 1분 타이머 설정
+      const timeoutId = setTimeout(async () => {
+        // 시간 초과 시 세션 종료
+        const session = macroTestSessions.get(targetUserUuid);
+        if (session) {
+          console.log(`[MACRO-TEST] 시간 초과: ${targetUsername} (관리자: ${adminUsername})`);
+          
+          // 대상 유저에게 실패 메시지 및 강제 로그아웃 신호 전송
+          targetSocket.emit("macro-test:failed", {
+            reason: "timeout",
+            message: "매크로 테스트 시간이 초과되었습니다. 로그아웃됩니다."
+          });
+          
+          // 세션 삭제
+          macroTestSessions.delete(targetUserUuid);
+          
+          // 소켓 연결 강제 종료
+          setTimeout(() => {
+            targetSocket.disconnect(true);
+          }, 1000);
+        }
+      }, 60000); // 60초 = 1분
+      
+      // 세션 생성 및 저장
+      macroTestSessions.set(targetUserUuid, {
+        word: word.trim(),
+        adminUsername,
+        timeoutId,
+        startTime,
+        socketId: targetSocketId
+      });
+      
+      // 대상 유저에게 캡챠 전송
+      console.log(`[MACRO-TEST] Emitting to target socket ${targetSocketId}...`);
+      targetSocket.emit("macro-test:challenge", {
+        word: word.trim(),
+        timeLimit: 60
+      });
+      console.log(`[MACRO-TEST] Challenge emitted to ${targetUsername}`);
+      
+      // 관리자에게 전송 완료 알림
+      socket.emit("macro-test:sent", {
+        message: `${targetUsername}에게 매크로 테스트를 전송했습니다.`
+      });
+      
+      console.log(`[MACRO-TEST] 테스트 전송 완료: ${adminUsername} → ${targetUsername} (단어: ${word.trim()})`);
+    } catch (error) {
+      console.error("Macro test send error:", error);
+      socket.emit("macro-test:error", { 
+        message: "매크로 테스트 전송 중 오류가 발생했습니다." 
+      });
+    }
+  });
+
+  // 🔍 매크로 테스트 - 유저가 응답 제출
+  socket.on("macro-test:response", async (data) => {
+    try {
+      const { userUuid, username } = socket.data;
+      const { response } = data;
+      
+      // 세션 존재 여부 확인
+      const session = macroTestSessions.get(userUuid);
+      if (!session) {
+        socket.emit("macro-test:error", { 
+          message: "진행 중인 매크로 테스트가 없습니다." 
+        });
+        return;
+      }
+      
+      // 타이머 취소
+      clearTimeout(session.timeoutId);
+      
+      // 정답 비교 (대소문자 구분)
+      const isCorrect = response === session.word;
+      const elapsedTime = ((Date.now() - session.startTime) / 1000).toFixed(2);
+      
+      if (isCorrect) {
+        // 테스트 성공
+        console.log(`[MACRO-TEST] 테스트 성공: ${username} (${elapsedTime}초 소요)`);
+        
+        // 자동미끼 10개 지급
+        try {
+          const queryResult = await getUserQuery('user', username, userUuid);
+          let query;
+          if (queryResult.userUuid) {
+            query = { userUuid: queryResult.userUuid };
+          } else {
+            query = queryResult;
+          }
+          
+          let userBaits = await AutoBaitModel.findOne(query);
+          
+          if (!userBaits) {
+            const createData = {
+              userId: query.userId || 'user',
+              username: query.username || username,
+              userUuid: query.userUuid || userUuid,
+              autoBaitCount: 10
+            };
+            userBaits = new AutoBaitModel(createData);
+          } else {
+            userBaits.autoBaitCount = (userBaits.autoBaitCount || 0) + 10;
+          }
+          await userBaits.save();
+          
+          // 캐시 무효화
+          invalidateCache('autoBait', userUuid);
+          
+          // 성공 메시지 전송
+          socket.emit("macro-test:result", {
+            success: true,
+            message: `매크로 테스트를 통과했습니다! 보상으로 자동미끼 10개를 받았습니다. (총 ${userBaits.autoBaitCount}개)`,
+            autoBaitCount: userBaits.autoBaitCount,
+            elapsedTime: parseFloat(elapsedTime)
+          });
+          
+          // 자동미끼 카운트 실시간 업데이트
+          socket.emit('data:autoBaitCount', { autoBaitCount: userBaits.autoBaitCount });
+          
+        } catch (error) {
+          console.error("자동미끼 지급 오류:", error);
+          socket.emit("macro-test:result", {
+            success: true,
+            message: "매크로 테스트를 통과했지만 보상 지급 중 오류가 발생했습니다.",
+            elapsedTime: parseFloat(elapsedTime)
+          });
+        }
+      } else {
+        // 테스트 실패
+        console.log(`[MACRO-TEST] 테스트 실패: ${username} (오답: "${response}", 정답: "${session.word}")`);
+        
+        // 실패 메시지 및 강제 로그아웃 신호 전송
+        socket.emit("macro-test:failed", {
+          reason: "wrong_answer",
+          message: "매크로 테스트 실패. 로그아웃됩니다.",
+          elapsedTime: parseFloat(elapsedTime)
+        });
+        
+        // 소켓 연결 강제 종료
+        setTimeout(() => {
+          socket.disconnect(true);
+        }, 1000);
+      }
+      
+      // 세션 삭제
+      macroTestSessions.delete(userUuid);
+      
+    } catch (error) {
+      console.error("Macro test response error:", error);
+      socket.emit("macro-test:error", { 
+        message: "응답 처리 중 오류가 발생했습니다." 
+      });
     }
   });
 
@@ -8832,13 +9044,14 @@ app.get("/api/connected-users", authenticateJWT, async (req, res) => {
     // 현재 연결된 사용자 목록을 메모리에서 가져오기 (정리된 목록)
     const cleanedUsers = cleanupConnectedUsers();
     
-    // 🔐 보안: 민감한 정보 제거 (관리자용 최소 정보만 제공)
+    // 🔐 관리자용 사용자 정보 (매크로 테스트 등을 위해 userUuid 포함)
     const users = cleanedUsers.map(user => ({
+      userUuid: user.userUuid, // 🔍 매크로 테스트용 - 관리자만 접근 가능
+      username: user.username, // 🔍 실제 username도 포함
       displayName: user.displayName || user.username,
       loginType: user.loginType || 'Guest',
       isOnline: true,
       lastSeen: new Date().toISOString()
-      // userUuid, userId 등 민감한 정보 제거
     }));
     
     console.log(`🔐 [ADMIN] Sending ${users.length} connected users to admin: ${username}`);
@@ -12892,14 +13105,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.418"
+    version: "v1.419"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.418",
+    version: "v1.419",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
