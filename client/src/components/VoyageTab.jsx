@@ -42,6 +42,13 @@ const VoyageTab = ({
   const autoVoyageTimeoutRef = useRef(null); // 자동항해 타이머
   const countdownIntervalRef = useRef(null); // 카운트다운 타이머
 
+  // 컴포넌트 마운트 시 자동항해 OFF로 초기화
+  useEffect(() => {
+    setAutoVoyageEnabled(false);
+    setAutoVoyageTargetFish(null);
+    setAutoVoyageCountdown(0);
+  }, []); // 빈 배열로 마운트 시에만 실행
+
   // 물고기 데이터 (rank 1-25) - speed: 50부터 5씩 증가 (30% 난이도 하향 적용)
   const voyageFishes = [
     { rank: 1, name: '타코문어', image: '/assets/images/monster1.jpeg', hp: 35, attack: 4, speed: 50, gold: 500 },

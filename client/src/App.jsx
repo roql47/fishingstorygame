@@ -8817,7 +8817,7 @@ function App() {
                   }
                   setShowMarketModal(true);
                 }}
-                className={`p-2 rounded-full hover:glow-effect transition-all duration-300 ${
+                className={`p-1.5 sm:p-2 rounded-full hover:glow-effect transition-all duration-300 ${
                   fishingSkill < 1
                     ? "glass-input text-gray-500 cursor-not-allowed"
                     : isDarkMode 
@@ -8827,61 +8827,61 @@ function App() {
                 title={fishingSkill < 1 ? "거래소 (낚시 실력 1 필요)" : "거래소"}
                 disabled={fishingSkill < 1}
               >
-                <ShoppingCart className="w-4 h-4" />
+                <ShoppingCart className="w-3 h-3 sm:w-4 sm:h-4" />
               </button>
 
               {/* 도감 버튼 */}
               <button
                 onClick={() => setShowCollectionModal(true)}
-                className={`p-2 rounded-full hover:glow-effect transition-all duration-300 ${
+                className={`p-1.5 sm:p-2 rounded-full hover:glow-effect transition-all duration-300 ${
                   isDarkMode 
                     ? "glass-input text-amber-400 hover:text-amber-300" 
                     : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-amber-600 hover:text-amber-500"
                 }`}
                 title="수집 도감"
               >
-                <Package className="w-4 h-4" />
+                <Package className="w-3 h-3 sm:w-4 sm:h-4" />
               </button>
               
               {/* 공지사항 버튼 */}
               <button
                 onClick={() => setShowNoticeModal(true)}
-                className={`p-2 rounded-full hover:glow-effect transition-all duration-300 ${
+                className={`p-1.5 sm:p-2 rounded-full hover:glow-effect transition-all duration-300 ${
                   isDarkMode 
                     ? "glass-input text-blue-400 hover:text-blue-300" 
                     : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-blue-600 hover:text-blue-500"
                 }`}
                 title="공지사항"
               >
-                <Bell className="w-4 h-4" />
+                <Bell className="w-3 h-3 sm:w-4 sm:h-4" />
               </button>
               
               {/* 튜토리얼 버튼 */}
               <button
                 onClick={() => setShowTutorialModal(true)}
-                className={`p-2 rounded-full hover:glow-effect transition-all duration-300 ${
+                className={`p-1.5 sm:p-2 rounded-full hover:glow-effect transition-all duration-300 ${
                   isDarkMode 
                     ? "glass-input text-green-400 hover:text-green-300" 
                     : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-green-600 hover:text-green-500"
                 }`}
                 title="튜토리얼"
               >
-                <BookOpen className="w-4 h-4" />
+                <BookOpen className="w-3 h-3 sm:w-4 sm:h-4" />
               </button>
               
               {/* 편지함 버튼 */}
               <button
                 onClick={() => setShowMailModal(true)}
-                className={`p-2 rounded-full hover:glow-effect transition-all duration-300 relative ${
+                className={`p-1.5 sm:p-2 rounded-full hover:glow-effect transition-all duration-300 relative ${
                   isDarkMode 
                     ? "glass-input text-purple-400 hover:text-purple-300" 
                     : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-purple-600 hover:text-purple-500"
                 } ${unreadMailCount > 0 ? 'shadow-[0_0_15px_rgba(168,85,247,0.6)] animate-pulse' : ''}`}
                 title="편지함"
               >
-                <Mail className="w-4 h-4" />
+                <Mail className="w-3 h-3 sm:w-4 sm:h-4" />
                 {unreadMailCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                  <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] sm:text-xs rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center font-bold">
                     {unreadMailCount > 9 ? '9+' : unreadMailCount}
                   </span>
                 )}
@@ -8890,7 +8890,7 @@ function App() {
               {/* 내정보 버튼 */}
               <button
                 onClick={() => setActiveTab("myinfo")}
-                className={`p-2 rounded-full hover:glow-effect transition-all duration-300 ${
+                className={`p-1.5 sm:p-2 rounded-full hover:glow-effect transition-all duration-300 ${
                   activeTab === "myinfo"
                     ? isDarkMode
                       ? "bg-emerald-500/20 text-emerald-400 border border-emerald-400/30"
@@ -8901,13 +8901,13 @@ function App() {
                 }`}
                 title="내정보"
               >
-                <User className="w-4 h-4" />
+                <User className="w-3 h-3 sm:w-4 sm:h-4" />
               </button>
 
               {/* 퀘스트 버튼 */}
               <button
                 onClick={() => setActiveTab("quests")}
-                className={`p-2 rounded-full hover:glow-effect transition-all duration-300 ${
+                className={`p-1.5 sm:p-2 rounded-full hover:glow-effect transition-all duration-300 ${
                   activeTab === "quests"
                     ? isDarkMode
                       ? "bg-green-500/20 text-green-400 border border-green-400/30"
@@ -8918,7 +8918,7 @@ function App() {
                 }`}
                 title="퀘스트"
               >
-                <Scroll className="w-4 h-4" />
+                <Scroll className="w-3 h-3 sm:w-4 sm:h-4" />
               </button>
 
               {/* 랭킹 버튼 */}
@@ -8927,7 +8927,7 @@ function App() {
                   setActiveTab("ranking");
                   setCurrentRankingPage(1);
                 }}
-                className={`p-2 rounded-full hover:glow-effect transition-all duration-300 ${
+                className={`p-1.5 sm:p-2 rounded-full hover:glow-effect transition-all duration-300 ${
                   activeTab === "ranking"
                     ? isDarkMode
                       ? "bg-yellow-500/20 text-yellow-400 border border-yellow-400/30"
@@ -8938,20 +8938,20 @@ function App() {
                 }`}
                 title="랭킹"
               >
-                <Trophy className="w-4 h-4" />
+                <Trophy className="w-3 h-3 sm:w-4 sm:h-4" />
               </button>
 
               {/* 테마 토글 */}
               <button
                 onClick={toggleDarkMode}
-                className={`p-2 rounded-full hover:glow-effect transition-all duration-300 ${
+                className={`p-1.5 sm:p-2 rounded-full hover:glow-effect transition-all duration-300 ${
                   isDarkMode 
                     ? "glass-input text-yellow-400" 
                     : "bg-white/60 backdrop-blur-sm border border-gray-300/40 text-gray-600 hover:text-yellow-500"
                 }`}
                 title="테마 변경"
               >
-                {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                {isDarkMode ? <Sun className="w-3 h-3 sm:w-4 sm:h-4" /> : <Moon className="w-3 h-3 sm:w-4 sm:h-4" />}
               </button>
             </div>
           </div>
@@ -9007,7 +9007,7 @@ function App() {
             isDarkMode ? "border-white/10" : "border-gray-300/20"
           }`}>
             <div className="flex items-center justify-between mb-2">
-              <h1 className={`font-bold text-base ${
+              <h1 className={`font-bold text-sm sm:text-base ${
                 isDarkMode ? "text-white gradient-text" : "text-gray-800"
               }`}>여우이야기</h1>
               <button
@@ -9015,7 +9015,7 @@ function App() {
                   e.stopPropagation();
                   setIsSidebarCollapsed(true);
                 }}
-                className={`p-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
+                className={`p-1 sm:p-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
                   isDarkMode 
                     ? "hover:bg-white/10 text-gray-400 hover:text-white" 
                     : "hover:bg-gray-200 text-gray-600 hover:text-gray-900"
@@ -9023,25 +9023,25 @@ function App() {
                 title="메뉴 닫기"
                 type="button"
               >
-                <ChevronLeft className="w-4 h-4 pointer-events-none" />
+                <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4 pointer-events-none" />
               </button>
             </div>
             
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-1 sm:gap-2 mb-2">
               {/* 카카오톡 채널방 링크 */}
               <a
                 href="https://open.kakao.com/o/guv74VXg"
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-all duration-300 hover:scale-105 ${
+                className={`flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-medium transition-all duration-300 hover:scale-105 ${
                   isDarkMode 
                     ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 border border-yellow-400/30" 
                     : "bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 border border-yellow-500/30"
                 }`}
                 title="카카오톡 채널방 참여하기"
               >
-                <div className="w-3 h-3 bg-yellow-500 rounded-sm flex items-center justify-center">
-                  <span className="text-white text-[8px] font-bold">K</span>
+                <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-yellow-500 rounded-sm flex items-center justify-center">
+                  <span className="text-white text-[7px] sm:text-[8px] font-bold">K</span>
                 </div>
                 <span>채널방</span>
               </a>
@@ -9051,21 +9051,21 @@ function App() {
                 href="https://buymeacoffee.com/r4823120"
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-all duration-300 hover:scale-105 ${
+                className={`flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-medium transition-all duration-300 hover:scale-105 ${
                   isDarkMode 
                     ? "bg-pink-500/20 text-pink-400 hover:bg-pink-500/30 border border-pink-400/30" 
                     : "bg-pink-500/10 text-pink-600 hover:bg-pink-500/20 border border-pink-500/30"
                 }`}
                 title="개발자 후원하기"
               >
-                <div className="w-3 h-3 flex items-center justify-center">
-                  <span className="text-[10px]">☕</span>
+                <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 flex items-center justify-center">
+                  <span className="text-[8px] sm:text-[10px]">☕</span>
                 </div>
                 <span>여우밥주기</span>
               </a>
             </div>
             
-            <p className={`text-[10px] ${
+            <p className={`text-[9px] sm:text-[10px] ${
               isDarkMode ? "text-gray-400" : "text-gray-600"
             }`}>실시간 낚시 게임</p>
           </div>
@@ -9076,7 +9076,7 @@ function App() {
           {/* 메뉴 아이템들 */}
           <button
             onClick={() => setActiveTab("chat")}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
+            className={`flex items-center gap-2 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "chat"
                 ? isDarkMode
                   ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
@@ -9086,13 +9086,13 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <MessageCircle className="w-5 h-5" />
-            <span className="font-medium">채팅</span>
+            <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-xs sm:text-sm font-medium">채팅</span>
           </button>
 
           <button
             onClick={() => setActiveTab("inventory")}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
+            className={`flex items-center gap-2 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "inventory"
                 ? isDarkMode
                   ? "bg-emerald-500/20 text-emerald-400 border border-emerald-400/30"
@@ -9102,13 +9102,13 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <Package className="w-5 h-5" />
-            <span className="font-medium">인벤토리</span>
+            <Package className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-xs sm:text-sm font-medium">인벤토리</span>
           </button>
 
           <button
             onClick={() => setActiveTab("growth")}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
+            className={`flex items-center gap-2 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "growth"
                 ? isDarkMode
                   ? "bg-pink-500/20 text-pink-400 border border-pink-400/30"
@@ -9118,13 +9118,13 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <Zap className="w-5 h-5" />
-            <span className="font-medium">성장</span>
+            <Zap className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-xs sm:text-sm font-medium">성장</span>
           </button>
 
           <button
             onClick={() => setActiveTab("voyage")}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
+            className={`flex items-center gap-2 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "voyage"
                 ? isDarkMode
                   ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
@@ -9134,13 +9134,13 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <Anchor className="w-5 h-5" />
-            <span className="font-medium">항해</span>
+            <Anchor className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-xs sm:text-sm font-medium">항해</span>
           </button>
 
           <button
             onClick={() => setActiveTab("shop")}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
+            className={`flex items-center gap-2 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "shop"
                 ? isDarkMode
                   ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
@@ -9150,13 +9150,13 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <ShoppingCart className="w-5 h-5" />
-            <span className="font-medium">상점</span>
+            <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-xs sm:text-sm font-medium">상점</span>
           </button>
 
           <button
             onClick={() => setActiveTab("exploration")}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
+            className={`flex items-center gap-2 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "exploration"
                 ? isDarkMode
                   ? "bg-orange-500/20 text-orange-400 border border-orange-400/30"
@@ -9166,13 +9166,13 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <Waves className="w-5 h-5" />
-            <span className="font-medium">탐사</span>
+            <Waves className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-xs sm:text-sm font-medium">탐사</span>
           </button>
 
           <button
             onClick={() => setActiveTab("expedition")}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
+            className={`flex items-center gap-2 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "expedition"
                 ? isDarkMode
                   ? "bg-teal-500/20 text-teal-400 border border-teal-400/30"
@@ -9182,16 +9182,16 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
-            <span className="font-medium">원정</span>
+            <span className="text-xs sm:text-sm font-medium">원정</span>
           </button>
 
           <button
             onClick={() => setActiveTab("companions")}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
+            className={`flex items-center gap-2 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "companions"
                 ? isDarkMode
                   ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
@@ -9201,13 +9201,13 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <Users className="w-5 h-5" />
-            <span className="font-medium">동료</span>
+            <Users className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-xs sm:text-sm font-medium">동료</span>
           </button>
 
           <button
             onClick={() => setActiveTab("raid")}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
+            className={`flex items-center gap-2 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "raid"
                 ? isDarkMode
                   ? "bg-red-500/20 text-red-400 border border-red-400/30"
@@ -9217,13 +9217,13 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <Sword className="w-5 h-5" />
-            <span className="font-medium">레이드</span>
+            <Sword className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-xs sm:text-sm font-medium">레이드</span>
           </button>
 
           <button
             onClick={() => setActiveTab("arena")}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
+            className={`flex items-center gap-2 sm:gap-3 px-2 py-2 sm:px-4 sm:py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "arena"
                 ? isDarkMode
                   ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
@@ -9233,8 +9233,8 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <Shield className="w-5 h-5" />
-            <span className="font-medium">결투장</span>
+            <Shield className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-xs sm:text-sm font-medium">결투장</span>
           </button>
           </div>
 
@@ -12212,29 +12212,29 @@ function App() {
           )}
           </div>
           )}
-          {/* 사이드바 - 접속자 목록 - 랭킹 탭에서는 숨김, 모바일에서도 숨김 */}
+          {/* 사이드바 - 접속자 목록 - 랭킹 탭에서는 숨김 */}
           {activeTab !== "ranking" && (
-          <div className="hidden xl:block xl:col-span-1 h-full">
+          <div className="xl:col-span-1 h-full">
             <div className={`rounded-2xl board-shadow h-full flex flex-col ${
               isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
             }`}>
               {/* 사이드바 헤더 */}
-              <div className={`border-b p-4 ${
+              <div className={`border-b p-2 sm:p-4 ${
                 isDarkMode ? "border-white/10" : "border-gray-300/20"
               }`}>
-                <div className="flex items-center gap-2">
-                  <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500/20 to-green-500/20 border ${
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <div className={`flex items-center justify-center w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-emerald-500/20 to-green-500/20 border ${
                     isDarkMode ? "border-white/10" : "border-emerald-300/30"
                   }`}>
-                    <User className={`w-4 h-4 ${
+                    <User className={`w-3 h-3 sm:w-4 sm:h-4 ${
                       isDarkMode ? "text-emerald-400" : "text-emerald-600"
                     }`} />
                   </div>
                   <div>
-                    <h3 className={`font-semibold text-sm ${
+                    <h3 className={`font-semibold text-xs sm:text-sm ${
                       isDarkMode ? "text-white" : "text-gray-800"
                     }`}>접속자</h3>
-                    <p className={`text-xs ${
+                    <p className={`text-[10px] sm:text-xs ${
                       isDarkMode ? "text-gray-400" : "text-gray-600"
                     }`}>{connectedUsers.length}명 온라인</p>
                   </div>
@@ -12242,11 +12242,11 @@ function App() {
               </div>
 
               {/* 접속자 목록 */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ overscrollBehavior: 'contain' }}>
+              <div className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-1 sm:space-y-2" style={{ overscrollBehavior: 'contain' }}>
                 {connectedUsers.map((user, index) => (
                   <div 
                     key={index} 
-                    className={`flex items-center gap-3 p-2 rounded-lg transition-all duration-300 hover:scale-105 cursor-pointer ${
+                    className={`flex items-center gap-2 sm:gap-3 p-1.5 sm:p-2 rounded-lg transition-all duration-300 hover:scale-105 cursor-pointer ${
                       isDarkMode ? "hover:bg-white/5" : "hover:bg-gray-100/50"
                     }`}
                     onClick={async () => {
@@ -12266,7 +12266,7 @@ function App() {
                       <img 
                         src={userProfileImages[user.userUuid]} 
                         alt={user.username}
-                        className={`w-8 h-8 rounded-full object-cover border ${
+                        className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full object-cover border ${
                           isDarkMode ? "border-white/10" : "border-blue-300/30"
                         }`}
                         onError={(e) => {
@@ -12279,43 +12279,43 @@ function App() {
                         }}
                       />
                     ) : (
-                      <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border ${
+                      <div className={`flex items-center justify-center w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border ${
                         isDarkMode ? "border-white/10" : "border-blue-300/30"
                       }`}>
-                        <User className={`w-4 h-4 ${
+                        <User className={`w-3 h-3 sm:w-4 sm:h-4 ${
                           isDarkMode ? "text-blue-400" : "text-blue-600"
                         }`} />
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <div className={`font-medium text-sm truncate flex items-center gap-1 ${
+                      <div className={`font-medium text-xs sm:text-sm truncate flex items-center gap-1 ${
                         isDarkMode ? "text-white" : "text-gray-800"
                       }`}>
                         {user.username}
                         {((user.username === username && isAdmin) || userAdminStatus[user.username]) && (
-                          <span className={`text-xs font-bold ${
+                          <span className={`text-[10px] sm:text-xs font-bold ${
                             isDarkMode ? "text-red-400" : "text-red-600"
                           }`}>👑</span>
                         )}
                       </div>
-                      <div className={`text-xs ${
+                      <div className={`text-[10px] sm:text-xs ${
                         isDarkMode ? "text-gray-400" : "text-gray-600"
                       }`}>
                         {user.loginType || "Guest"}
                       </div>
                     </div>
-                    <div className={`w-2 h-2 rounded-full bg-gradient-to-r from-emerald-400 to-green-400 animate-pulse`}></div>
+                    <div className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-gradient-to-r from-emerald-400 to-green-400 animate-pulse`}></div>
                   </div>
                 ))}
                 
                 {connectedUsers.length === 0 && (
-                  <div className={`text-center py-8 ${
+                  <div className={`text-center py-4 sm:py-8 ${
                     isDarkMode ? "text-gray-500" : "text-gray-600"
                   }`}>
-                    <User className={`w-12 h-12 mx-auto mb-2 opacity-30 ${
+                    <User className={`w-8 h-8 sm:w-12 sm:h-12 mx-auto mb-2 opacity-30 ${
                       isDarkMode ? "text-gray-600" : "text-gray-400"
                     }`} />
-                    <p className="text-sm">접속자가 없습니다</p>
+                    <p className="text-xs sm:text-sm">접속자가 없습니다</p>
                   </div>
                 )}
               </div>
@@ -15555,8 +15555,8 @@ isDarkMode ? "bg-black/20" : "bg-gray-50/50"
         </div>
       )}
 
-      {/* 플로팅 채팅 (채팅 탭이 아닐 때만 표시) */}
-      {activeTab !== 'chat' && (
+      {/* 플로팅 채팅 (채팅 탭이 아닐 때만 표시) - 조건 최적화로 깜빡임 방지 */}
+      {activeTab !== 'chat' && username && (
         <FloatingChat
           messages={messages}
           input={input}

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { MessageCircle, X, Send, User, Gamepad2 } from 'lucide-react';
 
 const FloatingChat = ({
@@ -32,6 +32,11 @@ const FloatingChat = ({
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const prevMessagesLengthRef = useRef(messages.length);
+
+  // 📱 모바일 깜빡임 방지: 조건을 useMemo로 최적화
+  const shouldShow = useMemo(() => {
+    return !!username; // username이 있을 때만 렌더링
+  }, [username]);
 
   // 메시지 추가 시 읽지 않음 카운트 증가 (창이 닫혀있을 때만)
   useEffect(() => {
@@ -270,13 +275,16 @@ const FloatingChat = ({
     );
   };
 
+  // 📱 username 없으면 렌더링하지 않음 (깜빡임 방지)
+  if (!shouldShow) return null;
+
   return (
     <>
       {/* 플로팅 버튼 */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className={`fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg flex items-center justify-center z-50 transition-all hover:scale-110 ${
+          className={`fixed bottom-4 right-4 sm:bottom-6 sm:right-6 w-14 h-14 rounded-full shadow-lg flex items-center justify-center z-50 transition-all hover:scale-110 ${
             isDarkMode
               ? "bg-blue-600 hover:bg-blue-700 text-white"
               : "bg-blue-500 hover:bg-blue-600 text-white"
@@ -294,7 +302,7 @@ const FloatingChat = ({
       {/* 플로팅 채팅창 */}
       {isOpen && (
         <div
-          className={`fixed bottom-6 right-6 w-80 sm:w-96 h-96 sm:h-[500px] rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden ${
+          className={`fixed bottom-4 right-4 sm:bottom-6 sm:right-6 w-[90vw] sm:w-[640px] md:w-[768px] h-[85vh] sm:h-[960px] md:h-[1250px] rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden ${
             isDarkMode
               ? "bg-gray-800 border border-gray-700"
               : "bg-white border border-gray-300"
