@@ -25,7 +25,8 @@ const FloatingChat = ({
   formatCooldown,
   authenticatedRequest,
   userUuid,
-  cooldownWorkerRef
+  cooldownWorkerRef,
+  mobileConfig
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -235,7 +236,7 @@ const FloatingChat = ({
           {!isSystemMessage && (
             <div className="flex items-center gap-2 mb-1">
               <span
-                className={`font-semibold text-xs sm:text-sm cursor-pointer hover:underline ${
+                className={`font-semibold ${mobileConfig?.isMobile ? 'text-[10px]' : 'text-sm'} cursor-pointer hover:underline ${
                   isOwnMessage
                     ? isDarkMode
                       ? "text-blue-400"
@@ -248,7 +249,7 @@ const FloatingChat = ({
               >
                 {msg.username}
               </span>
-              <span className={`text-[10px] sm:text-xs ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
+              <span className={`${mobileConfig?.isMobile ? 'text-[8px]' : 'text-xs'} ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
                 {new Date(msg.timestamp).toLocaleTimeString('ko-KR', {
                   hour: '2-digit',
                   minute: '2-digit'
@@ -258,7 +259,7 @@ const FloatingChat = ({
           )}
 
           <div
-            className={`text-xs sm:text-sm break-words whitespace-pre-wrap ${
+            className={`${mobileConfig?.isMobile ? 'text-[10px]' : 'text-sm'} break-words whitespace-pre-wrap ${
               isSystemMessage
                 ? isDarkMode
                   ? "text-yellow-400 font-medium"
@@ -302,7 +303,7 @@ const FloatingChat = ({
       {/* 플로팅 채팅창 */}
       {isOpen && (
         <div
-          className={`fixed bottom-4 right-4 sm:bottom-6 sm:right-6 w-[90vw] sm:w-[640px] md:w-[768px] h-[85vh] sm:h-[960px] md:h-[1250px] rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden ${
+          className={`fixed ${mobileConfig?.isMobile ? 'bottom-2 right-2 w-[45vw] h-[42vh]' : 'bottom-6 right-6 w-[640px] h-[960px]'} rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden ${
             isDarkMode
               ? "bg-gray-800 border border-gray-700"
               : "bg-white border border-gray-300"

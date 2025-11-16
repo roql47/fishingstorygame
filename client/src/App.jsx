@@ -8835,7 +8835,7 @@ function App() {
                   }
                   setShowMarketModal(true);
                 }}
-                className={`p-1.5 sm:p-2 rounded-full hover:glow-effect transition-all duration-300 ${
+                className={`${mobileConfig.isMobile ? 'p-1.5' : 'p-2'} rounded-full hover:glow-effect transition-all duration-300 ${
                   fishingSkill < 1
                     ? "glass-input text-gray-500 cursor-not-allowed"
                     : isDarkMode 
@@ -8845,7 +8845,7 @@ function App() {
                 title={fishingSkill < 1 ? "거래소 (낚시 실력 1 필요)" : "거래소"}
                 disabled={fishingSkill < 1}
               >
-                <ShoppingCart className="w-3 h-3 sm:w-4 sm:h-4" />
+                <ShoppingCart className={mobileConfig.isMobile ? 'w-3 h-3' : 'w-4 h-4'} />
               </button>
 
               {/* 도감 버튼 */}
@@ -15600,6 +15600,7 @@ isDarkMode ? "bg-black/20" : "bg-gray-50/50"
           authenticatedRequest={authenticatedRequest}
           userUuid={userUuid}
           cooldownWorkerRef={cooldownWorkerRef}
+          mobileConfig={mobileConfig}
         />
       )}
     </div>
