@@ -609,7 +609,7 @@ function setupRaidRoutes(io, UserUuidModel, authenticateJWT, CompanionModel, Fis
         const lastAttackerData = await UserUuidModel.findOne({ userUuid: lastAttacker?.userUuid }).lean();
         
         // 보스 타입에 따른 막타 별조각 보상 개수
-        const starPieceReward = (bossType === 'advanced' || bossType === 'legendary') ? 2 : 1;
+        const starPieceReward = bossType === 'legendary' ? 3 : (bossType === 'advanced' ? 2 : 1);
         let defeatMessage = `🎉 레이드 보스 '${bossName}'이(가) 처치되었습니다! MVP: ${topPlayerData?.displayName || topPlayerData?.username} (${topPlayer.damage} 데미지), 막타: ${lastAttackerData?.displayName || lastAttackerData?.username} (별조각 +${starPieceReward})`;
         
         io.emit("chat:message", {
