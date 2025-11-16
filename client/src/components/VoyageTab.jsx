@@ -564,11 +564,8 @@ const VoyageTab = ({
         return;
       }
 
+      // 🔒 보안: 서버에서 골드 계산하므로 rank만 전송
       const requestData = {
-        username,
-        userUuid,
-        fishName: selectedFish.name,
-        gold: rewardGold, // 랜덤 골드 사용 (5~10배)
         rank: selectedFish.rank,
         autoVoyage: autoVoyageEnabled // 🎣 자동항해 모드 여부
       };
@@ -629,10 +626,15 @@ const VoyageTab = ({
           updateQuestProgress('voyage_win', 1);
         }
         
-        // 💰 골드 즉시 업데이트
+        // 💰 골드 즉시 업데이트 (서버에서 계산된 값)
         if (setUserMoney && data.gold !== undefined) {
           setUserMoney(data.gold);
-          console.log(`✅ 항해 보상: 골드 ${data.gold}, 물고기 ${selectedFish.name}`);
+          console.log(`✅ 항해 보상: 골드 ${data.gold}, 물고기 ${data.fishName || selectedFish.name}`);
+        }
+        
+        // 🔒 보안: 서버에서 받은 실제 보상 골드로 업데이트
+        if (data.actualGold) {
+          setRewardGold(data.actualGold);
         }
         
         // 🎣 자동미끼 개수 업데이트 (서버에서 받은 값으로)
@@ -735,8 +737,10 @@ const VoyageTab = ({
           
           console.log('[VOYAGE] ✅ 타이머 설정 완료 (결과 화면 유지)');
         } else {
-          // 일반 모드: 알림 표시
-          alert(`보상 획득!\n골드: +${rewardGold.toLocaleString()}G\n물고기: ${selectedFish.name} +1마리`);
+          // 일반 모드: 알림 표시 (서버에서 받은 실제 보상 표시)
+          const displayGold = data.actualGold || rewardGold;
+          const displayFishName = data.fishName || selectedFish.name;
+          alert(`보상 획득!\n골드: +${displayGold.toLocaleString()}G\n물고기: ${displayFishName} +1마리`);
           setCurrentView('select');
           setBattleState(null);
           setSelectedFish(null);

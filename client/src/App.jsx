@@ -30,6 +30,7 @@ import ClickerModal from './components/ClickerModal';
 import AudioPlayer from './components/AudioPlayer';
 import VoyageTab from './components/VoyageTab';
 import MacroTestModal from './components/MacroTestModal';
+import FloatingChat from './components/FloatingChat';
 import { VERSION_INFO } from './data/noticeData';
 import { CRAFTING_RECIPES, getCraftingRecipe, getDecomposeRecipe, getMaterialTier, calculateCraftingChain, getAllMaterials } from './data/craftingData';
 import { 
@@ -68,7 +69,11 @@ import {
   Mail,
   Anchor,
   Sparkles,
-  Scroll
+  Scroll,
+  ChevronRight,
+  ChevronLeft,
+  Menu,
+  Volume2
 } from "lucide-react";
 import "./App.css";
 // 🚀 Web Worker import for background cooldown management
@@ -223,9 +228,9 @@ function App() {
     }
   }, []);
 
-  // 🔄 버전 업데이트 시 캐시 초기화 (v1.405)
+  // 🔄 버전 업데이트 시 캐시 초기화 (v1.420)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.419";
+    const CURRENT_VERSION = "v1.420";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -285,6 +290,7 @@ function App() {
   const [idToken, setIdToken] = useState(undefined);
   const [usernameInput, setUsernameInput] = useState("");
   const [activeTab, setActiveTab] = useState("chat");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // 테스트: 기본값 열림
   const [dailyQuests, setDailyQuests] = useState({ quests: [], lastResetDate: '' });
   const [isGuest, setIsGuest] = useState(false); // 게스트 여부 추적
   const [jwtToken, setJwtToken] = useState(null); // 🔐 JWT 토큰 상태 (위치 이동)
@@ -398,6 +404,9 @@ function App() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [initialNickname, setInitialNickname] = useState("");
+  const [termsScrolledToBottom, setTermsScrolledToBottom] = useState(false); // 📜 이용약관 스크롤 완료 여부
+  const [privacyScrolledToBottom, setPrivacyScrolledToBottom] = useState(false); // 🔒 개인정보 처리방침 스크롤 완료 여부
+  const termsContentRef = useRef(null); // 약관 콘텐츠 스크롤 ref
   
   // 🔧 추가 상태 변수들 (TDZ 문제 해결)
   const [isProcessingSellAll, setIsProcessingSellAll] = useState(false);
@@ -3278,12 +3287,23 @@ function App() {
       window.location.reload();
     };
     
-    // 🔄 새로운 세션 전환 처리 (부드러운 전환)
+    // 🔄 새로운 세션 전환 처리 (완전한 로그아웃)
     const onSessionTransition = (data) => {
       console.log("🔄 세션 전환:", data);
-      // 사용자에게 알림 (선택적)
-      // alert(data.message);
-      // JWT 토큰은 유지하고 소켓만 재연결
+      
+      // 사용자에게 알림
+      alert(data.message || "다른 브라우저에서 접속하여 현재 세션이 종료됩니다.");
+      
+      // 완전한 로그아웃 처리
+      localStorage.removeItem("idToken");
+      localStorage.removeItem("jwtToken");
+      localStorage.removeItem("jwtExpiresIn");
+      localStorage.removeItem("nickname");
+      localStorage.removeItem("userUuid");
+      localStorage.removeItem("googleId");
+      
+      // 페이지 새로고침하여 로그인 화면으로 이동
+      window.location.reload();
     };
     
     socket.on("duplicate_login", onDuplicateLogin);
@@ -4364,6 +4384,7 @@ function App() {
     // 서버에도 저장
     await saveUserSettings({ darkMode: newDarkMode });
   };
+
   // 🛡️ [SECURITY] 보안 강화된 계정 초기화 함수
   const resetAccount = async () => {
     if (!userUuid || !username) {
@@ -4909,6 +4930,37 @@ function App() {
       setOtherUserData(null);
     }
   }, [serverUrl, jwtToken]); // setUserProfileImages는 setState 함수로 안정적이므로 의존성에서 제외
+
+  // 📜 약관 스크롤 감지 핸들러
+  const handleTermsScroll = (e) => {
+    const element = e.target;
+    const isAtBottom = Math.abs(element.scrollHeight - element.scrollTop - element.clientHeight) < 10;
+    
+    if (termsTab === "terms") {
+      if (isAtBottom && !termsScrolledToBottom) {
+        setTermsScrolledToBottom(true);
+      }
+    } else if (termsTab === "privacy") {
+      if (isAtBottom && !privacyScrolledToBottom) {
+        setPrivacyScrolledToBottom(true);
+      }
+    }
+  };
+
+  // 📜 약관 모달이 열릴 때 스크롤 상태 초기화
+  useEffect(() => {
+    if (showTermsModal) {
+      setTermsScrolledToBottom(false);
+      setPrivacyScrolledToBottom(false);
+      setTermsAccepted(false);
+      setPrivacyAccepted(false);
+      setTermsTab("terms");
+      // 스크롤 위치도 초기화
+      if (termsContentRef.current) {
+        termsContentRef.current.scrollTop = 0;
+      }
+    }
+  }, [showTermsModal]);
 
   // 최초 닉네임 설정 함수
   const setInitialNicknameFunc = async () => {
@@ -8557,7 +8609,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.419
+                여우이야기 v1.420
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -8670,7 +8722,7 @@ function App() {
   }
 
   return (
-    <div className={`min-h-screen relative overflow-hidden ${
+    <div className={`min-h-screen relative overflow-x-hidden overflow-y-auto ${
       isDarkMode 
         ? "bg-gradient-to-br from-gray-900 via-black to-gray-800" 
         : "bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-200"
@@ -8690,8 +8742,6 @@ function App() {
       </div>
       )}
 
-      {/* 오디오 플레이어 */}
-      <AudioPlayer />
 
       {/* 헤더 */}
       <div className={`relative z-40 border-b ${
@@ -8699,61 +8749,7 @@ function App() {
           ? "glass-card-dark border-white/10" 
           : "bg-white/80 backdrop-blur-md border-gray-300/30"
       }`}>
-        <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
-                      <div className="flex items-center gap-3">
-              <div className={`flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 backdrop-blur-sm border ${
-                isDarkMode ? "border-white/10" : "border-blue-300/30"
-              }`}>
-                <Fish className={`w-5 h-5 ${
-                  isDarkMode ? "text-blue-400" : "text-blue-600"
-                }`} />
-              </div>
-              <div>
-                <div className="flex items-center gap-3">
-                <h1 className={`font-bold text-lg ${
-                  isDarkMode ? "text-white gradient-text" : "text-gray-800"
-                  }`}>여우이야기</h1>
-                  {/* 카카오톡 채널방 링크 */}
-                  <a
-                    href="https://open.kakao.com/o/guv74VXg"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-all duration-300 hover:scale-105 ${
-                      isDarkMode 
-                        ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 border border-yellow-400/30" 
-                        : "bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 border border-yellow-500/30"
-                    }`}
-                    title="카카오톡 채널방 참여하기"
-                  >
-                    <div className="w-3 h-3 bg-yellow-500 rounded-sm flex items-center justify-center">
-                      <span className="text-white text-[8px] font-bold">K</span>
-                    </div>
-                    <span>채널방</span>
-                  </a>
-                  {/* 후원 링크 */}
-                  <a
-                    href="https://buymeacoffee.com/r4823120"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-all duration-300 hover:scale-105 ${
-                      isDarkMode 
-                        ? "bg-pink-500/20 text-pink-400 hover:bg-pink-500/30 border border-pink-400/30" 
-                        : "bg-pink-500/10 text-pink-600 hover:bg-pink-500/20 border border-pink-500/30"
-                    }`}
-                    title="개발자 후원하기"
-                  >
-                    <div className="w-3 h-3 flex items-center justify-center">
-                      <span className="text-[10px]">☕</span>
-                    </div>
-                    <span>여우밥주기</span>
-                  </a>
-                </div>
-                <p className={`text-xs ${
-                  isDarkMode ? "text-gray-400" : "text-gray-600"
-                }`}>실시간 낚시 게임</p>
-              </div>
-            </div>
-          
+        <div className="max-w-7xl mx-auto flex items-center justify-end px-6 py-4">
           <div className="flex items-center gap-4">
             {/* 유틸리티 버튼들 */}
             <div className="flex items-center gap-2">
@@ -8907,194 +8903,284 @@ function App() {
         </div>
       </div>
 
-      {/* 탭 네비게이션 - 📱 모바일 최적화 (1줄 레이아웃) */}
-      <div className="relative z-10 max-w-7xl mx-auto px-2 sm:px-6 pt-4">
-        <div className={`flex flex-nowrap gap-1 sm:gap-2 p-1 sm:p-2 rounded-2xl overflow-x-auto ${
-          isDarkMode ? "glass-card" : "bg-white/80 backdrop-blur-md border border-gray-300/30"
+      {/* 왼쪽 사이드바 - 탭 네비게이션 */}
+      {/* 열기 버튼 (사이드바가 닫혀있을 때만) */}
+      {isSidebarCollapsed && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsSidebarCollapsed(false);
+          }}
+          style={{
+            animation: 'slideInFromLeft 0.4s ease-out 0.3s both'
+          }}
+          className={`fixed left-0 top-1/2 -translate-y-1/2 z-[100] py-8 px-1.5 rounded-r-lg transition-all duration-300 cursor-pointer shadow-lg ${
+            isDarkMode 
+              ? "bg-gray-800 hover:bg-gray-700 text-white border-r border-t border-b border-white/20" 
+              : "bg-white hover:bg-gray-100 text-gray-800 border-r border-t border-b border-gray-300"
+          }`}
+          title="메뉴 열기"
+          type="button"
+        >
+          <ChevronRight className="w-4 h-4 pointer-events-none" />
+        </button>
+      )}
+
+      {/* 사이드바 (펼쳐졌을 때) */}
+      <div 
+        style={{
+          transform: isSidebarCollapsed ? 'translateX(-100%)' : 'translateX(0)',
+          transition: 'transform 300ms ease-in-out'
+        }}
+        className="fixed left-0 top-0 h-full w-64 z-50 overflow-hidden"
+      >
+        <div className={`h-full w-full flex flex-col overflow-hidden ${
+          isDarkMode 
+            ? "bg-gray-900 border-r border-white/10" 
+            : "bg-white border-r border-gray-300/30"
         }`}>
+          {/* 사이드바 헤더 */}
+          <div className={`p-3 border-b ${
+            isDarkMode ? "border-white/10" : "border-gray-300/20"
+          }`}>
+            <div className="flex items-center justify-between mb-2">
+              <h1 className={`font-bold text-base ${
+                isDarkMode ? "text-white gradient-text" : "text-gray-800"
+              }`}>여우이야기</h1>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsSidebarCollapsed(true);
+                }}
+                className={`p-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
+                  isDarkMode 
+                    ? "hover:bg-white/10 text-gray-400 hover:text-white" 
+                    : "hover:bg-gray-200 text-gray-600 hover:text-gray-900"
+                }`}
+                title="메뉴 닫기"
+                type="button"
+              >
+                <ChevronLeft className="w-4 h-4 pointer-events-none" />
+              </button>
+            </div>
+            
+            <div className="flex items-center gap-2 mb-2">
+              {/* 카카오톡 채널방 링크 */}
+              <a
+                href="https://open.kakao.com/o/guv74VXg"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-all duration-300 hover:scale-105 ${
+                  isDarkMode 
+                    ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 border border-yellow-400/30" 
+                    : "bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 border border-yellow-500/30"
+                }`}
+                title="카카오톡 채널방 참여하기"
+              >
+                <div className="w-3 h-3 bg-yellow-500 rounded-sm flex items-center justify-center">
+                  <span className="text-white text-[8px] font-bold">K</span>
+                </div>
+                <span>채널방</span>
+              </a>
+              
+              {/* 후원 링크 */}
+              <a
+                href="https://buymeacoffee.com/r4823120"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-all duration-300 hover:scale-105 ${
+                  isDarkMode 
+                    ? "bg-pink-500/20 text-pink-400 hover:bg-pink-500/30 border border-pink-400/30" 
+                    : "bg-pink-500/10 text-pink-600 hover:bg-pink-500/20 border border-pink-500/30"
+                }`}
+                title="개발자 후원하기"
+              >
+                <div className="w-3 h-3 flex items-center justify-center">
+                  <span className="text-[10px]">☕</span>
+                </div>
+                <span>여우밥주기</span>
+              </a>
+            </div>
+            
+            <p className={`text-[10px] ${
+              isDarkMode ? "text-gray-400" : "text-gray-600"
+            }`}>실시간 낚시 게임</p>
+          </div>
+
+          {/* 메뉴 아이템 스크롤 영역 */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+
+          {/* 메뉴 아이템들 */}
           <button
             onClick={() => setActiveTab("chat")}
-            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
-              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
-            } font-medium ${
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "chat"
                 ? isDarkMode
                   ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
                   : "bg-blue-500/10 text-blue-600 border border-blue-500/30"
                 : isDarkMode
-                  ? "text-gray-400 hover:text-gray-300"
-                  : "text-gray-600 hover:text-gray-800"
+                  ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                  : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
-            title="채팅"
           >
-            <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-[10px] sm:text-xs md:text-sm lg:text-base whitespace-nowrap">채팅</span>
+            <MessageCircle className="w-5 h-5" />
+            <span className="font-medium">채팅</span>
           </button>
+
           <button
             onClick={() => setActiveTab("inventory")}
-            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
-              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
-            } font-medium ${
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "inventory"
                 ? isDarkMode
                   ? "bg-emerald-500/20 text-emerald-400 border border-emerald-400/30"
                   : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/30"
                 : isDarkMode
-                  ? "text-gray-400 hover:text-gray-300"
-                  : "text-gray-600 hover:text-gray-800"
+                  ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                  : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
-            title="인벤토리"
           >
-            <Package className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-[10px] sm:text-xs md:text-sm lg:text-base whitespace-nowrap">인벤토리</span>
+            <Package className="w-5 h-5" />
+            <span className="font-medium">인벤토리</span>
           </button>
+
           <button
             onClick={() => setActiveTab("growth")}
-            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
-              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
-            } font-medium ${
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "growth"
                 ? isDarkMode
                   ? "bg-pink-500/20 text-pink-400 border border-pink-400/30"
                   : "bg-pink-500/10 text-pink-600 border border-pink-500/30"
                 : isDarkMode
-                  ? "text-gray-400 hover:text-gray-300"
-                  : "text-gray-600 hover:text-gray-800"
+                  ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                  : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
-            title="성장"
           >
-            <Zap className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-[10px] sm:text-xs md:text-sm lg:text-base whitespace-nowrap">성장</span>
+            <Zap className="w-5 h-5" />
+            <span className="font-medium">성장</span>
           </button>
+
           <button
             onClick={() => setActiveTab("voyage")}
-            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
-              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
-            } font-medium ${
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "voyage"
                 ? isDarkMode
                   ? "bg-blue-500/20 text-blue-400 border border-blue-400/30"
                   : "bg-blue-500/10 text-blue-600 border border-blue-500/30"
                 : isDarkMode
-                  ? "text-gray-400 hover:text-gray-300"
-                  : "text-gray-600 hover:text-gray-800"
+                  ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                  : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
-            title="항해"
           >
-            <Anchor className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-[10px] sm:text-xs md:text-sm lg:text-base whitespace-nowrap">항해</span>
+            <Anchor className="w-5 h-5" />
+            <span className="font-medium">항해</span>
           </button>
+
           <button
             onClick={() => setActiveTab("shop")}
-            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
-              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
-            } font-medium ${
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "shop"
                 ? isDarkMode
                   ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
                   : "bg-purple-500/10 text-purple-600 border border-purple-500/30"
                 : isDarkMode
-                  ? "text-gray-400 hover:text-gray-300"
-                  : "text-gray-600 hover:text-gray-800"
+                  ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                  : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
-            title="상점"
           >
-            <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-[10px] sm:text-xs md:text-sm lg:text-base whitespace-nowrap">상점</span>
+            <ShoppingCart className="w-5 h-5" />
+            <span className="font-medium">상점</span>
           </button>
+
           <button
             onClick={() => setActiveTab("exploration")}
-            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
-              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
-            } font-medium ${
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "exploration"
                 ? isDarkMode
                   ? "bg-orange-500/20 text-orange-400 border border-orange-400/30"
                   : "bg-orange-500/10 text-orange-600 border border-orange-500/30"
                 : isDarkMode
-                  ? "text-gray-400 hover:text-gray-300"
-                  : "text-gray-600 hover:text-gray-800"
+                  ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                  : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
-            title="탐사"
           >
-            <Waves className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-[10px] sm:text-xs md:text-sm lg:text-base whitespace-nowrap">탐사</span>
+            <Waves className="w-5 h-5" />
+            <span className="font-medium">탐사</span>
           </button>
+
           <button
             onClick={() => setActiveTab("expedition")}
-            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
-              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
-            } font-medium ${
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "expedition"
                 ? isDarkMode
                   ? "bg-teal-500/20 text-teal-400 border border-teal-400/30"
                   : "bg-teal-500/10 text-teal-600 border border-teal-500/30"
                 : isDarkMode
-                  ? "text-gray-400 hover:text-gray-300"
-                  : "text-gray-600 hover:text-gray-800"
+                  ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                  : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
-            title="원정"
           >
-            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
-            <span className="text-[10px] sm:text-xs md:text-sm lg:text-base whitespace-nowrap">원정</span>
+            <span className="font-medium">원정</span>
           </button>
+
           <button
             onClick={() => setActiveTab("companions")}
-            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
-              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
-            } font-medium ${
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "companions"
                 ? isDarkMode
                   ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
                   : "bg-purple-500/10 text-purple-600 border border-purple-500/30"
                 : isDarkMode
-                  ? "text-gray-400 hover:text-gray-300"
-                  : "text-gray-600 hover:text-gray-800"
+                  ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                  : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
-            title="동료모집"
           >
-            <Users className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-[10px] sm:text-xs md:text-sm lg:text-base whitespace-nowrap">동료</span>
+            <Users className="w-5 h-5" />
+            <span className="font-medium">동료</span>
           </button>
+
           <button
             onClick={() => setActiveTab("raid")}
-            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
-              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
-            } font-medium ${
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "raid"
                 ? isDarkMode
                   ? "bg-red-500/20 text-red-400 border border-red-400/30"
                   : "bg-red-500/10 text-red-600 border border-red-500/30"
                 : isDarkMode
-                  ? "text-gray-400 hover:text-gray-300"
-                  : "text-gray-600 hover:text-gray-800"
+                  ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                  : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
-            title="레이드"
           >
-            <Sword className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-[10px] sm:text-xs md:text-sm lg:text-base whitespace-nowrap">레이드</span>
+            <Sword className="w-5 h-5" />
+            <span className="font-medium">레이드</span>
           </button>
+
           <button
             onClick={() => setActiveTab("arena")}
-            className={`flex-1 flex flex-row items-center justify-center gap-1 px-2 sm:px-3 py-2 sm:py-3 rounded-xl transition-all ${
-              mobileConfig?.shouldReduceAnimations ? 'duration-200 active:scale-95' : 'duration-300'
-            } font-medium ${
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full ${
               activeTab === "arena"
                 ? isDarkMode
                   ? "bg-purple-500/20 text-purple-400 border border-purple-400/30"
                   : "bg-purple-500/10 text-purple-600 border border-purple-500/30"
                 : isDarkMode
-                  ? "text-gray-400 hover:text-gray-300"
-                  : "text-gray-600 hover:text-gray-800"
+                  ? "text-gray-400 hover:text-gray-300 hover:bg-white/5"
+                  : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
-            title="결투장"
           >
-            <Shield className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-[10px] sm:text-xs md:text-sm lg:text-base whitespace-nowrap">결투장</span>
+            <Shield className="w-5 h-5" />
+            <span className="font-medium">결투장</span>
           </button>
+          </div>
+
+          {/* 컴팩트 오디오 플레이어 - 맨 아래 */}
+          <div className={`border-t py-3 px-2 ${
+            isDarkMode ? "border-white/10 bg-gradient-to-br from-gray-800/50 to-gray-900/50" : "border-gray-300/20 bg-gradient-to-br from-gray-50 to-gray-100"
+          }`}>
+            <AudioPlayer compact={true} />
+          </div>
         </div>
       </div>
       {/* 메인 콘텐츠 */}
@@ -14744,7 +14830,13 @@ function App() {
             {/* 탭 네비게이션 */}
             <div className={`flex border-b ${isDarkMode ? "border-white/10" : "border-gray-300/20"}`}>
               <button
-                onClick={() => setTermsTab("terms")}
+                onClick={() => {
+                  setTermsTab("terms");
+                  // 탭 변경 시 스크롤 위치 초기화
+                  if (termsContentRef.current) {
+                    termsContentRef.current.scrollTop = 0;
+                  }
+                }}
                 className={`flex-1 py-3 text-sm font-medium transition-colors ${
                   termsTab === "terms"
                     ? isDarkMode
@@ -14758,7 +14850,13 @@ function App() {
                 📜 이용약관
               </button>
               <button
-                onClick={() => setTermsTab("privacy")}
+                onClick={() => {
+                  setTermsTab("privacy");
+                  // 탭 변경 시 스크롤 위치 초기화
+                  if (termsContentRef.current) {
+                    termsContentRef.current.scrollTop = 0;
+                  }
+                }}
                 className={`flex-1 py-3 text-sm font-medium transition-colors ${
                   termsTab === "privacy"
                     ? isDarkMode
@@ -14774,7 +14872,11 @@ function App() {
             </div>
             
             {/* 모달 콘텐츠 */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div 
+              ref={termsContentRef}
+              onScroll={handleTermsScroll}
+              className="flex-1 overflow-y-auto p-6 space-y-4"
+            >
               {/* 이용약관 탭 */}
               {termsTab === "terms" && (
                 <div className="space-y-4">
@@ -14831,16 +14933,39 @@ function App() {
               <div className={`sticky bottom-0 pt-4 pb-2 space-y-3 ${
                 isDarkMode ? "bg-gradient-to-t from-gray-900 via-gray-900" : "bg-gradient-to-t from-white via-white"
               }`}>
+                {/* 📜 스크롤 안내 메시지 */}
+                {!termsScrolledToBottom && termsTab === "terms" && (
+                  <div className={`text-xs text-center p-2 rounded-lg ${
+                    isDarkMode ? "bg-blue-500/10 text-blue-400" : "bg-blue-50 text-blue-600"
+                  }`}>
+                    ⬇️ 약관을 끝까지 읽어주세요
+                  </div>
+                )}
+                {!privacyScrolledToBottom && termsTab === "privacy" && (
+                  <div className={`text-xs text-center p-2 rounded-lg ${
+                    isDarkMode ? "bg-purple-500/10 text-purple-400" : "bg-purple-50 text-purple-600"
+                  }`}>
+                    ⬇️ 개인정보 처리방침을 끝까지 읽어주세요
+                  </div>
+                )}
+                
                 <div className="flex items-center gap-3">
                   <input
                     type="checkbox"
                     id="termsCheckbox"
                     checked={termsAccepted}
                     onChange={(e) => setTermsAccepted(e.target.checked)}
-                    className="w-5 h-5 rounded border-2 border-blue-500 text-blue-500 focus:ring-blue-500"
+                    disabled={!termsScrolledToBottom}
+                    className={`w-5 h-5 rounded border-2 text-blue-500 focus:ring-blue-500 ${
+                      termsScrolledToBottom 
+                        ? "border-blue-500 cursor-pointer" 
+                        : "border-gray-400 opacity-50 cursor-not-allowed"
+                    }`}
                   />
-                  <label htmlFor="termsCheckbox" className={`text-sm cursor-pointer font-medium ${
-                    isDarkMode ? "text-gray-300" : "text-gray-700"
+                  <label htmlFor="termsCheckbox" className={`text-sm font-medium ${
+                    termsScrolledToBottom 
+                      ? isDarkMode ? "text-gray-300 cursor-pointer" : "text-gray-700 cursor-pointer"
+                      : isDarkMode ? "text-gray-500 cursor-not-allowed" : "text-gray-400 cursor-not-allowed"
                   }`}>
                     이용약관에 동의합니다 (필수)
                   </label>
@@ -14851,10 +14976,17 @@ function App() {
                     id="privacyCheckbox"
                     checked={privacyAccepted}
                     onChange={(e) => setPrivacyAccepted(e.target.checked)}
-                    className="w-5 h-5 rounded border-2 border-purple-500 text-purple-500 focus:ring-purple-500"
+                    disabled={!privacyScrolledToBottom}
+                    className={`w-5 h-5 rounded border-2 text-purple-500 focus:ring-purple-500 ${
+                      privacyScrolledToBottom 
+                        ? "border-purple-500 cursor-pointer" 
+                        : "border-gray-400 opacity-50 cursor-not-allowed"
+                    }`}
                   />
-                  <label htmlFor="privacyCheckbox" className={`text-sm cursor-pointer font-medium ${
-                    isDarkMode ? "text-gray-300" : "text-gray-700"
+                  <label htmlFor="privacyCheckbox" className={`text-sm font-medium ${
+                    privacyScrolledToBottom 
+                      ? isDarkMode ? "text-gray-300 cursor-pointer" : "text-gray-700 cursor-pointer"
+                      : isDarkMode ? "text-gray-500 cursor-not-allowed" : "text-gray-400 cursor-not-allowed"
                   }`}>
                     개인정보 처리방침에 동의합니다 (필수)
                   </label>
@@ -15251,7 +15383,7 @@ function App() {
             </div>
             
             {/* 이미지 */}
-            <div className={`p-8 flex items-center justify-center ${
+            <div className={`relative p-8 flex items-center justify-center overflow-hidden ${
 isDarkMode ? "bg-black/20" : "bg-gray-50/50"
             }`}>
               {(() => {
@@ -15259,20 +15391,33 @@ isDarkMode ? "bg-black/20" : "bg-gray-50/50"
                 const currentImage = modalImageUrl || userProfileImages[currentUserUuid];
                 
                 return currentImage ? (
-                  <img 
-                    src={currentImage} 
-                    alt="프로필 이미지"
-                    className="max-w-full max-h-[60vh] object-contain rounded-lg"
-                    onError={(e) => {
-                      // 이미지 로드 실패 시 캐시에서 제거
-                      const newCache = { ...userProfileImages };
-                      delete newCache[currentUserUuid];
-                      setUserProfileImages(newCache);
-                      setModalImageUrl(null);
-                      localStorage.removeItem(`profileImage_${currentUserUuid}`);
-                      console.log(`❌ 모달 이미지 로드 실패, 기본 표시로 전환`);
-                    }}
-                  />
+                  <>
+                    {/* 배경 이미지 (블러 처리) */}
+                    <div 
+                      className="absolute inset-0 bg-cover bg-center"
+                      style={{
+                        backgroundImage: `url(${currentImage})`,
+                        filter: 'blur(20px)',
+                        opacity: isDarkMode ? 0.3 : 0.2,
+                        transform: 'scale(1.1)'
+                      }}
+                    />
+                    {/* 실제 이미지 (선명하게) */}
+                    <img 
+                      src={currentImage} 
+                      alt="프로필 이미지"
+                      className="relative max-w-full max-h-[60vh] object-contain rounded-lg z-10"
+                      onError={(e) => {
+                        // 이미지 로드 실패 시 캐시에서 제거
+                        const newCache = { ...userProfileImages };
+                        delete newCache[currentUserUuid];
+                        setUserProfileImages(newCache);
+                        setModalImageUrl(null);
+                        localStorage.removeItem(`profileImage_${currentUserUuid}`);
+                        console.log(`❌ 모달 이미지 로드 실패, 기본 표시로 전환`);
+                      }}
+                    />
+                  </>
                 ) : (
                   <div className={`flex items-center justify-center w-64 h-64 rounded-lg border-2 border-dashed ${
                     isDarkMode ? "border-white/20 text-gray-500" : "border-gray-300 text-gray-400"
@@ -15343,6 +15488,26 @@ isDarkMode ? "bg-black/20" : "bg-gray-50/50"
             )}
           </div>
         </div>
+      )}
+
+      {/* 플로팅 채팅 (채팅 탭이 아닐 때만 표시) */}
+      {activeTab !== 'chat' && (
+        <FloatingChat
+          messages={messages}
+          input={input}
+          setInput={setInput}
+          username={username}
+          isDarkMode={isDarkMode}
+          userProfileImages={userProfileImages}
+          loadProfileImage={loadProfileImage}
+          getSocket={getSocket}
+          isGuest={isGuest}
+          fetchOtherUserProfile={fetchOtherUserProfile}
+          setSelectedUserProfile={setSelectedUserProfile}
+          setShowProfile={setShowProfile}
+          serverUrl={serverUrl}
+          setShowClickerModal={setShowClickerModal}
+        />
       )}
     </div>
   );

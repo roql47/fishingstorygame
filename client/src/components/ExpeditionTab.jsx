@@ -270,23 +270,23 @@ const ExpeditionTab = ({ userData, socket, isDarkMode = true, refreshInventory, 
           
           // 🎯 서버에 공격 요청 보내기 (탐사전투와 동일하게 즉시 처리)
           if (characterId.startsWith('player_')) {
-            const playerId = characterId.replace('player_', '');
-            socket.emit('expeditionPlayerAttack', { playerId });
+            // 🔒 보안: 서버에서 socket 인증 정보로 playerId를 추출하므로 클라이언트는 전송하지 않음
+            socket.emit('expeditionPlayerAttack', {});
             // 탐사전투와 동일: 즉시 UI 반영
             setForceUpdateCounter(prev => prev + 1);
           } else if (characterId.startsWith('companion_')) {
             const companionKey = characterId.replace('companion_', '');
             // companionKey는 "playerId_companionName" 형식
             const firstUnderscoreIndex = companionKey.indexOf('_');
-            const playerId = companionKey.substring(0, firstUnderscoreIndex);
             const companionName = companionKey.substring(firstUnderscoreIndex + 1);
-            socket.emit('expeditionCompanionAttack', { playerId, companionName });
+            // 🔒 보안: 서버에서 socket 인증 정보로 playerId를 추출하고 동료 소유권을 검증함
+            socket.emit('expeditionCompanionAttack', { companionName });
             // 탐사전투와 동일: 즉시 UI 반영
             setForceUpdateCounter(prev => prev + 1);
           } else if (characterId.startsWith('monster_')) {
             const monsterId = characterId.replace('monster_', '');
             
-            // 🔥 서버에 요청 보내기
+            // 🔒 보안: 서버에서 몬스터가 플레이어의 방에 있는지 검증함
             socket.emit('expeditionMonsterAttack', { monsterId });
             
             // 🎯 탐사전투와 동일: 낙관적 업데이트 (즉시 UI 반영)

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Play, Pause, Volume2, VolumeX, SkipBack, SkipForward, Repeat, Repeat1, Shuffle, ExternalLink } from 'lucide-react';
 
-const AudioPlayer = () => {
+const AudioPlayer = ({ compact = false }) => {
   const audioRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -282,6 +282,157 @@ const AudioPlayer = () => {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
+  // Compact mode for sidebar
+  if (compact) {
+    return (
+      <div className="flex flex-col gap-2 w-full">
+        <audio ref={audioRef} src={playlist[currentTrack].src} preload="metadata" />
+        
+        {/* Track Info with Link */}
+        <div 
+          className="w-full px-1 cursor-pointer hover:bg-white/5 rounded p-1 transition-colors relative"
+          onClick={() => setShowPlaylist(!showPlaylist)}
+        >
+          <div className="flex items-start justify-between gap-1">
+            <div className="flex-1 min-w-0">
+              <div className="text-white font-semibold text-xs truncate">
+                {playlist[currentTrack].title}
+              </div>
+              <div className="text-gray-400 text-[10px] truncate">
+                {playlist[currentTrack].artist}
+              </div>
+              <div className="text-gray-500 text-[9px] truncate">
+                {playlist[currentTrack].subtitle}
+              </div>
+            </div>
+            <a
+              href={playlist[currentTrack].license}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-0.5 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+              title="Music Source"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ExternalLink size={12} className="text-gray-400 hover:text-white" />
+            </a>
+          </div>
+
+          {/* Playlist Dropdown */}
+          {showPlaylist && (
+            <div className="absolute left-full top-0 ml-2 bg-gray-800/95 backdrop-blur-md border border-gray-700 rounded-lg shadow-xl w-[280px] max-h-[400px] overflow-y-auto z-[70]">
+              <div className="p-2">
+                <div className="text-gray-400 text-xs font-semibold mb-2 px-2">
+                  Playlist ({playlist.length})
+                </div>
+                {playlist.map((track, index) => (
+                  <div
+                    key={index}
+                    onClick={() => selectTrack(index)}
+                    className={`p-2 rounded-lg cursor-pointer transition-all ${
+                      index === currentTrack
+                        ? 'bg-gray-700 border border-gray-600'
+                        : 'hover:bg-gray-700/50'
+                    }`}
+                  >
+                    <div className={`font-semibold text-xs truncate ${
+                      index === currentTrack ? 'text-white' : 'text-gray-200'
+                    }`}>
+                      {track.title}
+                    </div>
+                    <div className="text-gray-400 text-[10px] truncate">
+                      {track.artist}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Controls Row */}
+        <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={playPreviousTrack}
+            disabled={currentTrack === 0}
+            className={`p-1.5 rounded-full transition-colors ${
+              currentTrack === 0 
+                ? 'opacity-30 cursor-not-allowed' 
+                : 'hover:bg-white/10 cursor-pointer'
+            }`}
+            title="이전 곡"
+            type="button"
+          >
+            <SkipBack size={14} className="text-white pointer-events-none" />
+          </button>
+
+          <button
+            onClick={togglePlay}
+            className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-all cursor-pointer"
+            title={isPlaying ? '일시정지' : '재생'}
+            type="button"
+          >
+            {isPlaying ? (
+              <Pause size={16} className="text-white pointer-events-none" />
+            ) : (
+              <Play size={16} className="text-white pointer-events-none" />
+            )}
+          </button>
+          
+          <button
+            onClick={playNextTrack}
+            disabled={currentTrack === playlist.length - 1}
+            className={`p-1.5 rounded-full transition-colors ${
+              currentTrack === playlist.length - 1 
+                ? 'opacity-30 cursor-not-allowed' 
+                : 'hover:bg-white/10 cursor-pointer'
+            }`}
+            title="다음 곡"
+            type="button"
+          >
+            <SkipForward size={14} className="text-white pointer-events-none" />
+          </button>
+
+          <button
+            onClick={toggleMute}
+            className="p-1.5 hover:bg-white/10 rounded-full transition-colors cursor-pointer"
+            title={isMuted ? '음소거 해제' : '음소거'}
+            type="button"
+          >
+            {isMuted || volume === 0 ? (
+              <VolumeX size={14} className="text-white pointer-events-none" />
+            ) : (
+              <Volume2 size={14} className="text-white pointer-events-none" />
+            )}
+          </button>
+        </div>
+
+        {/* Progress Bar */}
+        <div className="flex flex-col gap-1 w-full px-1">
+          <input
+            type="range"
+            min="0"
+            max={duration || 0}
+            value={currentTime}
+            onChange={handleSeek}
+            className="w-full h-1 bg-gray-700 rounded-full outline-none appearance-none cursor-pointer
+              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 
+              [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:cursor-pointer
+              [&::-moz-range-thumb]:w-2.5 [&::-moz-range-thumb]:h-2.5 [&::-moz-range-thumb]:bg-white 
+              [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:cursor-pointer"
+            style={{
+              background: `linear-gradient(to right, #fff ${(currentTime / duration) * 100}%, #374151 ${(currentTime / duration) * 100}%)`
+            }}
+          />
+          <div className="flex justify-between w-full text-[9px] text-gray-400">
+            <span>{formatTime(currentTime)}</span>
+            <span>{formatTime(duration)}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Regular mode
   return (
     <div className="bg-gradient-to-r from-gray-900/70 to-gray-800/70 border-b-2 border-gray-700/70 shadow-lg backdrop-blur-sm sticky top-0 z-[60]">
       <audio ref={audioRef} src={playlist[currentTrack].src} preload="metadata" />

@@ -724,7 +724,30 @@ io.on('connection', (socket) => {
   // 원정 전투 - 플레이어 공격
   socket.on('expeditionPlayerAttack', async ({ playerId }) => {
     try {
-      const result = expeditionSystem.playerAttackSpeedBased(playerId);
+      // 🔐 인증 확인
+      if (!socket.data.isAuthenticated) {
+        console.log(`🚨 [SECURITY] Unauthenticated expedition player attack attempt: ${socket.id}`);
+        return;
+      }
+
+      // 🔒 보안: socket에서 실제 사용자 정보 가져오기 (클라이언트 조작 방지)
+      const authenticatedPlayerId = socket.data.userUuid || socket.userUuid;
+      
+      if (!authenticatedPlayerId) {
+        console.log(`🚨 [SECURITY] Missing userUuid in socket data: ${socket.id}`);
+        return;
+      }
+
+      // 🔒 보안: 클라이언트가 보낸 playerId 무시하고 인증된 ID 사용
+      // 클라이언트가 다른 플레이어 ID를 보내도 자기 자신의 공격만 가능
+      
+      // 🔒 보안: 플레이어가 실제로 방에 있는지 확인
+      if (!expeditionSystem.isPlayerInRoom(authenticatedPlayerId)) {
+        console.log(`🚨 [SECURITY] Player ${authenticatedPlayerId} not in any room`);
+        return;
+      }
+
+      const result = expeditionSystem.playerAttackSpeedBased(authenticatedPlayerId);
       // null 반환 시 조용히 무시 (전투 종료, 캐릭터 사망 등)
       if (result && result.room) {
         io.to(`expedition_${result.room.id}`).emit('expeditionBattleUpdate', {
@@ -743,7 +766,35 @@ io.on('connection', (socket) => {
   // 원정 전투 - 동료 공격
   socket.on('expeditionCompanionAttack', async ({ playerId, companionName }) => {
     try {
-      const result = expeditionSystem.companionAttackSpeedBased(playerId, companionName);
+      // 🔐 인증 확인
+      if (!socket.data.isAuthenticated) {
+        console.log(`🚨 [SECURITY] Unauthenticated expedition companion attack attempt: ${socket.id}`);
+        return;
+      }
+
+      // 🔒 보안: socket에서 실제 사용자 정보 가져오기 (클라이언트 조작 방지)
+      const authenticatedPlayerId = socket.data.userUuid || socket.userUuid;
+      
+      if (!authenticatedPlayerId) {
+        console.log(`🚨 [SECURITY] Missing userUuid in socket data: ${socket.id}`);
+        return;
+      }
+
+      // 🔒 보안: 클라이언트가 보낸 playerId 무시하고 인증된 ID 사용
+      
+      // 🔒 보안: 플레이어가 실제로 방에 있는지 확인
+      if (!expeditionSystem.isPlayerInRoom(authenticatedPlayerId)) {
+        console.log(`🚨 [SECURITY] Player ${authenticatedPlayerId} not in any room`);
+        return;
+      }
+
+      // 🔒 보안: 동료가 실제로 해당 플레이어의 것인지 확인
+      if (!companionName || !expeditionSystem.isCompanionOwnedByPlayer(companionName, authenticatedPlayerId)) {
+        console.log(`🚨 [SECURITY] Player ${authenticatedPlayerId} tried to control companion ${companionName}`);
+        return;
+      }
+
+      const result = expeditionSystem.companionAttackSpeedBased(authenticatedPlayerId, companionName);
       // null 반환 시 조용히 무시 (전투 종료, 동료 사망 등)
       if (result && result.room) {
         io.to(`expedition_${result.room.id}`).emit('expeditionBattleUpdate', {
@@ -762,6 +813,32 @@ io.on('connection', (socket) => {
   // 원정 전투 - 몬스터 공격
   socket.on('expeditionMonsterAttack', async ({ monsterId }) => {
     try {
+      // 🔐 인증 확인
+      if (!socket.data.isAuthenticated) {
+        console.log(`🚨 [SECURITY] Unauthenticated expedition monster attack attempt: ${socket.id}`);
+        return;
+      }
+
+      // 🔒 보안: socket에서 실제 사용자 정보 가져오기
+      const authenticatedPlayerId = socket.data.userUuid || socket.userUuid;
+      
+      if (!authenticatedPlayerId) {
+        console.log(`🚨 [SECURITY] Missing userUuid in socket data: ${socket.id}`);
+        return;
+      }
+
+      // 🔒 보안: 플레이어가 실제로 방에 있는지 확인
+      if (!expeditionSystem.isPlayerInRoom(authenticatedPlayerId)) {
+        console.log(`🚨 [SECURITY] Player ${authenticatedPlayerId} not in any room`);
+        return;
+      }
+
+      // 🔒 보안: 몬스터가 플레이어의 방에 있는지 확인
+      if (!monsterId || !expeditionSystem.isMonsterInPlayerRoom(monsterId, authenticatedPlayerId)) {
+        console.log(`🚨 [SECURITY] Player ${authenticatedPlayerId} tried to control monster ${monsterId} from different room`);
+        return;
+      }
+
       const result = expeditionSystem.monsterAttackSpeedBased(monsterId);
       // null 반환 시 조용히 무시 (전투 종료, 몬스터 사망 등)
       if (result && result.room) {
@@ -13098,14 +13175,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.419"
+    version: "v1.420"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.419",
+    version: "v1.420",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [

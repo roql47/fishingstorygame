@@ -1,6 +1,12 @@
 // 항해 시스템 라우트
 const express = require('express');
 const router = express.Router();
+const { 
+  getVoyageFishByRank, 
+  calculateVoyageReward, 
+  isValidVoyageRank,
+  validateVoyageGold 
+} = require('../data/voyageData');
 
 // 🔒 레이어 3: 서버 측 중복 요청 차단 (3초 이내)
 const recentClaims = new Map(); // userUuid -> timestamp
@@ -12,7 +18,35 @@ const setupVoyageRoutes = (app, UserMoneyModel, CatchModel, DailyQuestModel, get
     try {
       // 🔐 JWT에서 사용자 정보 추출 (보안 강화)
       const { userUuid, username } = req.user;
-      const { fishName, gold, rank, autoVoyage } = req.body;
+      const { rank, autoVoyage } = req.body;
+
+      // 🔒 보안: rank 유효성 검증
+      if (!rank || !isValidVoyageRank(rank)) {
+        console.log(`🚨 [SECURITY] Invalid voyage rank from ${username}: ${rank}`);
+        return res.status(400).json({
+          success: false,
+          error: '유효하지 않은 랭크입니다.'
+        });
+      }
+
+      // 🔒 보안: 서버에서 물고기 데이터 조회 (클라이언트 조작 불가)
+      let fishData;
+      try {
+        fishData = getVoyageFishByRank(rank);
+      } catch (error) {
+        console.log(`🚨 [SECURITY] Failed to get fish data for rank ${rank} from ${username}`);
+        return res.status(400).json({
+          success: false,
+          error: '존재하지 않는 물고기입니다.'
+        });
+      }
+
+      // 🔒 보안: 서버에서 골드 계산 (클라이언트 값 무시)
+      const reward = calculateVoyageReward(rank);
+      const fishName = reward.fishName;
+      const gold = reward.gold;
+
+      console.log(`[VOYAGE] 🎣 ${username} - Rank ${rank} (${fishName}) 보상: ${gold}G (범위: ${reward.minGold}~${reward.maxGold})`);
 
       if (!fishName || !gold) {
         return res.status(400).json({
@@ -182,7 +216,8 @@ const setupVoyageRoutes = (app, UserMoneyModel, CatchModel, DailyQuestModel, get
         gold: moneyDoc.money,
         fishName,
         count: fishDoc.count,
-        autoBaitCount
+        autoBaitCount,
+        actualGold: gold // 🔒 보안: 서버에서 계산한 실제 보상 골드
       });
     } catch (error) {
       console.error('[VOYAGE] 보상 지급 오류:', error);

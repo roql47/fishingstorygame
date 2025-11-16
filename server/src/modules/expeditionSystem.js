@@ -3018,6 +3018,40 @@ class ExpeditionSystem {
         return room;
     }
 
+    // 🔒 보안: 플레이어가 방에 있는지 확인
+    isPlayerInRoom(playerId) {
+        const roomId = this.playerRooms.get(playerId);
+        if (!roomId) return false;
+
+        const room = this.expeditionRooms.get(roomId);
+        if (!room) return false;
+
+        return room.players.some(p => p.id === playerId);
+    }
+
+    // 🔒 보안: 몬스터가 플레이어의 방에 있는지 확인
+    isMonsterInPlayerRoom(monsterId, playerId) {
+        const roomId = this.playerRooms.get(playerId);
+        if (!roomId) return false;
+
+        const room = this.expeditionRooms.get(roomId);
+        if (!room) return false;
+
+        return room.monsters.some(m => m.id == monsterId);
+    }
+
+    // 🔒 보안: 동료가 플레이어의 것인지 확인
+    isCompanionOwnedByPlayer(companionName, playerId) {
+        const roomId = this.playerRooms.get(playerId);
+        if (!roomId) return false;
+
+        const room = this.expeditionRooms.get(roomId);
+        if (!room || !room.playerData || !room.playerData[playerId]) return false;
+
+        const companions = room.playerData[playerId].companions || [];
+        return companions.some(c => c.companionName === companionName);
+    }
+
     // 방 정보 조회 (roomId로)
     getRoomById(roomId) {
         return this.expeditionRooms.get(roomId);

@@ -105,6 +105,24 @@
   }
 }
 
+@keyframes slideInFromLeft {
+  0% {
+    transform: translateX(-100%) translateY(-50%);
+    opacity: 0;
+  }
+  60% {
+    transform: translateX(8px) translateY(-50%);
+    opacity: 1;
+  }
+  80% {
+    transform: translateX(-4px) translateY(-50%);
+  }
+  100% {
+    transform: translateX(0) translateY(-50%);
+    opacity: 1;
+  }
+}
+
 html, body, #root {
   height: 100%;
 }
