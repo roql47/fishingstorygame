@@ -421,6 +421,7 @@ function App() {
   const [selectedExplorationMaterial, setSelectedExplorationMaterial] = useState(null); // 탐사용 선택된 재료
   const [selectedMaterialQuantity, setSelectedMaterialQuantity] = useState(1); // 재료 소모 수량 (1~5)
   const [battleState, setBattleState] = useState(null); // { enemy, playerHp, enemyHp, turn, log }
+  const [explorationSessionToken, setExplorationSessionToken] = useState(null); // 🔒 탐사전투 세션 토큰
   const [showBattleModal, setShowBattleModal] = useState(false);
   const [isProcessingFishing, setIsProcessingFishing] = useState(false); // 🛡️ 낚시 처리 중 상태
   const [showNoticeModal, setShowNoticeModal] = useState(false); // 공지사항 모달
@@ -474,7 +475,14 @@ function App() {
   // 호박석 지급 함수 (TDZ 문제 해결을 위해 상단에 선언)
   const addAmber = async (amount) => {
     try {
-      console.log('Adding amber reward');
+      console.log('[EXPLORATION] Adding amber reward:', amount);
+      
+      // 🔒 보안: 세션 토큰 확인
+      if (!explorationSessionToken) {
+        console.error('[EXPLORATION] ❌ 세션 토큰 없음! 보상 지급 불가');
+        alert('유효하지 않은 전투 세션입니다. 전투를 다시 시작해주세요.');
+        return false;
+      }
       
       // serverUrl 직접 계산 (TDZ 방지)
       const hostname = window.location.hostname;
@@ -485,7 +493,8 @@ function App() {
       
       const token = jwtToken || localStorage.getItem("jwtToken");
       const response = await axios.post(`${calculatedServerUrl}/api/add-amber`, {
-        amount
+        amount,
+        sessionToken: explorationSessionToken // 🔒 세션 토큰 전송
       }, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
@@ -493,14 +502,18 @@ function App() {
       console.log('Add amber response:', response.data);
       
       if (response.data.success) {
-        console.log(`Added ${amount} amber. New total: ${response.data.newAmber}`);
+        console.log(`[EXPLORATION] ✅ Added ${amount} amber. New total: ${response.data.newAmber}`);
         setUserAmber(response.data.newAmber);
+        // 🔒 세션 토큰 초기화 (사용 완료)
+        setExplorationSessionToken(null);
         return true;
       }
       return false;
     } catch (error) {
-      console.error("Failed to add amber:", error);
+      console.error("[EXPLORATION] ❌ Failed to add amber:", error);
       console.error("Error response:", error.response?.data);
+      // 오류 시에도 세션 토큰 초기화
+      setExplorationSessionToken(null);
       return false;
     }
   };
@@ -7107,6 +7120,11 @@ function App() {
       if (response.data.success) {
         const serverBattleState = response.data.battleState;
         const battleLog = response.data.log || [];
+        
+        // 🔒 탐사전투 세션 토큰 저장
+        const sessionToken = response.data.sessionToken;
+        setExplorationSessionToken(sessionToken);
+        console.log('[EXPLORATION] 🔐 전투 세션 토큰 받음:', sessionToken ? sessionToken.substring(0, 8) + '...' : '없음');
     
     // 전투 참여 동료들의 체력 및 사기 초기화
     const companionHpData = {};
@@ -9086,8 +9104,8 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-xs sm:text-sm font-medium">채팅</span>
+            <MessageCircle className="w-5 h-5" />
+            <span className="text-sm font-medium">채팅</span>
           </button>
 
           <button
@@ -9102,8 +9120,8 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <Package className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-xs sm:text-sm font-medium">인벤토리</span>
+            <Package className="w-5 h-5" />
+            <span className="text-sm font-medium">인벤토리</span>
           </button>
 
           <button
@@ -9118,8 +9136,8 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <Zap className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-xs sm:text-sm font-medium">성장</span>
+            <Zap className="w-5 h-5" />
+            <span className="text-sm font-medium">성장</span>
           </button>
 
           <button
@@ -9134,8 +9152,8 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <Anchor className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-xs sm:text-sm font-medium">항해</span>
+            <Anchor className="w-5 h-5" />
+            <span className="text-sm font-medium">항해</span>
           </button>
 
           <button
@@ -9150,8 +9168,8 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-xs sm:text-sm font-medium">상점</span>
+            <ShoppingCart className="w-5 h-5" />
+            <span className="text-sm font-medium">상점</span>
           </button>
 
           <button
@@ -9166,8 +9184,8 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <Waves className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-xs sm:text-sm font-medium">탐사</span>
+            <Waves className="w-5 h-5" />
+            <span className="text-sm font-medium">탐사</span>
           </button>
 
           <button
@@ -9182,11 +9200,11 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
-            <span className="text-xs sm:text-sm font-medium">원정</span>
+            <span className="text-sm font-medium">원정</span>
           </button>
 
           <button
@@ -9201,8 +9219,8 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <Users className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-xs sm:text-sm font-medium">동료</span>
+            <Users className="w-5 h-5" />
+            <span className="text-sm font-medium">동료</span>
           </button>
 
           <button
@@ -9217,8 +9235,8 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <Sword className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-xs sm:text-sm font-medium">레이드</span>
+            <Sword className="w-5 h-5" />
+            <span className="text-sm font-medium">레이드</span>
           </button>
 
           <button
@@ -9233,8 +9251,8 @@ function App() {
                   : "text-gray-600 hover:text-gray-800 hover:bg-gray-100/50"
             }`}
           >
-            <Shield className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-xs sm:text-sm font-medium">결투장</span>
+            <Shield className="w-5 h-5" />
+            <span className="text-sm font-medium">결투장</span>
           </button>
           </div>
 

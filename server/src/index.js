@@ -9279,6 +9279,13 @@ const getServerPrefixData = () => {
     { name: '종말의', hpMultiplier: 6.05, amberMultiplier: 2.5, speedMultiplier: 1.8, probability: 0.5 }
   ];
 };
+
+// 🔒 탐사전투 세션 관리
+const explorationSessions = new Map(); // sessionToken -> { userUuid, startTime, enemies }
+
+// 🔒 에테르 던전 세션 관리
+const clickerSessions = new Map(); // sessionToken -> { userUuid, startTime, stage, difficulty }
+
 // 전투 시작 API (JWT 인증 필수)
 app.post("/api/start-battle", authenticateJWT, async (req, res) => {
   try {
@@ -9435,9 +9442,29 @@ app.post("/api/start-battle", authenticateJWT, async (req, res) => {
     };
     
     const enemyNames = enemies.map(e => e.name).join(', ');
+    
+    // 🔒 탐사전투 세션 토큰 생성
+    const crypto = require('crypto');
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    explorationSessions.set(sessionToken, {
+      userUuid,
+      username,
+      startTime: Date.now(),
+      enemies: enemies.map(e => ({ name: e.name, maxHp: e.maxHp })), // 검증용
+      totalMaxHp: enemies.reduce((sum, e) => sum + e.maxHp, 0)
+    });
+    
+    // 10분 후 세션 자동 만료
+    setTimeout(() => {
+      explorationSessions.delete(sessionToken);
+    }, 600000);
+    
+    console.log(`[EXPLORATION] 🎯 전투 세션 생성: ${username} - ${materialQuantity}마리 (Token: ${sessionToken.substring(0, 8)}...)`);
+    
     res.json({ 
       success: true, 
       battleState: battleState,
+      sessionToken, // 🔒 세션 토큰 반환
       log: [
         `${material} ${materialQuantity}개를 사용하여 ${materialQuantity}마리의 ${baseFish}와의 전투가 시작되었습니다!`,
         `출현한 적: ${enemyNames}`,
@@ -10458,11 +10485,56 @@ app.post("/api/claim-quest-reward", authenticateJWT, async (req, res) => {
 // Add Amber API (for exploration rewards)
 app.post("/api/add-amber", authenticateJWT, async (req, res) => {
   try {
-    const { amount } = req.body;
+    const { amount, sessionToken } = req.body;
     // 🔐 JWT에서 사용자 정보 추출 (더 안전함)
     const { userUuid, username } = req.user;
     
-    console.log("Add amber request:", { amount, username, userUuid });
+    // 🔒 보안: 탐사전투 세션 검증
+    if (!sessionToken || !explorationSessions.has(sessionToken)) {
+      console.log(`🚨 [SECURITY] Invalid exploration session from ${username}`);
+      return res.status(403).json({
+        success: false,
+        error: '유효하지 않은 전투 세션입니다.'
+      });
+    }
+    
+    const session = explorationSessions.get(sessionToken);
+    
+    // 🔒 보안: 세션 소유자 확인
+    if (session.userUuid !== userUuid) {
+      console.log(`🚨 [SECURITY] Session owner mismatch: ${username}`);
+      return res.status(403).json({
+        success: false,
+        error: '다른 사용자의 전투 세션입니다.'
+      });
+    }
+    
+    // 🔒 보안: 전투 시간 검증 (최소 2초)
+    const battleDuration = Date.now() - session.startTime;
+    if (battleDuration < 2000) {
+      console.log(`🚨 [SECURITY] Suspiciously fast exploration clear: ${battleDuration}ms`);
+      explorationSessions.delete(sessionToken);
+      return res.status(403).json({
+        success: false,
+        error: '비정상적으로 빠른 클리어입니다.'
+      });
+    }
+    
+    // 🔒 보안: 보상 금액 검증 (적 체력 기반)
+    const maxPossibleAmber = Math.floor(session.totalMaxHp * 0.3); // 최대 체력의 30%
+    if (amount > maxPossibleAmber) {
+      console.log(`🚨 [SECURITY] Invalid amber amount from ${username}: ${amount} (max: ${maxPossibleAmber})`);
+      explorationSessions.delete(sessionToken);
+      return res.status(403).json({
+        success: false,
+        error: '비정상적인 보상 금액입니다.'
+      });
+    }
+    
+    // 🔒 세션 사용 후 삭제 (1회용)
+    explorationSessions.delete(sessionToken);
+    
+    console.log(`[EXPLORATION] ✅ 세션 검증 완료: ${username} - 호박석 ${amount}개`);
     
     // UUID 기반 사용자 조회
     const queryResult = await getUserQuery('user', username, userUuid);
@@ -10665,11 +10737,112 @@ app.post("/api/clicker/upgrade-stage", authenticateJWT, async (req, res) => {
   }
 });
 
+// 🔒 에테르 던전 전투 시작 API
+app.post("/api/clicker/start-battle", authenticateJWT, async (req, res) => {
+  try {
+    const { userUuid, username } = req.user;
+    const { stage, difficulty } = req.body;
+    
+    // 난이도 검증
+    if (!difficulty || difficulty < 1 || difficulty > 10) {
+      return res.status(400).json({
+        success: false,
+        error: '유효하지 않은 난이도입니다.'
+      });
+    }
+    
+    // 스테이지 검증
+    if (!stage || stage < 1) {
+      return res.status(400).json({
+        success: false,
+        error: '유효하지 않은 스테이지입니다.'
+      });
+    }
+    
+    // 🔒 세션 토큰 생성
+    const crypto = require('crypto');
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    clickerSessions.set(sessionToken, {
+      userUuid,
+      username,
+      startTime: Date.now(),
+      stage,
+      difficulty
+    });
+    
+    // 10분 후 세션 자동 만료
+    setTimeout(() => {
+      clickerSessions.delete(sessionToken);
+    }, 600000);
+    
+    console.log(`[CLICKER] 🎯 전투 세션 생성: ${username} - Stage ${stage}-${difficulty} (Token: ${sessionToken.substring(0, 8)}...)`);
+    
+    res.json({
+      success: true,
+      sessionToken,
+      stage,
+      difficulty
+    });
+  } catch (error) {
+    console.error('[CLICKER] 전투 시작 오류:', error);
+    res.status(500).json({
+      success: false,
+      error: '전투 시작 중 오류가 발생했습니다.'
+    });
+  }
+});
+
 // 🎮 클리커 게임 보상 API
 app.post("/api/clicker/reward", authenticateJWT, async (req, res) => {
   try {
-    const { difficulty, stage } = req.body;
+    const { difficulty, stage, sessionToken } = req.body;
     const { userUuid, username } = req.user;
+    
+    // 🔒 보안: 에테르 던전 세션 검증
+    if (!sessionToken || !clickerSessions.has(sessionToken)) {
+      console.log(`🚨 [SECURITY] Invalid clicker session from ${username}`);
+      return res.status(403).json({
+        success: false,
+        error: '유효하지 않은 전투 세션입니다.'
+      });
+    }
+    
+    const session = clickerSessions.get(sessionToken);
+    
+    // 🔒 보안: 세션 소유자 확인
+    if (session.userUuid !== userUuid) {
+      console.log(`🚨 [SECURITY] Clicker session owner mismatch: ${username}`);
+      return res.status(403).json({
+        success: false,
+        error: '다른 사용자의 전투 세션입니다.'
+      });
+    }
+    
+    // 🔒 보안: stage/difficulty 일치 확인
+    if (session.stage !== stage || session.difficulty !== difficulty) {
+      console.log(`🚨 [SECURITY] Clicker session mismatch from ${username}: session=${session.stage}-${session.difficulty}, request=${stage}-${difficulty}`);
+      clickerSessions.delete(sessionToken);
+      return res.status(403).json({
+        success: false,
+        error: '전투 세션과 정보가 일치하지 않습니다.'
+      });
+    }
+    
+    // 🔒 보안: 전투 시간 검증 (최소 1초)
+    const battleDuration = Date.now() - session.startTime;
+    if (battleDuration < 1000) {
+      console.log(`🚨 [SECURITY] Suspiciously fast clicker clear: ${battleDuration}ms`);
+      clickerSessions.delete(sessionToken);
+      return res.status(403).json({
+        success: false,
+        error: '비정상적으로 빠른 클리어입니다.'
+      });
+    }
+    
+    // 🔒 세션 사용 후 삭제 (1회용)
+    clickerSessions.delete(sessionToken);
+    
+    console.log(`[CLICKER] ✅ 세션 검증 완료: ${username} - ${stage}-${difficulty}`);
     
     const currentStage = parseInt(stage) || 1;
     const difficultyLevel = parseInt(difficulty);

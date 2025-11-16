@@ -235,7 +235,7 @@ const FloatingChat = ({
           {!isSystemMessage && (
             <div className="flex items-center gap-2 mb-1">
               <span
-                className={`font-semibold text-sm cursor-pointer hover:underline ${
+                className={`font-semibold text-xs sm:text-sm cursor-pointer hover:underline ${
                   isOwnMessage
                     ? isDarkMode
                       ? "text-blue-400"
@@ -248,7 +248,7 @@ const FloatingChat = ({
               >
                 {msg.username}
               </span>
-              <span className={`text-xs ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
+              <span className={`text-[10px] sm:text-xs ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}>
                 {new Date(msg.timestamp).toLocaleTimeString('ko-KR', {
                   hour: '2-digit',
                   minute: '2-digit'
@@ -258,7 +258,7 @@ const FloatingChat = ({
           )}
 
           <div
-            className={`text-sm break-words whitespace-pre-wrap ${
+            className={`text-xs sm:text-sm break-words whitespace-pre-wrap ${
               isSystemMessage
                 ? isDarkMode
                   ? "text-yellow-400 font-medium"

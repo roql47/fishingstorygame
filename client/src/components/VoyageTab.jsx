@@ -36,6 +36,7 @@ const VoyageTab = ({
   const [autoVoyageEnabled, setAutoVoyageEnabled] = useState(false); // 자동항해 상태
   const [autoVoyageTargetFish, setAutoVoyageTargetFish] = useState(null); // 자동항해 대상 물고기 저장
   const [autoVoyageCountdown, setAutoVoyageCountdown] = useState(0); // 자동항해 카운트다운
+  const [battleSessionToken, setBattleSessionToken] = useState(null); // 🔒 전투 세션 토큰 (보안)
   
   const combatIntervalRef = useRef(null);
   const logRef = useRef(null);
@@ -89,7 +90,7 @@ const VoyageTab = ({
   const currentFishes = voyageFishes.slice(startIndex, endIndex);
 
   // 전투 시작
-  const startBattle = useCallback((fish) => {
+  const startBattle = useCallback(async (fish) => {
     console.log('[VOYAGE] 🔵 startBattle 호출됨 - 물고기:', fish?.name);
     console.log('[VOYAGE] 현재 상태 - autoVoyageEnabled:', autoVoyageEnabled, 'autoBaitCount:', autoBaitCount);
     
@@ -111,6 +112,35 @@ const VoyageTab = ({
     
     setRewardGold(0); // 보상 골드 초기화
     setIsClaiming(false); // 보상 수령 상태 초기화
+    
+    // 🔒 보안: 서버에서 전투 세션 토큰 발급
+    try {
+      const token = localStorage.getItem('jwtToken') || idToken;
+      const response = await fetch(`${import.meta.env.VITE_SERVER_URL || window.location.origin}/api/voyage/start-battle`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ rank: fish.rank })
+      });
+
+      const data = await response.json();
+      
+      if (!data.success) {
+        alert('전투 시작 실패: ' + (data.error || '알 수 없는 오류'));
+        return;
+      }
+
+      // 🔒 세션 토큰 저장
+      setBattleSessionToken(data.sessionToken);
+      console.log('[VOYAGE] 🔐 전투 세션 토큰 발급:', data.sessionToken.substring(0, 8) + '...');
+      
+    } catch (error) {
+      console.error('[VOYAGE] 전투 시작 요청 실패:', error);
+      alert('전투 시작 중 오류가 발생했습니다.');
+      return;
+    }
     
     console.log('[VOYAGE] 🟢 전투 초기화 완료, 스탯 계산 시작...');
     console.log('[VOYAGE] 📊 현재 낚시 실력:', fishingSkill);
@@ -230,7 +260,8 @@ const VoyageTab = ({
     companionStats,
     setBattleState,
     setCombatLog,
-    setCurrentView
+    setCurrentView,
+    idToken
   ]);
 
   // 전투 로직 (실시간)
@@ -579,15 +610,26 @@ const VoyageTab = ({
         return;
       }
 
-      // 🔒 보안: 서버에서 골드 계산하므로 rank만 전송
+      // 🔒 보안: 전투 세션 토큰 확인
+      if (!battleSessionToken) {
+        alert('유효하지 않은 전투 세션입니다. 전투를 다시 시작해주세요.');
+        setIsClaiming(false);
+        setCurrentView('select');
+        setBattleState(null);
+        return;
+      }
+
+      // 🔒 보안: 서버에서 골드 계산하므로 rank와 세션 토큰 전송
       const requestData = {
         rank: selectedFish.rank,
-        autoVoyage: autoVoyageEnabled // 🎣 자동항해 모드 여부
+        autoVoyage: autoVoyageEnabled, // 🎣 자동항해 모드 여부
+        sessionToken: battleSessionToken // 🔒 전투 세션 토큰
       };
       
       console.log('[VOYAGE] 보상 요청 시작');
       console.log('[VOYAGE] 토큰:', token ? '있음' : '없음');
-      console.log('[VOYAGE] 요청 데이터:', requestData);
+      console.log('[VOYAGE] 세션 토큰:', battleSessionToken ? battleSessionToken.substring(0, 8) + '...' : '없음');
+      console.log('[VOYAGE] 요청 데이터:', { ...requestData, sessionToken: requestData.sessionToken ? '***' : null });
       console.log('[VOYAGE] 현재 자동미끼 (클라이언트):', autoBaitCount);
 
       const response = await fetch(`${import.meta.env.VITE_SERVER_URL || window.location.origin}/api/voyage/reward`, {
@@ -651,6 +693,9 @@ const VoyageTab = ({
         if (data.actualGold) {
           setRewardGold(data.actualGold);
         }
+        
+        // 🔒 세션 토큰 초기화 (사용 완료)
+        setBattleSessionToken(null);
         
         // 🎣 자동미끼 개수 업데이트 (서버에서 받은 값으로)
         if (data.autoBaitCount !== undefined && data.autoBaitCount !== null) {
@@ -765,10 +810,13 @@ const VoyageTab = ({
         }
       } else {
         alert('보상 수령에 실패했습니다: ' + (data.error || '알 수 없는 오류'));
+        setBattleSessionToken(null); // 🔒 실패 시에도 세션 토큰 초기화
       }
     } catch (error) {
       console.error('[VOYAGE] 보상 수령 오류:', error);
       alert('보상 수령 중 오류가 발생했습니다. 네트워크를 확인하고 다시 시도해주세요.');
+      // 오류 발생 시 세션 토큰 초기화
+      setBattleSessionToken(null);
     } finally {
       setIsClaiming(false); // 🔓 항상 잠금 해제
     }
@@ -952,6 +1000,7 @@ const VoyageTab = ({
                   setSelectedFish(null);
                   setAutoVoyageTargetFish(null); // 자동항해 대상 초기화
                   setCombatLog([]);
+                  setBattleSessionToken(null); // 🔒 세션 토큰 초기화
                 }}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                   isDarkMode
@@ -1480,6 +1529,7 @@ const VoyageTab = ({
                       setSelectedFish(null);
                       setCombatLog([]);
                       setRewardGold(0);
+                      setBattleSessionToken(null); // 🔒 세션 토큰 초기화
                     }}
                     className={`w-full py-3 rounded-xl font-bold transition-all ${
                       isDarkMode
@@ -1512,6 +1562,7 @@ const VoyageTab = ({
                     setSelectedFish(null);
                     setAutoVoyageTargetFish(null); // 자동항해 대상 초기화
                     setCombatLog([]);
+                    setBattleSessionToken(null); // 🔒 세션 토큰 초기화
                   }}
                   className={`w-full py-3 rounded-xl font-bold transition-all ${
                     isDarkMode

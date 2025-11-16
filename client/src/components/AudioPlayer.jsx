@@ -295,13 +295,13 @@ const AudioPlayer = ({ compact = false }) => {
         >
           <div className="flex items-start justify-between gap-1">
             <div className="flex-1 min-w-0">
-              <div className="text-white font-semibold text-xs truncate">
+              <div className="text-white font-semibold text-[10px] sm:text-xs truncate">
                 {playlist[currentTrack].title}
               </div>
-              <div className="text-gray-400 text-[10px] truncate">
+              <div className="text-gray-400 text-[9px] sm:text-[10px] truncate">
                 {playlist[currentTrack].artist}
               </div>
-              <div className="text-gray-500 text-[9px] truncate">
+              <div className="text-gray-500 text-[8px] sm:text-[9px] truncate">
                 {playlist[currentTrack].subtitle}
               </div>
             </div>

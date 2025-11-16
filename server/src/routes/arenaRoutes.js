@@ -203,6 +203,20 @@ function setupArenaRoutes(
                 return res.status(404).json({ error: '전투 데이터를 찾을 수 없습니다.' });
             }
             
+            // 🔒 보안: 세션 소유자 확인 (자기 전투만 종료 가능)
+            if (battle.player.userUuid !== userUuid) {
+                console.log(`🚨 [SECURITY] Arena session owner mismatch: ${username} tried to finish ${battle.player.username}'s battle`);
+                return res.status(403).json({ error: '다른 사용자의 전투입니다.' });
+            }
+            
+            // 🔒 보안: 전투 시간 검증 (최소 3초)
+            const battleDuration = Date.now() - battle.createdAt;
+            if (battleDuration < 3000) {
+                console.log(`🚨 [SECURITY] Suspiciously fast arena battle: ${battleDuration}ms`);
+                arenaSystem.endBattle(battleId);
+                return res.status(403).json({ error: '비정상적으로 빠른 클리어입니다.' });
+            }
+            
             console.log('[Arena] 전투 데이터:', {
                 playerElo: battle.player.elo,
                 opponentElo: battle.opponent.elo

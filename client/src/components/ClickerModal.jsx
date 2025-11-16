@@ -50,6 +50,9 @@ const ClickerModal = ({
   
   // 이미지 로드 실패 상태
   const [imageLoadError, setImageLoadError] = useState(false);
+  
+  // 🔒 에테르 던전 세션 토큰
+  const [clickerSessionToken, setClickerSessionToken] = useState(null);
 
   // 스테이지 정보 로드
   useEffect(() => {
@@ -145,7 +148,7 @@ const ClickerModal = ({
   };
 
   // 게임 시작
-  const startGame = () => {
+  const startGame = async () => {
     if (difficulty < 1) {
       alert('난이도는 최소 1 이상이어야 합니다.');
       return;
@@ -154,6 +157,29 @@ const ClickerModal = ({
       alert('난이도는 최대 10까지 가능합니다.');
       return;
     }
+    
+    // 🔒 보안: 서버에서 전투 세션 토큰 발급
+    try {
+      const response = await authenticatedRequest.post(`${serverUrl}/api/clicker/start-battle`, {
+        stage: currentStage,
+        difficulty: difficulty
+      });
+      
+      if (!response.data.success) {
+        alert('전투 시작 실패: ' + (response.data.error || '알 수 없는 오류'));
+        return;
+      }
+      
+      // 🔒 세션 토큰 저장
+      setClickerSessionToken(response.data.sessionToken);
+      console.log('[CLICKER] 🔐 전투 세션 토큰 받음:', response.data.sessionToken.substring(0, 8) + '...');
+      
+    } catch (error) {
+      console.error('[CLICKER] 전투 시작 요청 실패:', error);
+      alert('전투 시작 중 오류가 발생했습니다.');
+      return;
+    }
+    
     const hp = getMonsterHp(currentStage, difficulty);
     setMonsterHp(hp);
     setMaxMonsterHp(hp);
@@ -315,18 +341,30 @@ const ClickerModal = ({
     if (isProcessing) return;
     setIsProcessing(true);
 
+    // 🔒 보안: 세션 토큰 확인
+    if (!clickerSessionToken) {
+      alert('유효하지 않은 전투 세션입니다. 전투를 다시 시작해주세요.');
+      setIsProcessing(false);
+      setGameStarted(false);
+      return;
+    }
+
     try {
       const response = await authenticatedRequest.post(`${serverUrl}/api/clicker/reward`, {
         difficulty,
         stage: currentStage,
         username,
-        userUuid
+        userUuid,
+        sessionToken: clickerSessionToken // 🔒 세션 토큰 전송
       });
 
       if (response.data.success) {
         const receivedGold = response.data.goldReward || 0;
         setGoldReward(receivedGold);
         setShowReward(true);
+        
+        // 🔒 세션 토큰 초기화 (사용 완료)
+        setClickerSessionToken(null);
         
         // 골드 로컬 상태 업데이트
         if (setUserMoney && receivedGold > 0) {
@@ -352,9 +390,11 @@ const ClickerModal = ({
         }
       }
     } catch (error) {
-      console.error('클리커 보상 처리 실패:', error);
+      console.error('[CLICKER] ❌ 보상 처리 실패:', error);
       const errorMsg = error.response?.data?.details || error.response?.data?.error || '보상 처리에 실패했습니다.';
       alert(`보상 처리 실패: ${errorMsg}`);
+      // 오류 시에도 세션 토큰 초기화
+      setClickerSessionToken(null);
     } finally {
       setIsProcessing(false);
     }
@@ -962,6 +1002,7 @@ const ClickerModal = ({
                   setDifficulty(1);
                   stopAutoHeal();
                   stopAutoAttack();
+                  setClickerSessionToken(null); // 🔒 세션 토큰 초기화
                 }}
                 className={`w-full py-3 rounded-xl text-sm font-semibold transition-all duration-300 hover:scale-[1.02] ${
                   isDarkMode 
