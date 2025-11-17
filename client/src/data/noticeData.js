@@ -1,6 +1,18 @@
 // 공지사항 데이터 (ID 내림차순 정렬 - 최신이 가장 높은 ID)
 export const NOTICE_DATA = [
   {
+    id: 59,
+    date: "2025.11.17",
+    title: "[v1.421] 🔧 동료 계승 시스템 개선",
+    content: [
+      "동료 계승 버그 수정:",
+      "  전투에 참여하지 않은 동료도 계승 가능하도록 개선",
+      "사이드바 위치 개선"
+    ],
+    isNew: true,
+    type: "bugfix"
+  },
+  {
     id: 58,
     date: "2025.11.16",
     title: "[v1.420] 🔐 보안 시스템 강화 및 플로팅 채팅 추가",
@@ -17,7 +29,7 @@ export const NOTICE_DATA = [
       "메뉴탭 숨김/펼침 기능 추가",
       "에테르 던전 플로팅 채팅창 상단 유틸 버튼으로 접근 가능하도록 수정"
     ],
-    isNew: true,
+    isNew: false,
     type: "security"
   },
   {
@@ -1050,5 +1062,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.420"
+  version: "v1.421"
 };

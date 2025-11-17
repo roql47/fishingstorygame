@@ -230,7 +230,7 @@ function App() {
 
   // 🔄 버전 업데이트 시 캐시 초기화 (v1.420)
   useEffect(() => {
-    const CURRENT_VERSION = "v1.420";
+    const CURRENT_VERSION = "v1.421";
     const CACHE_VERSION_KEY = "app_cache_version";
     const savedVersion = localStorage.getItem(CACHE_VERSION_KEY);
     
@@ -8726,7 +8726,7 @@ function App() {
               
               {/* 제목 */}
               <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-                여우이야기 v1.420
+                여우이야기 v1.421
               </h1>
               <p className="text-gray-300 text-sm mb-4">
                 실시간 채팅 낚시 게임에 오신 것을 환영합니다
@@ -9041,7 +9041,7 @@ function App() {
           style={{
             animation: 'slideInFromLeft 0.4s ease-out 0.3s both'
           }}
-          className={`fixed left-0 top-1/2 -translate-y-1/2 z-[100] py-8 px-1.5 rounded-r-lg transition-all duration-300 cursor-pointer shadow-lg ${
+          className={`fixed left-0 top-4 z-[100] px-8 py-4 rounded-r-lg transition-all duration-300 cursor-pointer shadow-lg ${
             isDarkMode 
               ? "bg-gray-800 hover:bg-gray-700 text-white border-r border-t border-b border-white/20" 
               : "bg-white hover:bg-gray-100 text-gray-800 border-r border-t border-b border-gray-300"
@@ -9049,7 +9049,7 @@ function App() {
           title="메뉴 열기"
           type="button"
         >
-          <ChevronRight className="w-4 h-4 pointer-events-none" />
+          <ChevronRight className="w-6 h-6 pointer-events-none" />
         </button>
       )}
 
@@ -9071,7 +9071,7 @@ function App() {
             isDarkMode ? "border-white/10" : "border-gray-300/20"
           }`}>
             <div className="flex items-center justify-between mb-2">
-              <h1 className={`font-bold text-sm sm:text-base ${
+              <h1 className={`font-bold ${mobileConfig.isMobile ? 'text-xs' : 'text-base'} ${
                 isDarkMode ? "text-white gradient-text" : "text-gray-800"
               }`}>여우이야기</h1>
               <button
@@ -9097,7 +9097,7 @@ function App() {
                 href="https://open.kakao.com/o/guv74VXg"
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-medium transition-all duration-300 hover:scale-105 ${
+                className={`flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full ${mobileConfig.isMobile ? 'text-[10px]' : 'text-xs'} font-medium transition-all duration-300 hover:scale-105 ${
                   isDarkMode 
                     ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 border border-yellow-400/30" 
                     : "bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20 border border-yellow-500/30"
@@ -9105,9 +9105,9 @@ function App() {
                 title="카카오톡 채널방 참여하기"
               >
                 <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-yellow-500 rounded-sm flex items-center justify-center">
-                  <span className="text-white text-[7px] sm:text-[8px] font-bold">K</span>
+                  <span className={`text-white ${mobileConfig.isMobile ? 'text-[6px]' : 'text-[8px]'} font-bold`}>K</span>
                 </div>
-                <span>채널방</span>
+                <span className={mobileConfig.isMobile ? 'text-[9px]' : 'text-xs'}>채널방</span>
               </a>
               
               {/* 후원 링크 */}
@@ -9115,7 +9115,7 @@ function App() {
                 href="https://buymeacoffee.com/r4823120"
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-medium transition-all duration-300 hover:scale-105 ${
+                className={`flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full ${mobileConfig.isMobile ? 'text-[10px]' : 'text-xs'} font-medium transition-all duration-300 hover:scale-105 ${
                   isDarkMode 
                     ? "bg-pink-500/20 text-pink-400 hover:bg-pink-500/30 border border-pink-400/30" 
                     : "bg-pink-500/10 text-pink-600 hover:bg-pink-500/20 border border-pink-500/30"
@@ -9123,13 +9123,13 @@ function App() {
                 title="개발자 후원하기"
               >
                 <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 flex items-center justify-center">
-                  <span className="text-[8px] sm:text-[10px]">☕</span>
+                  <span className={mobileConfig.isMobile ? 'text-[8px]' : 'text-[10px]'}>☕</span>
                 </div>
-                <span>여우밥주기</span>
+                <span className={mobileConfig.isMobile ? 'text-[9px]' : 'text-xs'}>여우밥주기</span>
               </a>
             </div>
             
-            <p className={`text-[9px] sm:text-[10px] ${
+            <p className={`${mobileConfig.isMobile ? 'text-[8px]' : 'text-[10px]'} ${
               isDarkMode ? "text-gray-400" : "text-gray-600"
             }`}>실시간 낚시 게임</p>
           </div>
@@ -9151,7 +9151,7 @@ function App() {
             }`}
           >
             <MessageCircle className="w-5 h-5" />
-            <span className="text-sm font-medium">채팅</span>
+            <span className={`${mobileConfig.isMobile ? 'text-xs' : 'text-sm'} font-medium`}>채팅</span>
           </button>
 
           <button
@@ -9167,7 +9167,7 @@ function App() {
             }`}
           >
             <Package className="w-5 h-5" />
-            <span className="text-sm font-medium">인벤토리</span>
+            <span className={`${mobileConfig.isMobile ? 'text-xs' : 'text-sm'} font-medium`}>인벤토리</span>
           </button>
 
           <button
@@ -9183,7 +9183,7 @@ function App() {
             }`}
           >
             <Zap className="w-5 h-5" />
-            <span className="text-sm font-medium">성장</span>
+            <span className={`${mobileConfig.isMobile ? 'text-xs' : 'text-sm'} font-medium`}>성장</span>
           </button>
 
           <button
@@ -9199,7 +9199,7 @@ function App() {
             }`}
           >
             <Anchor className="w-5 h-5" />
-            <span className="text-sm font-medium">항해</span>
+            <span className={`${mobileConfig.isMobile ? 'text-xs' : 'text-sm'} font-medium`}>항해</span>
           </button>
 
           <button
@@ -9215,7 +9215,7 @@ function App() {
             }`}
           >
             <ShoppingCart className="w-5 h-5" />
-            <span className="text-sm font-medium">상점</span>
+            <span className={`${mobileConfig.isMobile ? 'text-xs' : 'text-sm'} font-medium`}>상점</span>
           </button>
 
           <button
@@ -9231,7 +9231,7 @@ function App() {
             }`}
           >
             <Waves className="w-5 h-5" />
-            <span className="text-sm font-medium">탐사</span>
+            <span className={`${mobileConfig.isMobile ? 'text-xs' : 'text-sm'} font-medium`}>탐사</span>
           </button>
 
           <button
@@ -9250,7 +9250,7 @@ function App() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
-            <span className="text-sm font-medium">원정</span>
+            <span className={`${mobileConfig.isMobile ? 'text-xs' : 'text-sm'} font-medium`}>원정</span>
           </button>
 
           <button
@@ -9266,7 +9266,7 @@ function App() {
             }`}
           >
             <Users className="w-5 h-5" />
-            <span className="text-sm font-medium">동료</span>
+            <span className={`${mobileConfig.isMobile ? 'text-xs' : 'text-sm'} font-medium`}>동료</span>
           </button>
 
           <button
@@ -9282,7 +9282,7 @@ function App() {
             }`}
           >
             <Sword className="w-5 h-5" />
-            <span className="text-sm font-medium">레이드</span>
+            <span className={`${mobileConfig.isMobile ? 'text-xs' : 'text-sm'} font-medium`}>레이드</span>
           </button>
 
           <button
@@ -9298,7 +9298,7 @@ function App() {
             }`}
           >
             <Shield className="w-5 h-5" />
-            <span className="text-sm font-medium">결투장</span>
+            <span className={`${mobileConfig.isMobile ? 'text-xs' : 'text-sm'} font-medium`}>결투장</span>
           </button>
           </div>
 
@@ -9306,7 +9306,7 @@ function App() {
           <div className={`border-t py-3 px-2 ${
             isDarkMode ? "border-white/10 bg-gradient-to-br from-gray-800/50 to-gray-900/50" : "border-gray-300/20 bg-gradient-to-br from-gray-50 to-gray-100"
           }`}>
-            <AudioPlayer compact={true} />
+            <AudioPlayer compact={true} mobileConfig={mobileConfig} />
           </div>
         </div>
       </div>
@@ -12295,10 +12295,10 @@ function App() {
                     }`} />
                   </div>
                   <div>
-                    <h3 className={`font-semibold text-xs sm:text-sm ${
+                    <h3 className={`font-semibold ${mobileConfig.isMobile ? 'text-[10px]' : 'text-sm'} ${
                       isDarkMode ? "text-white" : "text-gray-800"
                     }`}>접속자</h3>
-                    <p className={`text-[10px] sm:text-xs ${
+                    <p className={`${mobileConfig.isMobile ? 'text-[9px]' : 'text-xs'} ${
                       isDarkMode ? "text-gray-400" : "text-gray-600"
                     }`}>{connectedUsers.length}명 온라인</p>
                   </div>
@@ -12352,17 +12352,17 @@ function App() {
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <div className={`font-medium text-xs sm:text-sm truncate flex items-center gap-1 ${
+                      <div className={`font-medium ${mobileConfig.isMobile ? 'text-[10px]' : 'text-sm'} truncate flex items-center gap-1 ${
                         isDarkMode ? "text-white" : "text-gray-800"
                       }`}>
                         {user.username}
                         {((user.username === username && isAdmin) || userAdminStatus[user.username]) && (
-                          <span className={`text-[10px] sm:text-xs font-bold ${
+                          <span className={`${mobileConfig.isMobile ? 'text-[9px]' : 'text-xs'} font-bold ${
                             isDarkMode ? "text-red-400" : "text-red-600"
                           }`}>👑</span>
                         )}
                       </div>
-                      <div className={`text-[10px] sm:text-xs ${
+                      <div className={`${mobileConfig.isMobile ? 'text-[9px]' : 'text-xs'} ${
                         isDarkMode ? "text-gray-400" : "text-gray-600"
                       }`}>
                         {user.loginType || "Guest"}
@@ -12379,7 +12379,7 @@ function App() {
                     <User className={`w-8 h-8 sm:w-12 sm:h-12 mx-auto mb-2 opacity-30 ${
                       isDarkMode ? "text-gray-600" : "text-gray-400"
                     }`} />
-                    <p className="text-xs sm:text-sm">접속자가 없습니다</p>
+                    <p className={mobileConfig.isMobile ? 'text-xs' : 'text-sm'}>접속자가 없습니다</p>
                   </div>
                 )}
               </div>

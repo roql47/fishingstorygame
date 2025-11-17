@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Play, Pause, Volume2, VolumeX, SkipBack, SkipForward, Repeat, Repeat1, Shuffle, ExternalLink } from 'lucide-react';
 
-const AudioPlayer = ({ compact = false }) => {
+const AudioPlayer = ({ compact = false, mobileConfig }) => {
   const audioRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -295,13 +295,13 @@ const AudioPlayer = ({ compact = false }) => {
         >
           <div className="flex items-start justify-between gap-1">
             <div className="flex-1 min-w-0">
-              <div className="text-white font-semibold text-[10px] sm:text-xs truncate">
+              <div className={`text-white font-semibold ${mobileConfig?.isMobile ? 'text-[9px]' : 'text-xs'} truncate`}>
                 {playlist[currentTrack].title}
               </div>
-              <div className="text-gray-400 text-[9px] sm:text-[10px] truncate">
+              <div className={`text-gray-400 ${mobileConfig?.isMobile ? 'text-[8px]' : 'text-[10px]'} truncate`}>
                 {playlist[currentTrack].artist}
               </div>
-              <div className="text-gray-500 text-[8px] sm:text-[9px] truncate">
+              <div className={`text-gray-500 ${mobileConfig?.isMobile ? 'text-[7px]' : 'text-[9px]'} truncate`}>
                 {playlist[currentTrack].subtitle}
               </div>
             </div>

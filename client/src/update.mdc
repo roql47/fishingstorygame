@@ -17,7 +17,7 @@ alwaysApply: false
 **수정 위치:** 16번째 줄 `<title>` 태그
 
 ```html
-<title>여우이야기 v1.420</title>  <!-- ← 여기 수정! -->
+<title>여우이야기 v1.421</title>  <!-- ← 여기 수정! -->
 ```
 
 **목적:** 브라우저 탭에 표시되는 버전 정보
@@ -32,7 +32,7 @@ alwaysApply: false
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.420"  // ← 여기 수정!
+  version: "v1.421"  // ← 여기 수정!
 };
 ```
 
@@ -43,9 +43,9 @@ export const VERSION_INFO = {
 **수정 위치:** 약 212번째 줄 `CURRENT_VERSION` 상수
 
 ```javascript
-// 🔄 버전 업데이트 시 캐시 초기화 (v1.420)
+// 🔄 버전 업데이트 시 캐시 초기화 (v1.421)
 useEffect(() => {
-  const CURRENT_VERSION = "v1.420";  // ← 여기 수정!
+  const CURRENT_VERSION = "v1.421";  // ← 여기 수정!
   const CACHE_VERSION_KEY = "app_cache_version";
 ```
 
@@ -60,7 +60,7 @@ useEffect(() => {
 ```javascript
 {/* 제목 */}
 <h1 className="text-3xl font-bold text-white mb-2 gradient-text">
-  여우이야기 v1.420  {/* ← 여기 수정! */}
+  여우이야기 v1.421  {/* ← 여기 수정! */}
 </h1>
 ```
 
@@ -76,7 +76,7 @@ useEffect(() => {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.420"  // ← 여기 수정!
+    version: "v1.421"  // ← 여기 수정!
   });
 });
 ```
@@ -92,7 +92,7 @@ app.get("/api/version", (req, res) => {
 ```javascript
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.420",  // ← 여기 수정!
+    version: "v1.421",  // ← 여기 수정!
     timestamp: new Date().toISOString(),
 ```
 
@@ -138,19 +138,46 @@ curl https://your-domain.com/api/version
 ✅ server index.js debug info → "v1.419"
 ```
 
-### 변경 후 (v1.420)
+### 변경 후 (v1.421)
 ```
-✅ index.html 브라우저 탭 → "v1.420"
-✅ noticeData.js VERSION_INFO → "v1.420"
-✅ App.jsx CURRENT_VERSION → "v1.420"
-✅ App.jsx 로그인 화면 → "v1.420"
-✅ server index.js /api/version → "v1.420"
-✅ server index.js debug info → "v1.420"
+✅ index.html 브라우저 탭 → "v1.421"
+✅ noticeData.js VERSION_INFO → "v1.421"
+✅ App.jsx CURRENT_VERSION → "v1.421"
+✅ App.jsx 로그인 화면 → "v1.421"
+✅ server index.js /api/version → "v1.421"
+✅ server index.js debug info → "v1.421"
 ```
 
 ---
 
 ## 📜 최근 주요 업데이트 내역
+
+### v1.421 (2025.11.17)
+**🔧 동료 계승 시스템 개선**
+- 🐛 동료 계승 버그 수정
+  - 전투에 참여하지 않은 동료도 계승 가능하도록 개선
+  - CompanionStats 자동 생성 로직 추가
+  - 404 에러 해결 (아이란, 메이델 등 계승 불가 문제 해결)
+- 🎨 사이드바 위치 개선
+  - 상단 메뉴탭을 사이드바로 이동하여 UI 최적화
+
+---
+
+### v1.420 (2025.11.16)
+**🔐 보안 시스템 강화 및 플로팅 채팅 추가**
+- 💬 플로팅 채팅 기능 추가
+  - 우하단 플로팅 버튼으로 전투 중에도 채팅 가능
+  - 채팅 탭이 아닐 때 자동으로 표시
+  - 읽지 않음 알림 배지 기능
+  - 항해/탐사/원정 등 모든 전투에서 채팅 가능
+- 🔒 항해 시스템 서버측 검증 강화
+- 🔒 원정 전투 보안 강화
+- 🎨 UI 개선
+  - 상단 메뉴탭 사이드바로 이동
+  - 메뉴탭 숨김/펼침 기능 추가
+  - 에테르 던전 플로팅 채팅창 상단 유틸 버튼으로 접근 가능
+
+---
 
 ### v1.419 (2025.11.16)
 **🔍 매크로 테스트 시스템**
@@ -245,5 +272,5 @@ curl https://your-domain.com/api/version
 
 ---
 
-**마지막 업데이트:** 2025.11.16 (매크로 테스트 시스템 추가)
-**현재 버전:** v1.419
+**마지막 업데이트:** 2025.11.17 (동료 계승 시스템 개선)
+**현재 버전:** v1.421

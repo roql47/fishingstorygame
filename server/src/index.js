@@ -6987,7 +6987,7 @@ app.post("/api/add-companion-exp", authenticateJWT, async (req, res) => {
   }
 });
 
-// 동료 계승 API - 한 동료의 경험치 75%를 다른 동료에게 전달
+// 동료 계승 API - 한 동료의 경험치 70%를 다른 동료에게 전달
 app.post("/api/companion-succession", authenticateJWT, async (req, res) => {
   try {
     const { sourceCompanion, targetCompanion } = req.body;
@@ -7017,7 +7017,7 @@ app.post("/api/companion-succession", authenticateJWT, async (req, res) => {
     }
     
     // 🔧 두 동료의 능력치 조회
-    const [sourceStats, targetStats] = await Promise.all([
+    let [sourceStats, targetStats] = await Promise.all([
       CompanionStatsModel.findOne({
         ...query,
         companionName: sourceCompanion
@@ -7028,13 +7028,33 @@ app.post("/api/companion-succession", authenticateJWT, async (req, res) => {
       })
     ]);
     
-    // 동료 존재 여부 확인
+    // 동료 능력치가 없으면 자동 초기화
     if (!sourceStats) {
-      return res.status(404).json({ error: `${sourceCompanion}을(를) 찾을 수 없습니다.` });
+      console.log(`📝 ${sourceCompanion} CompanionStats 자동 생성`);
+      sourceStats = new CompanionStatsModel({
+        userId: query.userId || 'user',
+        username: query.username || username,
+        userUuid: query.userUuid || userUuid,
+        companionName: sourceCompanion,
+        level: 1,
+        experience: 0,
+        isInBattle: false
+      });
+      await sourceStats.save();
     }
     
     if (!targetStats) {
-      return res.status(404).json({ error: `${targetCompanion}을(를) 찾을 수 없습니다.` });
+      console.log(`📝 ${targetCompanion} CompanionStats 자동 생성`);
+      targetStats = new CompanionStatsModel({
+        userId: query.userId || 'user',
+        username: query.username || username,
+        userUuid: query.userUuid || userUuid,
+        companionName: targetCompanion,
+        level: 1,
+        experience: 0,
+        isInBattle: false
+      });
+      await targetStats.save();
     }
     
     // 계승하는 동료가 레벨 1이면 안됨
@@ -10226,6 +10246,17 @@ app.post("/api/update-quest-progress", authenticateJWT, async (req, res) => {
     // JWT에서 사용자 정보 추출 (보안 강화)
     const { userUuid, username } = req.user;
     
+    // 🚨 보안: 전투 관련 퀘스트는 클라이언트에서 직접 업데이트 불가
+    // 이러한 퀘스트는 서버 내부에서만 업데이트됩니다 (voyageRoutes, expeditionSystem 등)
+    const PROTECTED_QUEST_TYPES = ['voyage_win', 'expedition_4player_win', 'exploration_win'];
+    if (PROTECTED_QUEST_TYPES.includes(questType)) {
+      console.warn(`⚠️ Blocked client attempt to update protected quest: ${questType} by ${username}`);
+      return res.status(403).json({ 
+        error: "이 퀘스트는 게임 플레이를 통해서만 진행할 수 있습니다.",
+        message: "This quest can only be progressed through gameplay."
+      });
+    }
+    
     console.log("Quest progress update:", { questType, amount, username, userUuid });
     
     const queryResult = await getUserQuery('user', username, userUuid);
@@ -10276,22 +10307,11 @@ app.post("/api/update-quest-progress", authenticateJWT, async (req, res) => {
         updateData.fishCaught = Math.min(dailyQuest.fishCaught + amount, 10);
         // 완료 플래그는 보상 수령 시에만 설정
         break;
-      case 'exploration_win':
-        updateData.explorationWins = Math.min(dailyQuest.explorationWins + amount, 1);
-        // 완료 플래그는 보상 수령 시에만 설정
-        break;
       case 'fish_sold':
         updateData.fishSold = Math.min(dailyQuest.fishSold + amount, 10);
         // 완료 플래그는 보상 수령 시에만 설정
         break;
-      case 'voyage_win':
-        updateData.voyageWins = Math.min(dailyQuest.voyageWins + amount, 5);
-        // 완료 플래그는 보상 수령 시에만 설정
-        break;
-      case 'expedition_4player_win':
-        updateData.expeditionWins = Math.min(dailyQuest.expeditionWins + amount, 1);
-        // 완료 플래그는 보상 수령 시에만 설정
-        break;
+      // 전투 관련 퀘스트 (voyage_win, expedition_4player_win, exploration_win)는 위에서 차단됨
       default:
         return res.status(400).json({ error: "Invalid quest type" });
     }
@@ -10311,7 +10331,7 @@ app.post("/api/update-quest-progress", authenticateJWT, async (req, res) => {
       // 업데이트된 퀘스트 데이터 계산
       const updatedQuest = {
         questType,
-        progress: updateData.fishCaught || updateData.explorationWins || updateData.fishSold || updateData.voyageWins || updateData.expeditionWins,
+        progress: updateData.fishCaught || updateData.fishSold || 0,
         completed: false // 카운트 업데이트에서는 완료 플래그 설정 안 함 (보상 수령 시에만 완료)
       };
       userSocket.emit('questProgressUpdate', updatedQuest);
@@ -13409,14 +13429,14 @@ async function updateFishingSkillWithAchievements(userUuid) {
 // 🔥 서버 버전 정보 API
 app.get("/api/version", (req, res) => {
   res.json({
-    version: "v1.420"
+    version: "v1.421"
   });
 });
 
 // 🔥 서버 버전 및 API 상태 확인 (디버깅용)
 app.get("/api/debug/server-info", (req, res) => {
   const serverInfo = {
-    version: "v1.420",
+    version: "v1.421",
     timestamp: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     availableAPIs: [
