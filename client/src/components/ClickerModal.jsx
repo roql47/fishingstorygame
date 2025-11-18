@@ -793,17 +793,9 @@ const ClickerModal = ({
                     setShowReward(false);
                     setGameStarted(false);
                     
-                    // 잠시 후 자동으로 게임 시작
+                    // 잠시 후 startGame 함수로 게임 시작 (세션 토큰 발급)
                     setTimeout(() => {
-                      const hp = getMonsterHp(currentStage, difficulty);
-                      setMonsterHp(hp);
-                      setMaxMonsterHp(hp);
-                      setGameStarted(true);
-                      setGoldReward(0);
-                      setImageLoadError(false);
-                      if (currentStage >= 2) {
-                        startAutoHeal(hp);
-                      }
+                      startGame();
                     }, 100);
                   }}
                   className={`relative w-full py-3 rounded-xl font-bold overflow-hidden group transition-all duration-300 hover:scale-[1.02] ${
@@ -825,17 +817,9 @@ const ClickerModal = ({
                       setShowReward(false);
                       setGameStarted(false);
                       
-                      // 잠시 후 자동으로 게임 시작
+                      // 잠시 후 startGame 함수로 게임 시작 (세션 토큰 발급)
                       setTimeout(() => {
-                        const hp = getMonsterHp(currentStage, nextDifficulty);
-                        setMonsterHp(hp);
-                        setMaxMonsterHp(hp);
-                        setGameStarted(true);
-                        setGoldReward(0);
-                        setImageLoadError(false);
-                        if (currentStage >= 2) {
-                          startAutoHeal(hp);
-                        }
+                        startGame();
                       }, 100);
                     }}
                     className={`relative w-full py-3 rounded-xl font-bold overflow-hidden group transition-all duration-300 hover:scale-[1.02] ${

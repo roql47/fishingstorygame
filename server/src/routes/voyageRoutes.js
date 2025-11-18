@@ -42,13 +42,19 @@ const setupVoyageRoutes = (app, UserMoneyModel, CatchModel, DailyQuestModel, get
         });
       }
 
+      // 🎯 보상 미리 계산 (전투 시작 시 확정)
+      const reward = calculateVoyageReward(rank);
+      console.log(`[VOYAGE] 보상 미리 확정: ${username} - Rank ${rank} (${reward.fishName}) → ${reward.gold}G`);
+
       // 🔒 전투 세션 토큰 생성
       const sessionToken = crypto.randomBytes(32).toString('hex');
       battleSessions.set(sessionToken, {
         userUuid,
         username,
         rank,
-        startTime: Date.now()
+        startTime: Date.now(),
+        reward: reward.gold,  // 🎯 확정된 보상 저장
+        fishName: reward.fishName
       });
 
       // 10분 후 세션 자동 만료
@@ -61,7 +67,9 @@ const setupVoyageRoutes = (app, UserMoneyModel, CatchModel, DailyQuestModel, get
       res.json({
         success: true,
         sessionToken,
-        rank
+        rank,
+        rewardGold: reward.gold,  // 🎯 클라이언트에 확정된 보상 알려주기
+        fishName: reward.fishName
       });
     } catch (error) {
       console.error('[VOYAGE] 전투 시작 오류:', error);
@@ -132,29 +140,16 @@ const setupVoyageRoutes = (app, UserMoneyModel, CatchModel, DailyQuestModel, get
         });
       }
 
-      // 🔒 보안: 서버에서 물고기 데이터 조회 (클라이언트 조작 불가)
-      let fishData;
-      try {
-        fishData = getVoyageFishByRank(rank);
-      } catch (error) {
-        console.log(`🚨 [SECURITY] Failed to get fish data for rank ${rank} from ${username}`);
-        return res.status(400).json({
-          success: false,
-          error: '존재하지 않는 물고기입니다.'
-        });
-      }
+      // 🎯 세션에 저장된 확정 보상 사용 (전투 시작 시 결정된 값)
+      const fishName = session.fishName;
+      const gold = session.reward;
 
-      // 🔒 보안: 서버에서 골드 계산 (클라이언트 값 무시)
-      const reward = calculateVoyageReward(rank);
-      const fishName = reward.fishName;
-      const gold = reward.gold;
-
-      console.log(`[VOYAGE] 🎣 ${username} - Rank ${rank} (${fishName}) 보상: ${gold}G (범위: ${reward.minGold}~${reward.maxGold})`);
+      console.log(`[VOYAGE] 🎣 ${username} - Rank ${rank} (${fishName}) 보상 지급: ${gold}G (전투 시작 시 확정)`);
 
       if (!fishName || !gold) {
         return res.status(400).json({
           success: false,
-          error: '필수 정보가 누락되었습니다.'
+          error: '세션에 보상 정보가 없습니다.'
         });
       }
 
@@ -319,8 +314,8 @@ const setupVoyageRoutes = (app, UserMoneyModel, CatchModel, DailyQuestModel, get
         gold: moneyDoc.money,
         fishName,
         count: fishDoc.count,
-        autoBaitCount,
-        actualGold: gold // 🔒 보안: 서버에서 계산한 실제 보상 골드
+        autoBaitCount
+        // 🎯 actualGold 제거: 보상은 전투 시작 시 이미 확정되어 클라이언트가 알고 있음
       });
     } catch (error) {
       console.error('[VOYAGE] 보상 지급 오류:', error);

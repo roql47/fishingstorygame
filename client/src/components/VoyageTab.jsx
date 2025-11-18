@@ -110,10 +110,9 @@ const VoyageTab = ({
       }
     }
     
-    setRewardGold(0); // 보상 골드 초기화
     setIsClaiming(false); // 보상 수령 상태 초기화
     
-    // 🔒 보안: 서버에서 전투 세션 토큰 발급
+    // 🔒 보안: 서버에서 전투 세션 토큰 발급 & 보상 확정
     try {
       const token = localStorage.getItem('jwtToken') || idToken;
       const response = await fetch(`${import.meta.env.VITE_SERVER_URL || window.location.origin}/api/voyage/start-battle`, {
@@ -136,6 +135,12 @@ const VoyageTab = ({
       setBattleSessionToken(data.sessionToken);
       console.log('[VOYAGE] 🔐 전투 세션 토큰 발급:', data.sessionToken.substring(0, 8) + '...');
       
+      // 🎯 서버에서 확정된 보상 저장 (클라이언트 랜덤 계산 제거)
+      if (data.rewardGold) {
+        setRewardGold(data.rewardGold);
+        console.log('[VOYAGE] 🎁 서버에서 확정된 보상:', data.rewardGold + 'G');
+      }
+      
     } catch (error) {
       console.error('[VOYAGE] 전투 시작 요청 실패:', error);
       alert('전투 시작 중 오류가 발생했습니다.');
@@ -156,7 +161,11 @@ const VoyageTab = ({
     
     // 2. 공격력: 낚시실력 3차방정식 + 낚시대 강화 보너스 + 🌟 유저 스탯
     const rodEnhancementBonus = calculateTotalEnhancementBonus(userEquipment.fishingRodEnhancement || 0);
-    const baseAttack = calculatePlayerAttack(fishingSkill, rodEnhancementBonus);
+    
+    // 🎯 표시용 고정 공격력: 프로필 모달과 동일한 방식 (랜덤 없이 기본값 계산)
+    const baseAttackCalc = 0.00225 * Math.pow(fishingSkill, 3) + 0.165 * Math.pow(fishingSkill, 2) + 2 * fishingSkill + 3;
+    const totalAttackWithEnhancement = baseAttackCalc + (baseAttackCalc * rodEnhancementBonus / 100);
+    const baseAttack = Math.floor(totalAttackWithEnhancement); // 프로필 모달의 base 값과 동일
     
     console.log('[VOYAGE] 💪 계산된 공격력:', baseAttack, '(기본 공격력 from fishingSkill:', fishingSkill, ')');
     
@@ -550,10 +559,8 @@ const VoyageTab = ({
           newState.status = 'victory';
           newLog.push(`🎉 승리했습니다!`);
           
-          // 랜덤 골드 보상 계산 (2.5배 ~ 5배)
-          const goldMultiplier = 2.5 + Math.random() * 2.5;
-          const finalGold = Math.floor(selectedFish.gold * goldMultiplier);
-          setRewardGold(finalGold);
+          // 🎯 보상은 전투 시작 시 서버에서 이미 확정되었으므로 재계산하지 않음
+          // rewardGold는 startBattle에서 서버 응답으로 이미 설정됨
           
           setTimeout(() => setCurrentView('result'), 1000);
         } else {
@@ -689,10 +696,8 @@ const VoyageTab = ({
           console.log(`✅ 항해 보상: 골드 ${data.gold}, 물고기 ${data.fishName || selectedFish.name}`);
         }
         
-        // 🔒 보안: 서버에서 받은 실제 보상 골드로 업데이트
-        if (data.actualGold) {
-          setRewardGold(data.actualGold);
-        }
+        // 🎯 보상은 이미 전투 시작 시 확정되었으므로 업데이트 불필요
+        // rewardGold는 이미 정확한 값을 가지고 있음
         
         // 🔒 세션 토큰 초기화 (사용 완료)
         setBattleSessionToken(null);
@@ -797,8 +802,8 @@ const VoyageTab = ({
           
           console.log('[VOYAGE] ✅ 타이머 설정 완료 (결과 화면 유지)');
         } else {
-          // 일반 모드: 알림 표시 (서버에서 받은 실제 보상 표시)
-          const displayGold = data.actualGold || rewardGold;
+          // 일반 모드: 알림 표시 (전투 시작 시 확정된 보상 표시)
+          const displayGold = rewardGold;
           const displayFishName = data.fishName || selectedFish.name;
           alert(`보상 획득!\n골드: +${displayGold.toLocaleString()}G\n물고기: ${displayFishName} +1마리`);
           setCurrentView('select');

@@ -1,6 +1,23 @@
 // 공지사항 데이터 (ID 내림차순 정렬 - 최신이 가장 높은 ID)
 export const NOTICE_DATA = [
   {
+    id: 60,
+    date: "2025.11.18",
+    title: "[v1.422] 🔧 Bug fixed",
+    content: [
+      "항해 전투 개선:",
+      "  플레이어 공격력이 매번 다르게 표시되던 문제 수정",
+      "  프로필 모달과 동일한 고정값으로 표시",
+      "항해 보상 개선:",
+      "  승리 화면에 표시되는 골드와 실제 받는 골드가 다른 문제 해결",
+      "  표시된 보상 = 실제 지급 보상으로 일관성 보장",
+      "에테르 던전",
+      "  승리 후 반복전투 진행시 보상이 누락되던 점 수정"
+    ],
+    isNew: true,
+    type: "bugfix"
+  },
+  {
     id: 59,
     date: "2025.11.17",
     title: "[v1.421] 🔧 동료 계승 시스템 개선",
@@ -9,7 +26,7 @@ export const NOTICE_DATA = [
       "  전투에 참여하지 않은 동료도 계승 가능하도록 개선",
       "사이드바 위치 개선"
     ],
-    isNew: true,
+    isNew: false,
     type: "bugfix"
   },
   {
@@ -1062,5 +1079,5 @@ export const NOTICE_DATA = [
 // 버전 정보
 export const VERSION_INFO = {
   name: "여우이야기",
-  version: "v1.421"
+  version: "v1.422"
 };
